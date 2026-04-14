@@ -22,6 +22,12 @@ function pickTicketArray(payload: TicketsPageResponse | unknown[]): unknown[] {
   if (Array.isArray(payload.results)) {
     return payload.results;
   }
+  const numericKeyValues = Object.entries(payload)
+    .filter(([key, value]) => /^\d+$/.test(key) && value !== null && typeof value === "object")
+    .map(([, value]) => value);
+  if (numericKeyValues.length > 0) {
+    return numericKeyValues;
+  }
   return [];
 }
 
@@ -42,6 +48,21 @@ export async function getTicketsPage(page: number, pageSize = 100): Promise<unkn
         params: {
           page,
           per_page: pageSize
+        }
+      }),
+    () =>
+      glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
+        params: {
+          limit: pageSize,
+          offset: start
+        }
+      }),
+    () =>
+      glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
+        params: {
+          range: `${start}-${end}`,
+          get_hateoas: false,
+          only_id: false
         }
       })
   ];
