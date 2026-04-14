@@ -8,7 +8,7 @@ const TMP_OPENAPI_PATH = path.join("/tmp", "glpi-doc.json");
 let discoveredTicketsPath = normalizeApiPath(env.GLPI_TICKETS_PATH);
 
 function normalizeApiPath(rawPath: string): string {
-  if (!rawPath) return "/Assistance/Ticket";
+  if (!rawPath) return "/v2/Assistance/Ticket";
 
   try {
     if (/^https?:\/\//i.test(rawPath)) {
@@ -29,7 +29,7 @@ function normalizeApiPath(rawPath: string): string {
     rawPath = rawPath.slice(apiPrefix.length);
   }
 
-  return rawPath || "/Assistance/Ticket";
+  return rawPath || "/v2/Assistance/Ticket";
 }
 
 function detectTicketsPath(paths: Record<string, unknown>): string {
@@ -51,7 +51,7 @@ function detectTicketsPath(paths: Record<string, unknown>): string {
     return anyTicketPath;
   }
 
-  return "/Assistance/Ticket";
+  return "/v2/Assistance/Ticket";
 }
 
 export async function loadOpenApiSpec(): Promise<Record<string, unknown>> {

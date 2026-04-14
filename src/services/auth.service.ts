@@ -14,13 +14,17 @@ function isTokenValid(): boolean {
 
 async function requestNewToken(): Promise<string> {
   const url = `${env.GLPI_BASE_URL}/token`;
-  const params = new URLSearchParams({
+  const basePayload = {
     grant_type: "password",
     client_id: env.GLPI_CLIENT_ID,
     client_secret: env.GLPI_CLIENT_SECRET,
     username: env.GLPI_USERNAME,
     password: env.GLPI_PASSWORD
-  });
+  } as Record<string, string>;
+  if (env.GLPI_OAUTH_SCOPE.trim()) {
+    basePayload.scope = env.GLPI_OAUTH_SCOPE.trim();
+  }
+  const params = new URLSearchParams(basePayload);
   const basicAuth = Buffer.from(`${env.GLPI_CLIENT_ID}:${env.GLPI_CLIENT_SECRET}`).toString("base64");
 
   const attempts = [
@@ -37,11 +41,7 @@ async function requestNewToken(): Promise<string> {
       axios.post<GlpiAuthResponse>(
         url,
         {
-          grant_type: "password",
-          client_id: env.GLPI_CLIENT_ID,
-          client_secret: env.GLPI_CLIENT_SECRET,
-          username: env.GLPI_USERNAME,
-          password: env.GLPI_PASSWORD
+          ...basePayload
         },
         {
           timeout: env.HTTP_TIMEOUT_MS,
@@ -58,7 +58,8 @@ async function requestNewToken(): Promise<string> {
         {
           grant_type: "password",
           username: env.GLPI_USERNAME,
-          password: env.GLPI_PASSWORD
+          password: env.GLPI_PASSWORD,
+          ...(env.GLPI_OAUTH_SCOPE.trim() ? { scope: env.GLPI_OAUTH_SCOPE.trim() } : {})
         },
         {
           timeout: env.HTTP_TIMEOUT_MS,

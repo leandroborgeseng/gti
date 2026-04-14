@@ -11,6 +11,19 @@ interface TicketsPageResponse {
   [key: string]: unknown;
 }
 
+function resolveTicketsPath(rawPath: string): string {
+  if (/^https?:\/\//i.test(rawPath)) {
+    return rawPath;
+  }
+  if (/^\/v2\//i.test(rawPath)) {
+    return rawPath;
+  }
+  if (rawPath.startsWith("/")) {
+    return `/v2${rawPath}`;
+  }
+  return `/v2/${rawPath}`;
+}
+
 function pickTicketArray(payload: TicketsPageResponse | unknown[]): unknown[] {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload.data)) {
@@ -32,7 +45,7 @@ function pickTicketArray(payload: TicketsPageResponse | unknown[]): unknown[] {
 }
 
 export async function getTicketsPage(page: number, pageSize = 100): Promise<unknown[]> {
-  const ticketsPath = getDiscoveredTicketsPath();
+  const ticketsPath = resolveTicketsPath(getDiscoveredTicketsPath());
   const start = Math.max(0, (page - 1) * pageSize);
   const end = start + pageSize - 1;
 
