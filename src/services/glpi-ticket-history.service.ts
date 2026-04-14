@@ -1,8 +1,9 @@
+import { prisma } from "../config/prisma";
 import { logger } from "../config/logger";
 import { glpiClient } from "./glpi.client";
 import { getDiscoveredTicketsPath } from "./openapi.loader";
 import { resolveTicketsPath } from "./tickets.service";
-import { isTicketClosedStatus } from "../utils/ticket-status";
+import { isTicketClosedStatus, ticketWhereNotClosed } from "../utils/ticket-status";
 import { fetchGlpiTicketJson } from "./glpi-ticket-write.service";
 
 function ticketItemBase(glpiId: number): string {
@@ -313,4 +314,55 @@ export async function loadTicketHistoryFromGlpi(
       historyError: message
     };
   }
+}
+
+/** Carrega histórico no GLPI, grava `waitingParty` no SQLite e devolve o bundle para a API. */
+export async function loadAndPersistWaitingParty(
+  glpiId: number,
+  statusLabel: string | null
+): Promise<TicketHistoryBundleDto> {
+  const history = await loadTicketHistoryFromGlpi(glpiId, statusLabel);
+  await prisma.ticket.updateMany({
+    where: { glpiTicketId: glpiId },
+    data: { waitingParty: history.waitingOn }
+  });
+  return history;
+}
+
+/**
+ * Preenche `waitingParty` para tickets abertos ainda sem cache (limitado por chamada).
+ * Usado após sync para ir populando o filtro sem abrir cada modal.
+ */
+export async function enrichWaitingPartyBatch(limit: number): Promise<number> {
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 0), 80);
+  if (safeLimit === 0) {
+    return 0;
+  }
+  const rows = await prisma.ticket.findMany({
+    where: {
+      AND: [
+        ticketWhereNotClosed(),
+        {
+          OR: [{ waitingParty: null }, { waitingParty: "" }]
+        }
+      ]
+    },
+    select: { glpiTicketId: true, status: true },
+    take: safeLimit,
+    orderBy: { updatedAt: "asc" }
+  });
+  let updated = 0;
+  for (const row of rows) {
+    try {
+      await loadAndPersistWaitingParty(row.glpiTicketId, row.status);
+      updated += 1;
+    } catch (error) {
+      logger.warn({ glpiTicketId: row.glpiTicketId, error: String(error) }, "enrichWaitingPartyBatch: ticket ignorado");
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  if (updated > 0) {
+    logger.info({ updated, attempted: rows.length }, "waitingParty enriquecido em lote");
+  }
+  return updated;
 }

@@ -4,11 +4,12 @@ import { AxiosError } from "axios";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { prisma } from "./config/prisma";
+import { normalizeTicket } from "./normalizers/ticket.normalizer";
 import { syncTickets, SyncProgress, SyncTicketsResult } from "./jobs/sync-tickets.job";
 import { ensureSqliteSchema } from "./scripts/bootstrap-db";
 import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
-import { loadTicketHistoryFromGlpi } from "./services/glpi-ticket-history.service";
+import { enrichWaitingPartyBatch, loadAndPersistWaitingParty } from "./services/glpi-ticket-history.service";
 import { fetchGlpiTicketJson, patchGlpiTicketJson } from "./services/glpi-ticket-write.service";
 import { persistTicketFromRaw } from "./services/ticket-persist.service";
 import { extractGlpiScalarId } from "./utils/glpi-field-parse";
@@ -101,10 +102,65 @@ function columnChromeStyle(statusKey: string): string {
   return `--col-bg:${bg};--col-border:${border};`;
 }
 
-function cardChromeStyle(ticketSeed: string): string {
-  const bg = hslFromSeed(`card:${ticketSeed}`, 82, 94);
-  const border = hslFromSeed(`cardb:${ticketSeed}`, 58, 72);
-  return `background:${bg};border-color:${border};`;
+function openDaysApprox(iso: string | null | undefined, ref: Date): number {
+  if (!iso) {
+    return 0;
+  }
+  const start = Date.parse(iso);
+  if (Number.isNaN(start)) {
+    return 0;
+  }
+  return Math.max(0, (ref.getTime() - start) / 86_400_000);
+}
+
+/** Verde (poucos dias abertos) → vermelho (muitos dias); satura em ~90 dias. */
+function cardHeatChromeStyle(daysOpen: number): string {
+  const maxDays = 90;
+  const t = Math.min(1, Math.max(0, daysOpen / maxDays));
+  const bgR = Math.round(218 + (255 - 218) * t);
+  const bgG = Math.round(252 + (236 - 252) * t);
+  const bgB = Math.round(226 + (234 - 226) * t);
+  const br = Math.round(46 + (200 - 46) * t);
+  const bg = Math.round(168 + (65 - 168) * t);
+  const bb = Math.round(78 + (62 - 78) * t);
+  return `background:rgb(${bgR},${bgG},${bgB});border:2px solid rgb(${br},${bg},${bb});`;
+}
+
+function pendenciaFilterWhere(raw: string): Record<string, unknown> | null {
+  const p = raw.trim().toLowerCase();
+  if (!p) {
+    return null;
+  }
+  if (p === "cliente") {
+    return { waitingParty: "cliente" };
+  }
+  if (p === "empresa") {
+    return { waitingParty: "empresa" };
+  }
+  if (p === "na" || p === "encerrado") {
+    return { waitingParty: "na" };
+  }
+  if (p === "desconhecido" || p === "unknown") {
+    return { waitingParty: "unknown" };
+  }
+  return null;
+}
+
+function pendenciaLabelForSummary(value: string): string {
+  const p = value.trim().toLowerCase();
+  if (p === "cliente") {
+    return "Aguardando cliente (nao depende da empresa)";
+  }
+  if (p === "empresa") {
+    return "Aguardando empresa / equipe";
+  }
+  if (p === "na" || p === "encerrado") {
+    return "Encerrado / sem pendencia (inferencia)";
+  }
+  if (p === "desconhecido" || p === "unknown") {
+    return "Pendencia indefinida (cache)";
+  }
+  return "(todas)";
 }
 
 function sanitizeCssColor(value: string): string | undefined {
@@ -311,7 +367,7 @@ function startHealthServer(): void {
             return;
           }
           const raw = asJsonRecord(ticket.rawJson);
-          const history = await loadTicketHistoryFromGlpi(glpiId, ticket.status);
+          const history = await loadAndPersistWaitingParty(glpiId, ticket.status);
           const payload = {
             glpiTicketId: ticket.glpiTicketId,
             name: ticket.title ?? "",
@@ -366,6 +422,8 @@ function startHealthServer(): void {
           await patchGlpiTicketJson(glpiId, patch);
           const fresh = await fetchGlpiTicketJson(glpiId);
           await persistTicketFromRaw(fresh);
+          const norm = normalizeTicket(fresh);
+          await loadAndPersistWaitingParty(glpiId, norm.status);
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ ok: true }));
         } catch (error) {
@@ -387,6 +445,8 @@ function startHealthServer(): void {
       const groupFilter = (parsedUrl.searchParams.get("group") || "").trim();
       const assignedGroupFilter = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const onlyOpen = parsedUrl.searchParams.get("open") === "1";
+      const pendenciaParam = (parsedUrl.searchParams.get("pendencia") || "").trim();
+      const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
       let latestTickets: Array<{
         glpiTicketId: number;
         title: string | null;
@@ -394,6 +454,7 @@ function startHealthServer(): void {
         contractGroupName: string | null;
         dateCreation: string | null;
         dateModification: string | null;
+        waitingParty: string | null;
         updatedAt: Date;
       }> = [];
       let statuses: string[] = [];
@@ -450,7 +511,8 @@ function startHealthServer(): void {
                   ]
                 }
               : {},
-            ...(onlyOpen ? [ticketWhereNotClosed()] : [])
+            ...(onlyOpen ? [ticketWhereNotClosed()] : []),
+            ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
           ]
         };
 
@@ -479,6 +541,7 @@ function startHealthServer(): void {
             contractGroupName: true,
             dateCreation: true,
             dateModification: true,
+            waitingParty: true,
             updatedAt: true
           }
         });
@@ -509,6 +572,7 @@ function startHealthServer(): void {
           contractGroupName: string | null;
           dateCreation: string | null;
           dateModification: string | null;
+          waitingParty: string | null;
           updatedAt: Date;
         }>
       >();
@@ -562,14 +626,26 @@ function startHealthServer(): void {
             .map((ticket) => {
               const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
               const safeGroup = escapeHtml(ticket.contractGroupName || "-");
-              const cardStyle = cardChromeStyle(String(ticket.glpiTicketId));
+              const daysOpen = openDaysApprox(ticket.dateCreation, now);
+              const cardStyle = cardHeatChromeStyle(daysOpen);
               const openFor = formatTicketAge(ticket.dateCreation, now);
               const idleFor = formatTicketAge(ticket.dateModification || ticket.dateCreation, now);
+              const pendLabel =
+                ticket.waitingParty === "cliente"
+                  ? "Aguardando cliente"
+                  : ticket.waitingParty === "empresa"
+                    ? "Aguardando empresa"
+                    : ticket.waitingParty === "na"
+                      ? "Sem pendencia"
+                      : ticket.waitingParty === "unknown"
+                        ? "Pendencia ?"
+                        : "Pendencia nao calculada";
               return `<div class="kanban-card" draggable="false" role="button" tabindex="0" data-glpi-id="${
                 ticket.glpiTicketId
               }" style="${escapeHtml(cardStyle)}">
                 <div><strong>#${ticket.glpiTicketId}</strong></div>
                 <div>${safeTitle}</div>
+                <div class="small kanban-pendencia">${escapeHtml(pendLabel)}</div>
                 <div class="small">Grupo: ${safeGroup}</div>
                 <div class="small">Aberto há: <strong>${escapeHtml(openFor)}</strong> (desde criação)</div>
                 <div class="small">Sem interação há: <strong>${escapeHtml(idleFor)}</strong> (última alteração GLPI)</div>
@@ -623,6 +699,9 @@ function startHealthServer(): void {
         }</div>`
       );
       filterLines.push(`<div><span class="chip">Somente abertos:</span> ${onlyOpen ? "Sim" : "Nao"}</div>`);
+      filterLines.push(
+        `<div><span class="chip">Pendencia (inferida):</span> ${escapeHtml(pendenciaLabelForSummary(pendenciaParam))}</div>`
+      );
 
       const html = `<!doctype html>
 <html lang="pt-BR">
@@ -639,7 +718,9 @@ function startHealthServer(): void {
       .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
       .metric { border: 1px solid #e2e2e2; border-radius: 10px; padding: 0.75rem; background: #fafafa; }
       .metric strong { display: block; font-size: 1.35rem; margin-bottom: 0.25rem; }
-      .filters { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
+      .filters-panel { background: linear-gradient(180deg, #f9fafc 0%, #f3f5f9 100%); border: 1px solid #e2e6ef; border-radius: 14px; padding: 1rem 1.1rem; margin: 1rem 0; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+      .filters-title { margin: 0 0 0.75rem 0; font-size: 1rem; font-weight: 600; color: #1a1d26; }
+      .filters { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end; margin: 0; }
       .filters label { font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.35rem; }
       .filters input, .filters select { padding: 0.35rem 0.5rem; min-width: 180px; }
       .filters button { padding: 0.45rem 0.75rem; }
@@ -656,8 +737,11 @@ function startHealthServer(): void {
       .kanban-column-handle:active { cursor: grabbing; }
       .kanban-column h3 { margin: 0; font-size: 14px; }
       .kanban-column-body { padding: 0.65rem; }
-      .kanban-card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 0.5rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.2rem; cursor: pointer; text-align: left; }
-      .kanban-card:hover { filter: brightness(0.98); }
+      .kanban-card { border-radius: 10px; padding: 0.55rem 0.6rem; margin-bottom: 0.55rem; display: flex; flex-direction: column; gap: 0.25rem; cursor: pointer; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.06); transition: transform 0.12s ease, box-shadow 0.12s ease; }
+      .kanban-card:hover { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0,0,0,0.08); }
+      .kanban-pendencia { font-weight: 600; color: #2c3e50; }
+      .kanban-legend { margin: 0.35rem 0 0 0; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+      .legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.12); vertical-align: middle; }
       .kanban-card:focus { outline: 2px solid #3b5bdb; outline-offset: 2px; }
       .modal { display: none; position: fixed; inset: 0; z-index: 50; align-items: center; justify-content: center; padding: 1rem; }
       .modal.open { display: flex; }
@@ -702,7 +786,7 @@ function startHealthServer(): void {
   </head>
   <body>
     <h1>Chamados</h1>
-    <p class="muted">Cache local (SQLite): sincronizamos apenas chamados <strong>abertos</strong> (fechados/solucionados nao entram no banco). Categorias e filtros refletem o que ja foi carregado.</p>
+    <p class="muted">Cache local (SQLite): apenas chamados <strong>abertos</strong>. O filtro <strong>Pendencia inferida</strong> usa o campo <code>waitingParty</code> (gravado ao abrir o modal ou em lote apos cada sync).</p>
 
     <div class="dashboard">
       <div class="metric">
@@ -740,38 +824,56 @@ function startHealthServer(): void {
       </div>
     </div>
 
-    <form class="filters" method="GET" action="/">
-      <label>Busca
-        <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, titulo ou conteudo" />
-      </label>
-      <label>Status
-        <select name="status">
-          <option value="">(todos)</option>
-          ${statusOptions}
-        </select>
-      </label>
-      <label>Grupo
-        <select name="group">
-          <option value="">(todos)</option>
-          ${groupOptions}
-        </select>
-      </label>
-      <label>Grupo tecnico atribuido (busca)
-        <input type="text" name="assignedGroup" value="${escapeHtml(assignedGroupFilter)}" placeholder="ex.: Helpdesk, Software de terceiros" />
-      </label>
-      <label>Somente abertos
-        <select name="open">
-          <option value="0" ${onlyOpen ? "" : "selected"}>Nao</option>
-          <option value="1" ${onlyOpen ? "selected" : ""}>Sim</option>
-        </select>
-      </label>
-      <button type="submit">Filtrar</button>
-    </form>
+    <div class="filters-panel">
+      <h2 class="filters-title">Filtros</h2>
+      <form class="filters" method="GET" action="/">
+        <label>Busca
+          <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, titulo ou conteudo" />
+        </label>
+        <label>Status
+          <select name="status">
+            <option value="">(todos)</option>
+            ${statusOptions}
+          </select>
+        </label>
+        <label>Grupo
+          <select name="group">
+            <option value="">(todos)</option>
+            ${groupOptions}
+          </select>
+        </label>
+        <label>Grupo tecnico atribuido (busca)
+          <input type="text" name="assignedGroup" value="${escapeHtml(assignedGroupFilter)}" placeholder="ex.: Helpdesk, Software de terceiros" />
+        </label>
+        <label>Pendencia inferida
+          <select name="pendencia">
+            <option value="" ${pendenciaParam === "" ? "selected" : ""}>(todas)</option>
+            <option value="cliente" ${pendenciaParam.toLowerCase() === "cliente" ? "selected" : ""}>Aguardando cliente (nao depende da empresa)</option>
+            <option value="empresa" ${pendenciaParam.toLowerCase() === "empresa" ? "selected" : ""}>Aguardando empresa / equipe</option>
+            <option value="desconhecido" ${pendenciaParam.toLowerCase() === "desconhecido" ? "selected" : ""}>Indefinido / sem cache</option>
+            <option value="na" ${pendenciaParam.toLowerCase() === "na" ? "selected" : ""}>Encerrado (inferencia)</option>
+          </select>
+        </label>
+        <label>Somente abertos
+          <select name="open">
+            <option value="0" ${onlyOpen ? "" : "selected"}>Nao</option>
+            <option value="1" ${onlyOpen ? "selected" : ""}>Sim</option>
+          </select>
+        </label>
+        <button type="submit">Aplicar filtros</button>
+      </form>
+    </div>
     <h2 class="section-title">Kanban de chamados por status</h2>
     <p class="small">Arraste pelo <strong>título da coluna</strong> para reordenar (salvo no SQLite). Clique no card para editar no GLPI.</p>
+    <p class="small kanban-legend">Cor do card: <span class="legend-swatch" style="background:rgb(218,252,226);border-color:rgb(46,168,78)"></span> aberto há pouco tempo → <span class="legend-swatch" style="background:rgb(255,236,234);border-color:rgb(200,65,62)"></span> aberto há mais tempo (escala ~90 dias).</p>
     <div class="kanban-board" id="kanban-board">
       ${kanbanColumnsHtml || '<div class="small">(nenhum ticket sincronizado ainda)</div>'}
     </div>
+    ${
+      pendenciaParam && filteredTotal === 0
+        ? '<p class="small muted">Nenhum chamado com esta pendencia no cache. O campo e preenchido ao abrir o modal (historico GLPI) ou aos poucos apos cada sincronizacao.</p>'
+        : ""
+    }
 
     <div id="ticket-modal" class="modal" aria-hidden="true">
       <div class="modal-backdrop" data-close-modal></div>
@@ -1138,6 +1240,8 @@ function startHealthServer(): void {
       const group = (parsedUrl.searchParams.get("group") || "").trim();
       const assignedGroup = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const openOnly = parsedUrl.searchParams.get("open") === "1";
+      const ticketsPendencia = (parsedUrl.searchParams.get("pendencia") || "").trim();
+      const ticketsPendenciaWhere = pendenciaFilterWhere(ticketsPendencia);
       try {
         const assignedGroupTicketIds =
           assignedGroup.trim().length > 0
@@ -1175,7 +1279,8 @@ function startHealthServer(): void {
                     ]
                   }
                 : {},
-              ...(openOnly ? [ticketWhereNotClosed()] : [])
+              ...(openOnly ? [ticketWhereNotClosed()] : []),
+              ...(ticketsPendenciaWhere ? [ticketsPendenciaWhere] : [])
             ]
           },
           orderBy: { id: "desc" },
@@ -1225,6 +1330,9 @@ async function runSyncWithGuard(): Promise<void> {
       onProgress: applySyncProgress
     });
     applySyncProgress({ page: syncStatus.lastPage || 1, ...result });
+    await enrichWaitingPartyBatch(35).catch((error) => {
+      logger.warn({ error: toErrorLog(error) }, "Enriquecimento waitingParty ignorado");
+    });
     syncStatus.lastSuccessAt = new Date().toISOString();
     syncStatus.lastError = null;
   } catch (error) {
