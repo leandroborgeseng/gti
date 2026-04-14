@@ -28,7 +28,9 @@ async function requestNewToken(): Promise<string> {
       axios.post<GlpiAuthResponse>(url, params.toString(), {
         timeout: env.HTTP_TIMEOUT_MS,
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": env.GLPI_USER_AGENT
         }
       }),
     async () =>
@@ -44,7 +46,9 @@ async function requestNewToken(): Promise<string> {
         {
           timeout: env.HTTP_TIMEOUT_MS,
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "User-Agent": env.GLPI_USER_AGENT
           }
         }
       ),
@@ -60,6 +64,8 @@ async function requestNewToken(): Promise<string> {
           timeout: env.HTTP_TIMEOUT_MS,
           headers: {
             "Content-Type": "application/json",
+            Accept: "application/json",
+            "User-Agent": env.GLPI_USER_AGENT,
             Authorization: `Basic ${basicAuth}`
           }
         }

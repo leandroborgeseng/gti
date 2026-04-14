@@ -56,7 +56,11 @@ function detectTicketsPath(paths: Record<string, unknown>): string {
 
 export async function loadOpenApiSpec(): Promise<Record<string, unknown>> {
   const response = await axios.get<Record<string, unknown>>(env.GLPI_DOC_URL, {
-    timeout: env.HTTP_TIMEOUT_MS
+    timeout: env.HTTP_TIMEOUT_MS,
+    headers: {
+      Accept: "application/json",
+      "User-Agent": env.GLPI_USER_AGENT
+    }
   });
 
   await fs.writeFile(TMP_OPENAPI_PATH, JSON.stringify(response.data, null, 2), "utf-8");

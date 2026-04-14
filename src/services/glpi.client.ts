@@ -24,7 +24,11 @@ interface RetriableRequestConfig extends InternalAxiosRequestConfig {
 
 export const glpiClient: AxiosInstance = axios.create({
   baseURL: env.GLPI_BASE_URL,
-  timeout: env.HTTP_TIMEOUT_MS
+  timeout: env.HTTP_TIMEOUT_MS,
+  headers: {
+    Accept: "application/json",
+    "User-Agent": env.GLPI_USER_AGENT
+  }
 });
 
 glpiClient.interceptors.request.use(

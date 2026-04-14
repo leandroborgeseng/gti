@@ -1,5 +1,6 @@
 import http from "node:http";
 import cron from "node-cron";
+import { AxiosError } from "axios";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { syncTickets } from "./jobs/sync-tickets.job";
@@ -10,6 +11,23 @@ import { getAccessToken } from "./services/auth.service";
 let isSyncRunning = false;
 
 function toErrorLog(error: unknown): { message: string; stack?: string } {
+  if (error instanceof AxiosError) {
+    const status = error.response?.status;
+    const method = error.config?.method?.toUpperCase();
+    const url = error.config?.url;
+    const responseText =
+      typeof error.response?.data === "string"
+        ? error.response.data
+        : error.response?.data
+        ? JSON.stringify(error.response.data)
+        : "";
+
+    return {
+      message: `[HTTP] ${method || "?"} ${url || "?"} -> ${status || "sem_status"} ${responseText}`.trim(),
+      stack: error.stack
+    };
+  }
+
   if (error instanceof Error) {
     return { message: error.message, stack: error.stack };
   }
