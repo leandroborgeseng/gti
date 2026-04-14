@@ -1,0 +1,22 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./data.db"
+}
+
+model Ticket {
+  id                Int      @id @default(autoincrement())
+  glpiTicketId      Int      @unique
+  title             String?
+  content           String?
+  status            String?
+  priority          String?
+  dateCreation      String?
+  contractGroupId   Int?
+  contractGroupName String?
+  rawJson           Json
+  createdAt         DateTime @default(now())
+}
