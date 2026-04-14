@@ -4,7 +4,7 @@ import { AxiosError } from "axios";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { prisma } from "./config/prisma";
-import { syncTickets, SyncTicketsResult } from "./jobs/sync-tickets.job";
+import { syncTickets, SyncProgress, SyncTicketsResult } from "./jobs/sync-tickets.job";
 import { ensureSqliteSchema } from "./scripts/bootstrap-db";
 import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
@@ -20,6 +20,7 @@ type SyncRuntimeStatus = {
   lastLoaded: number;
   lastSaved: number;
   lastFailed: number;
+  lastPage: number;
 };
 
 const syncStatus: SyncRuntimeStatus = {
@@ -31,8 +32,16 @@ const syncStatus: SyncRuntimeStatus = {
   lastError: null,
   lastLoaded: 0,
   lastSaved: 0,
-  lastFailed: 0
+  lastFailed: 0,
+  lastPage: 0
 };
+
+function applySyncProgress(progress: SyncProgress): void {
+  syncStatus.lastPage = progress.page;
+  syncStatus.lastLoaded = progress.loaded;
+  syncStatus.lastSaved = progress.saved;
+  syncStatus.lastFailed = progress.failed;
+}
 
 function toErrorLog(error: unknown): { message: string; stack?: string } {
   if (error instanceof AxiosError) {
@@ -123,6 +132,7 @@ function startHealthServer(): void {
     <div class="status">
       <strong>${statusLabel}</strong><br />
       running: ${syncStatus.isRunning} | runs: ${syncStatus.runs}<br />
+      page: ${syncStatus.lastPage}<br />
       loaded: ${syncStatus.lastLoaded} | saved: ${syncStatus.lastSaved} | failed: ${syncStatus.lastFailed}<br />
       started_at: ${syncStatus.lastStartedAt || "-"} | finished_at: ${syncStatus.lastFinishedAt || "-"}<br />
       last_success_at: ${syncStatus.lastSuccessAt || "-"}<br />
@@ -191,14 +201,18 @@ async function runSyncWithGuard(): Promise<void> {
   syncStatus.isRunning = true;
   syncStatus.runs += 1;
   syncStatus.lastStartedAt = new Date().toISOString();
+  syncStatus.lastPage = 0;
+  syncStatus.lastLoaded = 0;
+  syncStatus.lastSaved = 0;
+  syncStatus.lastFailed = 0;
   try {
     await loadOpenApiSpec().catch((error) => {
       logger.warn({ error: toErrorLog(error) }, "Falha ao atualizar doc OpenAPI, usando endpoint padrao");
     });
-    const result: SyncTicketsResult = await syncTickets();
-    syncStatus.lastLoaded = result.loaded;
-    syncStatus.lastSaved = result.saved;
-    syncStatus.lastFailed = result.failed;
+    const result: SyncTicketsResult = await syncTickets({
+      onProgress: applySyncProgress
+    });
+    applySyncProgress({ page: syncStatus.lastPage || 1, ...result });
     syncStatus.lastSuccessAt = new Date().toISOString();
     syncStatus.lastError = null;
   } catch (error) {
