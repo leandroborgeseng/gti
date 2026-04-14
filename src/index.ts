@@ -96,10 +96,6 @@ function startHealthServer(): void {
       const groupFilter = (parsedUrl.searchParams.get("group") || "").trim();
       const assignedGroupFilter = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const onlyOpen = parsedUrl.searchParams.get("open") === "1";
-      const attrKeyFilter = (parsedUrl.searchParams.get("attrKey") || "").trim();
-      const attrTicketFilter = Number(parsedUrl.searchParams.get("attrTicketId") || 0);
-      const detailsTicketId = Number(parsedUrl.searchParams.get("detailsTicketId") || 0);
-      let ticketsCount = 0;
       let latestTickets: Array<{
         glpiTicketId: number;
         title: string | null;
@@ -108,25 +104,9 @@ function startHealthServer(): void {
         dateModification: string | null;
         updatedAt: Date;
       }> = [];
-      let attributesRows: Array<{
-        ticket: { glpiTicketId: number };
-        keyPath: string;
-        valueType: string;
-        valueText: string | null;
-        valueJson: string | null;
-        updatedAt: Date;
-      }> = [];
-      let selectedTicketFields: Array<{
-        keyPath: string;
-        valueType: string;
-        valueText: string | null;
-        valueJson: string | null;
-        updatedAt: Date;
-      }> = [];
       let statuses: string[] = [];
       let groups: string[] = [];
       try {
-        ticketsCount = await prisma.ticket.count();
         const where = {
           AND: [
             q
@@ -173,60 +153,48 @@ function startHealthServer(): void {
           orderBy: { contractGroupName: "asc" }
         });
         groups = groupRows.map((item) => item.contractGroupName).filter((item): item is string => Boolean(item));
-
-        attributesRows = await prisma.ticketAttribute.findMany({
-          where: {
-            AND: [
-              attrKeyFilter ? { keyPath: { contains: attrKeyFilter } } : {},
-              attrTicketFilter > 0 ? { ticket: { glpiTicketId: attrTicketFilter } } : {}
-            ]
-          },
-          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-          take: 300,
-          include: {
-            ticket: {
-              select: { glpiTicketId: true }
-            }
-          }
-        });
-
-        if (detailsTicketId > 0) {
-          selectedTicketFields = await prisma.ticketAttribute.findMany({
-            where: {
-              ticket: {
-                glpiTicketId: detailsTicketId
-              }
-            },
-            orderBy: [{ keyPath: "asc" }, { id: "asc" }],
-            take: 5000
-          });
-        }
       } catch (error) {
         logger.error({ error: toErrorLog(error) }, "Falha ao carregar dados da pagina inicial");
       }
 
-      const statusColor = syncStatus.lastError ? "#8a1f1f" : "#1f6f43";
-      const statusLabel = syncStatus.lastError ? "Ultima sync com erro" : "Ultima sync sem erro";
-      const rows = latestTickets
-        .map((ticket) => {
-          const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
-          const safeStatus = escapeHtml(ticket.status || "-");
-          const safeGroup = escapeHtml(ticket.contractGroupName || "-");
-          const viewAllFieldsLink = `/?q=${encodeURIComponent(q)}&status=${encodeURIComponent(statusFilter)}&group=${encodeURIComponent(groupFilter)}&assignedGroup=${encodeURIComponent(assignedGroupFilter)}&open=${onlyOpen ? "1" : "0"}&attrKey=${encodeURIComponent(attrKeyFilter)}&attrTicketId=${attrTicketFilter > 0 ? String(attrTicketFilter) : ""}&detailsTicketId=${ticket.glpiTicketId}`;
-          return `<tr><td>${ticket.glpiTicketId}</td><td>${safeTitle}</td><td>${safeStatus}</td><td>${safeGroup}</td><td>${formatDateTime(ticket.dateModification)}</td><td>${formatDateTime(ticket.updatedAt)}</td><td><a href="${viewAllFieldsLink}">Ver todos os campos</a></td></tr>`;
-        })
-        .join("");
-      const attributeRowsHtml = attributesRows
-        .map((item) => {
-          const safeKey = escapeHtml(item.keyPath);
-          const safeType = escapeHtml(item.valueType);
-          const safeValue =
-            item.valueText !== null
-              ? escapeHtml(item.valueText)
-              : item.valueJson !== null
-              ? escapeHtml(item.valueJson.length > 160 ? `${item.valueJson.slice(0, 160)}...` : item.valueJson)
-              : "-";
-          return `<tr><td>${item.ticket.glpiTicketId}</td><td>${safeKey}</td><td>${safeType}</td><td>${safeValue}</td><td>${formatDateTime(item.updatedAt)}</td></tr>`;
+      const ticketsByStatus = new Map<
+        string,
+        Array<{
+          glpiTicketId: number;
+          title: string | null;
+          status: string | null;
+          contractGroupName: string | null;
+          dateModification: string | null;
+          updatedAt: Date;
+        }>
+      >();
+      for (const ticket of latestTickets) {
+        const key = ticket.status || "Sem status";
+        const existing = ticketsByStatus.get(key) || [];
+        existing.push(ticket);
+        ticketsByStatus.set(key, existing);
+      }
+      const orderedStatusKeys = Array.from(new Set([...statuses, ...Array.from(ticketsByStatus.keys())]));
+      const kanbanColumnsHtml = orderedStatusKeys
+        .map((statusKey) => {
+          const cards = ticketsByStatus.get(statusKey) || [];
+          const cardsHtml = cards
+            .map((ticket) => {
+              const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
+              const safeGroup = escapeHtml(ticket.contractGroupName || "-");
+              return `<div class="kanban-card">
+                <div><strong>#${ticket.glpiTicketId}</strong></div>
+                <div>${safeTitle}</div>
+                <div class="small">Grupo: ${safeGroup}</div>
+                <div class="small">Date mod: ${formatDateTime(ticket.dateModification)}</div>
+                <div class="small">Sync: ${formatDateTime(ticket.updatedAt)}</div>
+              </div>`;
+            })
+            .join("");
+          return `<div class="kanban-column">
+            <h3>${escapeHtml(statusKey)} <span class="small">(${cards.length})</span></h3>
+            ${cardsHtml || '<div class="small">(sem chamados)</div>'}
+          </div>`;
         })
         .join("");
       const statusOptions = statuses
@@ -234,19 +202,6 @@ function startHealthServer(): void {
         .join("");
       const groupOptions = groups
         .map((item) => `<option value="${escapeHtml(item)}" ${item === groupFilter ? "selected" : ""}>${escapeHtml(item)}</option>`)
-        .join("");
-      const selectedTicketRowsHtml = selectedTicketFields
-        .map((item) => {
-          const safeKey = escapeHtml(item.keyPath);
-          const safeType = escapeHtml(item.valueType);
-          const safeValue =
-            item.valueText !== null
-              ? escapeHtml(item.valueText)
-              : item.valueJson !== null
-              ? escapeHtml(item.valueJson)
-              : "-";
-          return `<tr><td>${safeKey}</td><td>${safeType}</td><td>${safeValue}</td><td>${formatDateTime(item.updatedAt)}</td></tr>`;
-        })
         .join("");
 
       const html = `<!doctype html>
@@ -260,10 +215,6 @@ function startHealthServer(): void {
       h1 { margin-bottom: 0.5rem; }
       code { background: #f5f5f5; padding: 0.15rem 0.35rem; border-radius: 4px; }
       ul { line-height: 1.8; }
-      .status { padding: 0.75rem; border-radius: 6px; color: #fff; margin: 1rem 0; background: ${statusColor}; }
-      table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; font-size: 14px; }
-      th { background: #f7f7f7; }
       .muted { color: #666; font-size: 0.95rem; }
       .filters { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
       .filters label { font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.35rem; }
@@ -271,7 +222,10 @@ function startHealthServer(): void {
       .filters button { padding: 0.45rem 0.75rem; }
       .section-title { margin-top: 2rem; margin-bottom: 0.5rem; }
       .small { font-size: 12px; color: #666; }
-      .details-box { margin-top: 1.5rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }
+      .kanban-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.8rem; margin-top: 1rem; }
+      .kanban-column { border: 1px solid #ddd; border-radius: 8px; padding: 0.6rem; background: #fafafa; min-height: 120px; }
+      .kanban-column h3 { margin: 0 0 0.6rem 0; font-size: 14px; }
+      .kanban-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0.5rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.2rem; }
     </style>
   </head>
   <body>
@@ -282,16 +236,7 @@ function startHealthServer(): void {
       <li><a href="/tickets"><code>GET /tickets</code></a> - ultimos tickets (JSON)</li>
       <li><code>GET /tickets?limit=10</code> - define quantidade (1..200)</li>
     </ul>
-    <div class="status">
-      <strong>${statusLabel}</strong><br />
-      running: ${syncStatus.isRunning} | runs: ${syncStatus.runs}<br />
-      page: ${syncStatus.lastPage}<br />
-      loaded: ${syncStatus.lastLoaded} | saved: ${syncStatus.lastSaved} | failed: ${syncStatus.lastFailed}<br />
-      started_at: ${syncStatus.lastStartedAt || "-"} | finished_at: ${syncStatus.lastFinishedAt || "-"}<br />
-      last_success_at: ${syncStatus.lastSuccessAt || "-"}<br />
-      last_error: ${syncStatus.lastError || "-"}
-    </div>
-    <p class="muted">Tickets salvos no banco: ${ticketsCount}</p>
+    <p class="muted">Kanban operacional de chamados por status.</p>
     <form class="filters" method="GET" action="/">
       <label>Busca
         <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, titulo ou conteudo" />
@@ -319,76 +264,10 @@ function startHealthServer(): void {
       </label>
       <button type="submit">Filtrar</button>
     </form>
-    <table>
-      <thead>
-        <tr>
-          <th>GLPI ID</th>
-          <th>Titulo</th>
-          <th>Status</th>
-          <th>Grupo tecnico</th>
-          <th>Date Mod</th>
-          <th>Sincronizado em</th>
-          <th>Detalhes</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows || '<tr><td colspan="7">(nenhum ticket sincronizado ainda)</td></tr>'}
-      </tbody>
-    </table>
-    ${
-      detailsTicketId > 0
-        ? `<div class="details-box">
-      <h2 class="section-title">Todos os campos do ticket ${detailsTicketId}</h2>
-      <p class="small">Lista completa de atributos achatados persistidos localmente.</p>
-      <table>
-        <thead>
-          <tr>
-            <th>Atributo</th>
-            <th>Tipo</th>
-            <th>Valor</th>
-            <th>Atualizado em</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${
-            selectedTicketRowsHtml ||
-            '<tr><td colspan="4">(nenhum atributo encontrado para esse ticket; aguarde uma sync completa)</td></tr>'
-          }
-        </tbody>
-      </table>
-    </div>`
-        : ""
-    }
-    <h2 class="section-title">Atributos retornados pelos tickets</h2>
-    <p class="small">Mostrando ate 300 linhas de atributos achatados (keyPath), para voce entender todos os campos disponiveis.</p>
-    <form class="filters" method="GET" action="/">
-      <input type="hidden" name="q" value="${escapeHtml(q)}" />
-      <input type="hidden" name="status" value="${escapeHtml(statusFilter)}" />
-      <input type="hidden" name="group" value="${escapeHtml(groupFilter)}" />
-      <input type="hidden" name="assignedGroup" value="${escapeHtml(assignedGroupFilter)}" />
-      <input type="hidden" name="open" value="${onlyOpen ? "1" : "0"}" />
-      <label>Atributo (keyPath)
-        <input type="text" name="attrKey" value="${escapeHtml(attrKeyFilter)}" placeholder="ex.: status.name, team[0].role" />
-      </label>
-      <label>GLPI ID do ticket
-        <input type="number" name="attrTicketId" min="0" value="${attrTicketFilter > 0 ? attrTicketFilter : ""}" placeholder="ex.: 1234" />
-      </label>
-      <button type="submit">Filtrar atributos</button>
-    </form>
-    <table>
-      <thead>
-        <tr>
-          <th>GLPI ID</th>
-          <th>Atributo</th>
-          <th>Tipo</th>
-          <th>Valor</th>
-          <th>Atualizado em</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${attributeRowsHtml || '<tr><td colspan="5">(nenhum atributo encontrado com os filtros)</td></tr>'}
-      </tbody>
-    </table>
+    <h2 class="section-title">Kanban de chamados por status</h2>
+    <div class="kanban-board">
+      ${kanbanColumnsHtml || '<div class="small">(nenhum ticket sincronizado ainda)</div>'}
+    </div>
   </body>
 </html>`;
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
