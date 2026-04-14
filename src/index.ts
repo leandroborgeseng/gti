@@ -8,6 +8,7 @@ import { syncTickets, SyncProgress, SyncTicketsResult } from "./jobs/sync-ticket
 import { ensureSqliteSchema } from "./scripts/bootstrap-db";
 import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
+import { loadTicketHistoryFromGlpi } from "./services/glpi-ticket-history.service";
 import { fetchGlpiTicketJson, patchGlpiTicketJson } from "./services/glpi-ticket-write.service";
 import { persistTicketFromRaw } from "./services/ticket-persist.service";
 import { extractGlpiScalarId } from "./utils/glpi-field-parse";
@@ -310,6 +311,7 @@ function startHealthServer(): void {
             return;
           }
           const raw = asJsonRecord(ticket.rawJson);
+          const history = await loadTicketHistoryFromGlpi(glpiId, ticket.status);
           const payload = {
             glpiTicketId: ticket.glpiTicketId,
             name: ticket.title ?? "",
@@ -320,7 +322,8 @@ function startHealthServer(): void {
             priorityId: extractGlpiScalarId(raw.priority),
             dateCreation: ticket.dateCreation,
             dateModification: ticket.dateModification,
-            contractGroupName: ticket.contractGroupName
+            contractGroupName: ticket.contractGroupName,
+            history
           };
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
           res.end(JSON.stringify(payload));
@@ -659,7 +662,7 @@ function startHealthServer(): void {
       .modal { display: none; position: fixed; inset: 0; z-index: 50; align-items: center; justify-content: center; padding: 1rem; }
       .modal.open { display: flex; }
       .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.45); }
-      .modal-panel { position: relative; z-index: 1; width: min(640px, 100%); max-height: 90vh; overflow: auto; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.2); padding: 0; }
+      .modal-panel { position: relative; z-index: 1; width: min(760px, 100%); max-height: 90vh; overflow: auto; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.2); padding: 0; }
       .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1rem 0.5rem 1rem; border-bottom: 1px solid #eee; }
       .modal-header h2 { margin: 0; font-size: 1.1rem; }
       .modal-close { border: none; background: transparent; font-size: 1.5rem; line-height: 1; cursor: pointer; color: #555; }
@@ -674,7 +677,28 @@ function startHealthServer(): void {
       .btn-secondary { padding: 0.45rem 0.85rem; border: 1px solid #ccc; background: #f5f5f5; border-radius: 6px; cursor: pointer; }
       #ticket-edit-submit { padding: 0.45rem 0.85rem; border: none; background: #3b5bdb; color: #fff; border-radius: 6px; cursor: pointer; }
       #ticket-edit-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+      .modal-field-rich .ticket-quill-editor { border: 1px solid #ccc; border-radius: 6px; overflow: hidden; background: #fff; }
+      .modal-field-rich .ql-toolbar { border: none; border-bottom: 1px solid #e0e0e0; font-family: Arial, sans-serif; }
+      .modal-field-rich .ql-container { border: none; font-size: 14px; font-family: Arial, Helvetica, sans-serif; }
+      .modal-field-rich .ql-editor { min-height: 220px; max-height: 45vh; overflow-y: auto; }
+      .modal-field-rich .ql-editor.ql-blank::before { font-style: normal; color: #999; }
+      #ticket-history-section { margin-top: 0.25rem; }
+      .waiting-banner { padding: 0.65rem 0.85rem; border-radius: 8px; margin-bottom: 0.75rem; font-size: 0.92rem; line-height: 1.4; }
+      .waiting-banner strong { display: block; margin-bottom: 0.25rem; }
+      .waiting-banner.waiting-empresa { background: #e8f4ff; border: 1px solid #7eb8e8; }
+      .waiting-banner.waiting-cliente { background: #fff8e6; border: 1px solid #e6c35c; }
+      .waiting-banner.waiting-unknown { background: #f3f3f3; border: 1px solid #ccc; }
+      .waiting-banner.waiting-na { background: #eef0f2; border: 1px solid #cfd4da; color: #444; }
+      .history-heading { margin: 0 0 0.4rem 0; font-size: 0.95rem; }
+      .history-list { max-height: 38vh; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 0.35rem 0.5rem; background: #fafafa; }
+      .history-item { border-bottom: 1px solid #e8e8e8; padding: 0.55rem 0.25rem; }
+      .history-item:last-child { border-bottom: none; }
+      .history-meta { font-size: 12px; color: #555; margin-bottom: 0.35rem; }
+      .history-body { font-size: 14px; line-height: 1.45; }
+      .history-body img { max-width: 100%; height: auto; }
+      #ticket-history-api-error { color: #a15c00; margin: 0 0 0.5rem 0; }
     </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" crossorigin="anonymous" />
   </head>
   <body>
     <h1>Chamados</h1>
@@ -761,9 +785,16 @@ function startHealthServer(): void {
           <label class="modal-field">Título (GLPI <code>name</code>)
             <input type="text" id="ticket-edit-name" required />
           </label>
-          <label class="modal-field">Descrição (<code>content</code>)
-            <textarea id="ticket-edit-content" rows="8"></textarea>
+          <label class="modal-field modal-field-rich">Descrição (rich text / HTML — enviado como <code>content</code> no GLPI)
+            <div id="ticket-edit-quill" class="ticket-quill-editor" aria-label="Descrição formatada"></div>
           </label>
+          <div id="ticket-history-section">
+            <div id="ticket-waiting-banner" class="waiting-banner" hidden></div>
+            <p class="small" id="ticket-history-api-error" hidden></p>
+            <h3 class="history-heading">Histórico do chamado (GLPI)</h3>
+            <p class="small" style="margin: 0 0 0.5rem 0;">Linha do tempo: abertura, acompanhamentos e tarefas. O indicador de <strong>quem deve responder</strong> usa a última entrada <strong>pública</strong> — se o autor for o solicitante, a <strong>empresa</strong> deve agir; se for técnico/equipe, em geral aguarda o <strong>cliente</strong>. Entradas privadas não entram nessa inferência.</p>
+            <div id="ticket-history-list" class="history-list" aria-live="polite"></div>
+          </div>
           <div class="modal-grid">
             <label class="modal-field">Status (ID numérico no GLPI)
               <input type="number" id="ticket-edit-status-id" min="0" step="1" placeholder="ex.: 2" />
@@ -850,19 +881,62 @@ function startHealthServer(): void {
         });
       })();
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js" crossorigin="anonymous"></script>
     <script>
       (function () {
         const modal = document.getElementById("ticket-modal");
         const form = document.getElementById("ticket-edit-form");
         const elId = document.getElementById("ticket-edit-glpi-id");
         const elName = document.getElementById("ticket-edit-name");
-        const elContent = document.getElementById("ticket-edit-content");
+        const elQuillHost = document.getElementById("ticket-edit-quill");
         const elStatusId = document.getElementById("ticket-edit-status-id");
         const elPriorityId = document.getElementById("ticket-edit-priority-id");
         const elLabels = document.getElementById("ticket-edit-labels");
         const elError = document.getElementById("ticket-edit-error");
         const board = document.getElementById("kanban-board");
-        if (!modal || !form || !elId || !elName || !elContent || !elStatusId || !elPriorityId || !elLabels || !elError || !board) return;
+        if (!modal || !form || !elId || !elName || !elQuillHost || !elStatusId || !elPriorityId || !elLabels || !elError || !board) return;
+
+        let quillInstance = null;
+        function ensureQuill() {
+          if (typeof Quill === "undefined") {
+            return null;
+          }
+          if (quillInstance) {
+            return quillInstance;
+          }
+          quillInstance = new Quill("#ticket-edit-quill", {
+            theme: "snow",
+            modules: {
+              toolbar: [
+                [{ header: [1, 2, 3, false] }],
+                ["bold", "italic", "underline", "strike"],
+                [{ list: "ordered" }, { list: "bullet" }],
+                [{ indent: "-1" }, { indent: "+1" }],
+                ["blockquote", "code-block"],
+                ["link"],
+                [{ color: [] }, { background: [] }],
+                ["clean"]
+              ]
+            },
+            placeholder: "Descreva o chamado..."
+          });
+          return quillInstance;
+        }
+        function setQuillHtml(html) {
+          const q = ensureQuill();
+          if (!q) {
+            return false;
+          }
+          q.setContents([], "silent");
+          q.clipboard.dangerouslyPasteHTML(html || "");
+          return true;
+        }
+        function getQuillHtml() {
+          if (!quillInstance) {
+            return "";
+          }
+          return quillInstance.root.innerHTML;
+        }
 
         function setError(msg) {
           if (!msg) {
@@ -898,13 +972,69 @@ function startHealthServer(): void {
           }
         });
 
+        const historyListEl = document.getElementById("ticket-history-list");
+        const waitingBannerEl = document.getElementById("ticket-waiting-banner");
+        const historyErrEl = document.getElementById("ticket-history-api-error");
+
+        function renderHistory(h) {
+          if (!waitingBannerEl || !historyListEl || !historyErrEl) {
+            return;
+          }
+          historyErrEl.hidden = true;
+          historyErrEl.textContent = "";
+          historyListEl.innerHTML = "";
+          if (!h) {
+            waitingBannerEl.hidden = true;
+            waitingBannerEl.textContent = "";
+            waitingBannerEl.className = "waiting-banner";
+            return;
+          }
+          if (h.historyError) {
+            historyErrEl.textContent = "Aviso ao carregar historico GLPI: " + h.historyError;
+            historyErrEl.hidden = false;
+          }
+          waitingBannerEl.hidden = false;
+          waitingBannerEl.className = "waiting-banner waiting-" + (h.waitingOn || "unknown");
+          waitingBannerEl.textContent = "";
+          const strong = document.createElement("strong");
+          strong.textContent = h.waitingLabel || "";
+          waitingBannerEl.appendChild(strong);
+          const det = document.createElement("span");
+          det.className = "small";
+          det.style.display = "block";
+          det.style.marginTop = "0.35rem";
+          det.textContent = h.waitingDetail || "";
+          waitingBannerEl.appendChild(det);
+          (h.items || []).forEach(function (item) {
+            const art = document.createElement("article");
+            art.className = "history-item";
+            const meta = document.createElement("div");
+            meta.className = "history-meta";
+            let line = (item.title || item.kind || "") + " · " + (item.date || "—") + " · ";
+            line += item.authorLabel || (item.usersId ? "User #" + item.usersId : "Autor nao identificado");
+            if (item.isPrivate) {
+              line += " [Privado]";
+            }
+            meta.textContent = line;
+            const bodyWrap = document.createElement("div");
+            bodyWrap.className = "history-body ql-snow";
+            const inner = document.createElement("div");
+            inner.className = "ql-editor";
+            inner.innerHTML = item.contentHtml || "";
+            bodyWrap.appendChild(inner);
+            art.appendChild(meta);
+            art.appendChild(bodyWrap);
+            historyListEl.appendChild(art);
+          });
+        }
+
         async function loadTicket(glpiId) {
           setError("");
           elName.value = "";
-          elContent.value = "";
           elStatusId.value = "";
           elPriorityId.value = "";
           elLabels.textContent = "";
+          renderHistory(null);
           const res = await fetch("/api/tickets/glpi/" + glpiId);
           const data = await res.json().catch(function () { return null; });
           if (!res.ok) {
@@ -913,7 +1043,6 @@ function startHealthServer(): void {
           }
           elId.value = String(data.glpiTicketId);
           elName.value = data.name || "";
-          elContent.value = data.content || "";
           if (data.statusId != null && data.statusId !== "") {
             elStatusId.value = String(data.statusId);
           }
@@ -922,8 +1051,19 @@ function startHealthServer(): void {
           }
           elLabels.textContent =
             "status: " + (data.statusLabel || "—") + " | prioridade: " + (data.priorityLabel || "—");
+          renderHistory(data.history || null);
           openModal();
-          elName.focus();
+          requestAnimationFrame(function () {
+            if (typeof Quill === "undefined") {
+              setError("Editor rich text (Quill) nao carregou. Verifique rede / bloqueio de CDN.");
+              return;
+            }
+            if (!setQuillHtml(data.content || "")) {
+              setError("Nao foi possivel iniciar o editor.");
+              return;
+            }
+            elName.focus();
+          });
         }
 
         board.addEventListener("click", (e) => {
@@ -951,7 +1091,7 @@ function startHealthServer(): void {
           if (!glpiId) return;
           const body = {
             name: elName.value,
-            content: elContent.value,
+            content: getQuillHtml(),
             statusId: elStatusId.value === "" ? null : Number(elStatusId.value),
             priorityId: elPriorityId.value === "" ? null : Number(elPriorityId.value)
           };
