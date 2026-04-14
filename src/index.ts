@@ -9,6 +9,13 @@ import { getAccessToken } from "./services/auth.service";
 
 let isSyncRunning = false;
 
+function toErrorLog(error: unknown): { message: string; stack?: string } {
+  if (error instanceof Error) {
+    return { message: error.message, stack: error.stack };
+  }
+  return { message: String(error) };
+}
+
 function startHealthServer(): void {
   const server = http.createServer((req, res) => {
     if (req.method === "GET" && req.url === "/") {
@@ -34,18 +41,26 @@ async function runSyncWithGuard(): Promise<void> {
 
   isSyncRunning = true;
   try {
+    await loadOpenApiSpec().catch((error) => {
+      logger.warn({ error: toErrorLog(error) }, "Falha ao atualizar doc OpenAPI, usando endpoint padrao");
+    });
     await syncTickets();
   } catch (error) {
-    logger.error({ error }, "Falha na sincronizacao de tickets");
+    logger.error({ error: toErrorLog(error) }, "Falha na sincronizacao de tickets");
   } finally {
     isSyncRunning = false;
   }
 }
 
 async function main(): Promise<void> {
+  startHealthServer();
   await ensureSqliteSchema();
-  await loadOpenApiSpec();
-  await getAccessToken();
+  await loadOpenApiSpec().catch((error) => {
+    logger.warn({ error: toErrorLog(error) }, "Falha no carregamento inicial do doc OpenAPI");
+  });
+  await getAccessToken().catch((error) => {
+    logger.warn({ error: toErrorLog(error) }, "Falha na autenticacao inicial; cron fara novas tentativas");
+  });
 
   await runSyncWithGuard();
 
@@ -54,11 +69,10 @@ async function main(): Promise<void> {
   });
 
   logger.info({ cron: env.CRON_EXPRESSION }, "Cron de sincronizacao iniciado");
-  startHealthServer();
 }
 
 main()
   .catch((error) => {
-    logger.error({ error }, "Erro fatal na inicializacao");
+    logger.error({ error: toErrorLog(error) }, "Erro fatal na inicializacao");
     process.exit(1);
   });
