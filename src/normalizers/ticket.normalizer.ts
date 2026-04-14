@@ -27,6 +27,17 @@ function asString(value: unknown): string | null {
 }
 
 function toNullableString(value: unknown): string | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const asObj = value as JsonObject;
+    const fromName = asString(asObj.name ?? asObj.label ?? asObj.title);
+    if (fromName !== null) {
+      return fromName;
+    }
+    const fromId = asNumber(asObj.id);
+    if (fromId !== null) {
+      return String(fromId);
+    }
+  }
   const direct = asString(value);
   if (direct !== null) {
     return direct;
@@ -99,6 +110,7 @@ export function normalizeTicket(raw: unknown): NormalizedTicket {
     status: toNullableString(ticket.status),
     priority: toNullableString(ticket.priority),
     date_creation: asString(ticket.date_creation ?? ticket.date ?? ticket.created_at),
+    date_modification: asString(ticket.date_mod ?? ticket.date_modification ?? ticket.updated_at),
     contract_group_id: contractGroupId,
     contract_group_name: contractGroupName,
     raw: ticket as Prisma.InputJsonValue

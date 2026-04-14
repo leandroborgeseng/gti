@@ -13,6 +13,7 @@ export interface NormalizedTicket {
   status: string | null;
   priority: string | null;
   date_creation: string | null;
+  date_modification: string | null;
   contract_group_id: number | null;
   contract_group_name: string | null;
   raw: Prisma.InputJsonValue;

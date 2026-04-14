@@ -15,8 +15,32 @@ model Ticket {
   status            String?
   priority          String?
   dateCreation      String?
+  dateModification  String?
   contractGroupId   Int?
   contractGroupName String?
   rawJson           Json
   createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  attributes        TicketAttribute[]
+}
+
+model TicketAttribute {
+  id        Int      @id @default(autoincrement())
+  ticketId  Int
+  keyPath   String
+  valueType String
+  valueText String?
+  valueJson String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, keyPath])
+  @@index([keyPath])
+}
+
+model SyncState {
+  key       String   @id
+  value     String?
+  updatedAt DateTime @updatedAt
 }

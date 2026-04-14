@@ -74,19 +74,67 @@ function startHealthServer(): void {
     const parsedUrl = new URL(req.url || "/", `http://${host}`);
 
     if (method === "GET" && parsedUrl.pathname === "/") {
+      const q = (parsedUrl.searchParams.get("q") || "").trim();
+      const statusFilter = (parsedUrl.searchParams.get("status") || "").trim();
+      const groupFilter = (parsedUrl.searchParams.get("group") || "").trim();
+      const onlyOpen = parsedUrl.searchParams.get("open") === "1";
       let ticketsCount = 0;
-      let latestTickets: Array<{ glpiTicketId: number; title: string | null; createdAt: Date }> = [];
+      let latestTickets: Array<{
+        glpiTicketId: number;
+        title: string | null;
+        status: string | null;
+        contractGroupName: string | null;
+        dateModification: string | null;
+        updatedAt: Date;
+      }> = [];
+      let statuses: string[] = [];
+      let groups: string[] = [];
       try {
         ticketsCount = await prisma.ticket.count();
+        const where = {
+          AND: [
+            q
+              ? {
+                  OR: [
+                    { title: { contains: q } },
+                    { content: { contains: q } },
+                    { glpiTicketId: Number.isFinite(Number(q)) ? Number(q) : -1 }
+                  ]
+                }
+              : {},
+            statusFilter ? { status: statusFilter } : {},
+            groupFilter ? { contractGroupName: groupFilter } : {},
+            onlyOpen ? { NOT: [{ status: { contains: "Fechado" } }, { status: { contains: "Solucionado" } }] } : {}
+          ]
+        };
+
         latestTickets = await prisma.ticket.findMany({
-          orderBy: { createdAt: "desc" },
-          take: 20,
+          where,
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          take: 100,
           select: {
             glpiTicketId: true,
             title: true,
-            createdAt: true
+            status: true,
+            contractGroupName: true,
+            dateModification: true,
+            updatedAt: true
           }
         });
+        const statusRows = await prisma.ticket.findMany({
+          where: { status: { not: null } },
+          distinct: ["status"],
+          select: { status: true },
+          orderBy: { status: "asc" }
+        });
+        statuses = statusRows.map((item) => item.status).filter((item): item is string => Boolean(item));
+        const groupRows = await prisma.ticket.findMany({
+          where: { contractGroupName: { not: null } },
+          distinct: ["contractGroupName"],
+          select: { contractGroupName: true },
+          orderBy: { contractGroupName: "asc" }
+        });
+        groups = groupRows.map((item) => item.contractGroupName).filter((item): item is string => Boolean(item));
       } catch (error) {
         logger.error({ error: toErrorLog(error) }, "Falha ao carregar dados da pagina inicial");
       }
@@ -99,8 +147,19 @@ function startHealthServer(): void {
             .replaceAll("&", "&amp;")
             .replaceAll("<", "&lt;")
             .replaceAll(">", "&gt;");
-          return `<tr><td>${ticket.glpiTicketId}</td><td>${safeTitle}</td><td>${ticket.createdAt.toISOString()}</td></tr>`;
+          const safeStatus = (ticket.status || "-").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+          const safeGroup = (ticket.contractGroupName || "-")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
+          return `<tr><td>${ticket.glpiTicketId}</td><td>${safeTitle}</td><td>${safeStatus}</td><td>${safeGroup}</td><td>${ticket.dateModification || "-"}</td><td>${ticket.updatedAt.toISOString()}</td></tr>`;
         })
+        .join("");
+      const statusOptions = statuses
+        .map((item) => `<option value="${item}" ${item === statusFilter ? "selected" : ""}>${item}</option>`)
+        .join("");
+      const groupOptions = groups
+        .map((item) => `<option value="${item}" ${item === groupFilter ? "selected" : ""}>${item}</option>`)
         .join("");
 
       const html = `<!doctype html>
@@ -119,6 +178,10 @@ function startHealthServer(): void {
       th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; font-size: 14px; }
       th { background: #f7f7f7; }
       .muted { color: #666; font-size: 0.95rem; }
+      .filters { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
+      .filters label { font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.35rem; }
+      .filters input, .filters select { padding: 0.35rem 0.5rem; min-width: 180px; }
+      .filters button { padding: 0.45rem 0.75rem; }
     </style>
   </head>
   <body>
@@ -139,12 +202,39 @@ function startHealthServer(): void {
       last_error: ${syncStatus.lastError || "-"}
     </div>
     <p class="muted">Tickets salvos no banco: ${ticketsCount}</p>
+    <form class="filters" method="GET" action="/">
+      <label>Busca
+        <input type="text" name="q" value="${q.replaceAll('"', "&quot;")}" placeholder="ID, titulo ou conteudo" />
+      </label>
+      <label>Status
+        <select name="status">
+          <option value="">(todos)</option>
+          ${statusOptions}
+        </select>
+      </label>
+      <label>Grupo
+        <select name="group">
+          <option value="">(todos)</option>
+          ${groupOptions}
+        </select>
+      </label>
+      <label>Somente abertos
+        <select name="open">
+          <option value="0" ${onlyOpen ? "" : "selected"}>Nao</option>
+          <option value="1" ${onlyOpen ? "selected" : ""}>Sim</option>
+        </select>
+      </label>
+      <button type="submit">Filtrar</button>
+    </form>
     <table>
       <thead>
         <tr>
           <th>GLPI ID</th>
           <th>Titulo</th>
-          <th>Salvo em</th>
+          <th>Status</th>
+          <th>Grupo tecnico</th>
+          <th>Date Mod</th>
+          <th>Sincronizado em</th>
         </tr>
       </thead>
       <tbody>
@@ -167,10 +257,21 @@ function startHealthServer(): void {
     if (method === "GET" && parsedUrl.pathname === "/tickets") {
       const limitParam = Number(parsedUrl.searchParams.get("limit") || 50);
       const limit = Number.isFinite(limitParam) ? Math.min(Math.max(Math.trunc(limitParam), 1), 200) : 50;
+      const status = (parsedUrl.searchParams.get("status") || "").trim();
+      const openOnly = parsedUrl.searchParams.get("open") === "1";
       try {
         const tickets = await prisma.ticket.findMany({
+          where: {
+            AND: [
+              status ? { status } : {},
+              openOnly ? { NOT: [{ status: { contains: "Fechado" } }, { status: { contains: "Solucionado" } }] } : {}
+            ]
+          },
           orderBy: { id: "desc" },
-          take: limit
+          take: limit,
+          include: {
+            attributes: true
+          }
         });
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ count: tickets.length, limit, tickets }));

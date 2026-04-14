@@ -11,6 +11,10 @@ interface TicketsPageResponse {
   [key: string]: unknown;
 }
 
+interface GetTicketsPageOptions {
+  sort?: string;
+}
+
 function resolveTicketsPath(rawPath: string): string {
   if (/^https?:\/\//i.test(rawPath)) {
     return rawPath;
@@ -44,37 +48,42 @@ function pickTicketArray(payload: TicketsPageResponse | unknown[]): unknown[] {
   return [];
 }
 
-export async function getTicketsPage(page: number, pageSize = 100): Promise<unknown[]> {
+export async function getTicketsPage(page: number, pageSize = 100, options: GetTicketsPageOptions = {}): Promise<unknown[]> {
   const ticketsPath = resolveTicketsPath(getDiscoveredTicketsPath());
   const start = Math.max(0, (page - 1) * pageSize);
   const end = start + pageSize - 1;
+  const baseParams = options.sort ? { sort: options.sort } : {};
 
   const attempts = [
     () =>
       glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
         params: {
           start,
-          limit: pageSize
+          limit: pageSize,
+          ...baseParams
         }
       }),
     () =>
       glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
         params: {
-          range: `${start}-${end}`
+          range: `${start}-${end}`,
+          ...baseParams
         }
       }),
     () =>
       glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
         params: {
           page,
-          per_page: pageSize
+          per_page: pageSize,
+          ...baseParams
         }
       }),
     () =>
       glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
         params: {
           limit: pageSize,
-          offset: start
+          offset: start,
+          ...baseParams
         }
       }),
     () =>
@@ -82,7 +91,8 @@ export async function getTicketsPage(page: number, pageSize = 100): Promise<unkn
         params: {
           range: `${start}-${end}`,
           get_hateoas: false,
-          only_id: false
+          only_id: false,
+          ...baseParams
         }
       })
   ];
