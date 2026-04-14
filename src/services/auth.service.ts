@@ -1,4 +1,5 @@
 import axios from "axios";
+import { Buffer } from "node:buffer";
 import { env } from "../config/env";
 import { logger } from "../config/logger";
 import { GlpiAuthResponse } from "../types/glpi.types";
@@ -13,25 +14,74 @@ function isTokenValid(): boolean {
 
 async function requestNewToken(): Promise<string> {
   const url = `${env.GLPI_BASE_URL}/token`;
+  const params = new URLSearchParams({
+    grant_type: "password",
+    client_id: env.GLPI_CLIENT_ID,
+    client_secret: env.GLPI_CLIENT_SECRET,
+    username: env.GLPI_USERNAME,
+    password: env.GLPI_PASSWORD
+  });
+  const basicAuth = Buffer.from(`${env.GLPI_CLIENT_ID}:${env.GLPI_CLIENT_SECRET}`).toString("base64");
 
-  const response = await axios.post<GlpiAuthResponse>(
-    url,
-    {
-      client_id: env.GLPI_CLIENT_ID,
-      client_secret: env.GLPI_CLIENT_SECRET,
-      username: env.GLPI_USERNAME,
-      password: env.GLPI_PASSWORD
-    },
-    {
-      timeout: env.HTTP_TIMEOUT_MS,
-      headers: {
-        "Content-Type": "application/json"
+  const attempts = [
+    async () =>
+      axios.post<GlpiAuthResponse>(url, params.toString(), {
+        timeout: env.HTTP_TIMEOUT_MS,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        }
+      }),
+    async () =>
+      axios.post<GlpiAuthResponse>(
+        url,
+        {
+          grant_type: "password",
+          client_id: env.GLPI_CLIENT_ID,
+          client_secret: env.GLPI_CLIENT_SECRET,
+          username: env.GLPI_USERNAME,
+          password: env.GLPI_PASSWORD
+        },
+        {
+          timeout: env.HTTP_TIMEOUT_MS,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      ),
+    async () =>
+      axios.post<GlpiAuthResponse>(
+        url,
+        {
+          grant_type: "password",
+          username: env.GLPI_USERNAME,
+          password: env.GLPI_PASSWORD
+        },
+        {
+          timeout: env.HTTP_TIMEOUT_MS,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Basic ${basicAuth}`
+          }
+        }
+      )
+  ];
+
+  let lastError: unknown;
+  let response: { data?: GlpiAuthResponse } | null = null;
+
+  for (const attempt of attempts) {
+    try {
+      response = await attempt();
+      if (response.data?.access_token) {
+        break;
       }
+    } catch (error) {
+      lastError = error;
     }
-  );
+  }
 
-  if (!response.data?.access_token) {
-    throw new Error("Resposta de autenticacao sem access_token");
+  if (!response?.data?.access_token) {
+    throw (lastError instanceof Error ? lastError : new Error("Resposta de autenticacao sem access_token"));
   }
 
   const expiresInSeconds = Number(response.data.expires_in || 3600);

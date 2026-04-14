@@ -7,6 +7,7 @@ interface TicketsPageResponse {
   data?: unknown[];
   items?: unknown[];
   results?: unknown[];
+  [index: number]: unknown;
   [key: string]: unknown;
 }
 
@@ -26,16 +27,38 @@ function pickTicketArray(payload: TicketsPageResponse | unknown[]): unknown[] {
 
 export async function getTicketsPage(page: number, pageSize = 100): Promise<unknown[]> {
   const ticketsPath = getDiscoveredTicketsPath();
-  const response: AxiosResponse<TicketsPageResponse | unknown[]> = await glpiClient.get(ticketsPath, {
-    params: {
-      page,
-      per_page: pageSize
-    }
-  });
+  const start = Math.max(0, (page - 1) * pageSize);
+  const end = start + pageSize - 1;
 
-  const tickets = pickTicketArray(response.data);
-  logger.info({ page, count: tickets.length }, "Pagina de tickets carregada");
-  return tickets;
+  const attempts = [
+    () =>
+      glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
+        params: {
+          range: `${start}-${end}`
+        }
+      }),
+    () =>
+      glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
+        params: {
+          page,
+          per_page: pageSize
+        }
+      })
+  ];
+
+  let lastError: unknown;
+  for (const attempt of attempts) {
+    try {
+      const response: AxiosResponse<TicketsPageResponse | unknown[]> = await attempt();
+      const tickets = pickTicketArray(response.data);
+      logger.info({ page, count: tickets.length, path: ticketsPath }, "Pagina de tickets carregada");
+      return tickets;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw (lastError instanceof Error ? lastError : new Error("Falha ao buscar pagina de tickets"));
 }
 
 export async function getAllTickets(pageSize = 100): Promise<unknown[]> {
