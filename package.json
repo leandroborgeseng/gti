@@ -4,6 +4,7 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
+    "start": "tsx src/index.ts",
     "dev": "tsx src/index.ts",
     "sync": "tsx src/index.ts",
     "prisma:generate": "prisma generate",
