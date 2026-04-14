@@ -104,7 +104,7 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
   const previousCursor = cursorState?.value || null;
 
   while (true) {
-    const rawTickets = await getTicketsPage(page, pageSize, { sort: "-date_mod" });
+    const rawTickets = await getTicketsPage(page, pageSize);
     loadedCount += rawTickets.length;
     let reachedAlreadySyncedWindow = false;
 
@@ -194,10 +194,10 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     if (rawTickets.length < pageSize) {
       break;
     }
-    if (reachedAlreadySyncedWindow && previousCursor) {
-      logger.info({ page, previousCursor }, "Janela incremental atingida, encerrando sync sem releitura completa");
-      break;
-    }
+    // IMPORTANT: this GLPI endpoint rejected custom sort on this environment.
+    // Without guaranteed ordering, stopping early can skip newer records.
+    // Keep full scan behavior until a server-supported sort/filter is confirmed.
+    void reachedAlreadySyncedWindow;
 
     page += 1;
   }
