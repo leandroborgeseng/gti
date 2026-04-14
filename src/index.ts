@@ -97,6 +97,7 @@ function startHealthServer(): void {
       const onlyOpen = parsedUrl.searchParams.get("open") === "1";
       const attrKeyFilter = (parsedUrl.searchParams.get("attrKey") || "").trim();
       const attrTicketFilter = Number(parsedUrl.searchParams.get("attrTicketId") || 0);
+      const detailsTicketId = Number(parsedUrl.searchParams.get("detailsTicketId") || 0);
       let ticketsCount = 0;
       let latestTickets: Array<{
         glpiTicketId: number;
@@ -108,6 +109,13 @@ function startHealthServer(): void {
       }> = [];
       let attributesRows: Array<{
         ticket: { glpiTicketId: number };
+        keyPath: string;
+        valueType: string;
+        valueText: string | null;
+        valueJson: string | null;
+        updatedAt: Date;
+      }> = [];
+      let selectedTicketFields: Array<{
         keyPath: string;
         valueType: string;
         valueText: string | null;
@@ -178,6 +186,18 @@ function startHealthServer(): void {
             }
           }
         });
+
+        if (detailsTicketId > 0) {
+          selectedTicketFields = await prisma.ticketAttribute.findMany({
+            where: {
+              ticket: {
+                glpiTicketId: detailsTicketId
+              }
+            },
+            orderBy: [{ keyPath: "asc" }, { id: "asc" }],
+            take: 5000
+          });
+        }
       } catch (error) {
         logger.error({ error: toErrorLog(error) }, "Falha ao carregar dados da pagina inicial");
       }
@@ -189,7 +209,8 @@ function startHealthServer(): void {
           const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
           const safeStatus = escapeHtml(ticket.status || "-");
           const safeGroup = escapeHtml(ticket.contractGroupName || "-");
-          return `<tr><td>${ticket.glpiTicketId}</td><td>${safeTitle}</td><td>${safeStatus}</td><td>${safeGroup}</td><td>${formatDateTime(ticket.dateModification)}</td><td>${formatDateTime(ticket.updatedAt)}</td></tr>`;
+          const viewAllFieldsLink = `/?q=${encodeURIComponent(q)}&status=${encodeURIComponent(statusFilter)}&group=${encodeURIComponent(groupFilter)}&open=${onlyOpen ? "1" : "0"}&attrKey=${encodeURIComponent(attrKeyFilter)}&attrTicketId=${attrTicketFilter > 0 ? String(attrTicketFilter) : ""}&detailsTicketId=${ticket.glpiTicketId}`;
+          return `<tr><td>${ticket.glpiTicketId}</td><td>${safeTitle}</td><td>${safeStatus}</td><td>${safeGroup}</td><td>${formatDateTime(ticket.dateModification)}</td><td>${formatDateTime(ticket.updatedAt)}</td><td><a href="${viewAllFieldsLink}">Ver todos os campos</a></td></tr>`;
         })
         .join("");
       const attributeRowsHtml = attributesRows
@@ -210,6 +231,19 @@ function startHealthServer(): void {
         .join("");
       const groupOptions = groups
         .map((item) => `<option value="${escapeHtml(item)}" ${item === groupFilter ? "selected" : ""}>${escapeHtml(item)}</option>`)
+        .join("");
+      const selectedTicketRowsHtml = selectedTicketFields
+        .map((item) => {
+          const safeKey = escapeHtml(item.keyPath);
+          const safeType = escapeHtml(item.valueType);
+          const safeValue =
+            item.valueText !== null
+              ? escapeHtml(item.valueText)
+              : item.valueJson !== null
+              ? escapeHtml(item.valueJson)
+              : "-";
+          return `<tr><td>${safeKey}</td><td>${safeType}</td><td>${safeValue}</td><td>${formatDateTime(item.updatedAt)}</td></tr>`;
+        })
         .join("");
 
       const html = `<!doctype html>
@@ -234,6 +268,7 @@ function startHealthServer(): void {
       .filters button { padding: 0.45rem 0.75rem; }
       .section-title { margin-top: 2rem; margin-bottom: 0.5rem; }
       .small { font-size: 12px; color: #666; }
+      .details-box { margin-top: 1.5rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }
     </style>
   </head>
   <body>
@@ -287,12 +322,37 @@ function startHealthServer(): void {
           <th>Grupo tecnico</th>
           <th>Date Mod</th>
           <th>Sincronizado em</th>
+          <th>Detalhes</th>
         </tr>
       </thead>
       <tbody>
-        ${rows || '<tr><td colspan="3">(nenhum ticket sincronizado ainda)</td></tr>'}
+        ${rows || '<tr><td colspan="7">(nenhum ticket sincronizado ainda)</td></tr>'}
       </tbody>
     </table>
+    ${
+      detailsTicketId > 0
+        ? `<div class="details-box">
+      <h2 class="section-title">Todos os campos do ticket ${detailsTicketId}</h2>
+      <p class="small">Lista completa de atributos achatados persistidos localmente.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Atributo</th>
+            <th>Tipo</th>
+            <th>Valor</th>
+            <th>Atualizado em</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${
+            selectedTicketRowsHtml ||
+            '<tr><td colspan="4">(nenhum atributo encontrado para esse ticket; aguarde uma sync completa)</td></tr>'
+          }
+        </tbody>
+      </table>
+    </div>`
+        : ""
+    }
     <h2 class="section-title">Atributos retornados pelos tickets</h2>
     <p class="small">Mostrando ate 300 linhas de atributos achatados (keyPath), para voce entender todos os campos disponiveis.</p>
     <form class="filters" method="GET" action="/">
