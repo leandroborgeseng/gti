@@ -53,6 +53,13 @@ export async function getTicketsPage(page: number, pageSize = 100): Promise<unkn
     () =>
       glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
         params: {
+          start,
+          limit: pageSize
+        }
+      }),
+    () =>
+      glpiClient.get<TicketsPageResponse | unknown[]>(ticketsPath, {
+        params: {
           range: `${start}-${end}`
         }
       }),
