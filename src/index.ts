@@ -107,6 +107,32 @@ function startHealthServer(): void {
       let statuses: string[] = [];
       let groups: string[] = [];
       try {
+        const assignedGroupTicketIds =
+          assignedGroupFilter.trim().length > 0
+            ? (
+                await prisma.ticketAttribute.findMany({
+                  where: {
+                    OR: [
+                      { keyPath: { contains: "team" } },
+                      { keyPath: { contains: "group" } },
+                      { keyPath: { contains: "assigned" } }
+                    ],
+                    AND: [
+                      {
+                        OR: [
+                          { valueText: { contains: assignedGroupFilter } },
+                          { valueJson: { contains: assignedGroupFilter } }
+                        ]
+                      }
+                    ]
+                  },
+                  select: { ticketId: true },
+                  distinct: ["ticketId"],
+                  take: 5000
+                })
+              ).map((row) => row.ticketId)
+            : [];
+
         const where = {
           AND: [
             q
@@ -119,8 +145,14 @@ function startHealthServer(): void {
                 }
               : {},
             statusFilter ? { status: statusFilter } : {},
-            groupFilter || assignedGroupFilter
-              ? { contractGroupName: { contains: assignedGroupFilter || groupFilter } }
+            groupFilter ? { contractGroupName: { contains: groupFilter } } : {},
+            assignedGroupFilter
+              ? {
+                  OR: [
+                    { contractGroupName: { contains: assignedGroupFilter } },
+                    ...(assignedGroupTicketIds.length > 0 ? [{ id: { in: assignedGroupTicketIds } }] : [])
+                  ]
+                }
               : {},
             onlyOpen ? { NOT: [{ status: { contains: "Fechado" } }, { status: { contains: "Solucionado" } }] } : {}
           ]
@@ -285,14 +317,46 @@ function startHealthServer(): void {
       const limitParam = Number(parsedUrl.searchParams.get("limit") || 50);
       const limit = Number.isFinite(limitParam) ? Math.min(Math.max(Math.trunc(limitParam), 1), 200) : 50;
       const status = (parsedUrl.searchParams.get("status") || "").trim();
+      const group = (parsedUrl.searchParams.get("group") || "").trim();
       const assignedGroup = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const openOnly = parsedUrl.searchParams.get("open") === "1";
       try {
+        const assignedGroupTicketIds =
+          assignedGroup.trim().length > 0
+            ? (
+                await prisma.ticketAttribute.findMany({
+                  where: {
+                    OR: [
+                      { keyPath: { contains: "team" } },
+                      { keyPath: { contains: "group" } },
+                      { keyPath: { contains: "assigned" } }
+                    ],
+                    AND: [
+                      {
+                        OR: [{ valueText: { contains: assignedGroup } }, { valueJson: { contains: assignedGroup } }]
+                      }
+                    ]
+                  },
+                  select: { ticketId: true },
+                  distinct: ["ticketId"],
+                  take: 5000
+                })
+              ).map((row) => row.ticketId)
+            : [];
+
         const tickets = await prisma.ticket.findMany({
           where: {
             AND: [
               status ? { status } : {},
-              assignedGroup ? { contractGroupName: { contains: assignedGroup } } : {},
+              group ? { contractGroupName: { contains: group } } : {},
+              assignedGroup
+                ? {
+                    OR: [
+                      { contractGroupName: { contains: assignedGroup } },
+                      ...(assignedGroupTicketIds.length > 0 ? [{ id: { in: assignedGroupTicketIds } }] : [])
+                    ]
+                  }
+                : {},
               openOnly ? { NOT: [{ status: { contains: "Fechado" } }, { status: { contains: "Solucionado" } }] } : {}
             ]
           },
