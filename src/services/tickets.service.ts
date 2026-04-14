@@ -15,7 +15,7 @@ interface GetTicketsPageOptions {
   sort?: string;
 }
 
-function resolveTicketsPath(rawPath: string): string {
+export function resolveTicketsPath(rawPath: string): string {
   if (/^https?:\/\//i.test(rawPath)) {
     return rawPath;
   }

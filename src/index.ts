@@ -8,6 +8,10 @@ import { syncTickets, SyncProgress, SyncTicketsResult } from "./jobs/sync-ticket
 import { ensureSqliteSchema } from "./scripts/bootstrap-db";
 import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
+import { fetchGlpiTicketJson, patchGlpiTicketJson } from "./services/glpi-ticket-write.service";
+import { persistTicketFromRaw } from "./services/ticket-persist.service";
+import { extractGlpiScalarId } from "./utils/glpi-field-parse";
+import { ticketWhereNotClosed } from "./utils/ticket-status";
 
 let isSyncRunning = false;
 type SyncRuntimeStatus = {
@@ -38,6 +42,35 @@ const syncStatus: SyncRuntimeStatus = {
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+function asJsonRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+/** Idade a partir de uma data ISO (criação ou última modificação GLPI). */
+function formatTicketAge(iso: string | null | undefined, end: Date): string {
+  if (!iso) {
+    return "—";
+  }
+  const start = Date.parse(iso);
+  if (Number.isNaN(start)) {
+    return "—";
+  }
+  const ms = Math.max(0, end.getTime() - start);
+  const days = Math.floor(ms / 86_400_000);
+  if (days >= 1) {
+    return `${days} dia${days === 1 ? "" : "s"}`;
+  }
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours >= 1) {
+    return `${hours} h`;
+  }
+  const mins = Math.max(1, Math.floor(ms / 60_000));
+  return `${mins} min`;
 }
 
 const KANBAN_SETTINGS_KEY = "kanban_settings";
@@ -246,6 +279,105 @@ function startHealthServer(): void {
       return;
     }
 
+    const glpiTicketApiMatch = parsedUrl.pathname.match(/^\/api\/tickets\/glpi\/(\d+)$/);
+    if (glpiTicketApiMatch) {
+      const glpiId = Number(glpiTicketApiMatch[1]);
+      if (!Number.isFinite(glpiId) || glpiId < 1) {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "ID invalido" }));
+        return;
+      }
+
+      if (method === "GET") {
+        try {
+          const ticket = await prisma.ticket.findUnique({
+            where: { glpiTicketId: glpiId },
+            select: {
+              glpiTicketId: true,
+              title: true,
+              content: true,
+              status: true,
+              priority: true,
+              dateCreation: true,
+              dateModification: true,
+              contractGroupName: true,
+              rawJson: true
+            }
+          });
+          if (!ticket) {
+            res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ error: "Chamado nao encontrado no cache local" }));
+            return;
+          }
+          const raw = asJsonRecord(ticket.rawJson);
+          const payload = {
+            glpiTicketId: ticket.glpiTicketId,
+            name: ticket.title ?? "",
+            content: ticket.content ?? "",
+            statusLabel: ticket.status,
+            priorityLabel: ticket.priority,
+            statusId: extractGlpiScalarId(raw.status),
+            priorityId: extractGlpiScalarId(raw.priority),
+            dateCreation: ticket.dateCreation,
+            dateModification: ticket.dateModification,
+            contractGroupName: ticket.contractGroupName
+          };
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify(payload));
+        } catch (error) {
+          logger.error({ error: toErrorLog(error) }, "Falha ao carregar ticket para API");
+          res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: "Falha ao carregar ticket" }));
+        }
+        return;
+      }
+
+      if (method === "PATCH") {
+        try {
+          const rawBody = await readRequestBody(req);
+          const body = JSON.parse(rawBody) as Record<string, unknown>;
+          const patch: Record<string, unknown> = {};
+          if (typeof body.name === "string") {
+            patch.name = body.name;
+          }
+          if (typeof body.content === "string") {
+            patch.content = body.content;
+          }
+          if (body.statusId !== undefined && body.statusId !== null && body.statusId !== "") {
+            const n = Number(body.statusId);
+            if (Number.isFinite(n)) {
+              patch.status = n;
+            }
+          }
+          if (body.priorityId !== undefined && body.priorityId !== null && body.priorityId !== "") {
+            const n = Number(body.priorityId);
+            if (Number.isFinite(n)) {
+              patch.priority = n;
+            }
+          }
+          if (Object.keys(patch).length === 0) {
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ error: "Nenhum campo para atualizar" }));
+            return;
+          }
+          await patchGlpiTicketJson(glpiId, patch);
+          const fresh = await fetchGlpiTicketJson(glpiId);
+          await persistTicketFromRaw(fresh);
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (error) {
+          logger.error({ error: toErrorLog(error) }, "Falha ao atualizar ticket no GLPI");
+          res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: "Falha ao atualizar chamado no GLPI", detail: toErrorLog(error).message }));
+        }
+        return;
+      }
+
+      res.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "Method Not Allowed" }));
+      return;
+    }
+
     if (method === "GET" && parsedUrl.pathname === "/") {
       const q = (parsedUrl.searchParams.get("q") || "").trim();
       const statusFilter = (parsedUrl.searchParams.get("status") || "").trim();
@@ -257,6 +389,7 @@ function startHealthServer(): void {
         title: string | null;
         status: string | null;
         contractGroupName: string | null;
+        dateCreation: string | null;
         dateModification: string | null;
         updatedAt: Date;
       }> = [];
@@ -314,7 +447,7 @@ function startHealthServer(): void {
                   ]
                 }
               : {},
-            onlyOpen ? { NOT: [{ status: { contains: "Fechado" } }, { status: { contains: "Solucionado" } }] } : {}
+            ...(onlyOpen ? [ticketWhereNotClosed()] : [])
           ]
         };
 
@@ -334,13 +467,14 @@ function startHealthServer(): void {
 
         latestTickets = await prisma.ticket.findMany({
           where,
-          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-          take: 100,
+          orderBy: [{ dateCreation: "asc" }, { glpiTicketId: "asc" }],
+          take: 200,
           select: {
             glpiTicketId: true,
             title: true,
             status: true,
             contractGroupName: true,
+            dateCreation: true,
             dateModification: true,
             updatedAt: true
           }
@@ -370,6 +504,7 @@ function startHealthServer(): void {
           title: string | null;
           status: string | null;
           contractGroupName: string | null;
+          dateCreation: string | null;
           dateModification: string | null;
           updatedAt: Date;
         }>
@@ -380,8 +515,32 @@ function startHealthServer(): void {
         existing.push(ticket);
         ticketsByStatus.set(key, existing);
       }
+      const compareTicketsInColumn = (
+        a: {
+          glpiTicketId: number;
+          dateCreation: string | null;
+          dateModification: string | null;
+        },
+        b: {
+          glpiTicketId: number;
+          dateCreation: string | null;
+          dateModification: string | null;
+        }
+      ): number => {
+        const da = Date.parse(a.dateCreation || "") || Date.parse(a.dateModification || "") || 0;
+        const db = Date.parse(b.dateCreation || "") || Date.parse(b.dateModification || "") || 0;
+        if (da !== db) {
+          return da - db;
+        }
+        return a.glpiTicketId - b.glpiTicketId;
+      };
+      for (const arr of ticketsByStatus.values()) {
+        arr.sort(compareTicketsInColumn);
+      }
+
       const discoveredStatusKeys = Array.from(new Set([...statuses, ...Array.from(ticketsByStatus.keys())]));
       const orderedStatusKeys = mergeColumnOrder(kanbanSettings.columnOrder, discoveredStatusKeys);
+      const now = new Date();
 
       const buildColumnInlineStyle = (statusKey: string): string => {
         const override = kanbanSettings.columnColors?.[statusKey];
@@ -401,18 +560,28 @@ function startHealthServer(): void {
               const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
               const safeGroup = escapeHtml(ticket.contractGroupName || "-");
               const cardStyle = cardChromeStyle(String(ticket.glpiTicketId));
-              return `<div class="kanban-card" draggable="false" style="${escapeHtml(cardStyle)}">
+              const openFor = formatTicketAge(ticket.dateCreation, now);
+              const idleFor = formatTicketAge(ticket.dateModification || ticket.dateCreation, now);
+              return `<div class="kanban-card" draggable="false" role="button" tabindex="0" data-glpi-id="${
+                ticket.glpiTicketId
+              }" style="${escapeHtml(cardStyle)}">
                 <div><strong>#${ticket.glpiTicketId}</strong></div>
                 <div>${safeTitle}</div>
                 <div class="small">Grupo: ${safeGroup}</div>
-                <div class="small">Date mod: ${formatDateTime(ticket.dateModification)}</div>
-                <div class="small">Sync: ${formatDateTime(ticket.updatedAt)}</div>
+                <div class="small">Aberto há: <strong>${escapeHtml(openFor)}</strong> (desde criação)</div>
+                <div class="small">Sem interação há: <strong>${escapeHtml(idleFor)}</strong> (última alteração GLPI)</div>
+                <div class="small">Últ. mod GLPI: ${formatDateTime(ticket.dateModification)}</div>
+                <div class="small">Sync local: ${formatDateTime(ticket.updatedAt)}</div>
               </div>`;
             })
             .join("");
-          return `<div class="kanban-column" draggable="true" data-status="${escapeHtml(statusKey)}" style="${escapeHtml(columnStyle)}">
-            <h3>${escapeHtml(statusKey)} <span class="small">(${cards.length})</span></h3>
-            ${cardsHtml || '<div class="small">(sem chamados)</div>'}
+          return `<div class="kanban-column" data-status="${escapeHtml(statusKey)}" style="${escapeHtml(columnStyle)}">
+            <div class="kanban-column-handle" draggable="true">
+              <h3>${escapeHtml(statusKey)} <span class="small">(${cards.length})</span></h3>
+            </div>
+            <div class="kanban-column-body">
+              ${cardsHtml || '<div class="small">(sem chamados)</div>'}
+            </div>
           </div>`;
         })
         .join("");
@@ -478,15 +647,38 @@ function startHealthServer(): void {
       .filter-lines { display: grid; gap: 0.35rem; font-size: 0.95rem; }
       .chip { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 999px; background: #eef2ff; color: #1f2a5c; font-size: 0.8rem; margin-right: 0.35rem; }
       .kanban-board { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 1rem; align-items: flex-start; }
-      .kanban-column { flex: 1 1 280px; max-width: 420px; border: 1px solid var(--col-border, #ddd); border-radius: 10px; padding: 0.65rem; background: var(--col-bg, #fafafa); min-height: 120px; cursor: grab; }
-      .kanban-column.dragging { opacity: 0.65; cursor: grabbing; }
-      .kanban-column h3 { margin: 0 0 0.6rem 0; font-size: 14px; }
-      .kanban-card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 0.5rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.2rem; }
+      .kanban-column { flex: 1 1 280px; max-width: 420px; border: 1px solid var(--col-border, #ddd); border-radius: 10px; padding: 0; background: var(--col-bg, #fafafa); min-height: 120px; overflow: hidden; }
+      .kanban-column.dragging { opacity: 0.65; }
+      .kanban-column-handle { padding: 0.65rem; cursor: grab; background: rgba(255,255,255,0.35); border-bottom: 1px solid rgba(0,0,0,0.06); }
+      .kanban-column-handle:active { cursor: grabbing; }
+      .kanban-column h3 { margin: 0; font-size: 14px; }
+      .kanban-column-body { padding: 0.65rem; }
+      .kanban-card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 0.5rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.2rem; cursor: pointer; text-align: left; }
+      .kanban-card:hover { filter: brightness(0.98); }
+      .kanban-card:focus { outline: 2px solid #3b5bdb; outline-offset: 2px; }
+      .modal { display: none; position: fixed; inset: 0; z-index: 50; align-items: center; justify-content: center; padding: 1rem; }
+      .modal.open { display: flex; }
+      .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.45); }
+      .modal-panel { position: relative; z-index: 1; width: min(640px, 100%); max-height: 90vh; overflow: auto; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.2); padding: 0; }
+      .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1rem 0.5rem 1rem; border-bottom: 1px solid #eee; }
+      .modal-header h2 { margin: 0; font-size: 1.1rem; }
+      .modal-close { border: none; background: transparent; font-size: 1.5rem; line-height: 1; cursor: pointer; color: #555; }
+      #ticket-edit-form { padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+      .modal-field { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; }
+      .modal-field input, .modal-field textarea { padding: 0.45rem 0.55rem; font: inherit; }
+      .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+      @media (max-width: 560px) { .modal-grid { grid-template-columns: 1fr; } }
+      .modal-hint { margin: 0; }
+      .modal-error { margin: 0; color: #b00020; }
+      .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+      .btn-secondary { padding: 0.45rem 0.85rem; border: 1px solid #ccc; background: #f5f5f5; border-radius: 6px; cursor: pointer; }
+      #ticket-edit-submit { padding: 0.45rem 0.85rem; border: none; background: #3b5bdb; color: #fff; border-radius: 6px; cursor: pointer; }
+      #ticket-edit-submit:disabled { opacity: 0.6; cursor: not-allowed; }
     </style>
   </head>
   <body>
     <h1>Chamados</h1>
-    <p class="muted">Quadro alimentado pelo cache local (SQLite). Categorias/filtros completos dependem dos dados ja sincronizados.</p>
+    <p class="muted">Cache local (SQLite): sincronizamos apenas chamados <strong>abertos</strong> (fechados/solucionados nao entram no banco). Categorias e filtros refletem o que ja foi carregado.</p>
 
     <div class="dashboard">
       <div class="metric">
@@ -507,7 +699,7 @@ function startHealthServer(): void {
       </div>
       <div class="metric">
         <strong>${latestTickets.length}</strong>
-        <span class="small">Cards no quadro (ate 100 mais recentes do filtro)</span>
+        <span class="small">Cards no quadro (ate 200 do filtro, mais antigos primeiro em cada coluna)</span>
       </div>
       <div class="metric">
         <strong>${syncStatus.isRunning ? "Rodando" : "Parado"}</strong>
@@ -552,10 +744,44 @@ function startHealthServer(): void {
       <button type="submit">Filtrar</button>
     </form>
     <h2 class="section-title">Kanban de chamados por status</h2>
-    <p class="small">Arraste as colunas para reordenar. A ordem e salva automaticamente no SQLite (<code>/api/kanban</code>).</p>
+    <p class="small">Arraste pelo <strong>título da coluna</strong> para reordenar (salvo no SQLite). Clique no card para editar no GLPI.</p>
     <div class="kanban-board" id="kanban-board">
       ${kanbanColumnsHtml || '<div class="small">(nenhum ticket sincronizado ainda)</div>'}
     </div>
+
+    <div id="ticket-modal" class="modal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="ticket-modal-title">
+        <div class="modal-header">
+          <h2 id="ticket-modal-title">Editar chamado</h2>
+          <button type="button" class="modal-close" data-close-modal aria-label="Fechar">&times;</button>
+        </div>
+        <form id="ticket-edit-form">
+          <input type="hidden" id="ticket-edit-glpi-id" />
+          <label class="modal-field">Título (GLPI <code>name</code>)
+            <input type="text" id="ticket-edit-name" required />
+          </label>
+          <label class="modal-field">Descrição (<code>content</code>)
+            <textarea id="ticket-edit-content" rows="8"></textarea>
+          </label>
+          <div class="modal-grid">
+            <label class="modal-field">Status (ID numérico no GLPI)
+              <input type="number" id="ticket-edit-status-id" min="0" step="1" placeholder="ex.: 2" />
+            </label>
+            <label class="modal-field">Prioridade (ID numérico no GLPI)
+              <input type="number" id="ticket-edit-priority-id" min="0" step="1" placeholder="ex.: 3" />
+            </label>
+          </div>
+          <p class="small modal-hint">Rótulos atuais: <span id="ticket-edit-labels"></span></p>
+          <p class="small modal-error" id="ticket-edit-error" hidden></p>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" data-close-modal>Cancelar</button>
+            <button type="submit" id="ticket-edit-submit">Salvar no GLPI</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script>
       (function () {
         const board = document.getElementById("kanban-board");
@@ -580,7 +806,9 @@ function startHealthServer(): void {
         }
 
         board.addEventListener("dragstart", (event) => {
-          const column = event.target && event.target.closest ? event.target.closest(".kanban-column") : null;
+          const handle = event.target && event.target.closest ? event.target.closest(".kanban-column-handle") : null;
+          if (!handle || !board.contains(handle)) return;
+          const column = handle.closest(".kanban-column");
           if (!column || !board.contains(column)) return;
           dragEl = column;
           column.classList.add("dragging");
@@ -599,11 +827,13 @@ function startHealthServer(): void {
         });
 
         board.addEventListener("dragover", (event) => {
+          if (dragEl) {
+            event.preventDefault();
+          }
           const column = event.target && event.target.closest ? event.target.closest(".kanban-column") : null;
           if (!column || !board.contains(column) || !dragEl || column === dragEl) {
             return;
           }
-          event.preventDefault();
           const rect = column.getBoundingClientRect();
           const before = event.clientX < rect.left + rect.width / 2;
           if (before) {
@@ -617,6 +847,134 @@ function startHealthServer(): void {
           event.preventDefault();
           const order = readOrder().filter(Boolean);
           void persist(order);
+        });
+      })();
+    </script>
+    <script>
+      (function () {
+        const modal = document.getElementById("ticket-modal");
+        const form = document.getElementById("ticket-edit-form");
+        const elId = document.getElementById("ticket-edit-glpi-id");
+        const elName = document.getElementById("ticket-edit-name");
+        const elContent = document.getElementById("ticket-edit-content");
+        const elStatusId = document.getElementById("ticket-edit-status-id");
+        const elPriorityId = document.getElementById("ticket-edit-priority-id");
+        const elLabels = document.getElementById("ticket-edit-labels");
+        const elError = document.getElementById("ticket-edit-error");
+        const board = document.getElementById("kanban-board");
+        if (!modal || !form || !elId || !elName || !elContent || !elStatusId || !elPriorityId || !elLabels || !elError || !board) return;
+
+        function setError(msg) {
+          if (!msg) {
+            elError.hidden = true;
+            elError.textContent = "";
+            return;
+          }
+          elError.hidden = false;
+          elError.textContent = msg;
+        }
+
+        function openModal() {
+          modal.classList.add("open");
+          modal.setAttribute("aria-hidden", "false");
+        }
+
+        function closeModal() {
+          modal.classList.remove("open");
+          modal.setAttribute("aria-hidden", "true");
+          setError("");
+        }
+
+        modal.addEventListener("click", (e) => {
+          const t = e.target;
+          if (t && t.closest && t.closest("[data-close-modal]")) {
+            closeModal();
+          }
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && modal.classList.contains("open")) {
+            closeModal();
+          }
+        });
+
+        async function loadTicket(glpiId) {
+          setError("");
+          elName.value = "";
+          elContent.value = "";
+          elStatusId.value = "";
+          elPriorityId.value = "";
+          elLabels.textContent = "";
+          const res = await fetch("/api/tickets/glpi/" + glpiId);
+          const data = await res.json().catch(function () { return null; });
+          if (!res.ok) {
+            setError((data && data.error) || "Falha ao carregar chamado");
+            return;
+          }
+          elId.value = String(data.glpiTicketId);
+          elName.value = data.name || "";
+          elContent.value = data.content || "";
+          if (data.statusId != null && data.statusId !== "") {
+            elStatusId.value = String(data.statusId);
+          }
+          if (data.priorityId != null && data.priorityId !== "") {
+            elPriorityId.value = String(data.priorityId);
+          }
+          elLabels.textContent =
+            "status: " + (data.statusLabel || "—") + " | prioridade: " + (data.priorityLabel || "—");
+          openModal();
+          elName.focus();
+        }
+
+        board.addEventListener("click", (e) => {
+          const card = e.target && e.target.closest ? e.target.closest(".kanban-card") : null;
+          if (!card || !board.contains(card)) return;
+          const id = card.getAttribute("data-glpi-id");
+          if (!id) return;
+          void loadTicket(id);
+        });
+
+        board.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          const card = e.target && e.target.closest ? e.target.closest(".kanban-card") : null;
+          if (!card || !board.contains(card)) return;
+          e.preventDefault();
+          const id = card.getAttribute("data-glpi-id");
+          if (!id) return;
+          void loadTicket(id);
+        });
+
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          setError("");
+          const glpiId = elId.value;
+          if (!glpiId) return;
+          const body = {
+            name: elName.value,
+            content: elContent.value,
+            statusId: elStatusId.value === "" ? null : Number(elStatusId.value),
+            priorityId: elPriorityId.value === "" ? null : Number(elPriorityId.value)
+          };
+          const submitBtn = document.getElementById("ticket-edit-submit");
+          if (submitBtn) submitBtn.disabled = true;
+          try {
+            const res = await fetch("/api/tickets/glpi/" + glpiId, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body)
+            });
+            const data = await res.json().catch(function () { return null; });
+            if (!res.ok) {
+              setError((data && (data.detail || data.error)) || "Falha ao salvar");
+              return;
+            }
+            closeModal();
+            window.location.reload();
+          } catch (err) {
+            setError("Erro de rede ao salvar");
+          } finally {
+            if (submitBtn) submitBtn.disabled = false;
+          }
         });
       })();
     </script>
@@ -677,7 +1035,7 @@ function startHealthServer(): void {
                     ]
                   }
                 : {},
-              openOnly ? { NOT: [{ status: { contains: "Fechado" } }, { status: { contains: "Solucionado" } }] } : {}
+              ...(openOnly ? [ticketWhereNotClosed()] : [])
             ]
           },
           orderBy: { id: "desc" },
