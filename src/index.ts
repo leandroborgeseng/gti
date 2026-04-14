@@ -36,6 +36,23 @@ const syncStatus: SyncRuntimeStatus = {
   lastPage: 0
 };
 
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+function formatDateTime(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "medium",
+    timeZone: "America/Sao_Paulo"
+  }).format(date);
+}
+
 function applySyncProgress(progress: SyncProgress): void {
   syncStatus.lastPage = progress.page;
   syncStatus.lastLoaded = progress.loaded;
@@ -78,6 +95,8 @@ function startHealthServer(): void {
       const statusFilter = (parsedUrl.searchParams.get("status") || "").trim();
       const groupFilter = (parsedUrl.searchParams.get("group") || "").trim();
       const onlyOpen = parsedUrl.searchParams.get("open") === "1";
+      const attrKeyFilter = (parsedUrl.searchParams.get("attrKey") || "").trim();
+      const attrTicketFilter = Number(parsedUrl.searchParams.get("attrTicketId") || 0);
       let ticketsCount = 0;
       let latestTickets: Array<{
         glpiTicketId: number;
@@ -85,6 +104,14 @@ function startHealthServer(): void {
         status: string | null;
         contractGroupName: string | null;
         dateModification: string | null;
+        updatedAt: Date;
+      }> = [];
+      let attributesRows: Array<{
+        ticket: { glpiTicketId: number };
+        keyPath: string;
+        valueType: string;
+        valueText: string | null;
+        valueJson: string | null;
         updatedAt: Date;
       }> = [];
       let statuses: string[] = [];
@@ -135,6 +162,22 @@ function startHealthServer(): void {
           orderBy: { contractGroupName: "asc" }
         });
         groups = groupRows.map((item) => item.contractGroupName).filter((item): item is string => Boolean(item));
+
+        attributesRows = await prisma.ticketAttribute.findMany({
+          where: {
+            AND: [
+              attrKeyFilter ? { keyPath: { contains: attrKeyFilter } } : {},
+              attrTicketFilter > 0 ? { ticket: { glpiTicketId: attrTicketFilter } } : {}
+            ]
+          },
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          take: 300,
+          include: {
+            ticket: {
+              select: { glpiTicketId: true }
+            }
+          }
+        });
       } catch (error) {
         logger.error({ error: toErrorLog(error) }, "Falha ao carregar dados da pagina inicial");
       }
@@ -143,23 +186,30 @@ function startHealthServer(): void {
       const statusLabel = syncStatus.lastError ? "Ultima sync com erro" : "Ultima sync sem erro";
       const rows = latestTickets
         .map((ticket) => {
-          const safeTitle = (ticket.title || "(sem titulo)")
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;");
-          const safeStatus = (ticket.status || "-").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-          const safeGroup = (ticket.contractGroupName || "-")
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;");
-          return `<tr><td>${ticket.glpiTicketId}</td><td>${safeTitle}</td><td>${safeStatus}</td><td>${safeGroup}</td><td>${ticket.dateModification || "-"}</td><td>${ticket.updatedAt.toISOString()}</td></tr>`;
+          const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
+          const safeStatus = escapeHtml(ticket.status || "-");
+          const safeGroup = escapeHtml(ticket.contractGroupName || "-");
+          return `<tr><td>${ticket.glpiTicketId}</td><td>${safeTitle}</td><td>${safeStatus}</td><td>${safeGroup}</td><td>${formatDateTime(ticket.dateModification)}</td><td>${formatDateTime(ticket.updatedAt)}</td></tr>`;
+        })
+        .join("");
+      const attributeRowsHtml = attributesRows
+        .map((item) => {
+          const safeKey = escapeHtml(item.keyPath);
+          const safeType = escapeHtml(item.valueType);
+          const safeValue =
+            item.valueText !== null
+              ? escapeHtml(item.valueText)
+              : item.valueJson !== null
+              ? escapeHtml(item.valueJson.length > 160 ? `${item.valueJson.slice(0, 160)}...` : item.valueJson)
+              : "-";
+          return `<tr><td>${item.ticket.glpiTicketId}</td><td>${safeKey}</td><td>${safeType}</td><td>${safeValue}</td><td>${formatDateTime(item.updatedAt)}</td></tr>`;
         })
         .join("");
       const statusOptions = statuses
-        .map((item) => `<option value="${item}" ${item === statusFilter ? "selected" : ""}>${item}</option>`)
+        .map((item) => `<option value="${escapeHtml(item)}" ${item === statusFilter ? "selected" : ""}>${escapeHtml(item)}</option>`)
         .join("");
       const groupOptions = groups
-        .map((item) => `<option value="${item}" ${item === groupFilter ? "selected" : ""}>${item}</option>`)
+        .map((item) => `<option value="${escapeHtml(item)}" ${item === groupFilter ? "selected" : ""}>${escapeHtml(item)}</option>`)
         .join("");
 
       const html = `<!doctype html>
@@ -182,6 +232,8 @@ function startHealthServer(): void {
       .filters label { font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.35rem; }
       .filters input, .filters select { padding: 0.35rem 0.5rem; min-width: 180px; }
       .filters button { padding: 0.45rem 0.75rem; }
+      .section-title { margin-top: 2rem; margin-bottom: 0.5rem; }
+      .small { font-size: 12px; color: #666; }
     </style>
   </head>
   <body>
@@ -204,7 +256,7 @@ function startHealthServer(): void {
     <p class="muted">Tickets salvos no banco: ${ticketsCount}</p>
     <form class="filters" method="GET" action="/">
       <label>Busca
-        <input type="text" name="q" value="${q.replaceAll('"', "&quot;")}" placeholder="ID, titulo ou conteudo" />
+        <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, titulo ou conteudo" />
       </label>
       <label>Status
         <select name="status">
@@ -239,6 +291,35 @@ function startHealthServer(): void {
       </thead>
       <tbody>
         ${rows || '<tr><td colspan="3">(nenhum ticket sincronizado ainda)</td></tr>'}
+      </tbody>
+    </table>
+    <h2 class="section-title">Atributos retornados pelos tickets</h2>
+    <p class="small">Mostrando ate 300 linhas de atributos achatados (keyPath), para voce entender todos os campos disponiveis.</p>
+    <form class="filters" method="GET" action="/">
+      <input type="hidden" name="q" value="${escapeHtml(q)}" />
+      <input type="hidden" name="status" value="${escapeHtml(statusFilter)}" />
+      <input type="hidden" name="group" value="${escapeHtml(groupFilter)}" />
+      <input type="hidden" name="open" value="${onlyOpen ? "1" : "0"}" />
+      <label>Atributo (keyPath)
+        <input type="text" name="attrKey" value="${escapeHtml(attrKeyFilter)}" placeholder="ex.: status.name, team[0].role" />
+      </label>
+      <label>GLPI ID do ticket
+        <input type="number" name="attrTicketId" min="0" value="${attrTicketFilter > 0 ? attrTicketFilter : ""}" placeholder="ex.: 1234" />
+      </label>
+      <button type="submit">Filtrar atributos</button>
+    </form>
+    <table>
+      <thead>
+        <tr>
+          <th>GLPI ID</th>
+          <th>Atributo</th>
+          <th>Tipo</th>
+          <th>Valor</th>
+          <th>Atualizado em</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${attributeRowsHtml || '<tr><td colspan="5">(nenhum atributo encontrado com os filtros)</td></tr>'}
       </tbody>
     </table>
   </body>
