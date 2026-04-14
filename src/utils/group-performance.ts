@@ -1,0 +1,294 @@
+import { isTicketClosedStatus } from "./ticket-status";
+
+const DAY_MS = 86400000;
+const WINDOW_28_MS = 28 * DAY_MS;
+const WEEK_MS = 7 * DAY_MS;
+
+export type PerfAgeSegment = {
+  week: number;
+  d15: number;
+  d30: number;
+  d60: number;
+  over: number;
+};
+
+export type GroupPerformanceRow = {
+  groupLabel: string;
+  backlogOpen: number;
+  backlogAge: PerfAgeSegment;
+  opened28d: number;
+  closed28d: number;
+  netClosedVsOpened28: number;
+  medianLeadDaysClosed28: number | null;
+  p90LeadDaysClosed28: number | null;
+  /** Índice 0 = semana mais antiga (dias 22–28 atrás), 3 = semana mais recente (últimos 7 dias). */
+  throughputWeeks: [number, number, number, number];
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+export function extractCloseIsoFromTicket(rawJson: unknown, dateModification: string | null): string | null {
+  const raw = asRecord(rawJson);
+  const candidates = [raw.solvedate, raw.closedate, raw.date_solve, raw.solutiondate];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim()) {
+      return c.trim();
+    }
+  }
+  return dateModification?.trim() || null;
+}
+
+function parseMs(iso: string | null | undefined): number | null {
+  if (!iso) {
+    return null;
+  }
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+
+function floorAgeDaysOpen(dateCreation: string | null, nowMs: number): number | null {
+  if (!dateCreation?.trim()) {
+    return null;
+  }
+  const t = Date.parse(dateCreation);
+  if (!Number.isFinite(t)) {
+    return null;
+  }
+  return Math.floor((nowMs - t) / DAY_MS);
+}
+
+function pushAgeSegment(seg: PerfAgeSegment, days: number): void {
+  if (days <= 7) {
+    seg.week += 1;
+  } else if (days <= 15) {
+    seg.d15 += 1;
+  } else if (days <= 30) {
+    seg.d30 += 1;
+  } else if (days <= 60) {
+    seg.d60 += 1;
+  } else {
+    seg.over += 1;
+  }
+}
+
+function emptyAge(): PerfAgeSegment {
+  return { week: 0, d15: 0, d30: 0, d60: 0, over: 0 };
+}
+
+function medianSorted(sorted: number[]): number | null {
+  if (sorted.length === 0) {
+    return null;
+  }
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[mid];
+  }
+  return (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function p90Sorted(sorted: number[]): number | null {
+  if (sorted.length === 0) {
+    return null;
+  }
+  const idx = Math.ceil(0.9 * sorted.length) - 1;
+  return sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
+}
+
+function groupKey(contractGroupName: string | null): string {
+  const t = (contractGroupName || "").trim();
+  return t.length > 0 ? t : "Sem grupo";
+}
+
+export type TicketPerfInput = {
+  contractGroupName: string | null;
+  status: string | null;
+  dateCreation: string | null;
+  dateModification: string | null;
+  rawJson: unknown;
+};
+
+export function computeGroupPerformance(tickets: TicketPerfInput[], nowMs: number = Date.now()): GroupPerformanceRow[] {
+  type Acc = {
+    backlogAge: PerfAgeSegment;
+    backlogOpen: number;
+    opened28d: number;
+    closed28d: number;
+    leads28: number[];
+    weekClosed: [number, number, number, number];
+  };
+
+  const map = new Map<string, Acc>();
+
+  const ensure = (k: string): Acc => {
+    let a = map.get(k);
+    if (!a) {
+      a = {
+        backlogAge: emptyAge(),
+        backlogOpen: 0,
+        opened28d: 0,
+        closed28d: 0,
+        leads28: [],
+        weekClosed: [0, 0, 0, 0]
+      };
+      map.set(k, a);
+    }
+    return a;
+  };
+
+  const t28 = nowMs - WINDOW_28_MS;
+
+  for (const t of tickets) {
+    const g = groupKey(t.contractGroupName);
+    const acc = ensure(g);
+    const createdMs = parseMs(t.dateCreation);
+    const closedIso = extractCloseIsoFromTicket(t.rawJson, t.dateModification);
+    const closedMs = parseMs(closedIso);
+    const closed = isTicketClosedStatus(t.status);
+
+    if (createdMs !== null && createdMs >= t28 && createdMs <= nowMs) {
+      acc.opened28d += 1;
+    }
+
+    if (closed && closedMs !== null && closedMs >= t28 && closedMs <= nowMs) {
+      acc.closed28d += 1;
+      if (createdMs !== null && closedMs >= createdMs) {
+        const leadDays = Math.floor((closedMs - createdMs) / DAY_MS);
+        acc.leads28.push(leadDays);
+      }
+      for (let w = 0; w < 4; w += 1) {
+        const end = nowMs - w * WEEK_MS;
+        const start = end - WEEK_MS;
+        if (closedMs >= start && closedMs < end) {
+          acc.weekClosed[3 - w] += 1;
+          break;
+        }
+      }
+    }
+
+    if (!closed) {
+      acc.backlogOpen += 1;
+      const days = floorAgeDaysOpen(t.dateCreation, nowMs);
+      if (days !== null && days >= 0) {
+        pushAgeSegment(acc.backlogAge, days);
+      }
+    }
+  }
+
+  const rows: GroupPerformanceRow[] = [];
+  for (const [groupLabel, acc] of map) {
+    const leadsSorted = [...acc.leads28].sort((a, b) => a - b);
+    rows.push({
+      groupLabel,
+      backlogOpen: acc.backlogOpen,
+      backlogAge: acc.backlogAge,
+      opened28d: acc.opened28d,
+      closed28d: acc.closed28d,
+      netClosedVsOpened28: acc.closed28d - acc.opened28d,
+      medianLeadDaysClosed28: medianSorted(leadsSorted),
+      p90LeadDaysClosed28: p90Sorted(leadsSorted),
+      throughputWeeks: acc.weekClosed
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (b.backlogOpen !== a.backlogOpen) {
+      return b.backlogOpen - a.backlogOpen;
+    }
+    const ma = a.medianLeadDaysClosed28 ?? -1;
+    const mb = b.medianLeadDaysClosed28 ?? -1;
+    return mb - ma;
+  });
+
+  return rows;
+}
+
+export function renderGroupPerformanceSection(
+  rows: GroupPerformanceRow[],
+  escapeHtml: (s: string) => string
+): string {
+  if (rows.length === 0) {
+    return `<section class="perf-section" aria-labelledby="perf-title">
+      <h2 id="perf-title" class="perf-section__title">Performance por grupo</h2>
+      <p class="small muted">Sem dados de grupo no cache para comparar.</p>
+    </section>`;
+  }
+
+  const maxWeek = Math.max(1, ...rows.flatMap((r) => r.throughputWeeks));
+
+  const barStack = (age: PerfAgeSegment, total: number): string => {
+    if (total <= 0) {
+      return '<div class="perf-stack perf-stack--empty">—</div>';
+    }
+    const parts = [
+      { n: age.week, cls: "perf-stack__w" },
+      { n: age.d15, cls: "perf-stack__15" },
+      { n: age.d30, cls: "perf-stack__30" },
+      { n: age.d60, cls: "perf-stack__60" },
+      { n: age.over, cls: "perf-stack__ov" }
+    ];
+    return `<div class="perf-stack" title="Idade do backlog aberto">${parts
+      .map((p) => {
+        const pct = (p.n / total) * 100;
+        return pct > 0 ? `<span class="perf-stack__seg ${p.cls}" style="width:${pct.toFixed(2)}%"></span>` : "";
+      })
+      .join("")}</div>`;
+  };
+
+  const weekBars = (w: [number, number, number, number]): string => {
+    const labels = ["−28…−22 d", "−21…−15 d", "−14…−8 d", "−7…0 d"];
+    return `<div class="perf-weeks" role="img" aria-label="Fechados por semana (4 semanas)">${w
+      .map((n, i) => {
+        const h = maxWeek > 0 ? Math.round((n / maxWeek) * 100) : 0;
+        return `<div class="perf-week" title="${escapeHtml(labels[i] || "")}: ${n} fechados"><span class="perf-week__bar" style="height:${h}%"></span><span class="perf-week__n">${n}</span></div>`;
+      })
+      .join("")}</div>`;
+  };
+
+  const tableRows = rows
+    .map((r) => {
+      const net = r.netClosedVsOpened28;
+      const netCls = net > 0 ? "perf-net--pos" : net < 0 ? "perf-net--neg" : "perf-net--zero";
+      const med = r.medianLeadDaysClosed28 != null ? String(Math.round(r.medianLeadDaysClosed28 * 10) / 10) : "—";
+      const p90 = r.p90LeadDaysClosed28 != null ? String(Math.round(r.p90LeadDaysClosed28 * 10) / 10) : "—";
+      return `<tr>
+        <td class="perf-td perf-td--name">${escapeHtml(r.groupLabel)}</td>
+        <td class="perf-td perf-td--stack">${barStack(r.backlogAge, r.backlogOpen)}<span class="perf-td__sub">${r.backlogOpen} abertos</span></td>
+        <td class="perf-td perf-num">${r.opened28d}</td>
+        <td class="perf-td perf-num">${r.closed28d}</td>
+        <td class="perf-td perf-num ${netCls}">${net > 0 ? "+" : ""}${net}</td>
+        <td class="perf-td perf-num">${med}</td>
+        <td class="perf-td perf-num">${p90}</td>
+        <td class="perf-td perf-td--weeks">${weekBars(r.throughputWeeks)}</td>
+      </tr>`;
+    })
+    .join("");
+
+  return `<section class="perf-section" aria-labelledby="perf-title">
+    <div class="perf-section__head">
+      <h2 id="perf-title" class="perf-section__title">Performance por grupo atribuído</h2>
+      <p class="perf-section__lead">Comparação no <strong>cache local</strong>: backlog aberto por idade, criações vs fechos nos últimos <strong>28 dias</strong>, tempo até fechar (mediana e P90 entre fechados nesse período) e fechados por <strong>semana</strong> (4 semanas). Grupo = <code>contractGroupName</code> do ticket (mesmo rótulo do card).</p>
+    </div>
+    <div class="perf-table-wrap">
+      <table class="perf-table">
+        <thead>
+          <tr>
+            <th>Grupo</th>
+            <th>Backlog aberto (idade)</th>
+            <th>Criados<br/><span class="perf-th-sub">28 d</span></th>
+            <th>Fechados<br/><span class="perf-th-sub">28 d</span></th>
+            <th>Saldo<br/><span class="perf-th-sub">F−C</span></th>
+            <th>Mediana<br/><span class="perf-th-sub">dias até fechar</span></th>
+            <th>P90<br/><span class="perf-th-sub">dias</span></th>
+            <th>Throughput<br/><span class="perf-th-sub">4 semanas</span></th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+  </section>`;
+}

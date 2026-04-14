@@ -13,7 +13,16 @@ import { enrichWaitingPartyBatch, loadAndPersistWaitingParty } from "./services/
 import { fetchGlpiTicketJson, patchGlpiTicketJson } from "./services/glpi-ticket-write.service";
 import { persistTicketFromRaw } from "./services/ticket-persist.service";
 import { extractGlpiScalarId } from "./utils/glpi-field-parse";
-import { ticketWhereNotClosed } from "./utils/ticket-status";
+import { computeGroupPerformance, renderGroupPerformanceSection } from "./utils/group-performance";
+import { ageLabelForSummary, buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
+import {
+  getOpenTicketAgeBuckets,
+  normalizeAgeBucketParam,
+  sumOpenAgeBuckets,
+  type OpenAgeBuckets
+} from "./utils/open-ticket-aging";
+import { extractRequesterDisplayName } from "./utils/ticket-requester";
+import { getTicketSyncScope } from "./utils/ticket-sync-scope";
 
 let isSyncRunning = false;
 type SyncRuntimeStatus = {
@@ -124,43 +133,6 @@ function cardHeatChromeStyle(daysOpen: number): string {
   return `background:rgb(${bg[0]},${bg[1]},${bg[2]});border:3px solid rgb(${bd[0]},${bd[1]},${bd[2]});box-shadow:0 2px 12px rgba(${bd[0]},${bd[1]},${bd[2]},0.3);`;
 }
 
-function pendenciaFilterWhere(raw: string): Record<string, unknown> | null {
-  const p = raw.trim().toLowerCase();
-  if (!p) {
-    return null;
-  }
-  if (p === "cliente") {
-    return { waitingParty: "cliente" };
-  }
-  if (p === "empresa") {
-    return { waitingParty: "empresa" };
-  }
-  if (p === "na" || p === "encerrado") {
-    return { waitingParty: "na" };
-  }
-  if (p === "desconhecido" || p === "unknown") {
-    return { waitingParty: "unknown" };
-  }
-  return null;
-}
-
-function pendenciaLabelForSummary(value: string): string {
-  const p = value.trim().toLowerCase();
-  if (p === "cliente") {
-    return "Aguardando cliente (nao depende da empresa)";
-  }
-  if (p === "empresa") {
-    return "Aguardando empresa / equipe";
-  }
-  if (p === "na" || p === "encerrado") {
-    return "Encerrado / sem pendencia (inferencia)";
-  }
-  if (p === "desconhecido" || p === "unknown") {
-    return "Pendencia indefinida (cache)";
-  }
-  return "(todas)";
-}
-
 function sanitizeCssColor(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -253,6 +225,110 @@ function applySyncProgress(progress: SyncProgress): void {
   syncStatus.lastFailed = progress.failed;
 }
 
+function agingDashIcon(svgInner: string): string {
+  return `<svg class="aging-card__svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svgInner}</svg>`;
+}
+
+type AgingDashHrefs = {
+  week: string;
+  d15: string;
+  d30: string;
+  d60: string;
+  over: string;
+  clear: string;
+};
+
+function homeKanbanSearch(opts: {
+  q: string;
+  status: string;
+  group: string;
+  assignedGroup: string;
+  pendencia: string;
+  openIsOne: boolean;
+  age?: string;
+}): string {
+  const p = new URLSearchParams();
+  if (opts.q) {
+    p.set("q", opts.q);
+  }
+  if (opts.status) {
+    p.set("status", opts.status);
+  }
+  if (opts.group) {
+    p.set("group", opts.group);
+  }
+  if (opts.assignedGroup) {
+    p.set("assignedGroup", opts.assignedGroup);
+  }
+  if (opts.pendencia) {
+    p.set("pendencia", opts.pendencia);
+  }
+  p.set("open", opts.openIsOne ? "1" : "0");
+  if (opts.age) {
+    p.set("age", opts.age);
+  }
+  const qs = p.toString();
+  return qs ? `/?${qs}` : "/";
+}
+
+function renderOpenAgeDashboardHtml(b: OpenAgeBuckets, hrefs: AgingDashHrefs, activeAge: string): string {
+  const total = sumOpenAgeBuckets(b);
+  const icons = {
+    week: agingDashIcon('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
+    d15: agingDashIcon('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'),
+    d30: agingDashIcon(
+      '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>'
+    ),
+    d60: agingDashIcon('<path d="M18 20V10M12 20V4M6 20v-6"/><path d="M4 20h16"/>'),
+    over: agingDashIcon(
+      '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>'
+    )
+  };
+
+  const card = (
+    tone: string,
+    icon: string,
+    value: number,
+    title: string,
+    hint: string,
+    href: string,
+    bucketKey: string
+  ): string => {
+    const activeClass = activeAge === bucketKey ? " aging-card--active" : "";
+    return `<a class="aging-card aging-card--${tone}${activeClass}" href="${escapeHtml(href)}" role="listitem" title="Filtrar o Kanban por esta faixa etaria (somente abertos)">
+      <div class="aging-card__iconwrap">${icon}</div>
+      <div class="aging-card__value">${value}</div>
+      <h3 class="aging-card__title">${title}</h3>
+      <p class="aging-card__hint">${hint}</p>
+    </a>`;
+  };
+
+  const noDateNote =
+    b.noDate > 0
+      ? ` <span class="aging-dash__nodate" title="Sem data de abertura valida no cache">· ${b.noDate} sem data</span>`
+      : "";
+
+  const clearLink =
+    activeAge !== ""
+      ? `<a class="aging-dash__clear" href="${escapeHtml(hrefs.clear)}">Limpar faixa etaria no Kanban</a>`
+      : "";
+
+  return `<section class="aging-dash" aria-labelledby="aging-dash-title">
+    <div class="aging-dash__intro">
+      <h2 id="aging-dash-title" class="aging-dash__title">Idade dos chamados abertos</h2>
+      <p class="aging-dash__subtitle">Contagem global no cache. <strong>Clique num cartão</strong> para aplicar a mesma faixa no Kanban abaixo (mantém busca, status e grupo; ativa <strong>somente abertos</strong>).</p>
+      <p class="aging-dash__total"><span class="aging-dash__total-num">${total}</span><span class="aging-dash__total-label"> chamados abertos</span>${noDateNote}${clearLink ? ` · ${clearLink}` : ""}</p>
+    </div>
+    <div class="aging-dash__grid" role="list">
+      ${card("week", icons.week, b.week, "Esta semana", "Abertos ha ate 7 dias", hrefs.week, "week")}
+      ${card("d15", icons.d15, b.days15, "A 15 dias", "Entre 8 e 15 dias abertos", hrefs.d15, "d15")}
+      ${card("d30", icons.d30, b.days30, "A 30 dias", "Entre 16 e 30 dias abertos", hrefs.d30, "d30")}
+      ${card("d60", icons.d60, b.days60, "A 60 dias", "Entre 31 e 60 dias abertos", hrefs.d60, "d60")}
+      ${card("over", icons.over, b.over60, "Mais de 60 dias", "Envelhecidos — priorizar revisao", hrefs.over, "over")}
+    </div>
+  </section>`;
+}
+
 function toErrorLog(error: unknown): { message: string; stack?: string } {
   if (error instanceof AxiosError) {
     const status = error.response?.status;
@@ -330,6 +406,67 @@ function startHealthServer(): void {
         logger.error({ error: toErrorLog(error) }, "Falha ao salvar configuracao do kanban");
         res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ error: "Falha ao salvar configuracao do kanban" }));
+      }
+      return;
+    }
+
+    if (method === "POST" && parsedUrl.pathname === "/api/settings/sync-scope") {
+      try {
+        const rawBody = await readRequestBody(req);
+        const body = JSON.parse(rawBody) as { scope?: unknown };
+        const scope = body.scope === "all" || body.scope === "ALL" ? "all" : "open";
+        await prisma.syncState.upsert({
+          where: { key: "ticket_sync_scope" },
+          update: { value: scope },
+          create: { key: "ticket_sync_scope", value: scope }
+        });
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true, scope }));
+      } catch (error) {
+        logger.error({ error: toErrorLog(error) }, "Falha ao guardar escopo de sincronizacao");
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Falha ao guardar escopo de sincronizacao" }));
+      }
+      return;
+    }
+
+    if (method === "POST" && parsedUrl.pathname === "/api/tickets/recalc-pendencia") {
+      try {
+        const rawBody = await readRequestBody(req);
+        const body = JSON.parse(rawBody) as Record<string, unknown>;
+        const q = typeof body.q === "string" ? body.q : "";
+        const statusFilter = typeof body.status === "string" ? body.status : "";
+        const groupFilter = typeof body.group === "string" ? body.group : "";
+        const assignedGroupFilter = typeof body.assignedGroup === "string" ? body.assignedGroup : "";
+        const pendenciaParam = typeof body.pendencia === "string" ? body.pendencia : "";
+        const onlyOpen = body.open === true || body.open === 1 || body.open === "1";
+        const ageBucketParam = normalizeAgeBucketParam(typeof body.age === "string" ? body.age : "");
+        const where = await buildKanbanWhere({
+          q,
+          statusFilter,
+          groupFilter,
+          assignedGroupFilter,
+          onlyOpen,
+          pendenciaParam,
+          ageBucket: ageBucketParam
+        });
+        const rows = await prisma.ticket.findMany({
+          where,
+          select: { glpiTicketId: true, status: true },
+          orderBy: [{ dateCreation: "asc" }, { glpiTicketId: "asc" }],
+          take: 200
+        });
+        let updated = 0;
+        for (const row of rows) {
+          await loadAndPersistWaitingParty(row.glpiTicketId, row.status);
+          updated += 1;
+        }
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true, updated, scanned: rows.length }));
+      } catch (error) {
+        logger.error({ error: toErrorLog(error) }, "Falha ao recalcular pendencia");
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Falha ao recalcular pendencia" }));
       }
       return;
     }
@@ -443,8 +580,16 @@ function startHealthServer(): void {
       const groupFilter = (parsedUrl.searchParams.get("group") || "").trim();
       const assignedGroupFilter = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const onlyOpen = parsedUrl.searchParams.get("open") === "1";
+      const ageBucketParam = normalizeAgeBucketParam(parsedUrl.searchParams.get("age") || "");
       const pendenciaParam = (parsedUrl.searchParams.get("pendencia") || "").trim();
-      const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
+      const openFilterEffective = onlyOpen || Boolean(ageBucketParam);
+      if (ageBucketParam && !onlyOpen) {
+        const redirectParams = new URLSearchParams(parsedUrl.searchParams);
+        redirectParams.set("open", "1");
+        res.writeHead(302, { Location: `/?${redirectParams.toString()}` });
+        res.end();
+        return;
+      }
       let latestTickets: Array<{
         glpiTicketId: number;
         title: string | null;
@@ -454,6 +599,7 @@ function startHealthServer(): void {
         dateModification: string | null;
         waitingParty: string | null;
         updatedAt: Date;
+        rawJson: unknown;
       }> = [];
       let statuses: string[] = [];
       let groups: string[] = [];
@@ -461,65 +607,35 @@ function startHealthServer(): void {
       let filteredTotal = 0;
       let glpiRemoteTotal: number | null = null;
       let kanbanSettings: KanbanSettings = {};
+      let ticketSyncScope: Awaited<ReturnType<typeof getTicketSyncScope>> = "open";
+      let ageBuckets: OpenAgeBuckets = {
+        week: 0,
+        days15: 0,
+        days30: 0,
+        days60: 0,
+        over60: 0,
+        noDate: 0
+      };
+      let groupPerfSectionHtml = renderGroupPerformanceSection([], escapeHtml);
       try {
-        const assignedGroupTicketIds =
-          assignedGroupFilter.trim().length > 0
-            ? (
-                await prisma.ticketAttribute.findMany({
-                  where: {
-                    OR: [
-                      { keyPath: { contains: "team" } },
-                      { keyPath: { contains: "group" } },
-                      { keyPath: { contains: "assigned" } }
-                    ],
-                    AND: [
-                      {
-                        OR: [
-                          { valueText: { contains: assignedGroupFilter } },
-                          { valueJson: { contains: assignedGroupFilter } }
-                        ]
-                      }
-                    ]
-                  },
-                  select: { ticketId: true },
-                  distinct: ["ticketId"],
-                  take: 5000
-                })
-              ).map((row) => row.ticketId)
-            : [];
+        const where = await buildKanbanWhere({
+          q,
+          statusFilter,
+          groupFilter,
+          assignedGroupFilter,
+          onlyOpen,
+          pendenciaParam,
+          ageBucket: ageBucketParam
+        });
 
-        const where = {
-          AND: [
-            q
-              ? {
-                  OR: [
-                    { title: { contains: q } },
-                    { content: { contains: q } },
-                    { glpiTicketId: Number.isFinite(Number(q)) ? Number(q) : -1 }
-                  ]
-                }
-              : {},
-            statusFilter ? { status: statusFilter } : {},
-            groupFilter ? { contractGroupName: { contains: groupFilter } } : {},
-            assignedGroupFilter
-              ? {
-                  OR: [
-                    { contractGroupName: { contains: assignedGroupFilter } },
-                    ...(assignedGroupTicketIds.length > 0 ? [{ id: { in: assignedGroupTicketIds } }] : [])
-                  ]
-                }
-              : {},
-            ...(onlyOpen ? [ticketWhereNotClosed()] : []),
-            ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
-          ]
-        };
-
-        const [totalDb, totalFiltered, glpiTotalRow, kanbanStored] = await Promise.all([
+        const [totalDb, totalFiltered, glpiTotalRow, kanbanStored, scope] = await Promise.all([
           prisma.ticket.count(),
           prisma.ticket.count({ where }),
           prisma.syncState.findUnique({ where: { key: "glpi_ticket_total" } }),
-          readKanbanSettings()
+          readKanbanSettings(),
+          getTicketSyncScope()
         ]);
+        ticketSyncScope = scope;
         syncedTotal = totalDb;
         filteredTotal = totalFiltered;
         kanbanSettings = kanbanStored;
@@ -528,34 +644,50 @@ function startHealthServer(): void {
           glpiRemoteTotal = Number.isFinite(parsedTotal) ? parsedTotal : null;
         }
 
-        latestTickets = await prisma.ticket.findMany({
-          where,
-          orderBy: [{ dateCreation: "asc" }, { glpiTicketId: "asc" }],
-          take: 200,
-          select: {
-            glpiTicketId: true,
-            title: true,
-            status: true,
-            contractGroupName: true,
-            dateCreation: true,
-            dateModification: true,
-            waitingParty: true,
-            updatedAt: true
-          }
-        });
-        const statusRows = await prisma.ticket.findMany({
-          where: { status: { not: null } },
-          distinct: ["status"],
-          select: { status: true },
-          orderBy: { status: "asc" }
-        });
+        const [ageBucketsResult, latestTicketRows, statusRows, groupRows, perfTicketRows] = await Promise.all([
+          getOpenTicketAgeBuckets(),
+          prisma.ticket.findMany({
+            where,
+            orderBy: [{ dateCreation: "asc" }, { glpiTicketId: "asc" }],
+            take: 200,
+            select: {
+              glpiTicketId: true,
+              title: true,
+              status: true,
+              contractGroupName: true,
+              dateCreation: true,
+              dateModification: true,
+              waitingParty: true,
+              updatedAt: true,
+              rawJson: true
+            }
+          }),
+          prisma.ticket.findMany({
+            where: { status: { not: null } },
+            distinct: ["status"],
+            select: { status: true },
+            orderBy: { status: "asc" }
+          }),
+          prisma.ticket.findMany({
+            where: { contractGroupName: { not: null } },
+            distinct: ["contractGroupName"],
+            select: { contractGroupName: true },
+            orderBy: { contractGroupName: "asc" }
+          }),
+          prisma.ticket.findMany({
+            select: {
+              contractGroupName: true,
+              status: true,
+              dateCreation: true,
+              dateModification: true,
+              rawJson: true
+            }
+          })
+        ]);
+        ageBuckets = ageBucketsResult;
+        latestTickets = latestTicketRows;
+        groupPerfSectionHtml = renderGroupPerformanceSection(computeGroupPerformance(perfTicketRows), escapeHtml);
         statuses = statusRows.map((item) => item.status).filter((item): item is string => Boolean(item));
-        const groupRows = await prisma.ticket.findMany({
-          where: { contractGroupName: { not: null } },
-          distinct: ["contractGroupName"],
-          select: { contractGroupName: true },
-          orderBy: { contractGroupName: "asc" }
-        });
         groups = groupRows.map((item) => item.contractGroupName).filter((item): item is string => Boolean(item));
       } catch (error) {
         logger.error({ error: toErrorLog(error) }, "Falha ao carregar dados da pagina inicial");
@@ -572,6 +704,7 @@ function startHealthServer(): void {
           dateModification: string | null;
           waitingParty: string | null;
           updatedAt: Date;
+          rawJson: unknown;
         }>
       >();
       for (const ticket of latestTickets) {
@@ -623,6 +756,8 @@ function startHealthServer(): void {
             .map((ticket) => {
               const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
               const safeGroup = escapeHtml(ticket.contractGroupName || "-");
+              const requesterName = extractRequesterDisplayName(ticket.rawJson);
+              const safeRequester = escapeHtml(requesterName || "—");
               const daysOpen = openDaysApprox(ticket.dateCreation, now);
               const cardStyle = cardHeatChromeStyle(daysOpen);
               const openFor = formatTicketAge(ticket.dateCreation, now);
@@ -651,6 +786,7 @@ function startHealthServer(): void {
                 <div class="card-title">${safeTitle}</div>
                 <span class="pend-badge pend-badge--${escapeHtml(pendClass)}">${escapeHtml(pendLabel)}</span>
                 <div class="card-meta">Grupo: ${safeGroup}</div>
+                <div class="card-meta">Solicitante: <strong>${safeRequester}</strong></div>
                 <div class="card-meta">Aberto há <strong>${escapeHtml(openFor)}</strong> · Sem interação <strong>${escapeHtml(
                   idleFor
                 )}</strong></div>
@@ -704,10 +840,98 @@ function startHealthServer(): void {
           assignedGroupFilter ? escapeHtml(assignedGroupFilter) : '<span class="muted">(vazio)</span>'
         }</div>`
       );
-      filterLines.push(`<div><span class="chip">Somente abertos:</span> ${onlyOpen ? "Sim" : "Nao"}</div>`);
+      filterLines.push(
+        `<div><span class="chip">Somente abertos:</span> ${
+          openFilterEffective ? (ageBucketParam && !onlyOpen ? "Sim (faixa etaria)" : "Sim") : "Nao"
+        }</div>`
+      );
+      if (ageBucketParam) {
+        filterLines.push(
+          `<div><span class="chip">Idade (dashboard):</span> ${escapeHtml(ageLabelForSummary(ageBucketParam))}</div>`
+        );
+      }
       filterLines.push(
         `<div><span class="chip">Pendencia (inferida):</span> ${escapeHtml(pendenciaLabelForSummary(pendenciaParam))}</div>`
       );
+      filterLines.push(
+        `<div><span class="chip">Escopo sync (GLPI → cache):</span> ${
+          ticketSyncScope === "all"
+            ? "Todos os chamados (abertos e fechados)"
+            : "Apenas abertos (fechados saem do cache)"
+        }</div>`
+      );
+
+      const agingDashHrefs: AgingDashHrefs = {
+        week: homeKanbanSearch({
+          q,
+          status: statusFilter,
+          group: groupFilter,
+          assignedGroup: assignedGroupFilter,
+          pendencia: pendenciaParam,
+          openIsOne: true,
+          age: "week"
+        }),
+        d15: homeKanbanSearch({
+          q,
+          status: statusFilter,
+          group: groupFilter,
+          assignedGroup: assignedGroupFilter,
+          pendencia: pendenciaParam,
+          openIsOne: true,
+          age: "d15"
+        }),
+        d30: homeKanbanSearch({
+          q,
+          status: statusFilter,
+          group: groupFilter,
+          assignedGroup: assignedGroupFilter,
+          pendencia: pendenciaParam,
+          openIsOne: true,
+          age: "d30"
+        }),
+        d60: homeKanbanSearch({
+          q,
+          status: statusFilter,
+          group: groupFilter,
+          assignedGroup: assignedGroupFilter,
+          pendencia: pendenciaParam,
+          openIsOne: true,
+          age: "d60"
+        }),
+        over: homeKanbanSearch({
+          q,
+          status: statusFilter,
+          group: groupFilter,
+          assignedGroup: assignedGroupFilter,
+          pendencia: pendenciaParam,
+          openIsOne: true,
+          age: "over"
+        }),
+        clear: homeKanbanSearch({
+          q,
+          status: statusFilter,
+          group: groupFilter,
+          assignedGroup: assignedGroupFilter,
+          pendencia: pendenciaParam,
+          openIsOne: onlyOpen
+        })
+      };
+      const openAgeDashboardHtml = renderOpenAgeDashboardHtml(ageBuckets, agingDashHrefs, ageBucketParam);
+
+      const pageLeadHtml =
+        ticketSyncScope === "all"
+          ? "Visão em Kanban sincronizada com o GLPI. O <strong>escopo de sincronização</strong> está em <strong>todos os chamados</strong>: após cada sync, fechados também ficam no SQLite. A <strong>pendência inferida</strong> usa o campo <code>waitingParty</code> (modal ou botão de recálculo)."
+          : "Visão em Kanban sincronizada com o GLPI. Por defeito o cache mantém só chamados <strong>abertos</strong>; no painel colapsável abaixo pode guardar escopo <strong>todos no cache</strong>. A <strong>pendência inferida</strong> usa <code>waitingParty</code> (modal ou recálculo).";
+
+      const filterJsonForScript = JSON.stringify({
+        q,
+        status: statusFilter,
+        group: groupFilter,
+        assignedGroup: assignedGroupFilter,
+        open: openFilterEffective,
+        pendencia: pendenciaParam,
+        age: ageBucketParam
+      }).replace(/</g, "\\u003c");
 
       const html = `<!doctype html>
 <html lang="pt-BR">
@@ -745,11 +969,76 @@ function startHealthServer(): void {
       code { font-size: 0.88em; background: #f1f5f9; padding: 0.12rem 0.4rem; border-radius: 6px; color: #334155; }
       .app-shell { max-width: 1320px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
       @media (min-width: 768px) { .app-shell { padding: 2rem 2rem 3.5rem; } }
-      .page-header { margin-bottom: 1.75rem; }
+      .page-header { margin-bottom: 1rem; }
       .page-kicker { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); margin: 0 0 0.35rem 0; }
       .page-title { font-size: clamp(1.65rem, 3vw, 2.1rem); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.5rem 0; color: var(--ink); }
       .page-lead { margin: 0; max-width: 62ch; font-size: 0.95rem; line-height: 1.55; color: var(--ink-muted); }
       .muted { color: var(--ink-muted); font-size: 0.9rem; }
+      .top-accordion {
+        margin-bottom: 1.35rem;
+        border: 1px solid rgba(148, 163, 184, 0.45);
+        border-radius: var(--radius-lg);
+        background: rgba(255, 255, 255, 0.55);
+        box-shadow: var(--shadow-sm);
+        overflow: hidden;
+      }
+      .top-accordion__summary {
+        list-style: none;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 1rem;
+        padding: 0.65rem 1rem;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--ink);
+        background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(241,245,249,0.9) 100%);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+      }
+      .top-accordion__summary::-webkit-details-marker { display: none; }
+      .top-accordion__chevron {
+        display: inline-block;
+        width: 0.5rem;
+        height: 0.5rem;
+        border-right: 2px solid var(--brand);
+        border-bottom: 2px solid var(--brand);
+        transform: rotate(-45deg);
+        transition: transform 0.18s ease;
+        flex-shrink: 0;
+      }
+      details[open] > .top-accordion__summary .top-accordion__chevron {
+        transform: rotate(45deg);
+      }
+      .top-accordion__title { flex: 1 1 auto; min-width: 12rem; }
+      .top-accordion__meta {
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: var(--ink-muted);
+        max-width: 100%;
+      }
+      .top-accordion__body { padding: 1rem 1rem 1.1rem; }
+      .sync-toolbar {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px dashed rgba(148, 163, 184, 0.5);
+      }
+      .sync-toolbar-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+        align-items: center;
+      }
+      .sync-toolbar-row select {
+        font: inherit;
+        font-size: 0.88rem;
+        padding: 0.45rem 0.6rem;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+        min-width: 220px;
+        max-width: 100%;
+      }
       .dashboard {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -824,8 +1113,353 @@ function startHealthServer(): void {
       }
       .filters button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(29, 78, 216, 0.4); }
       .section-head { margin: 0 0 0.75rem 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.75rem 1rem; justify-content: space-between; }
+      .section-head--kanban { align-items: flex-start; gap: 0.75rem 1.25rem; }
+      .section-head--kanban > div:first-child { flex: 1 1 12rem; min-width: 0; }
       .section-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--ink); }
       .section-tools { font-size: 0.85rem; color: var(--ink-muted); max-width: 36rem; line-height: 1.45; }
+      .btn-fs {
+        font: inherit;
+        font-weight: 600;
+        font-size: 0.88rem;
+        padding: 0.5rem 1rem;
+        border-radius: 10px;
+        border: 1px solid rgba(29, 78, 216, 0.35);
+        background: linear-gradient(180deg, #fff 0%, #eff6ff 100%);
+        color: #1e40af;
+        cursor: pointer;
+        flex-shrink: 0;
+        box-shadow: 0 1px 4px rgba(29, 78, 216, 0.12);
+        transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+      }
+      .btn-fs:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(29, 78, 216, 0.2); border-color: rgba(29, 78, 216, 0.55); }
+      .btn-fs[aria-pressed="true"] {
+        background: linear-gradient(180deg, #1e40af 0%, #1d4ed8 100%);
+        color: #fff;
+        border-color: #1e3a8a;
+      }
+      .aging-dash {
+        margin: 0 0 1.5rem 0;
+        padding: 1.35rem 1.35rem 1.45rem;
+        border-radius: var(--radius-lg);
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.97) 0%, rgba(248, 250, 252, 0.92) 42%, rgba(239, 246, 255, 0.75) 100%);
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        box-shadow: var(--shadow-md), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+      }
+      .aging-dash__intro { margin-bottom: 1.1rem; }
+      .aging-dash__title {
+        margin: 0 0 0.4rem 0;
+        font-size: 1.12rem;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .aging-dash__title::before {
+        content: "";
+        width: 4px;
+        height: 1.35rem;
+        border-radius: 99px;
+        background: linear-gradient(180deg, #2563eb, #7c3aed);
+        flex-shrink: 0;
+      }
+      .aging-dash__subtitle {
+        margin: 0 0 0.65rem 0;
+        font-size: 0.86rem;
+        line-height: 1.55;
+        color: var(--ink-muted);
+        max-width: 72ch;
+      }
+      .aging-dash__total {
+        margin: 0;
+        font-size: 0.84rem;
+        color: var(--ink-muted);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.25rem 0.6rem;
+      }
+      .aging-dash__total-num {
+        font-size: 1.45rem;
+        font-weight: 800;
+        color: var(--brand);
+        letter-spacing: -0.04em;
+        font-variant-numeric: tabular-nums;
+      }
+      .aging-dash__total-label { font-weight: 600; color: #334155; }
+      .aging-dash__nodate { color: #c2410c; font-weight: 600; font-size: 0.8rem; }
+      .aging-dash__grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+        gap: 0.9rem;
+      }
+      @media (min-width: 1024px) {
+        .aging-dash__grid { grid-template-columns: repeat(5, 1fr); }
+      }
+      .aging-card {
+        position: relative;
+        border-radius: 14px;
+        padding: 0.95rem 0.85rem 1rem 3.15rem;
+        min-height: 112px;
+        overflow: hidden;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        box-shadow: var(--shadow-sm);
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+        cursor: pointer;
+      }
+      .aging-card:focus-visible {
+        outline: 3px solid var(--brand);
+        outline-offset: 3px;
+      }
+      .aging-card--active {
+        box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.4), 0 12px 28px rgba(15, 23, 42, 0.12);
+        border-color: rgba(29, 78, 216, 0.45);
+      }
+      .aging-dash__clear {
+        font-weight: 600;
+        font-size: 0.8rem;
+        color: #1d4ed8;
+        text-decoration: none;
+      }
+      .aging-dash__clear:hover {
+        text-decoration: underline;
+      }
+      .aging-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+        border-color: rgba(29, 78, 216, 0.2);
+      }
+      .aging-card__iconwrap {
+        position: absolute;
+        left: 0.75rem;
+        top: 0.85rem;
+        width: 2.1rem;
+        height: 2.1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 11px;
+      }
+      .aging-card__svg { width: 1.28rem; height: 1.28rem; }
+      .aging-card__value {
+        font-size: 1.85rem;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        margin-bottom: 0.42rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .aging-card__title {
+        margin: 0 0 0.22rem 0;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: rgba(15, 23, 42, 0.92);
+        line-height: 1.28;
+      }
+      .aging-card__hint { margin: 0; font-size: 0.7rem; line-height: 1.38; color: rgba(51, 65, 85, 0.9); }
+      .aging-card--week {
+        background: linear-gradient(155deg, #ecfdf5 0%, #d1fae5 55%, #a7f3d0 100%);
+      }
+      .aging-card--week .aging-card__iconwrap {
+        background: rgba(16, 185, 129, 0.22);
+        color: #047857;
+      }
+      .aging-card--week .aging-card__value { color: #065f46; }
+      .aging-card--d15 {
+        background: linear-gradient(155deg, #f0fdfa 0%, #ccfbf1 50%, #99f6e4 100%);
+      }
+      .aging-card--d15 .aging-card__iconwrap {
+        background: rgba(20, 184, 166, 0.22);
+        color: #0f766e;
+      }
+      .aging-card--d15 .aging-card__value { color: #115e59; }
+      .aging-card--d30 {
+        background: linear-gradient(155deg, #fffbeb 0%, #fef3c7 50%, #fde68a 100%);
+      }
+      .aging-card--d30 .aging-card__iconwrap {
+        background: rgba(245, 158, 11, 0.22);
+        color: #b45309;
+      }
+      .aging-card--d30 .aging-card__value { color: #92400e; }
+      .aging-card--d60 {
+        background: linear-gradient(155deg, #fff7ed 0%, #ffedd5 50%, #fdba74 100%);
+      }
+      .aging-card--d60 .aging-card__iconwrap {
+        background: rgba(249, 115, 22, 0.22);
+        color: #c2410c;
+      }
+      .aging-card--d60 .aging-card__value { color: #9a3412; }
+      .aging-card--over {
+        background: linear-gradient(155deg, #fef2f2 0%, #fecaca 48%, #fca5a5 100%);
+      }
+      .aging-card--over .aging-card__iconwrap {
+        background: rgba(220, 38, 38, 0.2);
+        color: #b91c1c;
+      }
+      .aging-card--over .aging-card__value { color: #991b1b; }
+      .perf-section {
+        margin: 0 0 1.75rem 0;
+        padding: 1.35rem 1.35rem 1.45rem;
+        border-radius: var(--radius-lg);
+        background: linear-gradient(165deg, #ffffff 0%, #f8fafc 55%, #f1f5f9 100%);
+        border: 1px solid rgba(148, 163, 184, 0.42);
+        box-shadow: var(--shadow-md);
+      }
+      .perf-section__head { margin-bottom: 1rem; }
+      .perf-section__title {
+        margin: 0 0 0.45rem 0;
+        font-size: 1.08rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+      }
+      .perf-section__lead {
+        margin: 0;
+        font-size: 0.84rem;
+        line-height: 1.55;
+        color: var(--ink-muted);
+        max-width: 88ch;
+      }
+      .perf-table-wrap {
+        overflow-x: auto;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(255, 255, 255, 0.75);
+      }
+      .perf-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+      }
+      .perf-table th,
+      .perf-table td {
+        padding: 0.65rem 0.7rem;
+        text-align: left;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: middle;
+      }
+      .perf-table th {
+        background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%);
+        font-weight: 700;
+        color: #334155;
+        white-space: nowrap;
+      }
+      .perf-th-sub {
+        display: block;
+        font-weight: 500;
+        font-size: 0.68rem;
+        color: #64748b;
+        margin-top: 0.15rem;
+      }
+      .perf-td--name { font-weight: 600; color: var(--ink); min-width: 9rem; }
+      .perf-td--stack { min-width: 11rem; }
+      .perf-td__sub { display: block; font-size: 0.68rem; color: #64748b; margin-top: 0.25rem; }
+      .perf-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .perf-net--pos { color: #15803d; font-weight: 700; }
+      .perf-net--neg { color: #b91c1c; font-weight: 700; }
+      .perf-net--zero { color: #64748b; }
+      .perf-stack {
+        display: flex;
+        height: 10px;
+        border-radius: 6px;
+        overflow: hidden;
+        background: #e2e8f0;
+        min-width: 72px;
+      }
+      .perf-stack--empty {
+        justify-content: center;
+        align-items: center;
+        font-size: 0.7rem;
+        color: #94a3b8;
+      }
+      .perf-stack__seg { display: block; height: 100%; min-width: 2px; }
+      .perf-stack__w { background: #34d399; }
+      .perf-stack__15 { background: #2dd4bf; }
+      .perf-stack__30 { background: #fbbf24; }
+      .perf-stack__60 { background: #fb923c; }
+      .perf-stack__ov { background: #f87171; }
+      .perf-td--weeks { min-width: 5.5rem; }
+      .perf-weeks {
+        display: flex;
+        align-items: flex-end;
+        justify-content: flex-end;
+        gap: 0.28rem;
+        height: 44px;
+      }
+      .perf-week {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        width: 1.15rem;
+        height: 100%;
+      }
+      .perf-week__bar {
+        display: block;
+        width: 100%;
+        min-height: 2px;
+        border-radius: 3px 3px 0 0;
+        background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+        align-self: stretch;
+      }
+      .perf-week__n {
+        font-size: 0.62rem;
+        color: #64748b;
+        margin-top: 0.12rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .kanban-fs-root { margin-bottom: 0; }
+      .kanban-fs-root:fullscreen,
+      .kanban-fs-root:-webkit-full-screen {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 1rem 1.25rem 1.5rem;
+        box-sizing: border-box;
+        background: linear-gradient(165deg, var(--canvas) 0%, #e8eef5 48%, #f8fafc 100%);
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+      }
+      .kanban-fs-root:fullscreen .kanban-legend,
+      .kanban-fs-root:-webkit-full-screen .kanban-legend {
+        flex-shrink: 0;
+        margin-bottom: 0.85rem;
+      }
+      .kanban-fs-root:fullscreen .kanban-board,
+      .kanban-fs-root:-webkit-full-screen .kanban-board {
+        flex: 1;
+        min-height: 12rem;
+        overflow-x: auto;
+        overflow-y: auto;
+        flex-wrap: nowrap;
+        align-items: stretch;
+        align-content: flex-start;
+        padding-bottom: 0.35rem;
+        -webkit-overflow-scrolling: touch;
+      }
+      .kanban-fs-root:fullscreen .kanban-column,
+      .kanban-fs-root:-webkit-full-screen .kanban-column {
+        flex: 1 1 300px;
+        min-width: 272px;
+        max-width: 480px;
+        max-height: none;
+      }
+      .kanban-fs-root:fullscreen .kanban-column-body,
+      .kanban-fs-root:-webkit-full-screen .kanban-column-body {
+        max-height: min(72vh, 900px);
+        overflow-y: auto;
+      }
+      .kanban-fs-root:fullscreen .aging-dash,
+      .kanban-fs-root:-webkit-full-screen .aging-dash {
+        flex-shrink: 0;
+        margin-bottom: 1rem;
+      }
       .small { font-size: 0.8125rem; color: var(--ink-muted); line-height: 1.4; }
       .kanban-legend {
         margin: 0 0 1.25rem 0;
@@ -1019,9 +1653,18 @@ function startHealthServer(): void {
     <header class="page-header">
       <p class="page-kicker">Operação · GLPI</p>
       <h1 class="page-title">Quadro de chamados</h1>
-      <p class="page-lead">Visão em Kanban sincronizada com o GLPI. Apenas chamados <strong>abertos</strong> no cache. A <strong>pendência inferida</strong> usa o campo <code>waitingParty</code> (preenchido ao abrir o modal ou após cada sync).</p>
+      <p class="page-lead">${pageLeadHtml}</p>
     </header>
 
+    <details class="top-accordion">
+      <summary class="top-accordion__summary">
+        <span class="top-accordion__chevron" aria-hidden="true"></span>
+        <span class="top-accordion__title">Painel de métricas e filtros</span>
+        <span class="top-accordion__meta">${escapeHtml(String(filteredTotal))} no filtro · ${escapeHtml(
+        String(latestTickets.length)
+      )} cards · sync: ${ticketSyncScope === "all" ? "todos" : "só abertos"}</span>
+      </summary>
+      <div class="top-accordion__body">
     <div class="dashboard">
       <div class="metric">
         <strong>${syncedTotal}</strong>
@@ -1061,6 +1704,7 @@ function startHealthServer(): void {
     <div class="filters-panel">
       <h2 class="filters-title">Filtros</h2>
       <form class="filters" method="GET" action="/">
+        <input type="hidden" name="age" value="${escapeHtml(ageBucketParam)}" />
         <label>Busca
           <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, titulo ou conteudo" />
         </label>
@@ -1096,10 +1740,104 @@ function startHealthServer(): void {
         </label>
         <button type="submit">Aplicar filtros</button>
       </form>
+      <div class="sync-toolbar">
+        <p class="small" style="margin:0 0 0.65rem 0">Sincronização com o GLPI (próximo ciclo do cron): escolha se o SQLite guarda só abertos ou também fechados. O botão de pendência reconsulta o histórico GLPI para os chamados que batem com os filtros atuais (até 200).</p>
+        <div class="sync-toolbar-row">
+          <label class="small" style="display:flex;flex-direction:column;gap:0.35rem;margin:0;font-weight:600;color:var(--ink-muted)">Escopo no cache
+            <select id="sync-scope-select" aria-label="Escopo de sincronizacao no cache">
+              <option value="open" ${ticketSyncScope === "open" ? "selected" : ""}>Apenas abertos (remove fechados)</option>
+              <option value="all" ${ticketSyncScope === "all" ? "selected" : ""}>Todos (abertos e fechados)</option>
+            </select>
+          </label>
+          <button type="button" class="btn-secondary" id="btn-save-sync-scope">Salvar escopo</button>
+          <button type="button" class="btn-secondary" id="btn-recalc-pendencia">Recalcular pendência (filtros atuais)</button>
+        </div>
+        <p class="small" id="sync-toolbar-msg" style="margin-top:0.55rem" hidden></p>
+      </div>
     </div>
-    <div class="section-head">
-      <h2 class="section-title">Kanban por status</h2>
-      <p class="section-tools">Arraste pelo <strong>cabeçalho azul</strong> da coluna para reordenar. Clique no card para abrir o painel de edição e histórico.</p>
+    <script type="application/json" id="kanban-filter-json">${filterJsonForScript}</script>
+    <script>
+      (function () {
+        var msg = document.getElementById("sync-toolbar-msg");
+        function show(text, ok) {
+          if (!msg) return;
+          msg.hidden = false;
+          msg.textContent = text;
+          msg.style.color = ok ? "#15803d" : "#b45309";
+        }
+        var filterEl = document.getElementById("kanban-filter-json");
+        var filterState = {};
+        try {
+          filterState = filterEl ? JSON.parse(filterEl.textContent || "{}") : {};
+        } catch (e) {
+          filterState = {};
+        }
+        var sel = document.getElementById("sync-scope-select");
+        document.getElementById("btn-save-sync-scope")?.addEventListener("click", function () {
+          var scope = sel && sel.value === "all" ? "all" : "open";
+          fetch("/api/settings/sync-scope", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scope: scope })
+          })
+            .then(function (res) {
+              return res.json().then(function (data) {
+                return { res: res, data: data };
+              });
+            })
+            .then(function (x) {
+              if (!x.res.ok) {
+                throw new Error((x.data && x.data.error) || "Falha ao guardar");
+              }
+              show("Escopo guardado (" + x.data.scope + "). Vale na próxima sincronização.", true);
+            })
+            .catch(function (err) {
+              show(String(err && err.message ? err.message : err), false);
+            });
+        });
+        document.getElementById("btn-recalc-pendencia")?.addEventListener("click", function () {
+          var btn = document.getElementById("btn-recalc-pendencia");
+          if (btn) btn.disabled = true;
+          fetch("/api/tickets/recalc-pendencia", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(filterState)
+          })
+            .then(function (res) {
+              return res.json().then(function (data) {
+                return { res: res, data: data };
+              });
+            })
+            .then(function (x) {
+              if (!x.res.ok) {
+                throw new Error((x.data && x.data.error) || "Falha no recálculo");
+              }
+              var n = x.data.updated != null ? x.data.updated : 0;
+              show("Pendência recalculada para " + n + " chamado(s). A recarregar…", true);
+              setTimeout(function () {
+                window.location.reload();
+              }, 500);
+            })
+            .catch(function (err) {
+              show(String(err && err.message ? err.message : err), false);
+            })
+            .finally(function () {
+              if (btn) btn.disabled = false;
+            });
+        });
+      })();
+    </script>
+      </div>
+    </details>
+    <div class="kanban-fs-root" id="kanban-fullscreen-root">
+    ${openAgeDashboardHtml}
+    ${groupPerfSectionHtml}
+    <div class="section-head section-head--kanban">
+      <div>
+        <h2 class="section-title">Kanban por status</h2>
+        <p class="section-tools">Arraste pelo <strong>cabeçalho azul</strong> da coluna para reordenar. Clique no card para abrir o painel de edição e histórico.</p>
+      </div>
+      <button type="button" class="btn-fs" id="kanban-fs-toggle" aria-pressed="false" title="Maximizar o quadro para reuniao ou TV">Tela inteira</button>
     </div>
     <p class="kanban-legend" role="note">
       <span class="legend-swatch legend-swatch--fresh" aria-hidden="true"></span>
@@ -1117,6 +1855,59 @@ function startHealthServer(): void {
         : ""
     }
     </div>
+    </div>
+
+    <script>
+      (function () {
+        var root = document.getElementById("kanban-fullscreen-root");
+        var btn = document.getElementById("kanban-fs-toggle");
+        if (!root || !btn) return;
+        function isFs() {
+          return document.fullscreenElement === root || document.webkitFullscreenElement === root;
+        }
+        function syncLabel() {
+          var on = isFs();
+          btn.setAttribute("aria-pressed", on ? "true" : "false");
+          btn.textContent = on ? "Sair da tela inteira" : "Tela inteira";
+        }
+        function requestFs() {
+          if (root.requestFullscreen) {
+            return root.requestFullscreen();
+          }
+          if (root.webkitRequestFullscreen) {
+            return root.webkitRequestFullscreen();
+          }
+          return Promise.reject(new Error("Fullscreen nao suportado neste navegador"));
+        }
+        function exitFs() {
+          if (document.exitFullscreen) {
+            return document.exitFullscreen();
+          }
+          if (document.webkitExitFullscreen) {
+            return document.webkitExitFullscreen();
+          }
+          return Promise.resolve();
+        }
+        btn.addEventListener("click", function () {
+          if (isFs()) {
+            void exitFs().catch(function () {});
+          } else {
+            void requestFs().catch(function () {
+              alert("Nao foi possivel entrar em tela inteira. Verifique permissoes do navegador ou tente outro browser.");
+            });
+          }
+        });
+        document.addEventListener("fullscreenchange", syncLabel);
+        document.addEventListener("webkitfullscreenchange", syncLabel);
+        document.addEventListener("keydown", function (e) {
+          if (e.key !== "Escape" || !isFs()) return;
+          var modal = document.getElementById("ticket-modal");
+          if (modal && modal.classList.contains("open")) return;
+          void exitFs().catch(function () {});
+        });
+        syncLabel();
+      })();
+    </script>
 
     <div id="ticket-modal" class="modal" aria-hidden="true">
       <div class="modal-backdrop" data-close-modal></div>
@@ -1484,48 +2275,21 @@ function startHealthServer(): void {
       const assignedGroup = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const openOnly = parsedUrl.searchParams.get("open") === "1";
       const ticketsPendencia = (parsedUrl.searchParams.get("pendencia") || "").trim();
-      const ticketsPendenciaWhere = pendenciaFilterWhere(ticketsPendencia);
+      const ticketsQ = (parsedUrl.searchParams.get("q") || "").trim();
+      const ticketsAge = normalizeAgeBucketParam(parsedUrl.searchParams.get("age") || "");
       try {
-        const assignedGroupTicketIds =
-          assignedGroup.trim().length > 0
-            ? (
-                await prisma.ticketAttribute.findMany({
-                  where: {
-                    OR: [
-                      { keyPath: { contains: "team" } },
-                      { keyPath: { contains: "group" } },
-                      { keyPath: { contains: "assigned" } }
-                    ],
-                    AND: [
-                      {
-                        OR: [{ valueText: { contains: assignedGroup } }, { valueJson: { contains: assignedGroup } }]
-                      }
-                    ]
-                  },
-                  select: { ticketId: true },
-                  distinct: ["ticketId"],
-                  take: 5000
-                })
-              ).map((row) => row.ticketId)
-            : [];
+        const ticketsWhere = await buildKanbanWhere({
+          q: ticketsQ,
+          statusFilter: status,
+          groupFilter: group,
+          assignedGroupFilter: assignedGroup,
+          onlyOpen: openOnly,
+          pendenciaParam: ticketsPendencia,
+          ageBucket: ticketsAge
+        });
 
         const tickets = await prisma.ticket.findMany({
-          where: {
-            AND: [
-              status ? { status } : {},
-              group ? { contractGroupName: { contains: group } } : {},
-              assignedGroup
-                ? {
-                    OR: [
-                      { contractGroupName: { contains: assignedGroup } },
-                      ...(assignedGroupTicketIds.length > 0 ? [{ id: { in: assignedGroupTicketIds } }] : [])
-                    ]
-                  }
-                : {},
-              ...(openOnly ? [ticketWhereNotClosed()] : []),
-              ...(ticketsPendenciaWhere ? [ticketsPendenciaWhere] : [])
-            ]
-          },
+          where: ticketsWhere,
           orderBy: { id: "desc" },
           take: limit,
           include: {

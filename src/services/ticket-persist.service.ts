@@ -3,6 +3,7 @@ import { logger } from "../config/logger";
 import { flattenAttributes } from "../lib/ticket-attributes-flatten";
 import { normalizeTicket } from "../normalizers/ticket.normalizer";
 import type { NormalizedTicket } from "../types/glpi.types";
+import { getTicketSyncScope } from "../utils/ticket-sync-scope";
 import { isTicketClosedStatus } from "../utils/ticket-status";
 
 function toErrorMessage(error: unknown): string {
@@ -78,7 +79,7 @@ export async function persistNormalizedTicket(
   }
 }
 
-/** Atualiza ou remove do cache local conforme status (fechados não ficam no SQLite). */
+/** Atualiza ou remove do cache local conforme status e escopo de sync (`ticket_sync_scope`). */
 export async function persistTicketFromRaw(raw: unknown): Promise<void> {
   const normalized = normalizeTicket(raw);
   if (!normalized.id) {
@@ -86,7 +87,15 @@ export async function persistTicketFromRaw(raw: unknown): Promise<void> {
   }
 
   if (isTicketClosedStatus(normalized.status)) {
-    await prisma.ticket.deleteMany({ where: { glpiTicketId: normalized.id } });
+    const scope = await getTicketSyncScope();
+    if (scope === "open") {
+      await prisma.ticket.deleteMany({ where: { glpiTicketId: normalized.id } });
+      return;
+    }
+    const closedResult = await persistNormalizedTicket(normalized, raw);
+    if (closedResult === "error") {
+      throw new Error(`Falha ao persistir ticket fechado ${normalized.id}`);
+    }
     return;
   }
 

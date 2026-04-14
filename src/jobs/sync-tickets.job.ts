@@ -3,6 +3,7 @@ import { logger } from "../config/logger";
 import { normalizeTicket } from "../normalizers/ticket.normalizer";
 import { persistNormalizedTicket } from "../services/ticket-persist.service";
 import { getTicketsPage } from "../services/tickets.service";
+import { getTicketSyncScope } from "../utils/ticket-sync-scope";
 import { isTicketClosedStatus, ticketWhereClosed } from "../utils/ticket-status";
 
 export interface SyncTicketsResult {
@@ -27,7 +28,13 @@ function parseIsoDate(value: string | null | undefined): number | null {
 }
 
 export async function syncTickets(options: SyncTicketsOptions = {}): Promise<SyncTicketsResult> {
-  logger.info("Iniciando sincronizacao de tickets (apenas abertos no cache local)");
+  const syncScope = await getTicketSyncScope();
+  logger.info(
+    { syncScope },
+    syncScope === "all"
+      ? "Iniciando sincronizacao de tickets (cache completo: abertos e fechados)"
+      : "Iniciando sincronizacao de tickets (apenas abertos no cache local)"
+  );
 
   const pageSize = options.pageSize ?? 100;
   const onProgress = options.onProgress;
@@ -40,9 +47,11 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
   const cursorState = await prisma.syncState.findUnique({ where: { key: "last_sync_date_mod" } });
   const previousCursor = cursorState?.value || null;
 
-  const removedClosed = await prisma.ticket.deleteMany({ where: ticketWhereClosed() });
-  if (removedClosed.count > 0) {
-    logger.info({ count: removedClosed.count }, "Removidos do cache tickets com status fechado");
+  if (syncScope === "open") {
+    const removedClosed = await prisma.ticket.deleteMany({ where: ticketWhereClosed() });
+    if (removedClosed.count > 0) {
+      logger.info({ count: removedClosed.count }, "Removidos do cache tickets com status fechado");
+    }
   }
 
   while (true) {
@@ -79,7 +88,16 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
       }
 
       if (isTicketClosedStatus(normalized.status)) {
-        await prisma.ticket.deleteMany({ where: { glpiTicketId: normalized.id } });
+        if (syncScope === "open") {
+          await prisma.ticket.deleteMany({ where: { glpiTicketId: normalized.id } });
+          continue;
+        }
+        const persistClosed = await persistNormalizedTicket(normalized, rawTicket);
+        if (persistClosed === "saved") {
+          savedCount += 1;
+        } else {
+          failedCount += 1;
+        }
         continue;
       }
 
