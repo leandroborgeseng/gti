@@ -40,6 +40,111 @@ function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
+const KANBAN_SETTINGS_KEY = "kanban_settings";
+
+type KanbanSettings = {
+  columnOrder?: string[];
+  columnColors?: Record<string, string>;
+};
+
+function hashStringToUint32(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function hslFromSeed(seed: string, saturation: number, lightness: number): string {
+  const hue = hashStringToUint32(seed) % 360;
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+}
+
+function columnChromeStyle(statusKey: string): string {
+  const bg = hslFromSeed(`col:${statusKey}`, 78, 88);
+  const border = hslFromSeed(`colb:${statusKey}`, 62, 62);
+  return `--col-bg:${bg};--col-border:${border};`;
+}
+
+function cardChromeStyle(ticketSeed: string): string {
+  const bg = hslFromSeed(`card:${ticketSeed}`, 82, 94);
+  const border = hslFromSeed(`cardb:${ticketSeed}`, 58, 72);
+  return `background:${bg};border-color:${border};`;
+}
+
+function sanitizeCssColor(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^hsla?\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*[\d.]+%(\s*,\s*[\d.]+)?\s*\)$/.test(trimmed)) {
+    return trimmed;
+  }
+  return undefined;
+}
+
+function mergeColumnOrder(saved: string[] | undefined, discovered: string[]): string[] {
+  const cleaned = (saved || []).filter((item) => discovered.includes(item));
+  const tail = discovered.filter((item) => !cleaned.includes(item));
+  return [...cleaned, ...tail];
+}
+
+async function readKanbanSettings(): Promise<KanbanSettings> {
+  const row = await prisma.syncState.findUnique({ where: { key: KANBAN_SETTINGS_KEY } });
+  if (!row?.value) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(row.value) as KanbanSettings;
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+    const sanitized: KanbanSettings = { ...parsed };
+    if (sanitized.columnColors) {
+      const nextColors: Record<string, string> = {};
+      for (const [key, value] of Object.entries(sanitized.columnColors)) {
+        if (typeof value !== "string") {
+          continue;
+        }
+        const safe = sanitizeCssColor(value);
+        if (safe) {
+          nextColors[key] = safe;
+        }
+      }
+      sanitized.columnColors = nextColors;
+    }
+    return sanitized;
+  } catch {
+    return {};
+  }
+}
+
+async function writeKanbanSettings(settings: KanbanSettings): Promise<void> {
+  await prisma.syncState.upsert({
+    where: { key: KANBAN_SETTINGS_KEY },
+    update: { value: JSON.stringify(settings) },
+    create: { key: KANBAN_SETTINGS_KEY, value: JSON.stringify(settings) }
+  });
+}
+
+async function readRequestBody(req: http.IncomingMessage, maxBytes = 256_000): Promise<string> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buf.length;
+    if (total > maxBytes) {
+      throw new Error("Payload muito grande");
+    }
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
@@ -90,6 +195,57 @@ function startHealthServer(): void {
     const host = req.headers.host || `localhost:${env.PORT}`;
     const parsedUrl = new URL(req.url || "/", `http://${host}`);
 
+    if (method === "GET" && parsedUrl.pathname === "/api/kanban") {
+      try {
+        const settings = await readKanbanSettings();
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(settings));
+      } catch (error) {
+        logger.error({ error: toErrorLog(error) }, "Falha ao ler configuracao do kanban");
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Falha ao ler configuracao do kanban" }));
+      }
+      return;
+    }
+
+    if (method === "POST" && parsedUrl.pathname === "/api/kanban") {
+      try {
+        const rawBody = await readRequestBody(req);
+        const body = JSON.parse(rawBody) as unknown;
+        if (!body || typeof body !== "object") {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: "JSON invalido" }));
+          return;
+        }
+        const incoming = body as KanbanSettings;
+        const current = await readKanbanSettings();
+        const next: KanbanSettings = { ...current };
+        if (Array.isArray(incoming.columnOrder)) {
+          next.columnOrder = incoming.columnOrder.filter((item) => typeof item === "string");
+        }
+        if (incoming.columnColors && typeof incoming.columnColors === "object") {
+          const merged: Record<string, string> = { ...(next.columnColors || {}) };
+          for (const [key, value] of Object.entries(incoming.columnColors)) {
+            if (typeof key === "string" && typeof value === "string" && value.trim().length > 0) {
+              const safe = sanitizeCssColor(value);
+              if (safe) {
+                merged[key] = safe;
+              }
+            }
+          }
+          next.columnColors = merged;
+        }
+        await writeKanbanSettings(next);
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(next));
+      } catch (error) {
+        logger.error({ error: toErrorLog(error) }, "Falha ao salvar configuracao do kanban");
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Falha ao salvar configuracao do kanban" }));
+      }
+      return;
+    }
+
     if (method === "GET" && parsedUrl.pathname === "/") {
       const q = (parsedUrl.searchParams.get("q") || "").trim();
       const statusFilter = (parsedUrl.searchParams.get("status") || "").trim();
@@ -106,6 +262,10 @@ function startHealthServer(): void {
       }> = [];
       let statuses: string[] = [];
       let groups: string[] = [];
+      let syncedTotal = 0;
+      let filteredTotal = 0;
+      let glpiRemoteTotal: number | null = null;
+      let kanbanSettings: KanbanSettings = {};
       try {
         const assignedGroupTicketIds =
           assignedGroupFilter.trim().length > 0
@@ -158,6 +318,20 @@ function startHealthServer(): void {
           ]
         };
 
+        const [totalDb, totalFiltered, glpiTotalRow, kanbanStored] = await Promise.all([
+          prisma.ticket.count(),
+          prisma.ticket.count({ where }),
+          prisma.syncState.findUnique({ where: { key: "glpi_ticket_total" } }),
+          readKanbanSettings()
+        ]);
+        syncedTotal = totalDb;
+        filteredTotal = totalFiltered;
+        kanbanSettings = kanbanStored;
+        if (glpiTotalRow?.value) {
+          const parsedTotal = Number(glpiTotalRow.value);
+          glpiRemoteTotal = Number.isFinite(parsedTotal) ? parsedTotal : null;
+        }
+
         latestTickets = await prisma.ticket.findMany({
           where,
           orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
@@ -206,15 +380,28 @@ function startHealthServer(): void {
         existing.push(ticket);
         ticketsByStatus.set(key, existing);
       }
-      const orderedStatusKeys = Array.from(new Set([...statuses, ...Array.from(ticketsByStatus.keys())]));
+      const discoveredStatusKeys = Array.from(new Set([...statuses, ...Array.from(ticketsByStatus.keys())]));
+      const orderedStatusKeys = mergeColumnOrder(kanbanSettings.columnOrder, discoveredStatusKeys);
+
+      const buildColumnInlineStyle = (statusKey: string): string => {
+        const override = kanbanSettings.columnColors?.[statusKey];
+        if (override) {
+          const border = hslFromSeed(`colsav:${statusKey}`, 55, 72);
+          return `--col-bg:${override};--col-border:${border};`;
+        }
+        return columnChromeStyle(statusKey);
+      };
+
       const kanbanColumnsHtml = orderedStatusKeys
         .map((statusKey) => {
           const cards = ticketsByStatus.get(statusKey) || [];
+          const columnStyle = buildColumnInlineStyle(statusKey);
           const cardsHtml = cards
             .map((ticket) => {
               const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
               const safeGroup = escapeHtml(ticket.contractGroupName || "-");
-              return `<div class="kanban-card">
+              const cardStyle = cardChromeStyle(String(ticket.glpiTicketId));
+              return `<div class="kanban-card" draggable="false" style="${escapeHtml(cardStyle)}">
                 <div><strong>#${ticket.glpiTicketId}</strong></div>
                 <div>${safeTitle}</div>
                 <div class="small">Grupo: ${safeGroup}</div>
@@ -223,7 +410,7 @@ function startHealthServer(): void {
               </div>`;
             })
             .join("");
-          return `<div class="kanban-column">
+          return `<div class="kanban-column" draggable="true" data-status="${escapeHtml(statusKey)}" style="${escapeHtml(columnStyle)}">
             <h3>${escapeHtml(statusKey)} <span class="small">(${cards.length})</span></h3>
             ${cardsHtml || '<div class="small">(sem chamados)</div>'}
           </div>`;
@@ -236,39 +423,107 @@ function startHealthServer(): void {
         .map((item) => `<option value="${escapeHtml(item)}" ${item === groupFilter ? "selected" : ""}>${escapeHtml(item)}</option>`)
         .join("");
 
+      const remaining =
+        glpiRemoteTotal !== null && glpiRemoteTotal >= 0 ? Math.max(glpiRemoteTotal - syncedTotal, 0) : null;
+      const remoteLabel =
+        glpiRemoteTotal === null
+          ? "Total remoto GLPI ainda nao disponivel (aparece apos a primeira pagina com header Content-Range)."
+          : String(glpiRemoteTotal);
+      const remainingLabel = remaining === null ? "—" : String(remaining);
+
+      const filterLines: string[] = [];
+      filterLines.push(
+        `<div><span class="chip">Busca:</span> ${q ? escapeHtml(q) : '<span class="muted">(vazio)</span>'}</div>`
+      );
+      filterLines.push(
+        `<div><span class="chip">Status:</span> ${
+          statusFilter ? escapeHtml(statusFilter) : '<span class="muted">(todos)</span>'
+        }</div>`
+      );
+      filterLines.push(
+        `<div><span class="chip">Grupo:</span> ${
+          groupFilter ? escapeHtml(groupFilter) : '<span class="muted">(todos)</span>'
+        }</div>`
+      );
+      filterLines.push(
+        `<div><span class="chip">Grupo tecnico atribuido:</span> ${
+          assignedGroupFilter ? escapeHtml(assignedGroupFilter) : '<span class="muted">(vazio)</span>'
+        }</div>`
+      );
+      filterLines.push(`<div><span class="chip">Somente abertos:</span> ${onlyOpen ? "Sim" : "Nao"}</div>`);
+
       const html = `<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>GLPI Sync MVP</title>
+    <title>Chamados GLPI</title>
     <style>
       body { font-family: Arial, sans-serif; margin: 2rem; color: #222; }
       h1 { margin-bottom: 0.5rem; }
       code { background: #f5f5f5; padding: 0.15rem 0.35rem; border-radius: 4px; }
       ul { line-height: 1.8; }
       .muted { color: #666; font-size: 0.95rem; }
+      .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+      .metric { border: 1px solid #e2e2e2; border-radius: 10px; padding: 0.75rem; background: #fafafa; }
+      .metric strong { display: block; font-size: 1.35rem; margin-bottom: 0.25rem; }
       .filters { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
       .filters label { font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.35rem; }
       .filters input, .filters select { padding: 0.35rem 0.5rem; min-width: 180px; }
       .filters button { padding: 0.45rem 0.75rem; }
       .section-title { margin-top: 2rem; margin-bottom: 0.5rem; }
       .small { font-size: 12px; color: #666; }
-      .kanban-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.8rem; margin-top: 1rem; }
-      .kanban-column { border: 1px solid #ddd; border-radius: 8px; padding: 0.6rem; background: #fafafa; min-height: 120px; }
+      .filter-summary { border: 1px dashed #cfcfcf; border-radius: 10px; padding: 0.75rem; margin: 0.75rem 0 1rem 0; background: #fff; }
+      .filter-summary h2 { margin: 0 0 0.5rem 0; font-size: 1rem; }
+      .filter-lines { display: grid; gap: 0.35rem; font-size: 0.95rem; }
+      .chip { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 999px; background: #eef2ff; color: #1f2a5c; font-size: 0.8rem; margin-right: 0.35rem; }
+      .kanban-board { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 1rem; align-items: flex-start; }
+      .kanban-column { flex: 1 1 280px; max-width: 420px; border: 1px solid var(--col-border, #ddd); border-radius: 10px; padding: 0.65rem; background: var(--col-bg, #fafafa); min-height: 120px; cursor: grab; }
+      .kanban-column.dragging { opacity: 0.65; cursor: grabbing; }
       .kanban-column h3 { margin: 0 0 0.6rem 0; font-size: 14px; }
-      .kanban-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0.5rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.2rem; }
+      .kanban-card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 0.5rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.2rem; }
     </style>
   </head>
   <body>
-    <h1>GLPI Sync MVP</h1>
-    <p>Servico ativo no Railway.</p>
-    <ul>
-      <li><a href="/health"><code>GET /health</code></a> - healthcheck</li>
-      <li><a href="/tickets"><code>GET /tickets</code></a> - ultimos tickets (JSON)</li>
-      <li><code>GET /tickets?limit=10</code> - define quantidade (1..200)</li>
-    </ul>
-    <p class="muted">Kanban operacional de chamados por status.</p>
+    <h1>Chamados</h1>
+    <p class="muted">Quadro alimentado pelo cache local (SQLite). Categorias/filtros completos dependem dos dados ja sincronizados.</p>
+
+    <div class="dashboard">
+      <div class="metric">
+        <strong>${syncedTotal}</strong>
+        <span class="small">Chamados no banco (cache)</span>
+      </div>
+      <div class="metric">
+        <strong>${escapeHtml(remoteLabel)}</strong>
+        <span class="small">Total remoto GLPI (quando disponivel)</span>
+      </div>
+      <div class="metric">
+        <strong>${escapeHtml(remainingLabel)}</strong>
+        <span class="small">Falta sincronizar (estimado)</span>
+      </div>
+      <div class="metric">
+        <strong>${filteredTotal}</strong>
+        <span class="small">Resultado do filtro atual (contagem no SQLite)</span>
+      </div>
+      <div class="metric">
+        <strong>${latestTickets.length}</strong>
+        <span class="small">Cards no quadro (ate 100 mais recentes do filtro)</span>
+      </div>
+      <div class="metric">
+        <strong>${syncStatus.isRunning ? "Rodando" : "Parado"}</strong>
+        <span class="small">Sincronizacao GLPI — pagina ${syncStatus.lastPage || 0}, carregados ${syncStatus.lastLoaded || 0}, gravados ${
+          syncStatus.lastSaved || 0
+        }</span>
+      </div>
+    </div>
+
+    <div class="filter-summary">
+      <h2>Filtros aplicados</h2>
+      <div class="filter-lines">
+        ${filterLines.join("")}
+      </div>
+    </div>
+
     <form class="filters" method="GET" action="/">
       <label>Busca
         <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, titulo ou conteudo" />
@@ -297,9 +552,74 @@ function startHealthServer(): void {
       <button type="submit">Filtrar</button>
     </form>
     <h2 class="section-title">Kanban de chamados por status</h2>
-    <div class="kanban-board">
+    <p class="small">Arraste as colunas para reordenar. A ordem e salva automaticamente no SQLite (<code>/api/kanban</code>).</p>
+    <div class="kanban-board" id="kanban-board">
       ${kanbanColumnsHtml || '<div class="small">(nenhum ticket sincronizado ainda)</div>'}
     </div>
+    <script>
+      (function () {
+        const board = document.getElementById("kanban-board");
+        if (!board) return;
+
+        let dragEl = null;
+
+        function readOrder() {
+          return Array.from(board.querySelectorAll(".kanban-column")).map((col) => col.getAttribute("data-status") || "");
+        }
+
+        async function persist(order) {
+          try {
+            await fetch("/api/kanban", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ columnOrder: order })
+            });
+          } catch (e) {
+            console.warn("Falha ao salvar ordem do kanban", e);
+          }
+        }
+
+        board.addEventListener("dragstart", (event) => {
+          const column = event.target && event.target.closest ? event.target.closest(".kanban-column") : null;
+          if (!column || !board.contains(column)) return;
+          dragEl = column;
+          column.classList.add("dragging");
+          event.dataTransfer.effectAllowed = "move";
+          try {
+            event.dataTransfer.setData("text/plain", column.getAttribute("data-status") || "");
+          } catch (_) {}
+        });
+
+        board.addEventListener("dragend", (event) => {
+          const column = event.target && event.target.closest ? event.target.closest(".kanban-column") : null;
+          if (column) {
+            column.classList.remove("dragging");
+          }
+          dragEl = null;
+        });
+
+        board.addEventListener("dragover", (event) => {
+          const column = event.target && event.target.closest ? event.target.closest(".kanban-column") : null;
+          if (!column || !board.contains(column) || !dragEl || column === dragEl) {
+            return;
+          }
+          event.preventDefault();
+          const rect = column.getBoundingClientRect();
+          const before = event.clientX < rect.left + rect.width / 2;
+          if (before) {
+            board.insertBefore(dragEl, column);
+          } else {
+            board.insertBefore(dragEl, column.nextSibling);
+          }
+        });
+
+        board.addEventListener("drop", (event) => {
+          event.preventDefault();
+          const order = readOrder().filter(Boolean);
+          void persist(order);
+        });
+      })();
+    </script>
   </body>
 </html>`;
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });

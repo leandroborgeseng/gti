@@ -104,9 +104,17 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
   const previousCursor = cursorState?.value || null;
 
   while (true) {
-    const rawTickets = await getTicketsPage(page, pageSize);
+    const { tickets: rawTickets, remoteTotal } = await getTicketsPage(page, pageSize);
     loadedCount += rawTickets.length;
     let reachedAlreadySyncedWindow = false;
+
+    if (remoteTotal !== undefined) {
+      await prisma.syncState.upsert({
+        where: { key: "glpi_ticket_total" },
+        update: { value: String(remoteTotal) },
+        create: { key: "glpi_ticket_total", value: String(remoteTotal) }
+      });
+    }
 
     for (const rawTicket of rawTickets) {
       try {
