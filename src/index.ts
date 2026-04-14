@@ -94,6 +94,7 @@ function startHealthServer(): void {
       const q = (parsedUrl.searchParams.get("q") || "").trim();
       const statusFilter = (parsedUrl.searchParams.get("status") || "").trim();
       const groupFilter = (parsedUrl.searchParams.get("group") || "").trim();
+      const assignedGroupFilter = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const onlyOpen = parsedUrl.searchParams.get("open") === "1";
       const attrKeyFilter = (parsedUrl.searchParams.get("attrKey") || "").trim();
       const attrTicketFilter = Number(parsedUrl.searchParams.get("attrTicketId") || 0);
@@ -138,7 +139,9 @@ function startHealthServer(): void {
                 }
               : {},
             statusFilter ? { status: statusFilter } : {},
-            groupFilter ? { contractGroupName: groupFilter } : {},
+            groupFilter || assignedGroupFilter
+              ? { contractGroupName: { contains: assignedGroupFilter || groupFilter } }
+              : {},
             onlyOpen ? { NOT: [{ status: { contains: "Fechado" } }, { status: { contains: "Solucionado" } }] } : {}
           ]
         };
@@ -209,7 +212,7 @@ function startHealthServer(): void {
           const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
           const safeStatus = escapeHtml(ticket.status || "-");
           const safeGroup = escapeHtml(ticket.contractGroupName || "-");
-          const viewAllFieldsLink = `/?q=${encodeURIComponent(q)}&status=${encodeURIComponent(statusFilter)}&group=${encodeURIComponent(groupFilter)}&open=${onlyOpen ? "1" : "0"}&attrKey=${encodeURIComponent(attrKeyFilter)}&attrTicketId=${attrTicketFilter > 0 ? String(attrTicketFilter) : ""}&detailsTicketId=${ticket.glpiTicketId}`;
+          const viewAllFieldsLink = `/?q=${encodeURIComponent(q)}&status=${encodeURIComponent(statusFilter)}&group=${encodeURIComponent(groupFilter)}&assignedGroup=${encodeURIComponent(assignedGroupFilter)}&open=${onlyOpen ? "1" : "0"}&attrKey=${encodeURIComponent(attrKeyFilter)}&attrTicketId=${attrTicketFilter > 0 ? String(attrTicketFilter) : ""}&detailsTicketId=${ticket.glpiTicketId}`;
           return `<tr><td>${ticket.glpiTicketId}</td><td>${safeTitle}</td><td>${safeStatus}</td><td>${safeGroup}</td><td>${formatDateTime(ticket.dateModification)}</td><td>${formatDateTime(ticket.updatedAt)}</td><td><a href="${viewAllFieldsLink}">Ver todos os campos</a></td></tr>`;
         })
         .join("");
@@ -305,6 +308,9 @@ function startHealthServer(): void {
           ${groupOptions}
         </select>
       </label>
+      <label>Grupo tecnico atribuido (busca)
+        <input type="text" name="assignedGroup" value="${escapeHtml(assignedGroupFilter)}" placeholder="ex.: Helpdesk, Software de terceiros" />
+      </label>
       <label>Somente abertos
         <select name="open">
           <option value="0" ${onlyOpen ? "" : "selected"}>Nao</option>
@@ -359,6 +365,7 @@ function startHealthServer(): void {
       <input type="hidden" name="q" value="${escapeHtml(q)}" />
       <input type="hidden" name="status" value="${escapeHtml(statusFilter)}" />
       <input type="hidden" name="group" value="${escapeHtml(groupFilter)}" />
+      <input type="hidden" name="assignedGroup" value="${escapeHtml(assignedGroupFilter)}" />
       <input type="hidden" name="open" value="${onlyOpen ? "1" : "0"}" />
       <label>Atributo (keyPath)
         <input type="text" name="attrKey" value="${escapeHtml(attrKeyFilter)}" placeholder="ex.: status.name, team[0].role" />
@@ -399,12 +406,14 @@ function startHealthServer(): void {
       const limitParam = Number(parsedUrl.searchParams.get("limit") || 50);
       const limit = Number.isFinite(limitParam) ? Math.min(Math.max(Math.trunc(limitParam), 1), 200) : 50;
       const status = (parsedUrl.searchParams.get("status") || "").trim();
+      const assignedGroup = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const openOnly = parsedUrl.searchParams.get("open") === "1";
       try {
         const tickets = await prisma.ticket.findMany({
           where: {
             AND: [
               status ? { status } : {},
+              assignedGroup ? { contractGroupName: { contains: assignedGroup } } : {},
               openOnly ? { NOT: [{ status: { contains: "Fechado" } }, { status: { contains: "Solucionado" } }] } : {}
             ]
           },

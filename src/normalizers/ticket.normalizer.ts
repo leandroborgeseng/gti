@@ -57,9 +57,11 @@ function extractFromTeam(teamValue: unknown): { id: number | null; name: string 
     const teamItem = asObject(item);
     const role = asString(teamItem.role)?.toLowerCase();
     const type = asString(teamItem.type)?.toLowerCase();
-    if (role === "assigned" && type === "group") {
+    const href = asString(teamItem.href)?.toLowerCase();
+    const isGroupType = type === "group" || Boolean(href && href.includes("/group.form.php"));
+    if (role === "assigned" && isGroupType) {
       const id = asNumber(teamItem.id ?? teamItem.group_id ?? teamItem.groups_id);
-      const name = asString(teamItem.name ?? teamItem.group_name);
+      const name = asString(teamItem.display_name ?? teamItem.name ?? teamItem.group_name ?? teamItem.completename);
       return { id, name };
     }
   }
@@ -90,11 +92,14 @@ export function normalizeTicket(raw: unknown): NormalizedTicket {
 
   const contractGroupId =
     fromGroupsIdTech ??
+    asNumber(ticket.groups_id_assign) ??
+    asNumber(ticket.groups_id_assigned) ??
     asNumber(fromGroupTech.id ?? fromGroupTech.group_id ?? fromGroupTech.groups_id) ??
     fromTeam.id ??
     fromAssignedGroups.id;
 
   const contractGroupName =
+    asString(ticket.groups_id_assign_name ?? ticket.groups_id_assigned_name ?? ticket.assigned_group_name) ??
     asString(fromGroupTech.name ?? fromGroupTech.group_name) ??
     fromTeam.name ??
     fromAssignedGroups.name;
