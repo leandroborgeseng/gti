@@ -3,7 +3,11 @@
 import { FormEvent, useState } from "react";
 import { createGoal } from "@/lib/api";
 
-export function GoalCreateForm(): JSX.Element {
+type Props = {
+  onSuccess?: () => void;
+};
+
+export function GoalCreateForm({ onSuccess }: Props): JSX.Element {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -22,6 +26,7 @@ export function GoalCreateForm(): JSX.Element {
       });
       setStatus("Meta cadastrada com sucesso.");
       event.currentTarget.reset();
+      onSuccess?.();
     } catch (error) {
       setStatus(String(error instanceof Error ? error.message : error));
     } finally {
@@ -47,7 +52,7 @@ export function GoalCreateForm(): JSX.Element {
           disabled={busy}
           className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy ? "Salvando..." : "Cadastrar meta"}
+          {busy ? "A guardar…" : "Cadastrar meta"}
         </button>
         {status ? <span className="text-sm text-slate-600">{status}</span> : null}
       </div>

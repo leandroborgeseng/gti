@@ -3,7 +3,14 @@
 import { FormEvent, useState } from "react";
 import { createContract } from "@/lib/api";
 
-export function ContractForm(): JSX.Element {
+const field =
+  "w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-900/10";
+
+type Props = {
+  onSuccess?: () => void;
+};
+
+export function ContractForm({ onSuccess }: Props): JSX.Element {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -38,6 +45,7 @@ export function ContractForm(): JSX.Element {
       });
       setStatus("Contrato cadastrado com sucesso.");
       event.currentTarget.reset();
+      onSuccess?.();
     } catch (error) {
       setStatus(String(error instanceof Error ? error.message : error));
     } finally {
@@ -46,32 +54,69 @@ export function ContractForm(): JSX.Element {
   }
 
   return (
-    <form className="grid gap-2 md:grid-cols-3" onSubmit={(event) => void onSubmit(event)}>
-      <input required name="number" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Número do contrato" />
-      <input required name="name" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Nome do contrato" />
-      <input required name="companyName" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Fornecedor" />
-      <input required name="cnpj" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="CNPJ" />
-      <select name="contractType" className="rounded-lg border border-border px-3 py-2 text-sm">
-        <option value="SOFTWARE">SOFTWARE</option>
-        <option value="DATACENTER">DATACENTER</option>
-        <option value="INFRA">INFRA</option>
-        <option value="SERVICO">SERVICO</option>
-      </select>
-      <input required type="date" name="startDate" className="rounded-lg border border-border px-3 py-2 text-sm" />
-      <input required type="date" name="endDate" className="rounded-lg border border-border px-3 py-2 text-sm" />
-      <input required type="number" min="0.01" step="0.01" name="monthlyValue" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Valor mensal" />
-      <input required name="fiscalId" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Fiscal responsável (ID)" />
-      <input name="managerId" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Gestor (ID, opcional)" />
-      <textarea name="description" className="md:col-span-3 rounded-lg border border-border px-3 py-2 text-sm" rows={2} placeholder="Descrição" />
-      <div className="md:col-span-3 flex items-center gap-3">
+    <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => void onSubmit(event)}>
+      <div className="sm:col-span-2">
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Número do contrato</label>
+        <input required name="number" className={field} placeholder="Ex.: 001/2026" />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Nome</label>
+        <input required name="name" className={field} placeholder="Denominação do contrato" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Fornecedor</label>
+        <input required name="companyName" className={field} placeholder="Razão social" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">CNPJ</label>
+        <input required name="cnpj" className={field} placeholder="00.000.000/0000-00" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Tipo</label>
+        <select name="contractType" className={field}>
+          <option value="SOFTWARE">Software</option>
+          <option value="DATACENTER">Datacenter</option>
+          <option value="INFRA">Infraestrutura</option>
+          <option value="SERVICO">Serviço</option>
+        </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Valor mensal (R$)</label>
+        <input required type="number" min="0.01" step="0.01" name="monthlyValue" className={field} placeholder="0,00" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Início da vigência</label>
+        <input required type="date" name="startDate" className={field} />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Fim da vigência</label>
+        <input required type="date" name="endDate" className={field} />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Fiscal (ID)</label>
+        <input required name="fiscalId" className={field} placeholder="UUID do fiscal" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Gestor (ID, opcional)</label>
+        <input name="managerId" className={field} placeholder="UUID do gestor" />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Descrição (opcional)</label>
+        <textarea name="description" className={`${field} min-h-[88px] resize-y`} rows={3} placeholder="Objeto ou observações" />
+      </div>
+
+      {status ? (
+        <p className={`sm:col-span-2 text-sm ${status.includes("sucesso") ? "text-emerald-700" : "text-amber-800"}`}>{status}</p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
         <button
           type="submit"
           disabled={busy}
-          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy ? "Salvando..." : "Cadastrar contrato"}
+          {busy ? "A guardar…" : "Guardar contrato"}
         </button>
-        {status ? <span className="text-sm text-slate-600">{status}</span> : null}
       </div>
     </form>
   );

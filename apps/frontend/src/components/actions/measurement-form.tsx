@@ -3,7 +3,11 @@
 import { FormEvent, useState } from "react";
 import { createMeasurement } from "@/lib/api";
 
-export function MeasurementForm(): JSX.Element {
+type Props = {
+  onSuccess?: () => void;
+};
+
+export function MeasurementForm({ onSuccess }: Props): JSX.Element {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const now = new Date();
@@ -22,6 +26,7 @@ export function MeasurementForm(): JSX.Element {
       });
       setStatus("Medição criada com sucesso.");
       event.currentTarget.reset();
+      onSuccess?.();
     } catch (error) {
       setStatus(String(error instanceof Error ? error.message : error));
     } finally {
@@ -41,7 +46,7 @@ export function MeasurementForm(): JSX.Element {
           disabled={busy}
           className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy ? "Salvando..." : "Cadastrar medição"}
+          {busy ? "A guardar…" : "Cadastrar medição"}
         </button>
         {status ? <span className="text-sm text-slate-600">{status}</span> : null}
       </div>

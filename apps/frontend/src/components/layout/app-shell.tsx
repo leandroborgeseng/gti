@@ -9,8 +9,8 @@ const titles: Record<string, string> = {
   "/contracts": "Contratos",
   "/measurements": "Medições",
   "/glosas": "Glosas",
-  "/governance/tickets": "Governança de Chamados",
-  "/goals": "Metas Estratégicas",
+  "/governance/tickets": "Governança de chamados",
+  "/goals": "Metas estratégicas",
   "/suppliers": "Fornecedores",
   "/fiscais": "Fiscais",
   "/reports": "Relatórios"
@@ -21,23 +21,26 @@ export function AppShell({ children }: PropsWithChildren): JSX.Element {
   const title =
     titles[pathname ?? ""] ||
     (pathname?.startsWith("/contracts/")
-      ? "Detalhe do Contrato"
+      ? "Detalhe do contrato"
       : pathname?.startsWith("/measurements/")
-        ? "Detalhe da Medição"
+        ? "Detalhe da medição"
         : pathname?.startsWith("/governance/tickets/")
-          ? "Detalhe do Chamado Governança"
+          ? "Detalhe do chamado (governança)"
           : pathname?.startsWith("/goals/")
-            ? "Detalhe da Meta"
-            : "Gestão Contratual");
+            ? "Detalhe da meta"
+            : "Gestão contratual");
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-slate-100/60">
       <Sidebar />
       <main className="min-w-0 flex-1">
-        <header className="border-b border-border bg-white px-6 py-4">
-          <h2 className="text-xl font-semibold">{title}</h2>
+        <header className="sticky top-0 z-10 border-b border-slate-200/90 bg-white/90 px-6 py-3.5 backdrop-blur-md">
+          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
+            <p className="text-xs text-slate-500">Área autenticada</p>
+          </div>
         </header>
-        <div className="p-6">{children}</div>
+        <div className="p-6 md:p-8">{children}</div>
       </main>
     </div>
   );

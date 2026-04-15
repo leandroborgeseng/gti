@@ -15,7 +15,11 @@ type DetailProps = {
   ticketId: string;
 };
 
-export function GovernanceListActions(): JSX.Element {
+type ListActionsProps = {
+  onMonitoringComplete?: () => void;
+};
+
+export function GovernanceListActions({ onMonitoringComplete }: ListActionsProps): JSX.Element {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -26,6 +30,7 @@ export function GovernanceListActions(): JSX.Element {
       setMessage(
         `Monitoramento executado. Verificados: ${result.checked ?? 0} | SLA violados: ${result.slaViolated ?? 0} | Escalados: ${result.escalated ?? 0}`
       );
+      onMonitoringComplete?.();
     } catch (error) {
       setMessage(String(error instanceof Error ? error.message : error));
     } finally {
@@ -39,9 +44,9 @@ export function GovernanceListActions(): JSX.Element {
         type="button"
         onClick={() => void onRun()}
         disabled={busy}
-        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+        className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {busy ? "Executando..." : "Executar monitoramento SLA"}
+        {busy ? "A executar…" : "Executar monitoramento de SLA"}
       </button>
       {message ? <p className="text-sm text-slate-600">{message}</p> : null}
     </div>

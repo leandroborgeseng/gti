@@ -5,6 +5,6 @@ type CardProps = PropsWithChildren<{
 }>;
 
 export function Card({ children, className }: CardProps): JSX.Element {
-  const base = "rounded-xl border border-border bg-white p-4 shadow-sm";
+  const base = "rounded-md border border-slate-200/90 bg-white p-4 shadow-sm";
   return <section className={className ? `${base} ${className}` : base}>{children}</section>;
 }

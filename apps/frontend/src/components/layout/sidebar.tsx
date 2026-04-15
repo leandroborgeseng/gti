@@ -19,20 +19,31 @@ const navItems: Array<{ href: Route; label: string }> = [
 export function Sidebar(): JSX.Element {
   const pathname = usePathname();
   return (
-    <aside className="w-64 flex-shrink-0 border-r border-border bg-white p-4">
-      <h1 className="mb-6 text-lg font-bold">Gestão Contratual</h1>
-      <nav className="space-y-2">
+    <aside className="flex w-[15.5rem] shrink-0 flex-col border-r border-slate-200/90 bg-slate-50/95">
+      <div className="border-b border-slate-200/80 px-4 py-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">GTI</p>
+        <h1 className="mt-0.5 text-[15px] font-semibold leading-tight tracking-tight text-slate-900">Gestão contratual</h1>
+      </div>
+      <nav className="flex-1 space-y-0.5 px-2 py-3" aria-label="Navegação principal">
         {navItems.map((item) => {
           const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`block rounded-lg px-3 py-2 text-sm transition ${
-                active ? "bg-blue-600 text-white" : "text-slate-700 hover:bg-slate-100"
+              className={`group relative flex items-center rounded-md py-2 pl-3 pr-2 text-[13px] transition-colors ${
+                active
+                  ? "bg-white font-medium text-slate-900 shadow-sm ring-1 ring-slate-200/80"
+                  : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
               }`}
             >
-              {item.label}
+              {active ? (
+                <span
+                  className="absolute left-0 top-1/2 h-[60%] w-0.5 -translate-y-1/2 rounded-full bg-slate-900"
+                  aria-hidden
+                />
+              ) : null}
+              <span className="pl-1.5">{item.label}</span>
             </Link>
           );
         })}
