@@ -11,8 +11,8 @@ Este documento resume o que **ainda não está completo** ou **vale evoluir**, a
 
 ## Curto prazo (próximas entregas sugeridas)
 
-1. **Frontend com lockfile no CI**  
-   Gerar `apps/frontend/package-lock.json` e trocar o job do CI para `npm ci` (mesmo padrão do backend).
+1. **Frontend com lockfile no CI** *(feito)*  
+   `apps/frontend/package-lock.json` versionado e CI com `npm ci`.
 
 2. **Smoke test opcional no CI**  
    Executar `npm run smoke:regression` só em job manual ou com serviços mockados (hoje assume servidores no ar).
