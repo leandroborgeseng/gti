@@ -1,5 +1,5 @@
 # Validação contínua: TypeScript em raiz, backend NestJS e frontend Next.js.
-# Os apps não possuem package-lock.json próprio; usa-se npm install no CI.
+# Raiz e backend usam `npm ci` com lockfile. O frontend ainda usa `npm install` até existir lock.
 
 name: CI
 
@@ -34,7 +34,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install
+          cache: npm
+          cache-dependency-path: apps/backend/package-lock.json
+      - run: npm ci
       - run: npm run prisma:generate
       - run: npm run typecheck
 
