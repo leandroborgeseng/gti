@@ -2208,7 +2208,7 @@ function startHealthServer(): void {
             if (data.requesterUserId != null && data.requesterUserId !== "")
               rq.push("ID utilizador GLPI: " + String(data.requesterUserId));
             elRequester.textContent =
-              rq.length > 0 ? "Solicitante\n" + rq.join("\n") : "Solicitante: nao identificado no cache (sem nome nem ID).";
+              rq.length > 0 ? "Solicitante\\n" + rq.join("\\n") : "Solicitante: nao identificado no cache (sem nome nem ID).";
           }
           if (elObservers) {
             var obs = data.observers || [];
@@ -2223,7 +2223,7 @@ function startHealthServer(): void {
                 if (o.userId != null && o.userId !== "") bits.push("ID " + String(o.userId));
                 return bits.length ? "· " + bits.join(" — ") : "· Utilizador #" + String(o.userId != null ? o.userId : "?");
               });
-              elObservers.textContent = "Observadores (" + obs.length + ")\n" + ol.join("\n");
+              elObservers.textContent = "Observadores (" + obs.length + ")\\n" + ol.join("\\n");
             }
           }
           renderHistory(data.history || null);
