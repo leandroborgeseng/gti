@@ -821,45 +821,25 @@ function startHealthServer(): void {
           : String(glpiRemoteTotal);
       const remainingLabel = remaining === null ? "—" : String(remaining);
 
-      const filterLines: string[] = [];
-      filterLines.push(
-        `<div><span class="chip">Busca:</span> ${q ? escapeHtml(q) : '<span class="muted">(vazio)</span>'}</div>`
-      );
-      filterLines.push(
-        `<div><span class="chip">Status:</span> ${
-          statusFilter ? escapeHtml(statusFilter) : '<span class="muted">(todos)</span>'
-        }</div>`
-      );
-      filterLines.push(
-        `<div><span class="chip">Grupo:</span> ${
-          groupFilter ? escapeHtml(groupFilter) : '<span class="muted">(todos)</span>'
-        }</div>`
-      );
-      filterLines.push(
-        `<div><span class="chip">Grupo tecnico atribuido:</span> ${
-          assignedGroupFilter ? escapeHtml(assignedGroupFilter) : '<span class="muted">(vazio)</span>'
-        }</div>`
-      );
-      filterLines.push(
-        `<div><span class="chip">Somente abertos:</span> ${
-          openFilterEffective ? (ageBucketParam && !onlyOpen ? "Sim (faixa etaria)" : "Sim") : "Nao"
-        }</div>`
-      );
-      if (ageBucketParam) {
-        filterLines.push(
-          `<div><span class="chip">Idade (dashboard):</span> ${escapeHtml(ageLabelForSummary(ageBucketParam))}</div>`
-        );
-      }
-      filterLines.push(
-        `<div><span class="chip">Pendencia (inferida):</span> ${escapeHtml(pendenciaLabelForSummary(pendenciaParam))}</div>`
-      );
-      filterLines.push(
-        `<div><span class="chip">Escopo sync (GLPI → cache):</span> ${
-          ticketSyncScope === "all"
-            ? "Todos os chamados (abertos e fechados)"
-            : "Apenas abertos (fechados saem do cache)"
-        }</div>`
-      );
+      const pill = (label: string, value: string, muted = false): string =>
+        `<span class="filter-pill${muted ? " filter-pill--muted" : ""}"><span class="filter-pill__k">${escapeHtml(
+          label
+        )}</span><span class="filter-pill__v">${value}</span></span>`;
+      const openLabel = openFilterEffective ? (ageBucketParam && !onlyOpen ? "Sim · idade" : "Sim") : "Nao";
+      const filterPillsHtml = [
+        pill("Busca", q ? escapeHtml(q) : "—", !q),
+        pill("Status", statusFilter ? escapeHtml(statusFilter) : "Todos", !statusFilter),
+        pill("Grupo", groupFilter ? escapeHtml(groupFilter) : "Todos", !groupFilter),
+        pill("Grupo técnico", assignedGroupFilter ? escapeHtml(assignedGroupFilter) : "—", !assignedGroupFilter),
+        pill("Abertos", escapeHtml(openLabel), !openFilterEffective),
+        ...(ageBucketParam ? [pill("Idade", escapeHtml(ageLabelForSummary(ageBucketParam)), false)] : []),
+        pill("Pendência", escapeHtml(pendenciaLabelForSummary(pendenciaParam)), pendenciaParam === ""),
+        pill(
+          "Sync cache",
+          escapeHtml(ticketSyncScope === "all" ? "Todos os tickets" : "Só abertos"),
+          ticketSyncScope === "open"
+        )
+      ].join("");
 
       const agingDashHrefs: AgingDashHrefs = {
         week: homeKanbanSearch({
@@ -1018,100 +998,189 @@ function startHealthServer(): void {
         max-width: 100%;
       }
       .top-accordion__body { padding: 1rem 1rem 1.1rem; }
-      .sync-toolbar {
-        margin-top: 1rem;
-        padding-top: 1rem;
-        border-top: 1px dashed rgba(148, 163, 184, 0.5);
-      }
-      .sync-toolbar-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.65rem;
-        align-items: center;
-      }
-      .sync-toolbar-row select {
-        font: inherit;
-        font-size: 0.88rem;
-        padding: 0.45rem 0.6rem;
-        border-radius: 10px;
-        border: 1px solid #cbd5e1;
-        background: #f8fafc;
-        min-width: 220px;
-        max-width: 100%;
-      }
       .dashboard {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin-bottom: 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1.15rem;
       }
       .metric {
         background: var(--surface);
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        border-radius: var(--radius-md);
-        padding: 1rem 1.1rem;
-        box-shadow: var(--shadow-sm);
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+        box-shadow: none;
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
       }
-      .metric:hover { border-color: rgba(29, 78, 216, 0.35); box-shadow: var(--shadow-md); }
+      .metric:hover { border-color: rgba(29, 78, 216, 0.28); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06); }
       .metric strong { display: block; font-size: 1.5rem; font-weight: 700; color: var(--brand); letter-spacing: -0.02em; margin-bottom: 0.35rem; }
       .metric .small { color: var(--ink-muted); font-size: 0.8rem; line-height: 1.35; }
-      .filter-summary {
+      .filters-shell {
         background: var(--surface);
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        border-left: 4px solid var(--brand);
-        border-radius: var(--radius-md);
-        padding: 1rem 1.15rem;
-        margin-bottom: 1.25rem;
-        box-shadow: var(--shadow-sm);
-      }
-      .filter-summary h2 { margin: 0 0 0.6rem 0; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
-      .filter-lines { display: grid; gap: 0.4rem; font-size: 0.9rem; }
-      .chip { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--brand-soft); color: #1e3a8a; font-size: 0.72rem; font-weight: 600; margin-right: 0.35rem; }
-      .filters-panel {
-        background: var(--surface);
-        border: 1px solid rgba(148, 163, 184, 0.4);
+        border: 1px solid rgba(148, 163, 184, 0.28);
         border-radius: var(--radius-lg);
-        padding: 1.25rem 1.35rem;
-        margin-bottom: 2rem;
-        box-shadow: var(--shadow-md);
+        padding: 1.1rem 1.2rem 1.15rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
       }
-      .filters-title { margin: 0 0 1rem 0; font-size: 1rem; font-weight: 700; color: var(--ink); }
-      .filters { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; margin: 0; }
-      .filters label { font-size: 0.8rem; font-weight: 600; letter-spacing: -0.01em; color: var(--ink-muted); display: flex; flex-direction: column; gap: 0.4rem; }
-      .filters input, .filters select {
-        font: inherit;
+      .filters-shell__head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.35rem 1rem;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #f1f5f9;
+      }
+      .filters-shell__title {
+        margin: 0;
         font-size: 0.95rem;
-        font-weight: 500;
-        text-transform: none;
-        letter-spacing: normal;
+        font-weight: 700;
+        letter-spacing: -0.02em;
         color: var(--ink);
-        padding: 0.55rem 0.7rem;
-        min-width: 170px;
-        border: 1px solid #cbd5e1;
-        border-radius: 10px;
-        background: #f8fafc;
-        transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
       }
-      .filters input:focus, .filters select:focus {
+      .filters-shell__lede {
+        margin: 0;
+        font-size: 0.78rem;
+        color: var(--ink-muted);
+        font-weight: 500;
+      }
+      .filters-shell__pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-bottom: 1rem;
+        min-height: 1.5rem;
+      }
+      .filter-pill {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.35rem;
+        padding: 0.28rem 0.65rem 0.32rem;
+        border-radius: 999px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        font-size: 0.78rem;
+        line-height: 1.25;
+      }
+      .filter-pill--muted {
+        opacity: 0.72;
+        background: #fafafa;
+      }
+      .filter-pill__k {
+        font-weight: 600;
+        color: #64748b;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .filter-pill__v {
+        font-weight: 600;
+        color: #0f172a;
+        max-width: 18rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .filters-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.75rem 1rem;
+        align-items: end;
+        margin: 0;
+      }
+      .filters-grid--wide {
+        grid-column: 1 / -1;
+      }
+      .filters-grid label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #64748b;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-width: 0;
+      }
+      .filters-grid input,
+      .filters-grid select {
+        font: inherit;
+        font-size: 0.9rem;
+        font-weight: 500;
+        letter-spacing: normal;
+        text-transform: none;
+        color: var(--ink);
+        padding: 0.5rem 0.65rem;
+        width: 100%;
+        min-width: 0;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      .filters-grid input:focus,
+      .filters-grid select:focus {
         outline: none;
         border-color: var(--brand);
-        background: #fff;
-        box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
+        box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.12);
       }
-      .filters button {
+      .filters-grid__submit {
+        grid-column: 1 / -1;
+        justify-self: start;
+        margin-top: 0.15rem;
+      }
+      .filters-grid__submit button {
         font: inherit;
         font-weight: 600;
-        padding: 0.6rem 1.25rem;
+        font-size: 0.88rem;
+        padding: 0.52rem 1.2rem;
         border: none;
-        border-radius: 10px;
-        background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+        border-radius: 8px;
+        background: var(--brand);
         color: #fff;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(29, 78, 216, 0.35);
-        transition: transform 0.12s ease, box-shadow 0.12s ease;
+        transition: filter 0.15s ease, transform 0.12s ease;
       }
-      .filters button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(29, 78, 216, 0.4); }
+      .filters-grid__submit button:hover {
+        filter: brightness(1.06);
+        transform: translateY(-1px);
+      }
+      .filters-shell__sync {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #f1f5f9;
+      }
+      .filters-shell__sync-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 0.75rem;
+      }
+      .filters-shell__sync-h {
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #64748b;
+        margin-right: 0.25rem;
+      }
+      .filters-shell__sync-select {
+        font: inherit;
+        font-size: 0.82rem;
+        padding: 0.4rem 0.55rem;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        min-width: 11rem;
+        max-width: 100%;
+      }
+      .filters-shell__sync-msg {
+        margin: 0.5rem 0 0 0;
+        font-size: 0.78rem;
+        font-weight: 500;
+      }
       .section-head { margin: 0 0 0.75rem 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.75rem 1rem; justify-content: space-between; }
       .section-head--kanban { align-items: flex-start; gap: 0.75rem 1.25rem; }
       .section-head--kanban > div:first-child { flex: 1 1 12rem; min-width: 0; }
@@ -1445,9 +1514,10 @@ function startHealthServer(): void {
       }
       .kanban-fs-root:fullscreen .kanban-column,
       .kanban-fs-root:-webkit-full-screen .kanban-column {
-        flex: 1 1 300px;
-        min-width: 272px;
-        max-width: 480px;
+        flex: 0 0 300px;
+        width: 300px;
+        min-width: 260px;
+        max-width: none;
         max-height: none;
       }
       .kanban-fs-root:fullscreen .kanban-column-body,
@@ -1478,10 +1548,23 @@ function startHealthServer(): void {
       .legend-swatch--fresh { background: rgb(167, 243, 208); border-color: rgb(21, 128, 61); }
       .legend-swatch--stale { background: rgb(254, 202, 202); border-color: rgb(185, 28, 28); }
       .legend-arrow { opacity: 0.45; margin: 0 0.2rem; font-weight: 600; }
-      .kanban-board { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+      .kanban-board {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 1rem;
+        align-items: stretch;
+        width: 100%;
+        overflow-x: auto;
+        overflow-y: visible;
+        padding-bottom: 0.35rem;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-gutter: stable;
+      }
       .kanban-column {
-        flex: 1 1 288px;
-        max-width: 400px;
+        flex: 0 0 300px;
+        width: 300px;
+        min-width: 260px;
+        max-width: none;
         border: 1px solid var(--col-border, #94a3b8);
         border-radius: var(--radius-md);
         padding: 0;
@@ -1694,66 +1777,63 @@ function startHealthServer(): void {
       </div>
     </div>
 
-    <div class="filter-summary">
-      <h2>Filtros aplicados</h2>
-      <div class="filter-lines">
-        ${filterLines.join("")}
-      </div>
-    </div>
-
-    <div class="filters-panel">
-      <h2 class="filters-title">Filtros</h2>
-      <form class="filters" method="GET" action="/">
+    <div class="filters-shell">
+      <header class="filters-shell__head">
+        <h2 class="filters-shell__title">Filtros do quadro</h2>
+        <p class="filters-shell__lede">Resumo · ajuste · cache GLPI</p>
+      </header>
+      <div class="filters-shell__pills" aria-label="Filtros aplicados">${filterPillsHtml}</div>
+      <form class="filters-grid" method="GET" action="/">
         <input type="hidden" name="age" value="${escapeHtml(ageBucketParam)}" />
         <label>Busca
-          <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, titulo ou conteudo" />
+          <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, título ou conteúdo" autocomplete="off" />
         </label>
         <label>Status
           <select name="status">
-            <option value="">(todos)</option>
+            <option value="">Todos</option>
             ${statusOptions}
           </select>
         </label>
         <label>Grupo
           <select name="group">
-            <option value="">(todos)</option>
+            <option value="">Todos</option>
             ${groupOptions}
           </select>
         </label>
-        <label>Grupo tecnico atribuido (busca)
-          <input type="text" name="assignedGroup" value="${escapeHtml(assignedGroupFilter)}" placeholder="ex.: Helpdesk, Software de terceiros" />
+        <label class="filters-grid--wide">Grupo técnico (contém)
+          <input type="text" name="assignedGroup" value="${escapeHtml(assignedGroupFilter)}" placeholder="Ex.: Helpdesk" autocomplete="off" />
         </label>
-        <label>Pendencia inferida
-          <select name="pendencia">
-            <option value="" ${pendenciaParam === "" ? "selected" : ""}>(todas)</option>
-            <option value="cliente" ${pendenciaParam.toLowerCase() === "cliente" ? "selected" : ""}>Aguardando cliente (nao depende da empresa)</option>
-            <option value="empresa" ${pendenciaParam.toLowerCase() === "empresa" ? "selected" : ""}>Aguardando empresa / equipe</option>
-            <option value="desconhecido" ${pendenciaParam.toLowerCase() === "desconhecido" ? "selected" : ""}>Indefinido / sem cache</option>
-            <option value="na" ${pendenciaParam.toLowerCase() === "na" ? "selected" : ""}>Encerrado (inferencia)</option>
+        <label>Pendência
+          <select name="pendencia" title="Inferência no cache">
+            <option value="" ${pendenciaParam === "" ? "selected" : ""}>Todas</option>
+            <option value="cliente" ${pendenciaParam.toLowerCase() === "cliente" ? "selected" : ""}>Cliente</option>
+            <option value="empresa" ${pendenciaParam.toLowerCase() === "empresa" ? "selected" : ""}>Empresa</option>
+            <option value="desconhecido" ${pendenciaParam.toLowerCase() === "desconhecido" ? "selected" : ""}>Indefinido</option>
+            <option value="na" ${pendenciaParam.toLowerCase() === "na" ? "selected" : ""}>Encerrado</option>
           </select>
         </label>
-        <label>Somente abertos
+        <label>Só abertos
           <select name="open">
-            <option value="0" ${onlyOpen ? "" : "selected"}>Nao</option>
+            <option value="0" ${onlyOpen ? "" : "selected"}>Não</option>
             <option value="1" ${onlyOpen ? "selected" : ""}>Sim</option>
           </select>
         </label>
-        <button type="submit">Aplicar filtros</button>
-      </form>
-      <div class="sync-toolbar">
-        <p class="small" style="margin:0 0 0.65rem 0">Sincronização com o GLPI (próximo ciclo do cron): escolha se o SQLite guarda só abertos ou também fechados. O botão de pendência reconsulta o histórico GLPI para os chamados que batem com os filtros atuais (até 200).</p>
-        <div class="sync-toolbar-row">
-          <label class="small" style="display:flex;flex-direction:column;gap:0.35rem;margin:0;font-weight:600;color:var(--ink-muted)">Escopo no cache
-            <select id="sync-scope-select" aria-label="Escopo de sincronizacao no cache">
-              <option value="open" ${ticketSyncScope === "open" ? "selected" : ""}>Apenas abertos (remove fechados)</option>
-              <option value="all" ${ticketSyncScope === "all" ? "selected" : ""}>Todos (abertos e fechados)</option>
-            </select>
-          </label>
-          <button type="button" class="btn-secondary" id="btn-save-sync-scope">Salvar escopo</button>
-          <button type="button" class="btn-secondary" id="btn-recalc-pendencia">Recalcular pendência (filtros atuais)</button>
+        <div class="filters-grid__submit">
+          <button type="submit">Aplicar</button>
         </div>
-        <p class="small" id="sync-toolbar-msg" style="margin-top:0.55rem" hidden></p>
-      </div>
+      </form>
+      <footer class="filters-shell__sync">
+        <div class="filters-shell__sync-row">
+          <span class="filters-shell__sync-h">Cache</span>
+          <select id="sync-scope-select" class="filters-shell__sync-select" aria-label="Escopo de sincronizacao no cache" title="Próximo ciclo do cron">
+            <option value="open" ${ticketSyncScope === "open" ? "selected" : ""}>Só abertos no SQLite</option>
+            <option value="all" ${ticketSyncScope === "all" ? "selected" : ""}>Todos (abertos + fechados)</option>
+          </select>
+          <button type="button" class="btn-secondary" id="btn-save-sync-scope">Guardar escopo</button>
+          <button type="button" class="btn-secondary" id="btn-recalc-pendencia" title="Até 200 tickets com os filtros atuais">Recalcular pendência</button>
+        </div>
+        <p class="filters-shell__sync-msg" id="sync-toolbar-msg" hidden></p>
+      </footer>
     </div>
     <script type="application/json" id="kanban-filter-json">${filterJsonForScript}</script>
     <script>
