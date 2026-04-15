@@ -7,14 +7,14 @@ Este documento resume o que **ainda não está completo** ou **vale evoluir**, a
 - Núcleo GLPI: Kanban, modal, sincronização, health e APIs auxiliares.
 - Módulo contratos (Nest + Prisma + Next): contratos, medições, glosas, fornecedores, fiscais, dashboard, governança SLA, metas.
 - Regras de fluxo: cálculo/aprovação de medição, glosa com atualização de totais, auditoria ampliada em pontos críticos.
-- UX: telas mais simples, formulários reduzidos, smoke test local e CI de typecheck no GitHub.
+- UX: telas mais simples, formulários reduzidos e smoke test local; typecheck recomendado antes do push (sem workflow no GitHub).
 
 ## Curto prazo (próximas entregas sugeridas)
 
-1. **Frontend com lockfile no CI** *(feito)*  
-   `apps/frontend/package-lock.json` versionado e CI com `npm ci`.
+1. **Frontend com lockfile** *(feito)*  
+   `apps/frontend/package-lock.json` versionado; usar `npm ci` no deploy.
 
-2. **Smoke test opcional no CI**  
+2. **Smoke test opcional em pipeline**  
    Executar `npm run smoke:regression` só em job manual ou com serviços mockados (hoje assume servidores no ar).
 
 3. **Cadastro de estrutura do contrato na UI**  
@@ -47,5 +47,5 @@ Este documento resume o que **ainda não está completo** ou **vale evoluir**, a
 
 ## Como acompanhar o projeto no GitHub
 
-- **Actions**: pipeline de typecheck (`.github/workflows/ci.yml`).
-- **Commits recentes** em `main`: integração contínua, simplificação de fluxos e documentação de migração/validação.
+- **Actions**: não há workflow ativo (deploy Railway não depende de checks no GitHub).
+- **Commits recentes** em `main`: simplificação de fluxos e documentação de migração/validação.

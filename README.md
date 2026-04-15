@@ -133,11 +133,9 @@ Com os serviços no ar, execute:
 npm run smoke:regression
 ```
 
-## Integração contínua (GitHub Actions)
+## Verificação de tipos (local)
 
-Em cada push ou pull request para `main`, o repositório executa verificação de TypeScript (raiz, `apps/backend` e `apps/frontend`). Ver o ficheiro `.github/workflows/ci.yml`.
-
-Em local, equivalente:
+Não há workflow automático no GitHub (evita bloquear deploy no Railway quando a opção *Wait for CI* está ligada). Recomenda-se correr antes de fazer push:
 
 ```bash
 npm ci && npm run prisma:generate && npm run typecheck
