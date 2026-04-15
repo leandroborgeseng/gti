@@ -128,7 +128,8 @@ export async function getTicketsPage(page: number, pageSize = 100, options: GetT
       }
       const tickets = pickTicketArray(response.data);
       const remoteTotal = parseContentRangeTotal(response.headers?.["content-range"] as string | undefined);
-      logger.info({ page, count: tickets.length, path: ticketsPath, remoteTotal }, "Pagina de tickets carregada");
+      // Uma linha por página de API; em produção isso polui muito o painel de logs.
+      logger.debug({ page, count: tickets.length, path: ticketsPath, remoteTotal }, "Pagina de tickets carregada");
       return { tickets, remoteTotal };
     } catch (error) {
       lastError = error;

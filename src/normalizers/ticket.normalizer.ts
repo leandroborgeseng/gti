@@ -106,7 +106,8 @@ export function normalizeTicket(raw: unknown): NormalizedTicket {
     fromAssignedGroups.name;
 
   if (contractGroupId === null) {
-    logger.warn({ ticketId }, "Ticket sem grupo tecnico atribuido");
+    // Evita centenas de linhas iguais em produção (Railway); use LOG_LEVEL=debug para diagnosticar.
+    logger.debug({ ticketId }, "Ticket sem grupo tecnico atribuido");
   }
 
   const reqContact = extractRequesterContact(raw);
