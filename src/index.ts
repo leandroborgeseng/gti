@@ -8,6 +8,7 @@ import { prisma } from "./config/prisma";
 import { normalizeTicket } from "./normalizers/ticket.normalizer";
 import { syncTickets, SyncProgress, SyncTicketsResult } from "./jobs/sync-tickets.job";
 import { ensureSqliteSchema } from "./scripts/bootstrap-db";
+import { glpiClient } from "./services/glpi.client";
 import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
 import { enrichObserverRows, fetchCachedGlpiUserContact } from "./services/glpi-user.service";
@@ -511,6 +512,24 @@ function toErrorLog(error: unknown): { message: string; stack?: string } {
     return { message: error.message, stack: error.stack };
   }
   return { message: String(error) };
+}
+
+function resolveGlpiAssetUrl(raw: string): string | null {
+  const input = raw.trim();
+  if (!input) return null;
+  try {
+    const apiBase = new URL(env.GLPI_BASE_URL);
+    const glpiOrigin = `${apiBase.protocol}//${apiBase.host}`;
+    const fromApiBase = new URL(input, env.GLPI_BASE_URL);
+    const fromOrigin = new URL(input, `${glpiOrigin}/`);
+    const candidate = fromApiBase.origin === apiBase.origin ? fromApiBase : fromOrigin;
+    if (candidate.origin !== apiBase.origin) {
+      return null;
+    }
+    return candidate.toString();
+  } catch {
+    return null;
+  }
 }
 
 function startHealthServer(): void {
@@ -2358,6 +2377,29 @@ function startHealthServer(): void {
         const waitingBannerEl = document.getElementById("ticket-waiting-banner");
         const historyErrEl = document.getElementById("ticket-history-api-error");
 
+        function proxyGlpiAssetsInHtml(html) {
+          if (!html || typeof html !== "string") {
+            return "";
+          }
+          const wrapper = document.createElement("div");
+          wrapper.innerHTML = html;
+          const attrs = ["src", "href"];
+          attrs.forEach(function (attr) {
+            wrapper.querySelectorAll("[" + attr + "]").forEach(function (node) {
+              const raw = node.getAttribute(attr);
+              if (!raw) return;
+              if (raw.startsWith("data:") || raw.startsWith("blob:") || raw.startsWith("#")) return;
+              const proxied = "/api/glpi-asset?url=" + encodeURIComponent(raw);
+              node.setAttribute(attr, proxied);
+              if (attr === "href") {
+                node.setAttribute("target", "_blank");
+                node.setAttribute("rel", "noopener noreferrer");
+              }
+            });
+          });
+          return wrapper.innerHTML;
+        }
+
         function renderHistory(h) {
           if (!waitingBannerEl || !historyListEl || !historyErrEl) {
             return;
@@ -2402,7 +2444,7 @@ function startHealthServer(): void {
             bodyWrap.className = "history-body ql-snow";
             const inner = document.createElement("div");
             inner.className = "ql-editor";
-            inner.innerHTML = item.contentHtml || "";
+            inner.innerHTML = proxyGlpiAssetsInHtml(item.contentHtml || "");
             bodyWrap.appendChild(inner);
             art.appendChild(meta);
             art.appendChild(bodyWrap);
@@ -2616,6 +2658,41 @@ function startHealthServer(): void {
     if (method === "GET" && parsedUrl.pathname === "/health") {
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ status: "ok", service: "glpi-sync-mvp", sync: syncStatus }));
+      return;
+    }
+
+    if (method === "GET" && parsedUrl.pathname === "/api/glpi-asset") {
+      const rawUrl = (parsedUrl.searchParams.get("url") || "").trim();
+      const assetUrl = resolveGlpiAssetUrl(rawUrl);
+      if (!assetUrl) {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "URL de anexo/figura inválida" }));
+        return;
+      }
+      try {
+        const glpiRes = await glpiClient.get<ArrayBuffer>(assetUrl, {
+          responseType: "arraybuffer",
+          validateStatus: () => true
+        });
+        if (glpiRes.status < 200 || glpiRes.status >= 300 || !glpiRes.data) {
+          const body = typeof glpiRes.data === "string" ? glpiRes.data : "";
+          res.writeHead(glpiRes.status || 502, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: "Falha ao carregar anexo do GLPI", detail: body }));
+          return;
+        }
+        const contentType = String(glpiRes.headers?.["content-type"] || "application/octet-stream");
+        const contentDisposition = glpiRes.headers?.["content-disposition"];
+        res.writeHead(200, {
+          "Content-Type": contentType,
+          ...(contentDisposition ? { "Content-Disposition": String(contentDisposition) } : {}),
+          "Cache-Control": "private, max-age=300"
+        });
+        res.end(Buffer.from(glpiRes.data));
+      } catch (error) {
+        logger.error({ error: toErrorLog(error), assetUrl }, "Falha no proxy de anexo GLPI");
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Falha ao carregar anexo/figura do GLPI" }));
+      }
       return;
     }
 
