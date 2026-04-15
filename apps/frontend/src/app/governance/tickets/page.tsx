@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { GovernanceCreateForm } from "@/components/actions/governance-create-form";
@@ -63,7 +64,7 @@ export default async function GovernanceTicketsPage(): Promise<JSX.Element> {
                   <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusColor[ticket.status]}`}>{statusLabel[ticket.status] ?? ticket.status}</span>
                 </td>
                 <td className="px-2 py-2">
-                  <Link className="text-blue-700 hover:underline" href={`/governance/tickets/${ticket.id}`}>
+                  <Link className="text-blue-700 hover:underline" href={`/governance/tickets/${ticket.id}` as Route}>
                     Abrir timeline
                   </Link>
                 </td>

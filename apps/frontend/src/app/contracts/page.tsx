@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { ContractForm } from "@/components/actions/contract-form";
@@ -45,7 +46,7 @@ export default async function ContractsPage(): Promise<JSX.Element> {
                   <td className="py-2">{new Date(c.endDate).toLocaleDateString("pt-BR")}</td>
                   <td className="py-2">{statusLabel[c.status] ?? c.status}</td>
                   <td className="py-2">
-                    <Link href={`/contracts/${c.id}`} className="text-blue-600 hover:underline">
+                    <Link href={`/contracts/${c.id}` as Route} className="text-blue-600 hover:underline">
                       Ver detalhes
                     </Link>
                   </td>
@@ -61,7 +62,6 @@ export default async function ContractsPage(): Promise<JSX.Element> {
             </tbody>
           </table>
         </div>
-      </div>
       </Card>
     </div>
   );

@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { GoalCreateForm } from "@/components/actions/goal-create-form";
@@ -40,7 +41,7 @@ export default async function GoalsPage(): Promise<JSX.Element> {
                 <td className="px-2 py-2">{statusLabel[goal.status] ?? goal.status}</td>
                 <td className="px-2 py-2">{goal.calculatedProgress ?? 0}%</td>
                 <td className="px-2 py-2">
-                  <Link href={`/goals/${goal.id}`} className="text-blue-700 hover:underline">
+                  <Link href={`/goals/${goal.id}` as Route} className="text-blue-700 hover:underline">
                     Ver detalhe
                   </Link>
                 </td>

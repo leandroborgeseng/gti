@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { MeasurementForm } from "@/components/actions/measurement-form";
@@ -44,7 +45,7 @@ export default async function MeasurementsPage(): Promise<JSX.Element> {
                   <td className="py-2">{statusLabel[r.status] ?? r.status}</td>
                   <td className="py-2">R$ {Number(r.totalApprovedValue).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="py-2">
-                    <Link className="text-blue-600 hover:underline" href={`/measurements/${r.id}`}>
+                    <Link className="text-blue-600 hover:underline" href={`/measurements/${r.id}` as Route}>
                       Abrir
                     </Link>
                   </td>
@@ -60,7 +61,6 @@ export default async function MeasurementsPage(): Promise<JSX.Element> {
             </tbody>
           </table>
         </div>
-      </div>
       </Card>
     </div>
   );

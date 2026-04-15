@@ -142,5 +142,5 @@ Em local, equivalente:
 ```bash
 npm ci && npm run prisma:generate && npm run typecheck
 cd apps/backend && npm install && npm run prisma:generate && npm run typecheck
-cd apps/frontend && npm install && npm run typecheck
+cd apps/frontend && npm ci && npm run typecheck
 ```

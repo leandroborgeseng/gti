@@ -1,5 +1,5 @@
 # Validação contínua: TypeScript em raiz, backend NestJS e frontend Next.js.
-# Raiz e backend usam `npm ci` com lockfile. O frontend ainda usa `npm install` até existir lock.
+# Raiz, backend e frontend usam `npm ci` com lockfile.
 
 name: CI
 
@@ -50,5 +50,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      - run: npm ci
       - run: npm run typecheck

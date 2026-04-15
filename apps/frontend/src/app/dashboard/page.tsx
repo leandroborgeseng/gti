@@ -2,7 +2,13 @@ import { Card } from "@/components/ui/card";
 import { getDashboardAlerts, getDashboardSummary } from "@/lib/api";
 
 export default async function DashboardPage(): Promise<JSX.Element> {
-  const [summary, alerts] = await Promise.all([getDashboardSummary().catch(() => ({})), getDashboardAlerts().catch(() => ({}))]);
+  const empty: Record<string, unknown> = {};
+  const [summaryRaw, alertsRaw] = await Promise.all([
+    getDashboardSummary().catch(() => empty),
+    getDashboardAlerts().catch(() => empty)
+  ]);
+  const summary = summaryRaw as Record<string, unknown>;
+  const alerts = alertsRaw as Record<string, unknown>;
   const governance = (summary.governance ?? {}) as Record<string, number>;
   const goals = (summary.goals ?? {}) as Record<string, number>;
   const kpis = [
