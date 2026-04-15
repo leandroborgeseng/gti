@@ -9,6 +9,7 @@
     "dev": "tsx src/index.ts",
     "sync": "tsx src/index.ts",
     "smoke:regression": "tsx src/scripts/regression-smoke.ts",
+    "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push"
   },

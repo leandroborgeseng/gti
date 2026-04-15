@@ -77,6 +77,14 @@
   - contratos, medições, glosas, governança e metas.
 - Criação de checklist manual de regressão em `docs/validacao-etapa-2-5-regressao.md`.
 
+### Etapa 2.6 (hardening - CI)
+
+- Workflow GitHub Actions em `.github/workflows/ci.yml`:
+  - `typecheck` na raiz (`npm ci` + `tsc --noEmit`),
+  - `prisma generate` + `typecheck` em `apps/backend`,
+  - `typecheck` em `apps/frontend`.
+- Scripts `npm run typecheck` adicionados em `package.json` (raiz, backend e frontend).
+
 ## Observações de validação
 
 - Foram mantidas validações essenciais de domínio.

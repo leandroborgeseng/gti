@@ -131,3 +131,15 @@ Com os serviços no ar, execute:
 ```bash
 npm run smoke:regression
 ```
+
+## Integração contínua (GitHub Actions)
+
+Em cada push ou pull request para `main`, o repositório executa verificação de TypeScript (raiz, `apps/backend` e `apps/frontend`). Ver o ficheiro `.github/workflows/ci.yml`.
+
+Em local, equivalente:
+
+```bash
+npm ci && npm run prisma:generate && npm run typecheck
+cd apps/backend && npm install && npm run prisma:generate && npm run typecheck
+cd apps/frontend && npm install && npm run typecheck
+```
