@@ -853,7 +853,8 @@ function startHealthServer(): void {
       return;
     }
 
-    if (method === "GET" && parsedUrl.pathname === "/") {
+    const appPages = new Set(["/", "/dashboard", "/contracts", "/measurements", "/glosas", "/suppliers", "/fiscais", "/reports"]);
+    if (method === "GET" && appPages.has(parsedUrl.pathname)) {
       if (parsedUrl.searchParams.has("age")) {
         const redirectParams = new URLSearchParams(parsedUrl.searchParams);
         redirectParams.delete("age");
@@ -1127,6 +1128,42 @@ function startHealthServer(): void {
       ].join("");
 
       const openAgeDashboardHtml = renderOpenAgeDashboardHtml(ageBuckets);
+      const navGroups = [
+        {
+          label: "Operação",
+          items: [
+            { href: "/dashboard", label: "Dashboard" },
+            { href: "/measurements", label: "Medições" },
+            { href: "/glosas", label: "Glosas" }
+          ]
+        },
+        {
+          label: "Cadastros",
+          items: [
+            { href: "/contracts", label: "Contratos" },
+            { href: "/suppliers", label: "Fornecedores" },
+            { href: "/fiscais", label: "Fiscais" },
+            { href: "/reports", label: "Relatórios" }
+          ]
+        }
+      ];
+      const currentPath = parsedUrl.pathname === "/" ? "/dashboard" : parsedUrl.pathname;
+      const sidebarMenuHtml = navGroups
+        .map((group, idx) => {
+          const hasActive = group.items.some((item) => item.href === currentPath);
+          const links = group.items
+            .map((item) => {
+              const isActive = currentPath === item.href;
+              const shortLabel = item.label.slice(0, 2).toUpperCase();
+              return `<a href="${item.href}" title="${escapeHtml(item.label)}" data-short="${escapeHtml(shortLabel)}" class="app-nav__item${isActive ? " app-nav__item--active" : ""}"><span class="app-nav__item-label">${escapeHtml(item.label)}</span></a>`;
+            })
+            .join("");
+          return `<details class="app-nav__section" ${hasActive || idx === 0 ? "open" : ""}>
+            <summary class="app-nav__section-summary" title="${escapeHtml(group.label)}"><span class="app-nav__section-label">${escapeHtml(group.label)}</span></summary>
+            <div class="app-nav__section-links">${links}</div>
+          </details>`;
+        })
+        .join("");
 
       const filterJsonForScript = JSON.stringify({
         q,
@@ -1170,8 +1207,125 @@ function startHealthServer(): void {
         -webkit-font-smoothing: antialiased;
       }
       code { font-size: 0.88em; background: #f1f5f9; padding: 0.12rem 0.4rem; border-radius: 6px; color: #334155; }
+      .app-layout { display: flex; min-height: 100vh; }
+      .app-sidebar {
+        width: 248px;
+        flex-shrink: 0;
+        border-right: 1px solid #e2e8f0;
+        background: #ffffff;
+        padding: 1rem 0.8rem;
+        position: sticky;
+        top: 0;
+        height: 100vh;
+      }
+      .app-sidebar__head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.45rem;
+        margin-bottom: 0.9rem;
+      }
+      .app-sidebar__title {
+        margin: 0 0 0 0.2rem;
+        font-size: 0.84rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #334155;
+      }
+      .app-sidebar__toggle {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #334155;
+        cursor: pointer;
+        font-weight: 700;
+        line-height: 1;
+      }
+      .app-sidebar__toggle:hover { background: #f8fafc; border-color: #94a3b8; }
+      .app-nav { display: flex; flex-direction: column; gap: 0.35rem; }
+      .app-nav__section {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: #fff;
+      }
+      .app-nav__section-summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 0.55rem 0.72rem;
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 800;
+        color: #475569;
+      }
+      .app-nav__section-summary::-webkit-details-marker { display: none; }
+      .app-nav__section-links {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        padding: 0 0.35rem 0.35rem 0.35rem;
+      }
+      .app-nav__item {
+        text-decoration: none;
+        color: #334155;
+        font-size: 0.9rem;
+        font-weight: 600;
+        border-radius: 10px;
+        padding: 0.58rem 0.72rem;
+        transition: background 0.15s, color 0.15s;
+      }
+      .app-nav__item:hover { background: #eff6ff; color: #1e40af; }
+      .app-nav__item--active { background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%); color: #fff; }
+      .app-layout--sidebar-collapsed .app-sidebar { width: 78px; padding-left: 0.5rem; padding-right: 0.5rem; }
+      .app-layout--sidebar-collapsed .app-sidebar__title,
+      .app-layout--sidebar-collapsed .app-nav__section-label,
+      .app-layout--sidebar-collapsed .app-nav__item-label { display: none; }
+      .app-layout--sidebar-collapsed .app-sidebar__head { justify-content: center; }
+      .app-layout--sidebar-collapsed .app-nav__section { border: none; background: transparent; }
+      .app-layout--sidebar-collapsed .app-nav__section-summary { display: none; }
+      .app-layout--sidebar-collapsed .app-nav__section-links { padding: 0; gap: 0.35rem; }
+      .app-layout--sidebar-collapsed .app-nav__item {
+        width: 100%;
+        min-height: 2rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #dbeafe;
+        background: #eff6ff;
+        color: #1e40af;
+      }
+      .app-layout--sidebar-collapsed .app-nav__item::before {
+        content: attr(data-short);
+        font-size: 0.74rem;
+        font-weight: 700;
+      }
+      .app-layout--sidebar-collapsed .app-nav__item--active {
+        border-color: #1d4ed8;
+        background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+        color: #fff;
+      }
+      .app-layout--sidebar-collapsed .app-nav__item--active::before { color: #fff; }
+      .app-main { flex: 1 1 auto; min-width: 0; }
       .app-shell { max-width: 1320px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
       @media (min-width: 768px) { .app-shell { padding: 2rem 2rem 3.5rem; } }
+      @media (max-width: 980px) {
+        .app-layout { flex-direction: column; }
+        .app-sidebar {
+          width: 100%;
+          height: auto;
+          position: static;
+          border-right: none;
+          border-bottom: 1px solid #e2e8f0;
+        }
+        .app-layout--sidebar-collapsed .app-sidebar { width: 100%; }
+        .app-layout--sidebar-collapsed .app-nav__section-summary { display: block; }
+        .app-layout--sidebar-collapsed .app-nav__section-label,
+        .app-layout--sidebar-collapsed .app-nav__item-label { display: inline; }
+        .app-layout--sidebar-collapsed .app-nav__item::before { content: none; }
+      }
       .page-header { margin-bottom: 1rem; }
       .page-kicker { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); margin: 0 0 0.35rem 0; }
       .page-title { font-size: clamp(1.65rem, 3vw, 2.1rem); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.5rem 0; color: var(--ink); }
@@ -1872,6 +2026,17 @@ function startHealthServer(): void {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" crossorigin="anonymous" />
   </head>
   <body>
+    <div class="app-layout">
+    <aside class="app-sidebar" aria-label="Menu principal">
+      <div class="app-sidebar__head">
+        <p class="app-sidebar__title">Navegação</p>
+        <button type="button" id="sidebar-toggle" class="app-sidebar__toggle" title="Recolher ou expandir menu" aria-label="Recolher ou expandir menu">☰</button>
+      </div>
+      <nav class="app-nav">
+        ${sidebarMenuHtml}
+      </nav>
+    </aside>
+    <div class="app-main">
     <div class="app-shell">
     <header class="page-header">
       <p class="page-kicker">Operação · GLPI</p>
@@ -1886,7 +2051,7 @@ function startHealthServer(): void {
         <p class="filters-shell__lede">Aplicam ao quadro, ao painel de idade dos abertos e ao recálculo de pendência (até 200 cards por coluna)</p>
       </header>
       <div class="filters-shell__pills" aria-label="Filtros aplicados">${filterPillsHtml}</div>
-      <form id="kanban-filters-form" class="filters-grid" method="GET" action="/">
+      <form id="kanban-filters-form" class="filters-grid" method="GET" action="${escapeHtml(parsedUrl.pathname)}">
         <label>Busca
           <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, título ou conteúdo" autocomplete="off" />
         </label>
@@ -2226,6 +2391,26 @@ function startHealthServer(): void {
       })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js" crossorigin="anonymous"></script>
+    <script>
+      (() => {
+        const appLayout = document.querySelector(".app-layout");
+        const sidebarToggle = document.getElementById("sidebar-toggle");
+        if (!appLayout || !sidebarToggle) return;
+        const storageKey = "gti_sidebar_collapsed_v1";
+        const applySidebarState = (collapsed) => {
+          appLayout.classList.toggle("app-layout--sidebar-collapsed", collapsed);
+          sidebarToggle.setAttribute("aria-pressed", collapsed ? "true" : "false");
+          sidebarToggle.setAttribute("title", collapsed ? "Expandir menu lateral" : "Recolher menu lateral");
+        };
+        const savedState = window.localStorage.getItem(storageKey) === "1";
+        applySidebarState(savedState);
+        sidebarToggle.addEventListener("click", () => {
+          const collapsed = !appLayout.classList.contains("app-layout--sidebar-collapsed");
+          applySidebarState(collapsed);
+          window.localStorage.setItem(storageKey, collapsed ? "1" : "0");
+        });
+      })();
+    </script>
     <script>
       (function () {
         const modal = document.getElementById("ticket-modal");
@@ -2648,6 +2833,8 @@ function startHealthServer(): void {
         }
       })();
     </script>
+    </div>
+    </div>
   </body>
 </html>`;
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
