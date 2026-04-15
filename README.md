@@ -57,6 +57,60 @@ O servidor sobe na porta definida por `PORT` (padrão **3000**).
 - Ficheiro SQLite: `prisma/data.db` (caminho definido no `schema.prisma`).
 - Modelos principais: `Ticket`, `TicketAttribute`, `SyncState`.
 
+## Novo módulo de contratos públicos (arquitetura isolada)
+
+Para não quebrar o sistema atual de GLPI, o novo módulo foi iniciado em estrutura paralela:
+
+- `apps/backend`: API em NestJS + Prisma + PostgreSQL
+- `apps/frontend`: aplicação Next.js + Tailwind + Recharts (base para shadcn/ui)
+
+### Backend (`apps/backend`)
+
+- Módulos criados: `contracts`, `measurements`, `glosas`, `dashboard`.
+- Endpoints implementados conforme escopo inicial:
+  - `POST/GET/GET:id/PUT` de contratos
+  - `POST/GET/GET:id` de medições + `POST :id/calculate` + `POST :id/approve`
+  - `POST/GET` de glosas
+  - `GET /dashboard/summary` e `GET /dashboard/alerts`
+- Suporte inicial a anexos (placeholder persistido em tabela `Attachment`) para medições e glosas.
+- `AuditLog` automático nas alterações principais.
+
+### Frontend (`apps/frontend`)
+
+- Layout com sidebar fixa + header + conteúdo responsivo.
+- Rotas:
+  - `/dashboard`
+  - `/contracts`
+  - `/contracts/[id]`
+  - `/measurements`
+  - `/measurements/[id]`
+  - `/glosas`
+  - `/suppliers`
+  - `/fiscais`
+  - `/reports`
+- Dashboard com KPIs e gráficos base (Recharts).
+
+### Como iniciar o novo módulo
+
+Backend:
+
+```bash
+cd apps/backend
+npm install
+cp .env.example .env
+npm run prisma:generate
+npm run prisma:migrate
+npm run start:dev
+```
+
+Frontend:
+
+```bash
+cd apps/frontend
+npm install
+npm run dev
+```
+
 ## Documentação e idioma
 
 Toda a **documentação de projeto**, **ficheiros de exemplo** (`.env.example`), **regras Cursor** em `.cursor/rules/` e **textos orientados ao utilizador** na interface devem estar em **português do Brasil (pt-BR)**.

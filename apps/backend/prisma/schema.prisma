@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ContractType {
+  SOFTWARE
+  DATACENTER
+  INFRA
+  SERVICO
+}
+
+enum LawType {
+  LEI_8666
+  LEI_14133
+}
+
+enum ContractStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+}
+
+enum ContractFeatureStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DELIVERED
+  VALIDATED
+}
+
+enum MeasurementStatus {
+  OPEN
+  UNDER_REVIEW
+  APPROVED
+  GLOSSED
+}
+
+enum MeasurementItemType {
+  FEATURE
+  SERVICE
+}
+
+enum GlosaType {
+  ATRASO
+  NAO_ENTREGA
+  SLA
+  QUALIDADE
+}
+
+model Supplier {
+  id        String     @id @default(uuid())
+  name      String
+  cnpj      String     @unique
+  contracts Contract[]
+}
+
+model Fiscal {
+  id                String     @id @default(uuid())
+  name              String
+  email             String     @unique
+  phone             String
+  contractsAsFiscal Contract[] @relation("ContractFiscal")
+  contractsAsManager Contract[] @relation("ContractManager")
+}
+
+model Contract {
+  id               String             @id @default(uuid())
+  number           String             @unique
+  name             String
+  description      String?
+  companyName      String
+  cnpj             String
+  contractType     ContractType
+  lawType          LawType
+  startDate        DateTime
+  endDate          DateTime
+  totalValue       Decimal            @db.Decimal(18, 2)
+  monthlyValue     Decimal            @db.Decimal(18, 2)
+  status           ContractStatus
+  slaTarget        Decimal?           @db.Decimal(5, 2)
+  fiscalId         String
+  managerId        String
+  supplierId       String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  deletedAt        DateTime?
+  fiscal           Fiscal             @relation("ContractFiscal", fields: [fiscalId], references: [id])
+  manager          Fiscal             @relation("ContractManager", fields: [managerId], references: [id])
+  supplier         Supplier?          @relation(fields: [supplierId], references: [id])
+  modules          ContractModule[]
+  services         ContractService[]
+  measurements     Measurement[]
+
+  @@index([status, endDate])
+  @@index([deletedAt])
+}
+
+model ContractModule {
+  id         String            @id @default(uuid())
+  contractId String
+  name       String
+  weight     Decimal           @db.Decimal(8, 4)
+  contract   Contract          @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  features   ContractFeature[]
+}
+
+model ContractFeature {
+  id        String                @id @default(uuid())
+  moduleId  String
+  name      String
+  weight    Decimal               @db.Decimal(8, 4)
+  status    ContractFeatureStatus @default(NOT_STARTED)
+  module    ContractModule        @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+}
+
+model ContractService {
+  id         String   @id @default(uuid())
+  contractId String
+  name       String
+  unit       String
+  unitValue  Decimal  @db.Decimal(18, 4)
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+}
+
+model Measurement {
+  id                 String             @id @default(uuid())
+  contractId         String
+  referenceMonth     Int
+  referenceYear      Int
+  status             MeasurementStatus  @default(OPEN)
+  totalMeasuredValue Decimal            @default(0) @db.Decimal(18, 2)
+  totalApprovedValue Decimal            @default(0) @db.Decimal(18, 2)
+  totalGlosedValue   Decimal            @default(0) @db.Decimal(18, 2)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  deletedAt          DateTime?
+  contract           Contract           @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  items              MeasurementItem[]
+  glosas             Glosa[]
+  attachments        Attachment[]
+
+  @@unique([contractId, referenceMonth, referenceYear])
+}
+
+model MeasurementItem {
+  id              String              @id @default(uuid())
+  measurementId   String
+  type            MeasurementItemType
+  referenceId     String
+  quantity        Decimal             @db.Decimal(18, 4)
+  calculatedValue Decimal             @db.Decimal(18, 2)
+  measurement     Measurement         @relation(fields: [measurementId], references: [id], onDelete: Restrict)
+}
+
+model Glosa {
+  id            String   @id @default(uuid())
+  measurementId String
+  type          GlosaType
+  value         Decimal  @db.Decimal(18, 2)
+  justification String
+  createdBy     String
+  createdAt     DateTime @default(now())
+  measurement   Measurement @relation(fields: [measurementId], references: [id], onDelete: Restrict)
+  attachments   Attachment[]
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  entity    String
+  entityId  String
+  action    String
+  userId    String
+  timestamp DateTime @default(now())
+  oldData   Json?
+  newData   Json?
+}
+
+model Attachment {
+  id            String   @id @default(uuid())
+  fileName      String
+  mimeType      String
+  filePath      String
+  measurementId String?
+  glosaId       String?
+  createdAt     DateTime @default(now())
+  measurement   Measurement? @relation(fields: [measurementId], references: [id], onDelete: Restrict)
+  glosa         Glosa?       @relation(fields: [glosaId], references: [id], onDelete: Restrict)
+}
