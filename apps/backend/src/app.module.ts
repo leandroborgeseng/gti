@@ -6,9 +6,11 @@ import { GlosasModule } from "./modules/glosas/glosas.module";
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { GovernanceTicketsModule } from "./modules/governance-tickets/governance-tickets.module";
 import { GoalsModule } from "./modules/goals/goals.module";
+import { SuppliersModule } from "./modules/suppliers/suppliers.module";
+import { FiscaisModule } from "./modules/fiscais/fiscais.module";
 
 @Module({
-  imports: [ContractsModule, MeasurementsModule, GlosasModule, DashboardModule, GovernanceTicketsModule, GoalsModule],
+  imports: [ContractsModule, MeasurementsModule, GlosasModule, DashboardModule, GovernanceTicketsModule, GoalsModule, SuppliersModule, FiscaisModule],
   providers: [PrismaService]
 })
 export class AppModule {}

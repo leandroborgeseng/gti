@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { GoalCreateForm } from "@/components/actions/goal-create-form";
 import { getGoals } from "@/lib/api";
 
 export default async function GoalsPage(): Promise<JSX.Element> {
   const goals = await getGoals().catch(() => []);
   return (
     <div className="space-y-4">
+      <Card>
+        <h3 className="text-lg font-semibold">Nova meta</h3>
+        <p className="mb-3 mt-1 text-sm text-slate-600">Cadastre metas estratégicas com responsável, status e prioridade.</p>
+        <GoalCreateForm />
+      </Card>
       <Card>
         <h3 className="text-lg font-semibold">Metas e desdobramentos</h3>
         <p className="mt-1 text-sm text-slate-600">Acompanhe execução estratégica, ações vinculadas e progresso por meta.</p>

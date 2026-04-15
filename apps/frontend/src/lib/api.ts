@@ -97,6 +97,22 @@ export type Goal = {
   links?: Array<{ id: string; type: string; referenceId: string }>;
 };
 
+export type Supplier = {
+  id: string;
+  name: string;
+  cnpj: string;
+  contracts?: Array<{ id: string; number: string; name: string; status: string }>;
+};
+
+export type Fiscal = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  contractsAsFiscal?: Array<{ id: string; number: string; name: string; status: string }>;
+  contractsAsManager?: Array<{ id: string; number: string; name: string; status: string }>;
+};
+
 export async function getDashboardSummary(): Promise<Record<string, unknown>> {
   return request("/dashboard/summary");
 }
@@ -113,8 +129,37 @@ export async function getContract(id: string): Promise<Contract> {
   return request(`/contracts/${id}`);
 }
 
+export async function createContract(payload: {
+  number: string;
+  name: string;
+  description?: string;
+  companyName: string;
+  cnpj: string;
+  contractType: "SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO";
+  lawType: "LEI_8666" | "LEI_14133";
+  startDate: string;
+  endDate: string;
+  totalValue: number;
+  monthlyValue: number;
+  status: "ACTIVE" | "EXPIRED" | "SUSPENDED";
+  slaTarget?: number;
+  fiscalId: string;
+  managerId: string;
+  supplierId?: string;
+}): Promise<Contract> {
+  return request("/contracts", { method: "POST", body: JSON.stringify(payload) });
+}
+
 export async function getMeasurements(): Promise<Measurement[]> {
   return request("/measurements");
+}
+
+export async function createMeasurement(payload: {
+  contractId: string;
+  referenceMonth: number;
+  referenceYear: number;
+}): Promise<Measurement> {
+  return request("/measurements", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function getMeasurement(id: string): Promise<Measurement> {
@@ -143,8 +188,32 @@ export async function createGlosa(payload: {
   return request("/glosas", { method: "POST", body: JSON.stringify(payload) });
 }
 
+export async function getSuppliers(): Promise<Supplier[]> {
+  return request("/suppliers");
+}
+
+export async function createSupplier(payload: { name: string; cnpj: string }): Promise<Supplier> {
+  return request("/suppliers", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function getFiscais(): Promise<Fiscal[]> {
+  return request("/fiscais");
+}
+
+export async function createFiscal(payload: { name: string; email: string; phone: string }): Promise<Fiscal> {
+  return request("/fiscais", { method: "POST", body: JSON.stringify(payload) });
+}
+
 export async function getGovernanceTickets(): Promise<GovernanceTicket[]> {
   return request("/governance/tickets");
+}
+
+export async function createGovernanceTicket(payload: {
+  ticketId: string;
+  contractId: string;
+  openedAt: string;
+}): Promise<GovernanceTicket> {
+  return request("/governance/tickets", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function getGovernanceTicket(id: string): Promise<GovernanceTicket> {
@@ -169,8 +238,38 @@ export async function sendGovernanceToControladoria(
   return request(`/governance/tickets/${id}/send-to-controladoria`, { method: "POST", body: JSON.stringify(payload) });
 }
 
+export async function acknowledgeGovernanceTicket(id: string, payload: { acknowledgedAt: string }): Promise<GovernanceTicket> {
+  return request(`/governance/tickets/${id}/acknowledge`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function classifyGovernanceTicket(
+  id: string,
+  payload: { priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"; type: "CORRETIVA" | "EVOLUTIVA" }
+): Promise<GovernanceTicket> {
+  return request(`/governance/tickets/${id}/classify`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function notifyGovernanceManager(id: string, payload: { managerNotified: boolean; description: string }): Promise<GovernanceTicket> {
+  return request(`/governance/tickets/${id}/notify-manager`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function resolveGovernanceTicket(id: string, payload: { resolvedAt: string }): Promise<GovernanceTicket> {
+  return request(`/governance/tickets/${id}/resolve`, { method: "POST", body: JSON.stringify(payload) });
+}
+
 export async function getGoals(): Promise<Goal[]> {
   return request("/goals");
+}
+
+export async function createGoal(payload: {
+  title: string;
+  description?: string;
+  year: number;
+  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+  priority: string;
+  responsibleId: string;
+}): Promise<Goal> {
+  return request("/goals", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function getGoal(id: string): Promise<Goal> {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { GovernanceCreateForm } from "@/components/actions/governance-create-form";
 import { GovernanceListActions } from "@/components/actions/governance-actions";
 import { getGovernanceTickets } from "@/lib/api";
 
@@ -17,6 +18,11 @@ export default async function GovernanceTicketsPage(): Promise<JSX.Element> {
   const tickets = await getGovernanceTickets().catch(() => []);
   return (
     <div className="space-y-4">
+      <Card>
+        <h3 className="mb-1 text-lg font-semibold">Novo chamado de governança</h3>
+        <p className="mb-3 text-sm text-slate-600">Cadastre o chamado com vínculo contratual para iniciar o fluxo de SLA.</p>
+        <GovernanceCreateForm />
+      </Card>
       <Card>
         <h3 className="mb-1 text-lg font-semibold">Governança de chamados com SLA</h3>
         <p className="text-sm text-slate-600">

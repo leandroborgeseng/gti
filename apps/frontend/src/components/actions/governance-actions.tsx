@@ -1,7 +1,15 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { extendGovernanceDeadline, runGovernanceMonitoring, sendGovernanceToControladoria } from "@/lib/api";
+import {
+  acknowledgeGovernanceTicket,
+  classifyGovernanceTicket,
+  extendGovernanceDeadline,
+  notifyGovernanceManager,
+  resolveGovernanceTicket,
+  runGovernanceMonitoring,
+  sendGovernanceToControladoria
+} from "@/lib/api";
 
 type DetailProps = {
   ticketId: string;
@@ -42,7 +50,68 @@ export function GovernanceListActions(): JSX.Element {
 
 export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element {
   const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState<"extend" | "controladoria" | null>(null);
+  const [busy, setBusy] = useState<"ack" | "classify" | "notify" | "resolve" | "extend" | "controladoria" | null>(null);
+
+  async function onAcknowledge(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const acknowledgedAt = String(form.get("acknowledgedAt") ?? "");
+    try {
+      setBusy("ack");
+      await acknowledgeGovernanceTicket(ticketId, { acknowledgedAt });
+      setStatus("Ciência registrada com sucesso.");
+    } catch (error) {
+      setStatus(String(error instanceof Error ? error.message : error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onClassify(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const priority = String(form.get("priority") ?? "MEDIUM") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+    const type = String(form.get("type") ?? "CORRETIVA") as "CORRETIVA" | "EVOLUTIVA";
+    try {
+      setBusy("classify");
+      await classifyGovernanceTicket(ticketId, { priority, type });
+      setStatus("Chamado classificado com sucesso.");
+    } catch (error) {
+      setStatus(String(error instanceof Error ? error.message : error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onNotify(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const description = String(form.get("description") ?? "");
+    try {
+      setBusy("notify");
+      await notifyGovernanceManager(ticketId, { managerNotified: true, description });
+      setStatus("Notificação do gestor registrada.");
+    } catch (error) {
+      setStatus(String(error instanceof Error ? error.message : error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onResolve(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const resolvedAt = String(form.get("resolvedAt") ?? "");
+    try {
+      setBusy("resolve");
+      await resolveGovernanceTicket(ticketId, { resolvedAt });
+      setStatus("Chamado marcado como resolvido.");
+    } catch (error) {
+      setStatus(String(error instanceof Error ? error.message : error));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function onExtend(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -79,6 +148,65 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
 
   return (
     <div className="space-y-4">
+      <form className="space-y-2" onSubmit={(event) => void onAcknowledge(event)}>
+        <p className="text-sm font-semibold">Registrar ciência</p>
+        <input required name="acknowledgedAt" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="datetime-local" />
+        <button
+          type="submit"
+          disabled={busy != null}
+          className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy === "ack" ? "Salvando..." : "Registrar ciência"}
+        </button>
+      </form>
+
+      <form className="space-y-2" onSubmit={(event) => void onClassify(event)}>
+        <p className="text-sm font-semibold">Classificar chamado</p>
+        <div className="grid gap-2 md:grid-cols-2">
+          <select name="priority" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <option value="LOW">LOW</option>
+            <option value="MEDIUM">MEDIUM</option>
+            <option value="HIGH">HIGH</option>
+            <option value="CRITICAL">CRITICAL</option>
+          </select>
+          <select name="type" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <option value="CORRETIVA">CORRETIVA</option>
+            <option value="EVOLUTIVA">EVOLUTIVA</option>
+          </select>
+        </div>
+        <button
+          type="submit"
+          disabled={busy != null}
+          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy === "classify" ? "Salvando..." : "Classificar"}
+        </button>
+      </form>
+
+      <form className="space-y-2" onSubmit={(event) => void onNotify(event)}>
+        <p className="text-sm font-semibold">Notificar gestor</p>
+        <textarea required name="description" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" rows={2} placeholder="Descrição da ação de notificação" />
+        <button
+          type="submit"
+          disabled={busy != null}
+          className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy === "notify" ? "Salvando..." : "Registrar notificação"}
+        </button>
+      </form>
+
+      <form className="space-y-2" onSubmit={(event) => void onResolve(event)}>
+        <p className="text-sm font-semibold">Registrar resolução</p>
+        <input required name="resolvedAt" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="datetime-local" />
+        <button
+          type="submit"
+          disabled={busy != null}
+          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy === "resolve" ? "Salvando..." : "Marcar como resolvido"}
+        </button>
+      </form>
+
       <form className="space-y-2" onSubmit={(event) => void onExtend(event)}>
         <p className="text-sm font-semibold">Extensão de prazo</p>
         <input required name="newDeadline" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="datetime-local" />
