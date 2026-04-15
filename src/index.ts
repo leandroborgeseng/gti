@@ -12,7 +12,7 @@ import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
 import { enrichObserverRows, fetchCachedGlpiUserContact } from "./services/glpi-user.service";
 import { enrichWaitingPartyBatch, loadAndPersistWaitingParty } from "./services/glpi-ticket-history.service";
-import { fetchGlpiTicketJson, patchGlpiTicketJson } from "./services/glpi-ticket-write.service";
+import { fetchGlpiTicketJson, patchGlpiTicketJson, postGlpiTicketFollowup } from "./services/glpi-ticket-write.service";
 import { persistTicketFromRaw } from "./services/ticket-persist.service";
 import { extractGlpiScalarId } from "./utils/glpi-field-parse";
 import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
@@ -58,6 +58,99 @@ function asJsonRecord(value: unknown): Record<string, unknown> {
   }
   return {};
 }
+
+function toPositiveInt(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const n = Number(value.trim());
+    return n > 0 ? n : null;
+  }
+  return null;
+}
+
+function toLabel(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const o = value as Record<string, unknown>;
+    const lbl = o.label ?? o.name ?? o.title ?? o.completename;
+    if (typeof lbl === "string" && lbl.trim()) {
+      return lbl.trim();
+    }
+  }
+  return null;
+}
+
+function pushUnique(target: string[], value: string | null): void {
+  if (!value) return;
+  if (!target.includes(value)) target.push(value);
+}
+
+function extractTicketContext(rawUnknown: unknown): {
+  groups: string[];
+  assignees: string[];
+  category: string | null;
+  entity: string | null;
+} {
+  const raw = asJsonRecord(rawUnknown);
+  const groups: string[] = [];
+  const assignees: string[] = [];
+
+  pushUnique(groups, toLabel(raw.groups_id_assign_name ?? raw.groups_id_assigned_name ?? raw.assigned_group_name));
+  const assignedGroups = raw.assigned_groups;
+  if (Array.isArray(assignedGroups)) {
+    for (const row of assignedGroups) {
+      const o = asJsonRecord(row);
+      pushUnique(groups, toLabel(o.name ?? o.group_name ?? o.completename));
+    }
+  }
+  const team = raw.team;
+  if (Array.isArray(team)) {
+    for (const row of team) {
+      const o = asJsonRecord(row);
+      const role = String(o.role ?? o.type ?? "").toLowerCase();
+      const name = toLabel(o.display_name ?? o.name ?? o.realname ?? o.user_name);
+      if (role.includes("group") || role.includes("grupo")) {
+        pushUnique(groups, name);
+      } else if (role.includes("assign") || role.includes("tech") || role.includes("tecnico")) {
+        pushUnique(assignees, name);
+      }
+    }
+  }
+  const usersIdTech = raw.users_id_tech;
+  if (usersIdTech !== undefined && usersIdTech !== null) {
+    const id = toPositiveInt(usersIdTech);
+    if (id) pushUnique(assignees, `Utilizador #${id}`);
+  }
+
+  return {
+    groups,
+    assignees,
+    category: toLabel(raw.itilcategories_id_name ?? raw.category_name ?? raw.category),
+    entity: toLabel(raw.entities_id_name ?? raw.entity_name ?? raw.entity)
+  };
+}
+
+const STATUS_OPTIONS: Array<{ id: number; label: string }> = [
+  { id: 1, label: "Novo" },
+  { id: 2, label: "Em atendimento (atribuído)" },
+  { id: 3, label: "Em atendimento (planejado)" },
+  { id: 4, label: "Pendente" },
+  { id: 5, label: "Solucionado" },
+  { id: 6, label: "Fechado" }
+];
+
+const PRIORITY_OPTIONS: Array<{ id: number; label: string }> = [
+  { id: 1, label: "Muito baixa" },
+  { id: 2, label: "Baixa" },
+  { id: 3, label: "Média" },
+  { id: 4, label: "Alta" },
+  { id: 5, label: "Muito alta" },
+  { id: 6, label: "Crítica / major" }
+];
 
 /** Idade a partir de uma data ISO (criação ou última modificação GLPI). */
 function formatTicketAge(iso: string | null | undefined, end: Date): string {
@@ -533,7 +626,7 @@ function startHealthServer(): void {
       return;
     }
 
-    const glpiTicketApiMatch = parsedUrl.pathname.match(/^\/api\/tickets\/glpi\/(\d+)$/);
+    const glpiTicketApiMatch = parsedUrl.pathname.match(/^\/api\/tickets\/glpi\/(\d+)(?:\/followup)?$/);
     if (glpiTicketApiMatch) {
       const glpiId = Number(glpiTicketApiMatch[1]);
       if (!Number.isFinite(glpiId) || glpiId < 1) {
@@ -566,23 +659,47 @@ function startHealthServer(): void {
             res.end(JSON.stringify({ error: "Chamado nao encontrado no cache local" }));
             return;
           }
-          const raw = asJsonRecord(ticket.rawJson);
           const history = await loadAndPersistWaitingParty(glpiId, ticket.status);
-          const reqFb = extractRequesterContact(ticket.rawJson);
-          let requesterName = ticket.requesterName?.trim() ? ticket.requesterName : reqFb.displayName ?? null;
-          let requesterEmail = ticket.requesterEmail ?? reqFb.email ?? null;
-          let requesterUserId = ticket.requesterUserId ?? reqFb.userId;
-          const hasReqEmail = Boolean(requesterEmail && requesterEmail.trim().includes("@"));
-          const needsRequesterApi =
-            requesterUserId != null &&
-            requesterUserId > 0 &&
-            (!requesterName?.trim() || !hasReqEmail);
           let workingRaw: Record<string, unknown> =
             ticket.rawJson && typeof ticket.rawJson === "object" && !Array.isArray(ticket.rawJson)
               ? { ...(ticket.rawJson as Record<string, unknown>) }
               : {};
+          let requesterName = ticket.requesterName?.trim() ? ticket.requesterName : null;
+          let requesterEmail = ticket.requesterEmail ?? null;
+          let requesterUserId = ticket.requesterUserId ?? null;
+          const preObserverRows = extractObserversFromTicketRaw(workingRaw, requesterUserId ?? null);
+          const hasUnnamedObserver = preObserverRows.some((o) => !o.displayName && !o.email);
+          const shouldFetchFreshRaw = !requesterName || requesterUserId == null || preObserverRows.length === 0 || hasUnnamedObserver;
+          if (shouldFetchFreshRaw) {
+            try {
+              const freshUnknown = await fetchGlpiTicketJson(glpiId);
+              const freshRaw = asJsonRecord(freshUnknown);
+              if (Object.keys(freshRaw).length > 0) {
+                workingRaw = { ...workingRaw, ...freshRaw };
+              }
+            } catch (error) {
+              logger.warn({ glpiId, error: toErrorLog(error) }, "Falha no fetch em tempo real para complementar modal");
+            }
+          }
+
+          const reqFb = extractRequesterContact(workingRaw);
+          if (!requesterName?.trim()) {
+            requesterName = reqFb.displayName ?? null;
+          }
+          if (!requesterEmail) {
+            requesterEmail = reqFb.email ?? null;
+          }
+          if (requesterUserId == null) {
+            requesterUserId = reqFb.userId;
+          }
+          const hasReqEmail = Boolean(requesterEmail && requesterEmail.trim().includes("@"));
+          const requesterUserIdSafe = requesterUserId;
+          const needsRequesterApi =
+            requesterUserIdSafe != null &&
+            requesterUserIdSafe > 0 &&
+            (!requesterName?.trim() || !hasReqEmail);
           if (needsRequesterApi) {
-            const c = await fetchCachedGlpiUserContact(requesterUserId);
+            const c = await fetchCachedGlpiUserContact(requesterUserIdSafe as number);
             if (c?.displayName || c?.email) {
               if (!requesterName?.trim() && c.displayName) {
                 requesterName = c.displayName;
@@ -620,8 +737,8 @@ function startHealthServer(): void {
             content: ticket.content ?? "",
             statusLabel: ticket.status,
             priorityLabel: ticket.priority,
-            statusId: extractGlpiScalarId(raw.status),
-            priorityId: extractGlpiScalarId(raw.priority),
+            statusId: extractGlpiScalarId(workingRaw.status),
+            priorityId: extractGlpiScalarId(workingRaw.priority),
             dateCreation: ticket.dateCreation,
             dateModification: ticket.dateModification,
             contractGroupName: ticket.contractGroupName,
@@ -629,6 +746,9 @@ function startHealthServer(): void {
             requesterEmail: requesterEmail ?? "",
             requesterUserId,
             observers: observersResolved,
+            context: extractTicketContext(workingRaw),
+            statusOptions: STATUS_OPTIONS,
+            priorityOptions: PRIORITY_OPTIONS,
             history
           };
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -637,6 +757,30 @@ function startHealthServer(): void {
           logger.error({ error: toErrorLog(error) }, "Falha ao carregar ticket para API");
           res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ error: "Falha ao carregar ticket" }));
+        }
+        return;
+      }
+
+      if (method === "POST" && parsedUrl.pathname.endsWith("/followup")) {
+        try {
+          const rawBody = await readRequestBody(req);
+          const body = JSON.parse(rawBody) as Record<string, unknown>;
+          const content = typeof body.content === "string" ? body.content.trim() : "";
+          const isPrivate = body.isPrivate === true || body.isPrivate === 1 || body.isPrivate === "1";
+          if (!content) {
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ error: "Mensagem do acompanhamento não pode ficar vazia" }));
+            return;
+          }
+          await postGlpiTicketFollowup(glpiId, { content, isPrivate });
+          const fresh = await fetchGlpiTicketJson(glpiId);
+          await persistTicketFromRaw(fresh);
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (error) {
+          logger.error({ error: toErrorLog(error) }, "Falha ao publicar acompanhamento no GLPI");
+          res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: "Falha ao publicar acompanhamento no GLPI", detail: toErrorLog(error).message }));
         }
         return;
       }
@@ -1598,7 +1742,9 @@ function startHealthServer(): void {
         gap: 1rem;
       }
       .modal-field { display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.84rem; font-weight: 600; letter-spacing: -0.01em; color: var(--ink-muted); }
-      .modal-field input {
+      .modal-field input,
+      .modal-field select,
+      .modal-field textarea {
         font: inherit;
         font-size: 1rem;
         font-weight: 500;
@@ -1610,11 +1756,29 @@ function startHealthServer(): void {
         background: #f8fafc;
         color: var(--ink);
       }
-      .modal-field input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12); background: #fff; }
+      .modal-field textarea { resize: vertical; min-height: 4.5rem; }
+      .modal-field input:focus,
+      .modal-field select:focus,
+      .modal-field textarea:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12); background: #fff; }
       .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
       @media (max-width: 560px) { .modal-grid { grid-template-columns: 1fr; } }
       .modal-hint { margin: 0; font-size: 0.85rem; color: var(--ink-muted); }
       .modal-hint--multiline { white-space: pre-line; line-height: 1.55; }
+      .ticket-followup-composer {
+        margin-top: 0.15rem;
+        padding: 0.9rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
+      }
+      .ticket-followup-private {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.84rem;
+        color: #475569;
+      }
+      .ticket-followup-actions { margin-top: 0.6rem; }
       .modal-error { margin: 0; font-size: 0.88rem; font-weight: 500; color: #b91c1c; }
       .modal-actions { display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 0.25rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; }
       .btn-secondary {
@@ -1631,6 +1795,13 @@ function startHealthServer(): void {
         flex-shrink: 0;
       }
       .btn-secondary:hover { background: #f8fafc; border-color: #94a3b8; color: var(--ink); }
+      #btn-filters-apply {
+        background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+        border-color: #1d4ed8;
+        color: #fff;
+        box-shadow: 0 2px 10px rgba(29, 78, 216, 0.28);
+      }
+      #btn-filters-apply:hover { background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%); border-color: #1e3a8a; color: #fff; }
       #ticket-edit-submit {
         font: inherit;
         font-weight: 600;
@@ -1872,17 +2043,31 @@ function startHealthServer(): void {
             <p class="history-help">Linha do tempo: abertura, acompanhamentos e tarefas. O destaque de <strong>pendência</strong> considera a última mensagem <strong>pública</strong> — solicitante → ação da empresa; técnico → em geral aguarda o cliente. Privadas não entram na inferência.</p>
             <div id="ticket-history-list" class="history-list" aria-live="polite"></div>
           </div>
-          <div class="modal-grid">
-            <label class="modal-field">Status (ID numérico no GLPI)
-              <input type="number" id="ticket-edit-status-id" min="0" step="1" placeholder="ex.: 2" />
+          <div id="ticket-followup-composer" class="ticket-followup-composer">
+            <h3 class="history-heading">Novo acompanhamento</h3>
+            <label class="modal-field">Mensagem
+              <textarea id="ticket-followup-content" rows="4" placeholder="Escreva aqui o novo acompanhamento para o GLPI..."></textarea>
             </label>
-            <label class="modal-field">Prioridade (ID numérico no GLPI)
-              <input type="number" id="ticket-edit-priority-id" min="0" step="1" placeholder="ex.: 3" />
+            <label class="ticket-followup-private">
+              <input type="checkbox" id="ticket-followup-private" />
+              Marcar como privado
+            </label>
+            <div class="ticket-followup-actions">
+              <button type="button" class="btn-secondary" id="ticket-followup-send">Publicar acompanhamento</button>
+            </div>
+          </div>
+          <div class="modal-grid">
+            <label class="modal-field">Status
+              <select id="ticket-edit-status-id"></select>
+            </label>
+            <label class="modal-field">Prioridade
+              <select id="ticket-edit-priority-id"></select>
             </label>
           </div>
           <p class="small modal-hint">Rótulos atuais: <span id="ticket-edit-labels"></span></p>
           <p class="small modal-hint modal-hint--multiline" id="ticket-edit-requester" style="margin-top:0.35rem"></p>
           <p class="small modal-hint modal-hint--multiline" id="ticket-edit-observers" style="margin-top:0.35rem"></p>
+          <p class="small modal-hint modal-hint--multiline" id="ticket-edit-context" style="margin-top:0.35rem"></p>
           <p class="small modal-error" id="ticket-edit-error" hidden></p>
           <div class="modal-actions">
             <button type="button" class="btn-secondary" data-close-modal>Cancelar</button>
@@ -2027,6 +2212,10 @@ function startHealthServer(): void {
         const elLabels = document.getElementById("ticket-edit-labels");
         const elRequester = document.getElementById("ticket-edit-requester");
         const elObservers = document.getElementById("ticket-edit-observers");
+        const elContext = document.getElementById("ticket-edit-context");
+        const elFollowupContent = document.getElementById("ticket-followup-content");
+        const elFollowupPrivate = document.getElementById("ticket-followup-private");
+        const btnFollowupSend = document.getElementById("ticket-followup-send");
         const elError = document.getElementById("ticket-edit-error");
         const board = document.getElementById("kanban-board");
         if (!modal || !board) return;
@@ -2035,6 +2224,51 @@ function startHealthServer(): void {
         );
 
         let quillInstance = null;
+        function optionLabelById(options, idLike) {
+          if (idLike == null || idLike === "") return null;
+          var id = Number(idLike);
+          if (!Number.isFinite(id)) return null;
+          var arr = Array.isArray(options) ? options : [];
+          for (var i = 0; i < arr.length; i += 1) {
+            var o = arr[i];
+            if (o && Number(o.id) === id && o.label) {
+              return String(o.label);
+            }
+          }
+          return null;
+        }
+        function fillSelectWithOptions(selectEl, options, currentId, currentLabel, placeholder) {
+          if (!selectEl) return;
+          selectEl.innerHTML = "";
+          var ph = document.createElement("option");
+          ph.value = "";
+          ph.textContent = placeholder || "Manter atual";
+          selectEl.appendChild(ph);
+          var seen = {};
+          (options || []).forEach(function (opt) {
+            if (!opt || opt.id == null) return;
+            var id = Number(opt.id);
+            if (!Number.isFinite(id)) return;
+            if (seen[id]) return;
+            seen[id] = true;
+            var o = document.createElement("option");
+            o.value = String(id);
+            o.textContent = String(opt.label || ("ID " + id));
+            selectEl.appendChild(o);
+          });
+          if (currentId != null && currentId !== "") {
+            var cid = String(currentId);
+            if (!seen[Number(currentId)]) {
+              var current = document.createElement("option");
+              current.value = cid;
+              current.textContent = currentLabel ? String(currentLabel) + " (atual)" : "Valor atual (atual)";
+              selectEl.appendChild(current);
+            }
+            selectEl.value = cid;
+          } else {
+            selectEl.value = "";
+          }
+        }
         function ensureQuill() {
           if (typeof Quill === "undefined") {
             return null;
@@ -2182,6 +2416,9 @@ function startHealthServer(): void {
           elLabels.textContent = "";
           if (elRequester) elRequester.textContent = "";
           if (elObservers) elObservers.textContent = "";
+          if (elContext) elContext.textContent = "";
+          if (elFollowupContent) elFollowupContent.value = "";
+          if (elFollowupPrivate) elFollowupPrivate.checked = false;
           renderHistory(null);
           openModal();
           setError("A carregar chamado...");
@@ -2199,8 +2436,15 @@ function startHealthServer(): void {
           if (data.priorityId != null && data.priorityId !== "") {
             elPriorityId.value = String(data.priorityId);
           }
-          elLabels.textContent =
-            "status: " + (data.statusLabel || "—") + " | prioridade: " + (data.priorityLabel || "—");
+          fillSelectWithOptions(elStatusId, data.statusOptions || [], data.statusId, data.statusLabel, "Manter status");
+          fillSelectWithOptions(elPriorityId, data.priorityOptions || [], data.priorityId, data.priorityLabel, "Manter prioridade");
+          var statusTxt =
+            optionLabelById(data.statusOptions || [], data.statusId) ||
+            (data.statusLabel && String(data.statusLabel).trim() ? String(data.statusLabel) : "—");
+          var priorityTxt =
+            optionLabelById(data.priorityOptions || [], data.priorityId) ||
+            (data.priorityLabel && String(data.priorityLabel).trim() ? String(data.priorityLabel) : "—");
+          elLabels.textContent = "status: " + statusTxt + " | prioridade: " + priorityTxt;
           if (elRequester) {
             var rq = [];
             if (data.requesterName) rq.push("Nome: " + String(data.requesterName));
@@ -2225,6 +2469,19 @@ function startHealthServer(): void {
               });
               elObservers.textContent = "Observadores (" + obs.length + ")\\n" + ol.join("\\n");
             }
+          }
+          if (elContext) {
+            var cx = data.context || {};
+            var lines = [];
+            if (Array.isArray(cx.groups) && cx.groups.length > 0) {
+              lines.push("Grupos vinculados: " + cx.groups.join(" · "));
+            }
+            if (Array.isArray(cx.assignees) && cx.assignees.length > 0) {
+              lines.push("Técnicos atribuídos: " + cx.assignees.join(" · "));
+            }
+            if (cx.category) lines.push("Categoria: " + String(cx.category));
+            if (cx.entity) lines.push("Entidade: " + String(cx.entity));
+            elContext.textContent = lines.length > 0 ? lines.join("\\n") : "Contexto adicional: sem dados extras no payload deste chamado.";
           }
           renderHistory(data.history || null);
           setError("");
@@ -2304,6 +2561,42 @@ function startHealthServer(): void {
             if (submitBtn) submitBtn.disabled = false;
           }
         });
+
+        if (btnFollowupSend && elFollowupContent && elFollowupPrivate && elId) {
+          btnFollowupSend.addEventListener("click", async function () {
+            var glpiId = elId.value;
+            if (!glpiId) {
+              setError("Abra um chamado antes de publicar acompanhamento.");
+              return;
+            }
+            var msg = String(elFollowupContent.value || "").trim();
+            if (!msg) {
+              setError("Escreva uma mensagem para publicar no histórico.");
+              return;
+            }
+            btnFollowupSend.disabled = true;
+            setError("A publicar acompanhamento no GLPI...");
+            try {
+              const res = await fetch("/api/tickets/glpi/" + glpiId + "/followup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: msg, isPrivate: elFollowupPrivate.checked })
+              });
+              const data = await res.json().catch(function () { return null; });
+              if (!res.ok) {
+                throw new Error((data && (data.detail || data.error)) || "Falha ao publicar acompanhamento");
+              }
+              setError("");
+              elFollowupContent.value = "";
+              elFollowupPrivate.checked = false;
+              void loadTicket(glpiId);
+            } catch (err) {
+              setError(String(err && err.message ? err.message : err));
+            } finally {
+              btnFollowupSend.disabled = false;
+            }
+          });
+        }
       })();
     </script>
   </body>
