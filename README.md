@@ -49,6 +49,7 @@ O servidor sobe na porta definida por `PORT` (padrão **3000**).
 - Descarrega o OpenAPI (`doc.json`) para descobrir o caminho dos tickets, se não estiver fixo no `.env`.
 - Sincroniza chamados **logo ao iniciar** e de seguida conforme `CRON_EXPRESSION` (padrão: a cada 5 minutos).
 - O **âmbito** “só abertos” vs “todos no cache” pode ser guardado na interface (estado em SQLite).
+- Na sync **não** são feitos pedidos extra à API GLPI por utilizador (`GET /User/...`): isso deixaria o ciclo muito lento. Nome/e-mail do solicitante e observadores são enriquecidos **ao abrir o chamado no modal** (`GET /api/tickets/glpi/:id`), quando o impacto é aceitável.
 
 ## Base de dados
 
