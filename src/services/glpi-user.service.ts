@@ -69,18 +69,15 @@ export async function enrichObserverRows(rows: ObserverRow[]): Promise<ObserverR
       if (uid == null || uid <= 0) {
         return r;
       }
-      const hasName = Boolean(r.displayName?.trim());
       const hasEmail = hasRequesterEmail(r.email);
-      if (hasName && hasEmail) {
-        return r;
-      }
       const c = await fetchCachedGlpiUserContact(uid);
       if (!c) {
         return r;
       }
       return {
         userId: uid,
-        displayName: hasName ? r.displayName : c.displayName ?? r.displayName,
+        // Preferimos o nome do endpoint /User/:id para trocar logins curtos por nome completo.
+        displayName: c.displayName ?? r.displayName,
         email: hasEmail ? r.email : c.email ?? r.email
       };
     })

@@ -2,8 +2,10 @@ import { env } from "../config/env";
 import { prisma } from "../config/prisma";
 import { logger } from "../config/logger";
 import { normalizeTicket } from "../normalizers/ticket.normalizer";
+import { ensureActiveUsersCacheFresh, getCachedUsersByIds } from "../services/glpi-users-cache.service";
 import { persistNormalizedTicket } from "../services/ticket-persist.service";
 import { getTicketsPage, type TicketsPageResult } from "../services/tickets.service";
+import type { RequesterContact } from "../utils/ticket-requester";
 import { getTicketSyncScope } from "../utils/ticket-sync-scope";
 import { isTicketClosedStatus, ticketWhereClosed } from "../utils/ticket-status";
 
@@ -31,6 +33,9 @@ function parseIsoDate(value: string | null | undefined): number | null {
 }
 
 export async function syncTickets(options: SyncTicketsOptions = {}): Promise<SyncTicketsResult> {
+  await ensureActiveUsersCacheFresh().catch((error) => {
+    logger.warn({ error: String(error) }, "Cache de usuários ativos indisponível; sync segue sem fallback de nome");
+  });
   const syncScope = await getTicketSyncScope();
   logger.info(
     { syncScope },
@@ -78,6 +83,9 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     ticketPages.delete(page);
     loadedCount += rawTickets.length;
     let reachedAlreadySyncedWindow = false;
+    const normalizedPage = rawTickets.map((r) => normalizeTicket(r));
+    const requesterIds = normalizedPage.map((n) => n.requester_user_id).filter((id): id is number => typeof id === "number" && id > 0);
+    const requesterFallbackMap = await getCachedUsersByIds(requesterIds).catch(() => new Map<number, RequesterContact>());
 
     if (remoteTotal !== undefined) {
       await prisma.syncState.upsert({
@@ -87,8 +95,9 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
       });
     }
 
-    for (const rawTicket of rawTickets) {
-      const normalized = normalizeTicket(rawTicket);
+    for (let i = 0; i < rawTickets.length; i += 1) {
+      const rawTicket = rawTickets[i];
+      const normalized = normalizedPage[i];
       const normalizedDateMod = normalized.date_modification ?? normalized.date_creation;
       const currentDateMs = parseIsoDate(normalizedDateMod);
       const previousDateMs = parseIsoDate(previousCursor);
@@ -112,7 +121,11 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
           await prisma.ticket.deleteMany({ where: { glpiTicketId: normalized.id } });
           continue;
         }
-        const persistClosed = await persistNormalizedTicket(normalized, rawTicket);
+        const persistClosed = await persistNormalizedTicket(
+          normalized,
+          rawTicket,
+          normalized.requester_user_id ? requesterFallbackMap.get(normalized.requester_user_id) ?? null : null
+        );
         if (persistClosed === "saved") {
           savedCount += 1;
         } else {
@@ -121,7 +134,11 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
         continue;
       }
 
-      const persistResult = await persistNormalizedTicket(normalized, rawTicket);
+      const persistResult = await persistNormalizedTicket(
+        normalized,
+        rawTicket,
+        normalized.requester_user_id ? requesterFallbackMap.get(normalized.requester_user_id) ?? null : null
+      );
       if (persistResult === "saved") {
         savedCount += 1;
       } else {

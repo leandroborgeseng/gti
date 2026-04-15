@@ -3,6 +3,7 @@ import { logger } from "../config/logger";
 import { flattenAttributes } from "../lib/ticket-attributes-flatten";
 import { normalizeTicket } from "../normalizers/ticket.normalizer";
 import type { NormalizedTicket } from "../types/glpi.types";
+import type { RequesterContact } from "../utils/ticket-requester";
 import { getTicketSyncScope } from "../utils/ticket-sync-scope";
 import { isTicketClosedStatus } from "../utils/ticket-status";
 
@@ -17,14 +18,18 @@ export type PersistNormalizedResult = "saved" | "error";
 
 export async function persistNormalizedTicket(
   normalized: NormalizedTicket,
-  raw: unknown
+  raw: unknown,
+  requesterFallback?: RequesterContact | null
 ): Promise<PersistNormalizedResult> {
   if (!normalized.id) {
     return "error";
   }
 
   try {
-    /** Sem chamadas GET /User na sync: o payload da lista de tickets raramente traz nome/e-mail; o enriquecimento fica no GET do modal (`/api/tickets/glpi/:id`). */
+    const requesterName = normalized.requester_name ?? requesterFallback?.displayName ?? null;
+    const requesterEmail = normalized.requester_email ?? requesterFallback?.email ?? null;
+    const requesterUserId = normalized.requester_user_id ?? requesterFallback?.userId ?? null;
+    /** Sem chamadas GET /User por ticket na sync: usa fallback do cache local de usuários ativos (quando disponível). */
     const savedTicket = await prisma.ticket.upsert({
       where: {
         glpiTicketId: normalized.id
@@ -38,9 +43,9 @@ export async function persistNormalizedTicket(
         dateModification: normalized.date_modification,
         contractGroupId: normalized.contract_group_id,
         contractGroupName: normalized.contract_group_name,
-        requesterName: normalized.requester_name,
-        requesterEmail: normalized.requester_email,
-        requesterUserId: normalized.requester_user_id,
+        requesterName,
+        requesterEmail,
+        requesterUserId,
         rawJson: normalized.raw
       },
       create: {
@@ -53,9 +58,9 @@ export async function persistNormalizedTicket(
         dateModification: normalized.date_modification,
         contractGroupId: normalized.contract_group_id,
         contractGroupName: normalized.contract_group_name,
-        requesterName: normalized.requester_name,
-        requesterEmail: normalized.requester_email,
-        requesterUserId: normalized.requester_user_id,
+        requesterName,
+        requesterEmail,
+        requesterUserId,
         rawJson: normalized.raw
       },
       select: {

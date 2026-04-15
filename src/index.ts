@@ -13,6 +13,7 @@ import { getAccessToken } from "./services/auth.service";
 import { enrichObserverRows, fetchCachedGlpiUserContact } from "./services/glpi-user.service";
 import { enrichWaitingPartyBatch, loadAndPersistWaitingParty } from "./services/glpi-ticket-history.service";
 import { fetchGlpiTicketJson, patchGlpiTicketJson, postGlpiTicketFollowup } from "./services/glpi-ticket-write.service";
+import { getCachedUsersByIds } from "./services/glpi-users-cache.service";
 import { persistTicketFromRaw } from "./services/ticket-persist.service";
 import { extractGlpiScalarId } from "./utils/glpi-field-parse";
 import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
@@ -875,6 +876,7 @@ function startHealthServer(): void {
         over60: 0,
         noDate: 0
       };
+      let requesterFallbackById = new Map<number, { userId: number | null; displayName: string | null; email: string | null }>();
       try {
         const where = buildKanbanWhere({
           q,
@@ -939,6 +941,10 @@ function startHealthServer(): void {
         latestTickets = latestTicketRows;
         statuses = statusRows.map((item) => item.status).filter((item): item is string => Boolean(item));
         groups = groupRows.map((item) => item.contractGroupName).filter((item): item is string => Boolean(item));
+        const requesterIds = latestTicketRows
+          .map((t) => t.requesterUserId)
+          .filter((id): id is number => typeof id === "number" && id > 0);
+        requesterFallbackById = await getCachedUsersByIds(requesterIds).catch(() => new Map());
       } catch (error) {
         logger.error({ error: toErrorLog(error) }, "Falha ao carregar dados da pagina inicial");
       }
@@ -1010,8 +1016,9 @@ function startHealthServer(): void {
               const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
               const safeGroup = escapeHtml(ticket.contractGroupName || "-");
               const reqFromRaw = extractRequesterContact(ticket.rawJson);
-              const reqName = ticket.requesterName ?? reqFromRaw.displayName;
-              const reqEmail = ticket.requesterEmail ?? reqFromRaw.email;
+              const reqFromCache = ticket.requesterUserId ? requesterFallbackById.get(ticket.requesterUserId) : null;
+              const reqName = ticket.requesterName ?? reqFromRaw.displayName ?? reqFromCache?.displayName ?? null;
+              const reqEmail = ticket.requesterEmail ?? reqFromRaw.email ?? reqFromCache?.email ?? null;
               const safeRequester = escapeHtml(reqName || "—");
               const safeEmail = reqEmail ? escapeHtml(reqEmail) : "";
               const daysOpen = openDaysApprox(ticket.dateCreation, now);
