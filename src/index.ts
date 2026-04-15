@@ -2029,7 +2029,10 @@ function startHealthServer(): void {
         const elObservers = document.getElementById("ticket-edit-observers");
         const elError = document.getElementById("ticket-edit-error");
         const board = document.getElementById("kanban-board");
-        if (!modal || !form || !elId || !elName || !elQuillHost || !elStatusId || !elPriorityId || !elLabels || !elError || !board) return;
+        if (!modal || !board) return;
+        const coreReady = Boolean(
+          form && elId && elName && elQuillHost && elStatusId && elPriorityId && elLabels && elError
+        );
 
         let quillInstance = null;
         function ensureQuill() {
@@ -2074,6 +2077,9 @@ function startHealthServer(): void {
         }
 
         function setError(msg) {
+          if (!elError) {
+            return;
+          }
           if (!msg) {
             elError.hidden = true;
             elError.textContent = "";
@@ -2164,6 +2170,11 @@ function startHealthServer(): void {
         }
 
         async function loadTicket(glpiId) {
+          if (!coreReady || !form || !elId || !elName || !elStatusId || !elPriorityId || !elLabels) {
+            openModal();
+            setError("Falha ao abrir detalhes: elementos do modal não foram inicializados.");
+            return;
+          }
           setError("");
           elName.value = "";
           elStatusId.value = "";
@@ -2258,6 +2269,9 @@ function startHealthServer(): void {
           void loadTicket(id);
         });
 
+        if (!form || !elId || !elName || !elStatusId || !elPriorityId) {
+          return;
+        }
         form.addEventListener("submit", async (e) => {
           e.preventDefault();
           setError("");
