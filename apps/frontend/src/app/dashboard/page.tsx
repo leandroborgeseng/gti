@@ -6,7 +6,14 @@ const kpis = [
   { label: "Total executado", value: "R$ 7.820.000,00" },
   { label: "Total glosado", value: "R$ 432.000,00" },
   { label: "Economia gerada", value: "R$ 4.198.000,00" },
-  { label: "Percentual execução", value: "62,8%" }
+  { label: "Percentual execução", value: "62,8%" },
+  { label: "% chamados dentro do SLA", value: "78%" },
+  { label: "% chamados fora do SLA", value: "22%" },
+  { label: "Chamados escalados", value: "6" },
+  { label: "Na controladoria", value: "3" },
+  { label: "Metas planejadas", value: "8" },
+  { label: "Metas em andamento", value: "1" },
+  { label: "Metas concluídas", value: "0" }
 ];
 
 const monthly = [
@@ -26,7 +33,7 @@ const statusData = [
 export default function DashboardPage(): JSX.Element {
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         {kpis.map((kpi) => (
           <Card key={kpi.label}>
             <p className="text-xs uppercase tracking-wide text-slate-500">{kpi.label}</p>

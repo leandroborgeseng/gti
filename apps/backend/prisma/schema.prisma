@@ -51,6 +51,61 @@ enum GlosaType {
   QUALIDADE
 }
 
+enum GovernancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum GovernanceType {
+  CORRETIVA
+  EVOLUTIVA
+}
+
+enum TicketGovernanceStatus {
+  OPEN
+  ACKNOWLEDGED
+  IN_PROGRESS
+  SLA_VIOLATED
+  EXTENDED_DEADLINE
+  ESCALATED
+  SENT_TO_CONTROLADORIA
+}
+
+enum TicketEventType {
+  OPENED
+  ACKNOWLEDGED
+  SLA_VIOLATED
+  MANAGER_NOTIFIED
+  DEADLINE_EXTENDED
+  ESCALATED
+  SENT_TO_CONTROLADORIA
+}
+
+enum TicketWatcherRole {
+  GESTOR
+  CONTROLADORIA
+  OBSERVADOR
+}
+
+enum GoalStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum GoalActionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum GoalLinkType {
+  CONTRACT
+  TICKET
+}
+
 model Supplier {
   id        String     @id @default(uuid())
   name      String
@@ -94,6 +149,7 @@ model Contract {
   modules          ContractModule[]
   services         ContractService[]
   measurements     Measurement[]
+  governanceTickets TicketGovernance[]
 
   @@index([status, endDate])
   @@index([deletedAt])
@@ -177,6 +233,97 @@ model AuditLog {
   timestamp DateTime @default(now())
   oldData   Json?
   newData   Json?
+}
+
+model TicketGovernance {
+  id                     String                 @id @default(uuid())
+  ticketId               String
+  contractId             String
+  openedAt               DateTime
+  acknowledgedAt         DateTime?
+  priority               GovernancePriority?
+  type                   GovernanceType?
+  slaDeadline            DateTime?
+  firstResponseAt        DateTime?
+  resolvedAt             DateTime?
+  status                 TicketGovernanceStatus @default(OPEN)
+  managerNotified        Boolean                @default(false)
+  controladoriaNotified  Boolean                @default(false)
+  seiProcessNumber       String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  contract               Contract               @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  deadlineExtensions     TicketDeadlineExtension[]
+  eventLogs              TicketEventLog[]
+  watchers               TicketWatcher[]
+
+  @@index([ticketId])
+  @@index([status, slaDeadline])
+}
+
+model TicketDeadlineExtension {
+  id                 String           @id @default(uuid())
+  ticketGovernanceId String
+  previousDeadline   DateTime
+  newDeadline        DateTime
+  justification      String
+  createdBy          String
+  createdAt          DateTime         @default(now())
+  ticketGovernance   TicketGovernance @relation(fields: [ticketGovernanceId], references: [id], onDelete: Restrict)
+}
+
+model TicketEventLog {
+  id                 String           @id @default(uuid())
+  ticketGovernanceId String
+  type               TicketEventType
+  description        String
+  createdAt          DateTime         @default(now())
+  ticketGovernance   TicketGovernance @relation(fields: [ticketGovernanceId], references: [id], onDelete: Restrict)
+}
+
+model TicketWatcher {
+  id                 String           @id @default(uuid())
+  ticketGovernanceId String
+  userId             String
+  role               TicketWatcherRole
+  ticketGovernance   TicketGovernance @relation(fields: [ticketGovernanceId], references: [id], onDelete: Restrict)
+
+  @@unique([ticketGovernanceId, userId, role])
+}
+
+model Goal {
+  id            String       @id @default(uuid())
+  title         String
+  description   String?
+  year          Int
+  status        GoalStatus   @default(PLANNED)
+  priority      String
+  responsibleId String
+  createdAt     DateTime     @default(now())
+  actions       GoalAction[]
+  links         GoalLink[]
+
+  @@index([year, status])
+}
+
+model GoalAction {
+  id            String         @id @default(uuid())
+  goalId         String
+  title          String
+  description    String?
+  status         GoalActionStatus @default(NOT_STARTED)
+  progress       Int            @default(0)
+  dueDate        DateTime?
+  responsibleId  String
+  goal           Goal           @relation(fields: [goalId], references: [id], onDelete: Restrict)
+}
+
+model GoalLink {
+  id          String      @id @default(uuid())
+  goalId      String
+  type        GoalLinkType
+  referenceId String
+  goal        Goal        @relation(fields: [goalId], references: [id], onDelete: Restrict)
 }
 
 model Attachment {

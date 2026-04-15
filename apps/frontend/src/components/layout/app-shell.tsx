@@ -9,6 +9,8 @@ const titles: Record<string, string> = {
   "/contracts": "Contratos",
   "/measurements": "Medições",
   "/glosas": "Glosas",
+  "/governance/tickets": "Governança de Chamados",
+  "/goals": "Metas Estratégicas",
   "/suppliers": "Fornecedores",
   "/fiscais": "Fiscais",
   "/reports": "Relatórios"
@@ -18,7 +20,15 @@ export function AppShell({ children }: PropsWithChildren): JSX.Element {
   const pathname = usePathname();
   const title =
     titles[pathname ?? ""] ||
-    (pathname?.startsWith("/contracts/") ? "Detalhe do Contrato" : pathname?.startsWith("/measurements/") ? "Detalhe da Medição" : "Gestão Contratual");
+    (pathname?.startsWith("/contracts/")
+      ? "Detalhe do Contrato"
+      : pathname?.startsWith("/measurements/")
+        ? "Detalhe da Medição"
+        : pathname?.startsWith("/governance/tickets/")
+          ? "Detalhe do Chamado Governança"
+          : pathname?.startsWith("/goals/")
+            ? "Detalhe da Meta"
+            : "Gestão Contratual");
 
   return (
     <div className="flex min-h-screen">

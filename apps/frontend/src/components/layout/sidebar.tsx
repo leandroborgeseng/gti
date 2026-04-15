@@ -8,6 +8,8 @@ const navItems = [
   { href: "/contracts", label: "Contratos" },
   { href: "/measurements", label: "Medições" },
   { href: "/glosas", label: "Glosas" },
+  { href: "/governance/tickets", label: "Governança SLA" },
+  { href: "/goals", label: "Metas" },
   { href: "/suppliers", label: "Fornecedores" },
   { href: "/fiscais", label: "Fiscais" },
   { href: "/reports", label: "Relatórios" }

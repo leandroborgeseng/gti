@@ -1274,13 +1274,13 @@ function startHealthServer(): void {
       .app-sidebar {
         width: 248px;
         flex-shrink: 0;
-        border-right: 1px solid #cbd5e1;
-        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+        border-right: 1px solid #e2e8f0;
+        background: #ffffff;
         padding: 1rem 0.8rem;
         position: sticky;
         top: 0;
         height: 100vh;
-        box-shadow: inset -1px 0 0 rgba(148, 163, 184, 0.35);
+        box-shadow: inset -1px 0 0 rgba(148, 163, 184, 0.12);
       }
       .app-sidebar__head {
         display: flex;
@@ -1295,25 +1295,25 @@ function startHealthServer(): void {
         font-weight: 800;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        color: #e2e8f0;
+        color: #334155;
       }
       .app-sidebar__toggle {
         width: 2rem;
         height: 2rem;
         border-radius: 8px;
-        border: 1px solid #334155;
-        background: rgba(15, 23, 42, 0.45);
-        color: #f8fafc;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #334155;
         cursor: pointer;
         font-weight: 700;
         line-height: 1;
       }
-      .app-sidebar__toggle:hover { background: #0f172a; border-color: #64748b; }
+      .app-sidebar__toggle:hover { background: #f8fafc; border-color: #94a3b8; }
       .app-nav { display: flex; flex-direction: column; gap: 0.35rem; }
       .app-nav__section {
-        border: 1px solid rgba(148, 163, 184, 0.24);
+        border: 1px solid #e2e8f0;
         border-radius: 10px;
-        background: rgba(15, 23, 42, 0.28);
+        background: #ffffff;
       }
       .app-nav__section-summary {
         cursor: pointer;
@@ -1323,7 +1323,7 @@ function startHealthServer(): void {
         text-transform: uppercase;
         letter-spacing: 0.05em;
         font-weight: 800;
-        color: #cbd5e1;
+        color: #475569;
       }
       .app-nav__section-summary::-webkit-details-marker { display: none; }
       .app-nav__section-links {
@@ -1334,7 +1334,7 @@ function startHealthServer(): void {
       }
       .app-nav__item {
         text-decoration: none;
-        color: #e2e8f0;
+        color: #334155;
         font-size: 0.9rem;
         font-weight: 600;
         border-radius: 10px;
@@ -1345,7 +1345,7 @@ function startHealthServer(): void {
         gap: 0.55rem;
       }
       .app-nav__item-icon { width: 1.05rem; display: inline-flex; justify-content: center; }
-      .app-nav__item:hover { background: rgba(37, 99, 235, 0.22); color: #eff6ff; transform: translateX(2px); }
+      .app-nav__item:hover { background: #eff6ff; color: #1e40af; transform: translateX(2px); }
       .app-nav__item--active {
         background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
         color: #fff;
@@ -1367,8 +1367,8 @@ function startHealthServer(): void {
         align-items: center;
         justify-content: center;
         border: 1px solid #dbeafe;
-        background: rgba(37, 99, 235, 0.18);
-        color: #eff6ff;
+        background: #eff6ff;
+        color: #1e40af;
       }
       .app-layout--sidebar-collapsed .app-nav__item::before {
         content: attr(data-short);
@@ -2200,6 +2200,7 @@ function startHealthServer(): void {
         </div>
         <p class="filters-shell__sync-msg" id="sync-toolbar-msg" role="status" aria-live="polite" hidden></p>
       </footer>
+    </div>
     </div>
     ${isDashboardPage ? "" : moduleLandingHtml}
     <script type="application/json" id="kanban-filter-json">${filterJsonForScript}</script>
