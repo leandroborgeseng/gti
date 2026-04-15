@@ -1132,22 +1132,82 @@ function startHealthServer(): void {
         {
           label: "Operação",
           items: [
-            { href: "/dashboard", label: "Dashboard" },
-            { href: "/measurements", label: "Medições" },
-            { href: "/glosas", label: "Glosas" }
+            { href: "/dashboard", label: "Dashboard", icon: "📊" },
+            { href: "/measurements", label: "Medições", icon: "🧮" },
+            { href: "/glosas", label: "Glosas", icon: "⚖️" }
           ]
         },
         {
           label: "Cadastros",
           items: [
-            { href: "/contracts", label: "Contratos" },
-            { href: "/suppliers", label: "Fornecedores" },
-            { href: "/fiscais", label: "Fiscais" },
-            { href: "/reports", label: "Relatórios" }
+            { href: "/contracts", label: "Contratos", icon: "📁" },
+            { href: "/suppliers", label: "Fornecedores", icon: "🏢" },
+            { href: "/fiscais", label: "Fiscais", icon: "👥" },
+            { href: "/reports", label: "Relatórios", icon: "📄" }
           ]
         }
       ];
       const currentPath = parsedUrl.pathname === "/" ? "/dashboard" : parsedUrl.pathname;
+      const isDashboardPage = currentPath === "/dashboard";
+      const pageMeta: Record<string, { title: string; kicker: string; description: string }> = {
+        "/dashboard": {
+          title: "Quadro de chamados",
+          kicker: "Operação · GLPI",
+          description: "Acompanhe o Kanban operacional com filtros, pendências e detalhamento de chamados."
+        },
+        "/contracts": {
+          title: "Contratos",
+          kicker: "Gestão contratual",
+          description: "Espaço preparado para cadastro, consulta e auditoria dos contratos públicos."
+        },
+        "/measurements": {
+          title: "Medições",
+          kicker: "Execução financeira",
+          description: "Área de medição mensal com cálculo proporcional, aprovação e rastreabilidade."
+        },
+        "/glosas": {
+          title: "Glosas",
+          kicker: "Conformidade",
+          description: "Painel de glosas para justificar descontos, impactos e histórico de decisões."
+        },
+        "/suppliers": {
+          title: "Fornecedores",
+          kicker: "Cadastros",
+          description: "Gestão de fornecedores vinculados aos contratos, com foco em controle e governança."
+        },
+        "/fiscais": {
+          title: "Fiscais",
+          kicker: "Cadastros",
+          description: "Cadastro de fiscais e gestores responsáveis por acompanhamento contratual."
+        },
+        "/reports": {
+          title: "Relatórios",
+          kicker: "Inteligência gerencial",
+          description: "Consolidação de indicadores e relatórios para auditoria, compliance e tomada de decisão."
+        }
+      };
+      const currentPageMeta = pageMeta[currentPath] ?? pageMeta["/dashboard"];
+      const moduleCards = [
+        { title: "Planejamento", text: "Defina prioridades, prazos e responsáveis da área." },
+        { title: "Controle", text: "Monitore execução, SLA e pendências com histórico auditável." },
+        { title: "Auditoria", text: "Registre decisões e evidências para conformidade pública." }
+      ];
+      const moduleLandingHtml = `<section class="module-landing">
+        <div class="module-landing__header">
+          <h2>${escapeHtml(currentPageMeta.title)}</h2>
+          <p>${escapeHtml(currentPageMeta.description)}</p>
+        </div>
+        <div class="module-landing__grid">
+          ${moduleCards
+            .map(
+              (card) => `<article class="module-card">
+              <h3>${escapeHtml(card.title)}</h3>
+              <p>${escapeHtml(card.text)}</p>
+            </article>`
+            )
+            .join("")}
+        </div>
+      </section>`;
       const sidebarMenuHtml = navGroups
         .map((group, idx) => {
           const hasActive = group.items.some((item) => item.href === currentPath);
@@ -1155,7 +1215,10 @@ function startHealthServer(): void {
             .map((item) => {
               const isActive = currentPath === item.href;
               const shortLabel = item.label.slice(0, 2).toUpperCase();
-              return `<a href="${item.href}" title="${escapeHtml(item.label)}" data-short="${escapeHtml(shortLabel)}" class="app-nav__item${isActive ? " app-nav__item--active" : ""}"><span class="app-nav__item-label">${escapeHtml(item.label)}</span></a>`;
+              return `<a href="${item.href}" title="${escapeHtml(item.label)}" data-short="${escapeHtml(shortLabel)}" class="app-nav__item${isActive ? " app-nav__item--active" : ""}">
+                <span class="app-nav__item-icon" aria-hidden="true">${escapeHtml(item.icon)}</span>
+                <span class="app-nav__item-label">${escapeHtml(item.label)}</span>
+              </a>`;
             })
             .join("");
           return `<details class="app-nav__section" ${hasActive || idx === 0 ? "open" : ""}>
@@ -1211,12 +1274,13 @@ function startHealthServer(): void {
       .app-sidebar {
         width: 248px;
         flex-shrink: 0;
-        border-right: 1px solid #e2e8f0;
-        background: #ffffff;
+        border-right: 1px solid #cbd5e1;
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
         padding: 1rem 0.8rem;
         position: sticky;
         top: 0;
         height: 100vh;
+        box-shadow: inset -1px 0 0 rgba(148, 163, 184, 0.35);
       }
       .app-sidebar__head {
         display: flex;
@@ -1231,25 +1295,25 @@ function startHealthServer(): void {
         font-weight: 800;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        color: #334155;
+        color: #e2e8f0;
       }
       .app-sidebar__toggle {
         width: 2rem;
         height: 2rem;
         border-radius: 8px;
-        border: 1px solid #cbd5e1;
-        background: #fff;
-        color: #334155;
+        border: 1px solid #334155;
+        background: rgba(15, 23, 42, 0.45);
+        color: #f8fafc;
         cursor: pointer;
         font-weight: 700;
         line-height: 1;
       }
-      .app-sidebar__toggle:hover { background: #f8fafc; border-color: #94a3b8; }
+      .app-sidebar__toggle:hover { background: #0f172a; border-color: #64748b; }
       .app-nav { display: flex; flex-direction: column; gap: 0.35rem; }
       .app-nav__section {
-        border: 1px solid #e2e8f0;
+        border: 1px solid rgba(148, 163, 184, 0.24);
         border-radius: 10px;
-        background: #fff;
+        background: rgba(15, 23, 42, 0.28);
       }
       .app-nav__section-summary {
         cursor: pointer;
@@ -1259,7 +1323,7 @@ function startHealthServer(): void {
         text-transform: uppercase;
         letter-spacing: 0.05em;
         font-weight: 800;
-        color: #475569;
+        color: #cbd5e1;
       }
       .app-nav__section-summary::-webkit-details-marker { display: none; }
       .app-nav__section-links {
@@ -1270,19 +1334,28 @@ function startHealthServer(): void {
       }
       .app-nav__item {
         text-decoration: none;
-        color: #334155;
+        color: #e2e8f0;
         font-size: 0.9rem;
         font-weight: 600;
         border-radius: 10px;
         padding: 0.58rem 0.72rem;
-        transition: background 0.15s, color 0.15s;
+        transition: background 0.15s, color 0.15s, transform 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
       }
-      .app-nav__item:hover { background: #eff6ff; color: #1e40af; }
-      .app-nav__item--active { background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%); color: #fff; }
+      .app-nav__item-icon { width: 1.05rem; display: inline-flex; justify-content: center; }
+      .app-nav__item:hover { background: rgba(37, 99, 235, 0.22); color: #eff6ff; transform: translateX(2px); }
+      .app-nav__item--active {
+        background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+        color: #fff;
+        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+      }
       .app-layout--sidebar-collapsed .app-sidebar { width: 78px; padding-left: 0.5rem; padding-right: 0.5rem; }
       .app-layout--sidebar-collapsed .app-sidebar__title,
       .app-layout--sidebar-collapsed .app-nav__section-label,
-      .app-layout--sidebar-collapsed .app-nav__item-label { display: none; }
+      .app-layout--sidebar-collapsed .app-nav__item-label,
+      .app-layout--sidebar-collapsed .app-nav__item-icon { display: none; }
       .app-layout--sidebar-collapsed .app-sidebar__head { justify-content: center; }
       .app-layout--sidebar-collapsed .app-nav__section { border: none; background: transparent; }
       .app-layout--sidebar-collapsed .app-nav__section-summary { display: none; }
@@ -1294,8 +1367,8 @@ function startHealthServer(): void {
         align-items: center;
         justify-content: center;
         border: 1px solid #dbeafe;
-        background: #eff6ff;
-        color: #1e40af;
+        background: rgba(37, 99, 235, 0.18);
+        color: #eff6ff;
       }
       .app-layout--sidebar-collapsed .app-nav__item::before {
         content: attr(data-short);
@@ -1310,6 +1383,34 @@ function startHealthServer(): void {
       .app-layout--sidebar-collapsed .app-nav__item--active::before { color: #fff; }
       .app-main { flex: 1 1 auto; min-width: 0; }
       .app-shell { max-width: 1320px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
+      .module-landing {
+        margin-top: 0.2rem;
+        display: grid;
+        gap: 1rem;
+      }
+      .module-landing__header {
+        background: #fff;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: var(--radius-lg);
+        padding: 1rem 1.15rem;
+        box-shadow: var(--shadow-sm);
+      }
+      .module-landing__header h2 { margin: 0 0 0.45rem 0; font-size: 1.1rem; }
+      .module-landing__header p { margin: 0; color: var(--ink-muted); line-height: 1.5; }
+      .module-landing__grid {
+        display: grid;
+        gap: 0.85rem;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+      .module-card {
+        background: #fff;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: var(--radius-md);
+        padding: 0.95rem 1rem;
+      }
+      .module-card h3 { margin: 0 0 0.35rem 0; font-size: 0.95rem; }
+      .module-card p { margin: 0; color: #475569; font-size: 0.88rem; line-height: 1.5; }
+      .page-mode--module .dashboard-only { display: none !important; }
       @media (min-width: 768px) { .app-shell { padding: 2rem 2rem 3.5rem; } }
       @media (max-width: 980px) {
         .app-layout { flex-direction: column; }
@@ -2025,7 +2126,7 @@ function startHealthServer(): void {
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" crossorigin="anonymous" />
   </head>
-  <body>
+  <body class="${isDashboardPage ? "page-mode--dashboard" : "page-mode--module"}">
     <div class="app-layout">
     <aside class="app-sidebar" aria-label="Menu principal">
       <div class="app-sidebar__head">
@@ -2039,12 +2140,15 @@ function startHealthServer(): void {
     <div class="app-main">
     <div class="app-shell">
     <header class="page-header">
-      <p class="page-kicker">Operação · GLPI</p>
-      <h1 class="page-title">Quadro de chamados</h1>
+      <p class="page-kicker">${escapeHtml(currentPageMeta.kicker)}</p>
+      <h1 class="page-title">${escapeHtml(currentPageMeta.title)}</h1>
+      <p class="page-lead">${escapeHtml(currentPageMeta.description)}</p>
     </header>
 
+    <div class="dashboard-only">
     ${openAgeDashboardHtml}
-    <div class="kanban-filters-stack">
+    </div>
+    <div class="kanban-filters-stack dashboard-only">
     <div class="filters-shell">
       <header class="filters-shell__head">
         <h2 class="filters-shell__title">Filtros do Kanban</h2>
@@ -2097,6 +2201,7 @@ function startHealthServer(): void {
         <p class="filters-shell__sync-msg" id="sync-toolbar-msg" role="status" aria-live="polite" hidden></p>
       </footer>
     </div>
+    ${isDashboardPage ? "" : moduleLandingHtml}
     <script type="application/json" id="kanban-filter-json">${filterJsonForScript}</script>
     <script>
       (function () {
@@ -2189,7 +2294,7 @@ function startHealthServer(): void {
       })();
     </script>
     </div>
-    <div class="kanban-fs-root" id="kanban-fullscreen-root">
+    <div class="kanban-fs-root dashboard-only" id="kanban-fullscreen-root">
     <div class="section-head section-head--kanban">
       <div>
         <h2 class="section-title">Kanban por status</h2>
@@ -2212,7 +2317,7 @@ function startHealthServer(): void {
         ? '<p class="page-lead muted" style="margin-top:1rem;padding:1rem;background:rgba(255,255,255,.85);border-radius:12px;border:1px solid #e2e8f0;">Nenhum chamado com esta pendência no cache. Abra chamados no modal (carrega o histórico GLPI) ou aguarde o enriquecimento após a sincronização.</p>'
         : ""
     }
-    <div id="ticket-modal" class="modal" aria-hidden="true">
+    <div id="ticket-modal" class="modal dashboard-only" aria-hidden="true">
       <div class="modal-backdrop" data-close-modal></div>
       <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="ticket-modal-title">
         <div class="modal-header">
