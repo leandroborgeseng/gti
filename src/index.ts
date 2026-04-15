@@ -1120,27 +1120,6 @@ function startHealthServer(): void {
         border-color: var(--brand);
         box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.12);
       }
-      .filters-grid__submit {
-        grid-column: 1 / -1;
-        justify-self: start;
-        margin-top: 0.15rem;
-      }
-      .filters-grid__submit button {
-        font: inherit;
-        font-weight: 600;
-        font-size: 0.88rem;
-        padding: 0.52rem 1.2rem;
-        border: none;
-        border-radius: 8px;
-        background: var(--brand);
-        color: #fff;
-        cursor: pointer;
-        transition: filter 0.15s ease, transform 0.12s ease;
-      }
-      .filters-grid__submit button:hover {
-        filter: brightness(1.06);
-        transform: translateY(-1px);
-      }
       .filters-shell__sync {
         margin-top: 1rem;
         padding-top: 1rem;
@@ -1615,13 +1594,15 @@ function startHealthServer(): void {
       .btn-secondary {
         font: inherit;
         font-weight: 600;
-        padding: 0.6rem 1.1rem;
+        font-size: 0.88rem;
+        padding: 0.52rem 1.05rem;
         border: 1px solid #cbd5e1;
         background: #fff;
         color: var(--ink-muted);
         border-radius: 10px;
         cursor: pointer;
-        transition: background 0.15s, border-color 0.15s;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+        flex-shrink: 0;
       }
       .btn-secondary:hover { background: #f8fafc; border-color: #94a3b8; color: var(--ink); }
       #ticket-edit-submit {
@@ -1682,7 +1663,7 @@ function startHealthServer(): void {
         <p class="filters-shell__lede">Aplicam ao quadro, ao painel de idade dos abertos e ao recálculo de pendência (até 200 cards por coluna)</p>
       </header>
       <div class="filters-shell__pills" aria-label="Filtros aplicados">${filterPillsHtml}</div>
-      <form class="filters-grid" method="GET" action="/">
+      <form id="kanban-filters-form" class="filters-grid" method="GET" action="/">
         <label>Busca
           <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, título ou conteúdo" autocomplete="off" />
         </label>
@@ -1713,9 +1694,6 @@ function startHealthServer(): void {
             <option value="1" ${onlyOpen ? "selected" : ""}>Sim</option>
           </select>
         </label>
-        <div class="filters-grid__submit">
-          <button type="submit">Aplicar</button>
-        </div>
       </form>
       <footer class="filters-shell__sync">
         <div class="filters-shell__sync-row">
@@ -1724,6 +1702,7 @@ function startHealthServer(): void {
             <option value="open" ${ticketSyncScope === "open" ? "selected" : ""}>Só abertos no SQLite</option>
             <option value="all" ${ticketSyncScope === "all" ? "selected" : ""}>Todos (abertos + fechados)</option>
           </select>
+          <button type="submit" form="kanban-filters-form" class="btn-secondary" id="btn-filters-apply">Aplicar</button>
           <button type="button" class="btn-secondary" id="btn-save-sync-scope">Guardar escopo</button>
           <button type="button" class="btn-secondary" id="btn-recalc-pendencia" title="Até 200 tickets com os filtros atuais">Recalcular pendência</button>
         </div>
