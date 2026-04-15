@@ -1,4 +1,5 @@
 import { AxiosResponse } from "axios";
+import { env } from "../config/env";
 import { logger } from "../config/logger";
 import { glpiClient } from "./glpi.client";
 import { getDiscoveredTicketsPath } from "./openapi.loader";
@@ -137,7 +138,7 @@ export async function getTicketsPage(page: number, pageSize = 100, options: GetT
   throw (lastError instanceof Error ? lastError : new Error("Falha ao buscar pagina de tickets"));
 }
 
-export async function getAllTickets(pageSize = 100): Promise<unknown[]> {
+export async function getAllTickets(pageSize = env.GLPI_TICKETS_PAGE_SIZE): Promise<unknown[]> {
   const allTickets: unknown[] = [];
   let page = 1;
 

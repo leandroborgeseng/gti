@@ -1,8 +1,9 @@
+import { env } from "../config/env";
 import { prisma } from "../config/prisma";
 import { logger } from "../config/logger";
 import { normalizeTicket } from "../normalizers/ticket.normalizer";
 import { persistNormalizedTicket } from "../services/ticket-persist.service";
-import { getTicketsPage } from "../services/tickets.service";
+import { getTicketsPage, type TicketsPageResult } from "../services/tickets.service";
 import { getTicketSyncScope } from "../utils/ticket-sync-scope";
 import { isTicketClosedStatus, ticketWhereClosed } from "../utils/ticket-status";
 
@@ -18,6 +19,8 @@ export interface SyncProgress extends SyncTicketsResult {
 
 interface SyncTicketsOptions {
   pageSize?: number;
+  /** Páginas GLPI a buscar em paralelo (prefetch). */
+  fetchConcurrency?: number;
   onProgress?: (progress: SyncProgress) => void;
 }
 
@@ -36,7 +39,8 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
       : "Iniciando sincronizacao de tickets (apenas abertos no cache local)"
   );
 
-  const pageSize = options.pageSize ?? 100;
+  const pageSize = options.pageSize ?? env.GLPI_TICKETS_PAGE_SIZE;
+  const fetchConcurrency = options.fetchConcurrency ?? env.GLPI_TICKETS_FETCH_CONCURRENCY;
   const onProgress = options.onProgress;
   let page = 1;
   let loadedCount = 0;
@@ -47,6 +51,17 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
   const cursorState = await prisma.syncState.findUnique({ where: { key: "last_sync_date_mod" } });
   const previousCursor = cursorState?.value || null;
 
+  const ticketPages = new Map<number, Promise<TicketsPageResult>>();
+
+  function ensurePageScheduled(p: number): void {
+    if (p < 1 || ticketPages.has(p)) {
+      return;
+    }
+    ticketPages.set(p, getTicketsPage(p, pageSize));
+  }
+
+  logger.info({ pageSize, fetchConcurrency }, "Sincronizacao GLPI: tamanho de pagina e paralelismo");
+
   if (syncScope === "open") {
     const removedClosed = await prisma.ticket.deleteMany({ where: ticketWhereClosed() });
     if (removedClosed.count > 0) {
@@ -54,8 +69,13 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     }
   }
 
+  for (let i = 1; i <= fetchConcurrency; i += 1) {
+    ensurePageScheduled(i);
+  }
+
   while (true) {
-    const { tickets: rawTickets, remoteTotal } = await getTicketsPage(page, pageSize);
+    const { tickets: rawTickets, remoteTotal } = await ticketPages.get(page)!;
+    ticketPages.delete(page);
     loadedCount += rawTickets.length;
     let reachedAlreadySyncedWindow = false;
 
@@ -122,6 +142,7 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     void reachedAlreadySyncedWindow;
 
     page += 1;
+    ensurePageScheduled(page + fetchConcurrency - 1);
   }
 
   const newCursor = maxDateMod || maxDateCreation || previousCursor || new Date().toISOString();

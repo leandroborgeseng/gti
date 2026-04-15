@@ -2,6 +2,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Math.trunc(Number(value));
+  if (!Number.isFinite(n)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, n));
+}
+
 function getEnv(name: string): string {
   const value = process.env[name];
   if (!value || !value.trim()) {
@@ -22,5 +30,9 @@ export const env = {
   GLPI_USER_AGENT: process.env.GLPI_USER_AGENT || "glpi-sync-mvp/1.0",
   PORT: Number(process.env.PORT || 3000),
   CRON_EXPRESSION: process.env.CRON_EXPRESSION || "*/5 * * * *",
-  HTTP_TIMEOUT_MS: Number(process.env.HTTP_TIMEOUT_MS || 20000)
+  HTTP_TIMEOUT_MS: Number(process.env.HTTP_TIMEOUT_MS || 20000),
+  /** Quantidade de tickets por requisição ao GLPI (50–500). */
+  GLPI_TICKETS_PAGE_SIZE: clampInt(process.env.GLPI_TICKETS_PAGE_SIZE, 50, 500, 250),
+  /** Quantas páginas de tickets são pedidas em paralelo (antecipação). 1 = sequencial. */
+  GLPI_TICKETS_FETCH_CONCURRENCY: clampInt(process.env.GLPI_TICKETS_FETCH_CONCURRENCY, 1, 12, 4)
 };
