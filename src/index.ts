@@ -898,12 +898,16 @@ function startHealthServer(): void {
               const syncFlag = `<span class="card-sync-flag${syncStale ? " card-sync-flag--stale" : ""}" title="${syncTip}" aria-label="${syncTip}" role="img">${kanbanSyncIconSvg(
                 syncStale
               )}</span>`;
+              const detailsBtn = `<button type="button" class="card-details-btn" data-open-ticket="${ticket.glpiTicketId}" title="Abrir detalhes do chamado" aria-label="Abrir detalhes do chamado #${ticket.glpiTicketId}">i</button>`;
               return `<div class="kanban-card" draggable="false" role="button" tabindex="0" data-glpi-id="${
                 ticket.glpiTicketId
               }" data-waiting="${escapeHtml(pendClass)}" style="${escapeHtml(cardStyle)}">
                 <div class="kanban-card__head">
                   <div class="card-id">#${ticket.glpiTicketId}</div>
-                  ${syncFlag}
+                  <div class="kanban-card__actions">
+                    ${syncFlag}
+                    ${detailsBtn}
+                  </div>
                 </div>
                 <div class="card-title">${safeTitle}</div>
                 <span class="pend-badge pend-badge--${escapeHtml(pendClass)}">${escapeHtml(pendLabel)}</span>
@@ -1502,6 +1506,11 @@ function startHealthServer(): void {
         justify-content: space-between;
         gap: 0.4rem;
       }
+      .kanban-card__actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
       .card-sync-flag {
         flex-shrink: 0;
         cursor: help;
@@ -1512,6 +1521,23 @@ function startHealthServer(): void {
       .card-sync-flag:hover { opacity: 1; }
       .card-sync-flag__svg { width: 1.05rem; height: 1.05rem; display: block; }
       .card-sync-flag--stale .card-sync-flag__svg { filter: drop-shadow(0 0 1px rgba(120, 53, 15, 0.35)); }
+      .card-details-btn {
+        width: 1.15rem;
+        height: 1.15rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        border: 1px solid rgba(59, 130, 246, 0.5);
+        background: rgba(239, 246, 255, 0.9);
+        color: #1d4ed8;
+        font-size: 0.72rem;
+        font-weight: 700;
+        line-height: 1;
+        padding: 0;
+        cursor: pointer;
+      }
+      .card-details-btn:hover { background: #dbeafe; border-color: #3b82f6; color: #1e3a8a; }
       .card-id { font-size: 0.72rem; font-weight: 700; color: var(--ink-muted); letter-spacing: 0.02em; min-width: 0; }
       .card-title { font-size: 0.9rem; font-weight: 600; color: var(--ink); line-height: 1.35; }
       .card-meta { font-size: 0.78rem; color: #334155; line-height: 1.4; }
@@ -2205,6 +2231,16 @@ function startHealthServer(): void {
         }
 
         board.addEventListener("click", (e) => {
+          const detailsBtn = e.target && e.target.closest ? e.target.closest(".card-details-btn") : null;
+          if (detailsBtn && board.contains(detailsBtn)) {
+            e.preventDefault();
+            e.stopPropagation();
+            const idFromBtn = detailsBtn.getAttribute("data-open-ticket");
+            if (idFromBtn) {
+              void loadTicket(idFromBtn);
+              return;
+            }
+          }
           const card = e.target && e.target.closest ? e.target.closest(".kanban-card") : null;
           if (!card || !board.contains(card)) return;
           const id = card.getAttribute("data-glpi-id");
