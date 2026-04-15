@@ -853,7 +853,18 @@ function startHealthServer(): void {
       return;
     }
 
-    const appPages = new Set(["/", "/dashboard", "/contracts", "/measurements", "/glosas", "/suppliers", "/fiscais", "/reports"]);
+    const appPages = new Set([
+      "/",
+      "/dashboard",
+      "/contracts",
+      "/measurements",
+      "/glosas",
+      "/suppliers",
+      "/fiscais",
+      "/reports",
+      "/governance/tickets",
+      "/goals"
+    ]);
     if (method === "GET" && appPages.has(parsedUrl.pathname)) {
       if (parsedUrl.searchParams.has("age")) {
         const redirectParams = new URLSearchParams(parsedUrl.searchParams);
@@ -1134,7 +1145,8 @@ function startHealthServer(): void {
           items: [
             { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
             { href: "/measurements", label: "Medições", icon: "measurements" },
-            { href: "/glosas", label: "Glosas", icon: "glosas" }
+            { href: "/glosas", label: "Glosas", icon: "glosas" },
+            { href: "/governance/tickets", label: "Governança SLA", icon: "governance" }
           ]
         },
         {
@@ -1143,6 +1155,7 @@ function startHealthServer(): void {
             { href: "/contracts", label: "Contratos", icon: "contracts" },
             { href: "/suppliers", label: "Fornecedores", icon: "suppliers" },
             { href: "/fiscais", label: "Fiscais", icon: "fiscais" },
+            { href: "/goals", label: "Metas", icon: "goals" },
             { href: "/reports", label: "Relatórios", icon: "reports" }
           ]
         }
@@ -1161,7 +1174,11 @@ function startHealthServer(): void {
         fiscais:
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"></circle><circle cx="17" cy="9" r="2.5"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M14 20a4 4 0 0 1 8 0"></path></svg>',
         reports:
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l5 5v13H6z"></path><path d="M15 3v5h5"></path><line x1="9" y1="13" x2="17" y2="13"></line><line x1="9" y1="17" x2="17" y2="17"></line></svg>'
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l5 5v13H6z"></path><path d="M15 3v5h5"></path><line x1="9" y1="13" x2="17" y2="13"></line><line x1="9" y1="17" x2="17" y2="17"></line></svg>',
+        governance:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>',
+        goals:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"></path><path d="M6 15l4-4 3 3 5-6"></path><circle cx="6" cy="15" r="1"></circle><circle cx="10" cy="11" r="1"></circle><circle cx="13" cy="14" r="1"></circle><circle cx="18" cy="8" r="1"></circle></svg>'
       };
       const currentPath = parsedUrl.pathname === "/" ? "/dashboard" : parsedUrl.pathname;
       const isDashboardPage = currentPath === "/dashboard";
@@ -1200,6 +1217,16 @@ function startHealthServer(): void {
           title: "Relatórios",
           kicker: "Inteligência gerencial",
           description: "Consolidação de indicadores e relatórios para auditoria, compliance e tomada de decisão."
+        },
+        "/governance/tickets": {
+          title: "Governança de Chamados",
+          kicker: "SLA e escalonamento",
+          description: "Acompanhe ciência, classificação, prazo contratual, violações e fluxo para controladoria."
+        },
+        "/goals": {
+          title: "Metas e Desdobramentos",
+          kicker: "Planejamento estratégico",
+          description: "Registre metas, ações, responsáveis e progresso para rastreabilidade da execução institucional."
         }
       };
       const currentPageMeta = pageMeta[currentPath] ?? pageMeta["/dashboard"];
@@ -1209,67 +1236,258 @@ function startHealthServer(): void {
         { title: "Auditoria", text: "Registre decisões e evidências para conformidade pública." }
       ];
       const moduleFormByPath: Record<string, string> = {
-        "/contracts": `<form class="module-form" data-module-form>
-          <h3>Novo contrato</h3>
-          <div class="module-form__grid module-form__grid--3">
-            <label>Número<input type="text" name="number" placeholder="CT-001/2026" required /></label>
-            <label>Nome<input type="text" name="name" placeholder="Contrato principal" required /></label>
-            <label>CNPJ<input type="text" name="cnpj" placeholder="00.000.000/0001-00" required /></label>
-            <label>Tipo
-              <select name="contractType"><option>SOFTWARE</option><option>DATACENTER</option><option>INFRA</option><option>SERVICO</option></select>
-            </label>
-            <label>Início<input type="date" name="startDate" required /></label>
-            <label>Fim<input type="date" name="endDate" required /></label>
+        "/contracts": `<form class="module-form" data-module-form data-form-kind="contract">
+          <h3>Cadastro completo do contrato</h3>
+          <div class="module-section">
+            <h4>Identificação</h4>
+            <p class="module-section__hint">Preencha os dados centrais para rastreabilidade contratual e auditoria.</p>
+            <div class="module-form__grid module-form__grid--3">
+              <label>Número do contrato *<input type="text" name="number" placeholder="CT-001/2026" required /></label>
+              <label>Nome do contrato *<input type="text" name="name" placeholder="Gestão de infraestrutura de TIC" required /></label>
+              <label>Empresa contratada *<input type="text" name="companyName" required /></label>
+              <label>CNPJ *<input type="text" name="cnpj" data-cnpj placeholder="00.000.000/0001-00" required /></label>
+              <label>Tipo de contrato *
+                <select name="contractType" required><option>SOFTWARE</option><option>DATACENTER</option><option>INFRA</option><option>SERVICO</option></select>
+              </label>
+              <label>Processo administrativo<input type="text" name="processNumber" placeholder="00000.000000/2026-00" /></label>
+            </div>
+            <label>Objeto do contrato *<textarea name="description" rows="4" placeholder="Descreva escopo, limites e entregáveis." required></textarea></label>
           </div>
-          <div class="module-form__actions"><button type="submit">Cadastrar contrato</button></div>
-        </form>`,
-        "/measurements": `<form class="module-form" data-module-form>
-          <h3>Nova medição</h3>
-          <div class="module-form__grid">
-            <label>ID do contrato<input type="text" name="contractId" placeholder="UUID do contrato" required /></label>
-            <label>Mês<input type="number" min="1" max="12" name="month" required /></label>
-            <label>Ano<input type="number" min="2020" max="2100" name="year" required /></label>
+          <div class="module-section">
+            <h4>Base legal</h4>
+            <div class="module-form__grid module-form__grid--3">
+              <label>Lei aplicável *
+                <select name="lawType" required><option value="LEI_8666">Lei 8.666</option><option value="LEI_14133">Lei 14.133</option></select>
+              </label>
+              <label>Data início *<input type="date" name="startDate" required /></label>
+              <label>Data fim *<input type="date" name="endDate" required /></label>
+              <label class="module-inline-check"><input type="checkbox" name="allowAdditives" /> Permitir aditivos</label>
+            </div>
           </div>
-          <div class="module-form__actions"><button type="submit">Cadastrar medição</button></div>
-        </form>`,
-        "/glosas": `<form class="module-form" data-module-form>
-          <h3>Nova glosa</h3>
-          <div class="module-form__grid">
-            <label>ID da medição<input type="text" name="measurementId" required /></label>
-            <label>Tipo
-              <select name="type"><option>ATRASO</option><option>NAO_ENTREGA</option><option>SLA</option><option>QUALIDADE</option></select>
-            </label>
-            <label>Valor<input type="number" step="0.01" min="0" name="value" required /></label>
-            <label>Criado por<input type="text" name="createdBy" required /></label>
+          <div class="module-section">
+            <h4>Valores</h4>
+            <div class="module-form__grid module-form__grid--3">
+              <label>Valor global *<input type="number" step="0.01" min="0" name="totalValue" required /></label>
+              <label>Valor mensal *<input type="number" step="0.01" min="0" name="monthlyValue" required /></label>
+              <label>Índice de reajuste<input type="text" name="adjustIndex" placeholder="IPCA, IGP-M, INPC..." /></label>
+              <label>Data-base do reajuste<input type="date" name="adjustDate" /></label>
+            </div>
           </div>
-          <label>Justificativa<textarea name="justification" rows="3" required></textarea></label>
-          <div class="module-form__actions"><button type="submit">Cadastrar glosa</button></div>
+          <div class="module-section">
+            <h4>SLA contratual</h4>
+            <div class="module-form__grid module-form__grid--3">
+              <label class="module-inline-check"><input type="checkbox" name="hasSla" /> Possui SLA</label>
+              <label>SLA mínimo (%)<input type="number" step="0.1" min="0" max="100" name="slaTarget" /></label>
+              <span></span>
+              <label>Resposta baixa (h)<input type="number" min="0" name="slaLowHours" /></label>
+              <label>Resposta média (h)<input type="number" min="0" name="slaMediumHours" /></label>
+              <label>Resposta alta (h)<input type="number" min="0" name="slaHighHours" /></label>
+              <label>Resposta crítica (h)<input type="number" min="0" name="slaCriticalHours" /></label>
+            </div>
+          </div>
+          <div class="module-section">
+            <h4>Responsáveis</h4>
+            <div class="module-form__grid">
+              <label>Fiscal do contrato (ID) *<input type="text" name="fiscalId" required /></label>
+              <label>Gestor do contrato (ID) *<input type="text" name="managerId" required /></label>
+            </div>
+          </div>
+          <div class="module-section">
+            <h4>Observações</h4>
+            <label>Observações para auditoria<textarea name="notes" rows="3" placeholder="Registre observações relevantes para governança."></textarea></label>
+          </div>
+          <div class="module-section">
+            <h4>Módulo (software)</h4>
+            <div class="module-form__grid">
+              <label>Nome do módulo<input type="text" name="moduleName" /></label>
+              <label>Responsável do módulo<input type="text" name="moduleOwner" /></label>
+              <label>Peso do módulo (%)<input type="number" min="0" max="100" name="moduleWeight" /></label>
+            </div>
+            <label>Descrição do módulo<textarea name="moduleDescription" rows="2"></textarea></label>
+          </div>
+          <div class="module-section">
+            <h4>Funcionalidade</h4>
+            <div class="module-form__grid">
+              <label>Nome da funcionalidade<input type="text" name="featureName" /></label>
+              <label>Peso da funcionalidade (%)<input type="number" min="0" max="100" name="featureWeight" /></label>
+              <label>Status
+                <select name="featureStatus"><option>NOT_STARTED</option><option>IN_PROGRESS</option><option>DELIVERED</option><option>VALIDATED</option></select>
+              </label>
+            </div>
+            <label>Descrição detalhada<textarea name="featureDescription" rows="2"></textarea></label>
+            <label>Critério de aceite *<textarea name="acceptanceCriteria" rows="3" required placeholder="Descreva critérios objetivos de validação da entrega."></textarea></label>
+          </div>
+          <div class="module-section">
+            <h4>Serviço (datacenter)</h4>
+            <div class="module-form__grid">
+              <label>Nome do serviço<input type="text" name="serviceName" placeholder="VM, Storage, Backup..." /></label>
+              <label>Unidade de cobrança<input type="text" name="serviceUnit" placeholder="GB, VM, Mbps" /></label>
+              <label>Valor unitário<input type="number" step="0.01" min="0" name="serviceUnitValue" /></label>
+            </div>
+            <label>Descrição do serviço<textarea name="serviceDescription" rows="2"></textarea></label>
+            <label>SLA associado (opcional)<input type="text" name="serviceSla" /></label>
+          </div>
+          <div class="module-form__actions"><button type="submit">Salvar cadastro completo</button><span class="module-pill module-pill--warn">Campos com * são obrigatórios</span></div>
         </form>`,
-        "/suppliers": `<form class="module-form" data-module-form>
-          <h3>Novo fornecedor</h3>
+        "/measurements": `<form class="module-form" data-module-form data-form-kind="measurement">
+          <h3>Medição mensal com controle de evidências</h3>
+          <div class="module-section">
+            <h4>Referência</h4>
+            <div class="module-form__grid">
+              <label>Contrato (ID) *<input type="text" name="contractId" required /></label>
+              <label>Mês *<input type="number" min="1" max="12" name="month" required /></label>
+              <label>Ano *<input type="number" min="2020" max="2100" name="year" required /></label>
+            </div>
+          </div>
+          <div class="module-section">
+            <h4>Dados automáticos (somente leitura)</h4>
+            <div class="module-form__grid">
+              <label>Valor contratual mensal<input type="text" value="Calculado após vínculo do contrato" readonly /></label>
+              <label>Percentual de entrega<input type="text" value="Calculado automaticamente" readonly /></label>
+              <label>Valor medido<input type="text" value="Calculado automaticamente" readonly /></label>
+            </div>
+          </div>
+          <div class="module-section">
+            <h4>Input do usuário</h4>
+            <p class="module-section__hint">Para SOFTWARE, valide funcionalidades. Para DATACENTER, informe quantidades.</p>
+            <div class="module-form__grid module-form__grid--3">
+              <label class="module-inline-check"><input type="checkbox" name="featureValidated1" /> Funcionalidade A validada pelo fiscal</label>
+              <label class="module-inline-check"><input type="checkbox" name="featureValidated2" /> Funcionalidade B validada pelo fiscal</label>
+              <label class="module-inline-check"><input type="checkbox" name="featureValidated3" /> Funcionalidade C validada pelo fiscal</label>
+              <label>Quantidade VM<input type="number" min="0" name="qtyVm" /></label>
+              <label>Quantidade Storage (GB)<input type="number" min="0" name="qtyStorage" /></label>
+              <label>Quantidade Backup (GB)<input type="number" min="0" name="qtyBackup" /></label>
+            </div>
+          </div>
+          <div class="module-section">
+            <h4>Glosa direta na medição</h4>
+            <div class="module-form__grid">
+              <label>Tipo de glosa<select name="glosaType"><option>ATRASO</option><option>NAO_ENTREGA</option><option>SLA</option><option>QUALIDADE</option></select></label>
+              <label>Valor da glosa<input type="number" step="0.01" min="0" name="glosaValue" /></label>
+            </div>
+            <label>Justificativa da glosa<textarea name="glosaJustification" rows="3"></textarea></label>
+          </div>
+          <div class="module-section">
+            <h4>Evidências</h4>
+            <label>Upload de evidências *<input type="file" name="evidenceFiles" multiple required /></label>
+            <p class="module-section__hint">Aprovação é bloqueada sem evidência anexada.</p>
+          </div>
+          <div class="module-form__actions">
+            <button type="submit">Salvar medição para análise</button>
+            <button type="button" data-approve-action>Aprovar medição</button>
+            <span class="module-pill module-pill--warn">Atenção: sem item preenchido a medição não deve ser aprovada.</span>
+          </div>
+        </form>`,
+        "/glosas": `<form class="module-form" data-module-form data-form-kind="glosa">
+          <h3>Cadastro de glosa com evidência obrigatória</h3>
+          <div class="module-section">
+            <h4>Dados da glosa</h4>
+            <div class="module-form__grid">
+              <label>ID da medição *<input type="text" name="measurementId" required /></label>
+              <label>Tipo *<select name="type" required><option>ATRASO</option><option>NAO_ENTREGA</option><option>SLA</option><option>QUALIDADE</option></select></label>
+              <label>Valor *<input type="number" step="0.01" min="0" name="value" required /></label>
+              <label>Responsável pela glosa *<input type="text" name="createdBy" required /></label>
+            </div>
+            <label>Justificativa detalhada *<textarea name="justification" rows="4" required placeholder="Registre causa, impacto e referência contratual."></textarea></label>
+          </div>
+          <div class="module-section">
+            <h4>Evidência de suporte</h4>
+            <label>Anexo obrigatório *<input type="file" name="evidenceFile" required /></label>
+          </div>
+          <div class="module-form__actions"><button type="submit">Registrar glosa</button><span class="module-pill module-pill--danger">Sem justificativa + evidência a glosa não deve ser aceita</span></div>
+        </form>`,
+        "/governance/tickets": `<form class="module-form" data-module-form data-form-kind="governance">
+          <h3>Governança de chamado com SLA e escalonamento</h3>
+          <div class="module-section">
+            <h4>Dados do chamado</h4>
+            <div class="module-form__grid">
+              <label>ID GLPI (somente leitura)<input type="text" name="glpiId" value="Informado via integração GLPI" readonly /></label>
+              <label>Data de abertura *<input type="datetime-local" name="openedAt" required /></label>
+              <label class="module-inline-check"><input type="checkbox" name="companyAware" required /> Empresa ciente? *</label>
+              <label>Data da ciência *<input type="datetime-local" name="acknowledgedAt" required /></label>
+            </div>
+          </div>
+          <div class="module-section">
+            <h4>Classificação</h4>
+            <div class="module-form__grid">
+              <label>Prioridade *<select name="priority" required><option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option></select></label>
+              <label>Tipo *<select name="ticketType" required><option>CORRETIVA</option><option>EVOLUTIVA</option></select></label>
+            </div>
+          </div>
+          <div class="module-section">
+            <h4>SLA</h4>
+            <div class="module-form__grid">
+              <label>Prazo calculado<input type="text" value="Calculado automaticamente após classificação" readonly /></label>
+              <label>Contagem regressiva<input type="text" value="Em tempo real no painel operacional" readonly /></label>
+            </div>
+          </div>
+          <div class="module-section">
+            <h4>Descumprimento e ação do gestor</h4>
+            <label>Ação do gestor (obrigatória em violação)<textarea name="managerAction" rows="3" placeholder="Descreva ação corretiva adotada pelo gestor."></textarea></label>
+            <label class="module-inline-check"><input type="checkbox" name="managerNotified" /> Notificação formal da empresa realizada</label>
+          </div>
+          <div class="module-section">
+            <h4>Novo prazo</h4>
+            <div class="module-form__grid">
+              <label>Novo prazo<input type="datetime-local" name="newDeadline" /></label>
+            </div>
+            <label>Justificativa do novo prazo<textarea name="deadlineJustification" rows="3"></textarea></label>
+          </div>
+          <div class="module-section">
+            <h4>Controladoria</h4>
+            <label>Número do processo SEI (obrigatório em escalonamento)<input type="text" name="seiProcessNumber" placeholder="00000.000000/2026-00" /></label>
+          </div>
+          <div class="module-form__actions"><button type="submit">Salvar fluxo de governança</button><span class="module-pill module-pill--warn">Campos condicionais serão exigidos conforme etapa do fluxo</span></div>
+        </form>`,
+        "/goals": `<form class="module-form" data-module-form data-form-kind="goals">
+          <h3>Metas e desdobramentos estratégicos</h3>
+          <div class="module-section">
+            <h4>Meta</h4>
+            <div class="module-form__grid module-form__grid--3">
+              <label>Título da meta *<input type="text" name="goalTitle" required /></label>
+              <label>Ano *<input type="number" min="2020" max="2100" name="goalYear" required /></label>
+              <label>Prioridade *<input type="text" name="goalPriority" required /></label>
+              <label>Responsável *<input type="text" name="goalOwner" required /></label>
+              <label>Status *<select name="goalStatus" required><option>PLANNED</option><option>IN_PROGRESS</option><option>COMPLETED</option></select></label>
+            </div>
+            <label>Descrição detalhada *<textarea name="goalDescription" rows="4" required></textarea></label>
+          </div>
+          <div class="module-section">
+            <h4>Desdobramento (ação)</h4>
+            <div class="module-form__grid module-form__grid--3">
+              <label>Título da ação *<input type="text" name="actionTitle" required /></label>
+              <label>Responsável da ação *<input type="text" name="actionOwner" required /></label>
+              <label>Prazo *<input type="date" name="actionDueDate" required /></label>
+              <label>Status da ação *<select name="actionStatus" required><option>NOT_STARTED</option><option>IN_PROGRESS</option><option>COMPLETED</option></select></label>
+              <label>Progresso (%) *<input type="number" min="0" max="100" name="actionProgress" required /></label>
+            </div>
+            <label>Descrição da ação *<textarea name="actionDescription" rows="3" required></textarea></label>
+          </div>
+          <div class="module-form__actions"><button type="submit">Salvar meta e ação</button><span class="module-pill module-pill--ok">Use progresso para apoiar decisão de priorização</span></div>
+        </form>`,
+        "/suppliers": `<form class="module-form" data-module-form data-form-kind="simple">
+          <h3>Cadastro de fornecedor</h3>
           <div class="module-form__grid">
-            <label>Nome<input type="text" name="name" required /></label>
-            <label>CNPJ<input type="text" name="cnpj" required /></label>
+            <label>Nome *<input type="text" name="name" required /></label>
+            <label>CNPJ *<input type="text" name="cnpj" data-cnpj required /></label>
           </div>
           <div class="module-form__actions"><button type="submit">Cadastrar fornecedor</button></div>
         </form>`,
-        "/fiscais": `<form class="module-form" data-module-form>
-          <h3>Novo fiscal</h3>
+        "/fiscais": `<form class="module-form" data-module-form data-form-kind="simple">
+          <h3>Cadastro de fiscal</h3>
           <div class="module-form__grid">
-            <label>Nome<input type="text" name="name" required /></label>
-            <label>E-mail<input type="email" name="email" required /></label>
-            <label>Telefone<input type="text" name="phone" required /></label>
+            <label>Nome *<input type="text" name="name" required /></label>
+            <label>E-mail *<input type="email" name="email" required /></label>
+            <label>Telefone *<input type="text" name="phone" required /></label>
           </div>
           <div class="module-form__actions"><button type="submit">Cadastrar fiscal</button></div>
         </form>`,
-        "/reports": `<form class="module-form" data-module-form>
-          <h3>Gerar relatório</h3>
+        "/reports": `<form class="module-form" data-module-form data-form-kind="simple">
+          <h3>Geração de relatório</h3>
           <div class="module-form__grid">
-            <label>Tipo
-              <select name="reportType"><option>Resumo executivo</option><option>SLA</option><option>Metas</option><option>Glosas</option></select>
-            </label>
-            <label>Período início<input type="date" name="startDate" required /></label>
-            <label>Período fim<input type="date" name="endDate" required /></label>
+            <label>Tipo *<select name="reportType" required><option>Resumo executivo</option><option>SLA</option><option>Metas</option><option>Glosas</option></select></label>
+            <label>Período início *<input type="date" name="startDate" required /></label>
+            <label>Período fim *<input type="date" name="endDate" required /></label>
           </div>
           <div class="module-form__actions"><button type="submit">Gerar relatório</button></div>
         </form>`
@@ -1494,6 +1712,23 @@ function startHealthServer(): void {
         box-shadow: var(--shadow-sm);
       }
       .module-form h3 { margin: 0 0 0.7rem 0; font-size: 0.98rem; }
+      .module-section {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.75rem 0.8rem;
+        margin-bottom: 0.72rem;
+        background: #f8fafc;
+      }
+      .module-section h4 {
+        margin: 0 0 0.3rem 0;
+        font-size: 0.9rem;
+        color: #1e293b;
+      }
+      .module-section__hint {
+        margin: 0 0 0.52rem 0;
+        font-size: 0.8rem;
+        color: #64748b;
+      }
       .module-form label {
         display: flex;
         flex-direction: column;
@@ -1524,6 +1759,7 @@ function startHealthServer(): void {
       }
       .module-form__actions {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 0.6rem;
         margin-top: 0.2rem;
@@ -1537,8 +1773,29 @@ function startHealthServer(): void {
         background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
         cursor: pointer;
       }
+      .module-form__actions button[type="button"] {
+        background: linear-gradient(180deg, #16a34a 0%, #15803d 100%);
+      }
       .module-form__actions button:hover { filter: brightness(1.05); }
       .module-form__msg { margin: 0; font-size: 0.82rem; color: #2563eb; }
+      .module-form__msg--ok { color: #15803d; }
+      .module-form__msg--warn { color: #a16207; }
+      .module-form__msg--error { color: #b91c1c; white-space: pre-line; }
+      .module-inline-check {
+        flex-direction: row !important;
+        align-items: center;
+        gap: 0.45rem !important;
+        margin-top: 0.35rem;
+      }
+      .module-pill {
+        font-size: 0.75rem;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: 0.28rem 0.56rem;
+      }
+      .module-pill--ok { background: #dcfce7; color: #166534; }
+      .module-pill--warn { background: #fef9c3; color: #854d0e; }
+      .module-pill--danger { background: #fee2e2; color: #991b1b; }
       .module-card {
         background: #fff;
         border: 1px solid rgba(148, 163, 184, 0.28);
@@ -2344,17 +2601,186 @@ function startHealthServer(): void {
       (function () {
         var forms = document.querySelectorAll("[data-module-form]");
         if (!forms || forms.length === 0) return;
+        function onlyDigits(v) {
+          return String(v || "").replace(/\D/g, "");
+        }
+        function isValidCnpj(value) {
+          var digits = onlyDigits(value);
+          if (!digits || digits.length !== 14) return false;
+          if (/^(\d)\1+$/.test(digits)) return false;
+          var length = digits.length - 2;
+          var numbers = digits.substring(0, length);
+          var verifiers = digits.substring(length);
+          var sum = 0;
+          var pos = length - 7;
+          for (var i = length; i >= 1; i--) {
+            sum += Number(numbers.charAt(length - i)) * pos--;
+            if (pos < 2) pos = 9;
+          }
+          var result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
+          if (result !== Number(verifiers.charAt(0))) return false;
+          length = length + 1;
+          numbers = digits.substring(0, length);
+          sum = 0;
+          pos = length - 7;
+          for (var j = length; j >= 1; j--) {
+            sum += Number(numbers.charAt(length - j)) * pos--;
+            if (pos < 2) pos = 9;
+          }
+          result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
+          return result === Number(verifiers.charAt(1));
+        }
+        function cnpjMask(value) {
+          var digits = onlyDigits(value).slice(0, 14);
+          var out = digits;
+          out = out.replace(/^(\d{2})(\d)/, "$1.$2");
+          out = out.replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3");
+          out = out.replace(/\.(\d{3})(\d)/, ".$1/$2");
+          out = out.replace(/(\d{4})(\d)/, "$1-$2");
+          return out;
+        }
+        function parseNumber(form, name) {
+          var el = form.querySelector('[name="' + name + '"]');
+          if (!el || el.value === "") return 0;
+          return Number(el.value);
+        }
+        function validateContract(form) {
+          var errors = [];
+          var startDate = form.querySelector('[name="startDate"]')?.value || "";
+          var endDate = form.querySelector('[name="endDate"]')?.value || "";
+          if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+            errors.push("A data final da vigência não pode ser menor que a data inicial.");
+          }
+          var fiscal = (form.querySelector('[name="fiscalId"]')?.value || "").trim();
+          if (!fiscal) errors.push("É obrigatório informar o fiscal do contrato.");
+          var monthlyValue = parseNumber(form, "monthlyValue");
+          var totalValue = parseNumber(form, "totalValue");
+          if (monthlyValue > 0 && totalValue > 0 && startDate && endDate) {
+            var months =
+              (new Date(endDate).getFullYear() - new Date(startDate).getFullYear()) * 12 +
+              (new Date(endDate).getMonth() - new Date(startDate).getMonth()) +
+              1;
+            if (months > 0 && monthlyValue > totalValue / months) {
+              errors.push("Atenção: valor mensal está acima da média mensal do valor global.");
+            }
+          }
+          var hasSla = !!form.querySelector('[name="hasSla"]')?.checked;
+          if (hasSla) {
+            ["slaTarget", "slaLowHours", "slaMediumHours", "slaHighHours", "slaCriticalHours"].forEach(function (name) {
+              if ((form.querySelector('[name="' + name + '"]')?.value || "") === "") {
+                errors.push("Com SLA ativo, todos os campos de SLA devem ser preenchidos.");
+              }
+            });
+          }
+          var moduleWeight = parseNumber(form, "moduleWeight");
+          if (moduleWeight > 100) errors.push("O peso do módulo não pode ultrapassar 100%.");
+          var featureWeight = parseNumber(form, "featureWeight");
+          if (featureWeight > 100) errors.push("O peso da funcionalidade não pode ultrapassar 100%.");
+          return errors;
+        }
+        function validateMeasurement(form, isApproval) {
+          var errors = [];
+          var validatedCount = ["featureValidated1", "featureValidated2", "featureValidated3"].filter(function (name) {
+            return !!form.querySelector('[name="' + name + '"]')?.checked;
+          }).length;
+          var qtyTotal = parseNumber(form, "qtyVm") + parseNumber(form, "qtyStorage") + parseNumber(form, "qtyBackup");
+          if (validatedCount === 0 && qtyTotal <= 0) {
+            errors.push("Preencha ao menos um item de medição (funcionalidade validada ou quantidade de serviço).");
+          }
+          var evidence = form.querySelector('[name="evidenceFiles"]');
+          if (isApproval && (!evidence || !evidence.files || evidence.files.length === 0)) {
+            errors.push("Não é permitido aprovar medição sem evidência anexada.");
+          }
+          return errors;
+        }
+        function validateGlosa(form) {
+          var errors = [];
+          var justification = (form.querySelector('[name="justification"]')?.value || "").trim();
+          if (!justification) errors.push("Justificativa da glosa é obrigatória.");
+          var evidence = form.querySelector('[name="evidenceFile"]');
+          if (!evidence || !evidence.files || evidence.files.length === 0) {
+            errors.push("É obrigatório anexar evidência da glosa.");
+          }
+          return errors;
+        }
+        function validateGovernance(form) {
+          var errors = [];
+          var aware = !!form.querySelector('[name="companyAware"]')?.checked;
+          if (!aware) errors.push("Marque que a empresa tomou ciência do chamado.");
+          var acknowledgedAt = (form.querySelector('[name="acknowledgedAt"]')?.value || "").trim();
+          if (!acknowledgedAt) errors.push("Data da ciência é obrigatória.");
+          var newDeadline = (form.querySelector('[name="newDeadline"]')?.value || "").trim();
+          var deadlineJustification = (form.querySelector('[name="deadlineJustification"]')?.value || "").trim();
+          if (newDeadline && !deadlineJustification) errors.push("Ao definir novo prazo, a justificativa é obrigatória.");
+          var managerAction = (form.querySelector('[name="managerAction"]')?.value || "").trim();
+          var managerNotified = !!form.querySelector('[name="managerNotified"]')?.checked;
+          if (managerNotified && !managerAction) errors.push("Informe a ação do gestor ao marcar notificação.");
+          return errors;
+        }
+        function validateGoals(form) {
+          var errors = [];
+          var progress = parseNumber(form, "actionProgress");
+          if (progress < 0 || progress > 100) errors.push("Progresso da ação deve estar entre 0 e 100.");
+          return errors;
+        }
+        function validateSimple(form) {
+          return [];
+        }
+        function runValidation(form, isApproval) {
+          var kind = form.getAttribute("data-form-kind") || "simple";
+          if (kind === "contract") return validateContract(form);
+          if (kind === "measurement") return validateMeasurement(form, isApproval);
+          if (kind === "glosa") return validateGlosa(form);
+          if (kind === "governance") return validateGovernance(form);
+          if (kind === "goals") return validateGoals(form);
+          return validateSimple(form);
+        }
+        function setFormMsg(form, text, variant) {
+          var oldMsg = form.querySelector(".module-form__msg");
+          if (oldMsg && oldMsg.parentNode) oldMsg.parentNode.removeChild(oldMsg);
+          var msg = document.createElement("p");
+          msg.className = "module-form__msg module-form__msg--" + (variant || "ok");
+          msg.textContent = text;
+          var actions = form.querySelector(".module-form__actions");
+          if (actions) actions.appendChild(msg);
+        }
+        var cnpjInputs = document.querySelectorAll("[data-cnpj]");
+        cnpjInputs.forEach(function (input) {
+          input.addEventListener("input", function () {
+            input.value = cnpjMask(input.value);
+          });
+        });
         forms.forEach(function (form) {
           form.addEventListener("submit", function (event) {
             event.preventDefault();
-            var oldMsg = form.querySelector(".module-form__msg");
-            if (oldMsg && oldMsg.parentNode) oldMsg.parentNode.removeChild(oldMsg);
-            var msg = document.createElement("p");
-            msg.className = "module-form__msg";
-            msg.textContent = "Dados validados na interface. Posso ligar este formulário ao endpoint automaticamente no próximo passo.";
-            var actions = form.querySelector(".module-form__actions");
-            if (actions) actions.appendChild(msg);
+            var cnpjEl = form.querySelector("[data-cnpj]");
+            if (cnpjEl && !isValidCnpj(cnpjEl.value)) {
+              setFormMsg(form, "CNPJ inválido. Revise o número informado.", "error");
+              return;
+            }
+            var errors = runValidation(form, false);
+            if (errors.length > 0) {
+              setFormMsg(form, errors.join("\n"), "error");
+              return;
+            }
+            setFormMsg(form, "Formulário validado com sucesso. Dados prontos para registro auditável.", "ok");
           });
+          var approveBtn = form.querySelector("[data-approve-action]");
+          if (approveBtn) {
+            approveBtn.addEventListener("click", function () {
+              var cnpjEl = form.querySelector("[data-cnpj]");
+              if (cnpjEl && !isValidCnpj(cnpjEl.value)) {
+                setFormMsg(form, "CNPJ inválido. Revise o número informado.", "error");
+                return;
+              }
+              var errors = runValidation(form, true);
+              if (errors.length > 0) {
+                setFormMsg(form, errors.join("\n"), "error");
+                return;
+              }
+              setFormMsg(form, "Aprovação autorizada pela validação de governança.", "ok");
+            });
+          }
         });
       })();
     </script>
