@@ -90,6 +90,8 @@ Para não quebrar o sistema atual de GLPI, o novo módulo foi iniciado em estrut
   - `/reports`
 - Dashboard com KPIs e gráficos base (Recharts).
 
+Se o **quadro GLPI** (`npm start` na raiz) e o **Next** estiverem em URLs diferentes (por exemplo dois serviços no Railway), defina no processo do servidor Node a variável **`GTI_NEXT_APP_URL`** com a URL pública do Next (sem barra final). Os links do menu para contratos, metas, medições, etc. passam a **redireccionar (302)** para a app Next, onde está a interface com lista e modal.
+
 ### Como iniciar o novo módulo
 
 Backend:

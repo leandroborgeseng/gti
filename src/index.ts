@@ -866,6 +866,27 @@ function startHealthServer(): void {
       "/goals"
     ]);
     if (method === "GET" && appPages.has(parsedUrl.pathname)) {
+      /** Se definido, encaminha módulos de gestão contratual para a app Next (lista + modal). O Kanban GLPI mantém-se em / e /dashboard. */
+      const nextBaseRaw = (process.env.GTI_NEXT_APP_URL || "").trim().replace(/\/+$/, "");
+      const nextDelegable = new Set([
+        "/contracts",
+        "/measurements",
+        "/glosas",
+        "/suppliers",
+        "/fiscais",
+        "/reports",
+        "/governance/tickets",
+        "/goals"
+      ]);
+      if (nextBaseRaw && nextDelegable.has(parsedUrl.pathname)) {
+        const safeBase = nextBaseRaw.startsWith("https://") || nextBaseRaw.startsWith("http://");
+        if (safeBase) {
+          const dest = `${nextBaseRaw}${parsedUrl.pathname}${parsedUrl.search}`;
+          res.writeHead(302, { Location: dest });
+          res.end();
+          return;
+        }
+      }
       if (parsedUrl.searchParams.has("age")) {
         const redirectParams = new URLSearchParams(parsedUrl.searchParams);
         redirectParams.delete("age");
