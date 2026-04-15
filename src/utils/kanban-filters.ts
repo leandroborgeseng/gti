@@ -1,5 +1,4 @@
 import type { Prisma } from "@prisma/client";
-import { prisma } from "../config/prisma";
 import { ticketWhereNotClosed } from "./ticket-status";
 
 export function pendenciaFilterWhere(raw: string): Prisma.TicketWhereInput | null {
@@ -43,7 +42,6 @@ export type KanbanFilterInput = {
   q: string;
   statusFilter: string;
   groupFilter: string;
-  assignedGroupFilter: string;
   onlyOpen: boolean;
   pendenciaParam: string;
   /**
@@ -53,35 +51,9 @@ export type KanbanFilterInput = {
   forceNonClosed?: boolean;
 };
 
-async function assignedGroupTicketIds(assignedGroupFilter: string): Promise<number[]> {
-  if (assignedGroupFilter.trim().length === 0) {
-    return [];
-  }
-  return (
-    await prisma.ticketAttribute.findMany({
-      where: {
-        OR: [
-          { keyPath: { contains: "team" } },
-          { keyPath: { contains: "group" } },
-          { keyPath: { contains: "assigned" } }
-        ],
-        AND: [
-          {
-            OR: [{ valueText: { contains: assignedGroupFilter } }, { valueJson: { contains: assignedGroupFilter } }]
-          }
-        ]
-      },
-      select: { ticketId: true },
-      distinct: ["ticketId"],
-      take: 5000
-    })
-  ).map((row) => row.ticketId);
-}
-
-export async function buildKanbanWhere(input: KanbanFilterInput): Promise<Prisma.TicketWhereInput> {
-  const { q, statusFilter, groupFilter, assignedGroupFilter, onlyOpen, pendenciaParam, forceNonClosed } = input;
+export function buildKanbanWhere(input: KanbanFilterInput): Prisma.TicketWhereInput {
+  const { q, statusFilter, groupFilter, onlyOpen, pendenciaParam, forceNonClosed } = input;
   const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
-  const ids = await assignedGroupTicketIds(assignedGroupFilter);
   const enforceNotClosed = onlyOpen || Boolean(forceNonClosed);
 
   return {
@@ -97,14 +69,6 @@ export async function buildKanbanWhere(input: KanbanFilterInput): Promise<Prisma
         : {},
       statusFilter ? { status: statusFilter } : {},
       groupFilter ? { contractGroupName: { contains: groupFilter } } : {},
-      assignedGroupFilter
-        ? {
-            OR: [
-              { contractGroupName: { contains: assignedGroupFilter } },
-              ...(ids.length > 0 ? [{ id: { in: ids } }] : [])
-            ]
-          }
-        : {},
       ...(enforceNotClosed ? [ticketWhereNotClosed()] : []),
       ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
     ]

@@ -235,8 +235,10 @@ function agingPieSliceTitle(label: string, count: number, total: number): string
   return escapeHtml(`${label}: ${count} (${pct}%)`);
 }
 
-/** Pizza da mesma ordem visual dos cartões (week → noDate). Tooltip nativo via <title> em cada fatia. */
+/** Pizza da mesma ordem visual dos cartões (week → noDate). Percentual dentro da fatia; <title> mantém detalhe. */
 function buildOpenAgePieSvg(b: OpenAgeBuckets): string {
+  const MIN_SWEEP_FOR_LABEL = 0.42;
+  const LABEL_RADIUS = 0.56;
   const slices: { n: number; c: string; label: string }[] = [
     { n: b.week, c: "#10b981", label: "Esta semana (ate 7 dias)" },
     { n: b.days15, c: "#14b8a6", label: "8 a 15 dias" },
@@ -253,27 +255,54 @@ function buildOpenAgePieSvg(b: OpenAgeBuckets): string {
   if (fullIdx >= 0) {
     const s = slices[fullIdx];
     const tip = agingPieSliceTitle(s.label, s.n, total);
-    return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="100% numa unica faixa etaria"><circle cx="0" cy="0" r="1" fill="${s.c}"><title>${tip}</title></circle></svg>`;
+    const pctStr = `${formatAgingPercentOfTotal(s.n, total)}%`;
+    const soloLabel = `<text x="0" y="0" class="aging-dash__pie-label" font-size="0.32" text-anchor="middle" dominant-baseline="middle">${escapeHtml(
+      pctStr
+    )}</text>`;
+    return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="100% numa unica faixa etaria"><circle cx="0" cy="0" r="1" fill="${s.c}"><title>${tip}</title></circle>${soloLabel}</svg>`;
   }
   const r = 0.98;
   let angle = -Math.PI / 2;
-  let paths = "";
+  type Seg = { n: number; c: string; label: string; sweep: number; mid: number; tip: string; pctStr: string };
+  const segs: Seg[] = [];
   for (const { n, c, label } of slices) {
     if (n <= 0) {
       continue;
     }
     const sweep = (n / total) * 2 * Math.PI;
+    segs.push({
+      n,
+      c,
+      label,
+      sweep,
+      mid: angle + sweep / 2,
+      tip: agingPieSliceTitle(label, n, total),
+      pctStr: `${formatAgingPercentOfTotal(n, total)}%`
+    });
+    angle += sweep;
+  }
+  let paths = "";
+  let labels = "";
+  angle = -Math.PI / 2;
+  for (const seg of segs) {
+    const { sweep, c, tip } = seg;
     const next = angle + sweep;
     const x1 = r * Math.cos(angle);
     const y1 = r * Math.sin(angle);
     const x2 = r * Math.cos(next);
     const y2 = r * Math.sin(next);
     const largeArc = sweep > Math.PI ? 1 : 0;
-    const tip = agingPieSliceTitle(label, n, total);
     paths += `<path d="M 0 0 L ${x1.toFixed(4)} ${y1.toFixed(4)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(4)} ${y2.toFixed(4)} Z" fill="${c}"><title>${tip}</title></path>`;
+    if (sweep >= MIN_SWEEP_FOR_LABEL) {
+      const tx = LABEL_RADIUS * Math.cos(seg.mid);
+      const ty = LABEL_RADIUS * Math.sin(seg.mid);
+      labels += `<text x="${tx.toFixed(3)}" y="${ty.toFixed(3)}" class="aging-dash__pie-label" font-size="0.19" text-anchor="middle" dominant-baseline="middle">${escapeHtml(
+        seg.pctStr
+      )}</text>`;
+    }
     angle = next;
   }
-  return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Distribuicao por idade (abertos no filtro)">${paths}</svg>`;
+  return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Distribuicao por idade (abertos no filtro)">${paths}${labels}</svg>`;
 }
 
 function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
@@ -327,7 +356,7 @@ function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
   return `<section class="aging-dash" aria-labelledby="aging-dash-title">
     <div class="aging-dash__intro">
       <h2 id="aging-dash-title" class="aging-dash__title">Idade dos chamados abertos</h2>
-      <p class="aging-dash__subtitle">Contagem de <strong>chamados não fechados</strong> que obedecem aos <strong>mesmos filtros</strong> que o quadro (busca, status, grupo, pendência, etc.). O painel usa sempre só <strong>abertos</strong>, mesmo com «Só abertos» = Não no Kanban. Em cada cartão: número e <strong>percentual do total</strong> deste conjunto; o segmento <strong>cinza</strong> na pizza é “sem data” válida.</p>
+      <p class="aging-dash__subtitle">Contagem de <strong>chamados não fechados</strong> que obedecem aos <strong>mesmos filtros</strong> que o quadro (busca, status, grupo, pendência, etc.). O painel usa sempre só <strong>abertos</strong>, mesmo com «Só abertos» = Não no Kanban. Em cada cartão: número e <strong>percentual do total</strong> deste conjunto; na mini pizza o <strong>percentual aparece nas fatias</strong> (fatias muito finas omitem o texto). O segmento <strong>cinza</strong> é “sem data” válida.</p>
       <div class="aging-dash__total-row">
         <p class="aging-dash__total">
           <span class="aging-dash__total-num">${total}</span><span class="aging-dash__total-label"> chamados abertos</span>${noDateNote}
@@ -454,14 +483,12 @@ function startHealthServer(): void {
         const q = typeof body.q === "string" ? body.q : "";
         const statusFilter = typeof body.status === "string" ? body.status : "";
         const groupFilter = typeof body.group === "string" ? body.group : "";
-        const assignedGroupFilter = typeof body.assignedGroup === "string" ? body.assignedGroup : "";
         const pendenciaParam = typeof body.pendencia === "string" ? body.pendencia : "";
         const onlyOpen = body.open === true || body.open === 1 || body.open === "1";
-        const where = await buildKanbanWhere({
+        const where = buildKanbanWhere({
           q,
           statusFilter,
           groupFilter,
-          assignedGroupFilter,
           onlyOpen,
           pendenciaParam
         });
@@ -608,7 +635,6 @@ function startHealthServer(): void {
       const q = (parsedUrl.searchParams.get("q") || "").trim();
       const statusFilter = (parsedUrl.searchParams.get("status") || "").trim();
       const groupFilter = (parsedUrl.searchParams.get("group") || "").trim();
-      const assignedGroupFilter = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const onlyOpen = parsedUrl.searchParams.get("open") === "1";
       const pendenciaParam = (parsedUrl.searchParams.get("pendencia") || "").trim();
       const openFilterEffective = onlyOpen;
@@ -640,19 +666,17 @@ function startHealthServer(): void {
         noDate: 0
       };
       try {
-        const where = await buildKanbanWhere({
+        const where = buildKanbanWhere({
           q,
           statusFilter,
           groupFilter,
-          assignedGroupFilter,
           onlyOpen,
           pendenciaParam
         });
-        const whereAge = await buildKanbanWhere({
+        const whereAge = buildKanbanWhere({
           q,
           statusFilter,
           groupFilter,
-          assignedGroupFilter,
           onlyOpen,
           pendenciaParam,
           forceNonClosed: true
@@ -846,7 +870,6 @@ function startHealthServer(): void {
         pill("Busca", q ? escapeHtml(q) : "—", !q),
         pill("Status", statusFilter ? escapeHtml(statusFilter) : "Todos", !statusFilter),
         pill("Grupo", groupFilter ? escapeHtml(groupFilter) : "Todos", !groupFilter),
-        pill("Grupo técnico", assignedGroupFilter ? escapeHtml(assignedGroupFilter) : "—", !assignedGroupFilter),
         pill("Abertos", escapeHtml(openLabel), !openFilterEffective),
         pill("Pendência", escapeHtml(pendenciaLabelForSummary(pendenciaParam)), pendenciaParam === ""),
         pill(
@@ -867,7 +890,6 @@ function startHealthServer(): void {
         q,
         status: statusFilter,
         group: groupFilter,
-        assignedGroup: assignedGroupFilter,
         open: onlyOpen,
         pendencia: pendenciaParam
       }).replace(/</g, "\\u003c");
@@ -1194,6 +1216,15 @@ function startHealthServer(): void {
       .aging-dash__pie-svg circle {
         cursor: help;
       }
+      .aging-dash__pie-label {
+        pointer-events: none;
+        font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+        font-weight: 800;
+        fill: #fff;
+        stroke: rgba(15, 23, 42, 0.42);
+        stroke-width: 0.055;
+        paint-order: stroke fill;
+      }
       .aging-dash__total-num {
         font-size: 1.45rem;
         font-weight: 800;
@@ -1311,6 +1342,10 @@ function startHealthServer(): void {
       }
       .aging-card--over .aging-card__value { color: #991b1b; }
       .kanban-fs-root { margin-bottom: 0; }
+      /* Modal como filho direto: não participa do flex do quadro em tela cheia */
+      .kanban-fs-root > .modal {
+        flex: none;
+      }
       .kanban-fs-root:fullscreen,
       .kanban-fs-root:-webkit-full-screen {
         width: 100%;
@@ -1586,9 +1621,6 @@ function startHealthServer(): void {
             ${groupOptions}
           </select>
         </label>
-        <label class="filters-grid--wide">Grupo técnico (contém)
-          <input type="text" name="assignedGroup" value="${escapeHtml(assignedGroupFilter)}" placeholder="Ex.: Helpdesk" autocomplete="off" />
-        </label>
         <label>Pendência
           <select name="pendencia" title="Inferência no cache">
             <option value="" ${pendenciaParam === "" ? "selected" : ""}>Todas</option>
@@ -1736,6 +1768,46 @@ function startHealthServer(): void {
         ? '<p class="page-lead muted" style="margin-top:1rem;padding:1rem;background:rgba(255,255,255,.85);border-radius:12px;border:1px solid #e2e8f0;">Nenhum chamado com esta pendência no cache. Abra chamados no modal (carrega o histórico GLPI) ou aguarde o enriquecimento após a sincronização.</p>'
         : ""
     }
+    <div id="ticket-modal" class="modal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="ticket-modal-title">
+        <div class="modal-header">
+          <h2 id="ticket-modal-title">Editar chamado</h2>
+          <button type="button" class="modal-close" data-close-modal aria-label="Fechar">✕</button>
+        </div>
+        <form id="ticket-edit-form">
+          <input type="hidden" id="ticket-edit-glpi-id" />
+          <label class="modal-field">Título (GLPI <code>name</code>)
+            <input type="text" id="ticket-edit-name" required />
+          </label>
+          <label class="modal-field modal-field-rich">Descrição (rich text / HTML — enviado como <code>content</code> no GLPI)
+            <div id="ticket-edit-quill" class="ticket-quill-editor" aria-label="Descrição formatada"></div>
+          </label>
+          <div id="ticket-history-section">
+            <div id="ticket-waiting-banner" class="waiting-banner" hidden></div>
+            <p class="small" id="ticket-history-api-error" hidden></p>
+            <h3 class="history-heading">Histórico (GLPI)</h3>
+            <p class="history-help">Linha do tempo: abertura, acompanhamentos e tarefas. O destaque de <strong>pendência</strong> considera a última mensagem <strong>pública</strong> — solicitante → ação da empresa; técnico → em geral aguarda o cliente. Privadas não entram na inferência.</p>
+            <div id="ticket-history-list" class="history-list" aria-live="polite"></div>
+          </div>
+          <div class="modal-grid">
+            <label class="modal-field">Status (ID numérico no GLPI)
+              <input type="number" id="ticket-edit-status-id" min="0" step="1" placeholder="ex.: 2" />
+            </label>
+            <label class="modal-field">Prioridade (ID numérico no GLPI)
+              <input type="number" id="ticket-edit-priority-id" min="0" step="1" placeholder="ex.: 3" />
+            </label>
+          </div>
+          <p class="small modal-hint">Rótulos atuais: <span id="ticket-edit-labels"></span></p>
+          <p class="small modal-hint" id="ticket-edit-requester" style="margin-top:0.35rem"></p>
+          <p class="small modal-error" id="ticket-edit-error" hidden></p>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" data-close-modal>Cancelar</button>
+            <button type="submit" id="ticket-edit-submit">Salvar no GLPI</button>
+          </div>
+        </form>
+      </div>
+    </div>
     </div>
     </div>
 
@@ -1790,47 +1862,6 @@ function startHealthServer(): void {
         syncLabel();
       })();
     </script>
-
-    <div id="ticket-modal" class="modal" aria-hidden="true">
-      <div class="modal-backdrop" data-close-modal></div>
-      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="ticket-modal-title">
-        <div class="modal-header">
-          <h2 id="ticket-modal-title">Editar chamado</h2>
-          <button type="button" class="modal-close" data-close-modal aria-label="Fechar">✕</button>
-        </div>
-        <form id="ticket-edit-form">
-          <input type="hidden" id="ticket-edit-glpi-id" />
-          <label class="modal-field">Título (GLPI <code>name</code>)
-            <input type="text" id="ticket-edit-name" required />
-          </label>
-          <label class="modal-field modal-field-rich">Descrição (rich text / HTML — enviado como <code>content</code> no GLPI)
-            <div id="ticket-edit-quill" class="ticket-quill-editor" aria-label="Descrição formatada"></div>
-          </label>
-          <div id="ticket-history-section">
-            <div id="ticket-waiting-banner" class="waiting-banner" hidden></div>
-            <p class="small" id="ticket-history-api-error" hidden></p>
-            <h3 class="history-heading">Histórico (GLPI)</h3>
-            <p class="history-help">Linha do tempo: abertura, acompanhamentos e tarefas. O destaque de <strong>pendência</strong> considera a última mensagem <strong>pública</strong> — solicitante → ação da empresa; técnico → em geral aguarda o cliente. Privadas não entram na inferência.</p>
-            <div id="ticket-history-list" class="history-list" aria-live="polite"></div>
-          </div>
-          <div class="modal-grid">
-            <label class="modal-field">Status (ID numérico no GLPI)
-              <input type="number" id="ticket-edit-status-id" min="0" step="1" placeholder="ex.: 2" />
-            </label>
-            <label class="modal-field">Prioridade (ID numérico no GLPI)
-              <input type="number" id="ticket-edit-priority-id" min="0" step="1" placeholder="ex.: 3" />
-            </label>
-          </div>
-          <p class="small modal-hint">Rótulos atuais: <span id="ticket-edit-labels"></span></p>
-          <p class="small modal-hint" id="ticket-edit-requester" style="margin-top:0.35rem"></p>
-          <p class="small modal-error" id="ticket-edit-error" hidden></p>
-          <div class="modal-actions">
-            <button type="button" class="btn-secondary" data-close-modal>Cancelar</button>
-            <button type="submit" id="ticket-edit-submit">Salvar no GLPI</button>
-          </div>
-        </form>
-      </div>
-    </div>
 
     <script>
       (function () {
@@ -2166,16 +2197,14 @@ function startHealthServer(): void {
       const limit = Number.isFinite(limitParam) ? Math.min(Math.max(Math.trunc(limitParam), 1), 200) : 50;
       const status = (parsedUrl.searchParams.get("status") || "").trim();
       const group = (parsedUrl.searchParams.get("group") || "").trim();
-      const assignedGroup = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const openOnly = parsedUrl.searchParams.get("open") === "1";
       const ticketsPendencia = (parsedUrl.searchParams.get("pendencia") || "").trim();
       const ticketsQ = (parsedUrl.searchParams.get("q") || "").trim();
       try {
-        const ticketsWhere = await buildKanbanWhere({
+        const ticketsWhere = buildKanbanWhere({
           q: ticketsQ,
           statusFilter: status,
           groupFilter: group,
-          assignedGroupFilter: assignedGroup,
           onlyOpen: openOnly,
           pendenciaParam: ticketsPendencia
         });
