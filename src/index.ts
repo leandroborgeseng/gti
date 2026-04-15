@@ -2146,6 +2146,8 @@ function startHealthServer(): void {
           if (elRequester) elRequester.textContent = "";
           if (elObservers) elObservers.textContent = "";
           renderHistory(null);
+          openModal();
+          setError("A carregar chamado...");
           const res = await fetch("/api/tickets/glpi/" + glpiId);
           const data = await res.json().catch(function () { return null; });
           if (!res.ok) {
@@ -2188,7 +2190,7 @@ function startHealthServer(): void {
             }
           }
           renderHistory(data.history || null);
-          openModal();
+          setError("");
           requestAnimationFrame(function () {
             if (typeof Quill === "undefined") {
               setError("Editor rich text (Quill) nao carregou. Verifique rede / bloqueio de CDN.");
