@@ -207,11 +207,19 @@ export function computeGroupPerformance(tickets: TicketPerfInput[], nowMs: numbe
   return rows;
 }
 
+const perfLeadHtml =
+  "Comparação no <strong>cache local</strong>: backlog aberto por idade, criações vs fechos nos últimos <strong>28 dias</strong>, tempo até fechar (mediana e P90 entre fechados nesse período) e fechados por <strong>semana</strong> (4 semanas). Grupo = <code>contractGroupName</code> do ticket (mesmo rótulo do card).";
+
 export function renderGroupPerformanceSection(
   rows: GroupPerformanceRow[],
-  escapeHtml: (s: string) => string
+  escapeHtml: (s: string) => string,
+  /** Sem título duplicado (conteúdo dentro de sanfona). */
+  asAccordionContent = false
 ): string {
   if (rows.length === 0) {
+    if (asAccordionContent) {
+      return `<div class="perf-section perf-section--accordion-body"><p class="small muted">Sem dados de grupo no cache para comparar.</p></div>`;
+    }
     return `<section class="perf-section" aria-labelledby="perf-title">
       <h2 id="perf-title" class="perf-section__title">Performance por grupo</h2>
       <p class="small muted">Sem dados de grupo no cache para comparar.</p>
@@ -268,12 +276,7 @@ export function renderGroupPerformanceSection(
     })
     .join("");
 
-  return `<section class="perf-section" aria-labelledby="perf-title">
-    <div class="perf-section__head">
-      <h2 id="perf-title" class="perf-section__title">Performance por grupo atribuído</h2>
-      <p class="perf-section__lead">Comparação no <strong>cache local</strong>: backlog aberto por idade, criações vs fechos nos últimos <strong>28 dias</strong>, tempo até fechar (mediana e P90 entre fechados nesse período) e fechados por <strong>semana</strong> (4 semanas). Grupo = <code>contractGroupName</code> do ticket (mesmo rótulo do card).</p>
-    </div>
-    <div class="perf-table-wrap">
+  const tableBlock = `<div class="perf-table-wrap">
       <table class="perf-table">
         <thead>
           <tr>
@@ -289,6 +292,20 @@ export function renderGroupPerformanceSection(
         </thead>
         <tbody>${tableRows}</tbody>
       </table>
+    </div>`;
+
+  if (asAccordionContent) {
+    return `<div class="perf-section perf-section--accordion-body">
+      <p class="perf-section__lead perf-section__lead--accordion">${perfLeadHtml}</p>
+      ${tableBlock}
+    </div>`;
+  }
+
+  return `<section class="perf-section" aria-labelledby="perf-title">
+    <div class="perf-section__head">
+      <h2 id="perf-title" class="perf-section__title">Performance por grupo atribuído</h2>
+      <p class="perf-section__lead">${perfLeadHtml}</p>
     </div>
+    ${tableBlock}
   </section>`;
 }

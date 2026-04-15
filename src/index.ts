@@ -14,13 +14,8 @@ import { fetchGlpiTicketJson, patchGlpiTicketJson } from "./services/glpi-ticket
 import { persistTicketFromRaw } from "./services/ticket-persist.service";
 import { extractGlpiScalarId } from "./utils/glpi-field-parse";
 import { computeGroupPerformance, renderGroupPerformanceSection } from "./utils/group-performance";
-import { ageLabelForSummary, buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
-import {
-  getOpenTicketAgeBuckets,
-  normalizeAgeBucketParam,
-  sumOpenAgeBuckets,
-  type OpenAgeBuckets
-} from "./utils/open-ticket-aging";
+import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
+import { getOpenTicketAgeBuckets, sumOpenAgeBuckets, type OpenAgeBuckets } from "./utils/open-ticket-aging";
 import { extractRequesterDisplayName } from "./utils/ticket-requester";
 import { getTicketSyncScope } from "./utils/ticket-sync-scope";
 
@@ -229,49 +224,7 @@ function agingDashIcon(svgInner: string): string {
   return `<svg class="aging-card__svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svgInner}</svg>`;
 }
 
-type AgingDashHrefs = {
-  week: string;
-  d15: string;
-  d30: string;
-  d60: string;
-  over: string;
-  clear: string;
-};
-
-function homeKanbanSearch(opts: {
-  q: string;
-  status: string;
-  group: string;
-  assignedGroup: string;
-  pendencia: string;
-  openIsOne: boolean;
-  age?: string;
-}): string {
-  const p = new URLSearchParams();
-  if (opts.q) {
-    p.set("q", opts.q);
-  }
-  if (opts.status) {
-    p.set("status", opts.status);
-  }
-  if (opts.group) {
-    p.set("group", opts.group);
-  }
-  if (opts.assignedGroup) {
-    p.set("assignedGroup", opts.assignedGroup);
-  }
-  if (opts.pendencia) {
-    p.set("pendencia", opts.pendencia);
-  }
-  p.set("open", opts.openIsOne ? "1" : "0");
-  if (opts.age) {
-    p.set("age", opts.age);
-  }
-  const qs = p.toString();
-  return qs ? `/?${qs}` : "/";
-}
-
-function renderOpenAgeDashboardHtml(b: OpenAgeBuckets, hrefs: AgingDashHrefs, activeAge: string): string {
+function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
   const total = sumOpenAgeBuckets(b);
   const icons = {
     week: agingDashIcon('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
@@ -285,22 +238,13 @@ function renderOpenAgeDashboardHtml(b: OpenAgeBuckets, hrefs: AgingDashHrefs, ac
     )
   };
 
-  const card = (
-    tone: string,
-    icon: string,
-    value: number,
-    title: string,
-    hint: string,
-    href: string,
-    bucketKey: string
-  ): string => {
-    const activeClass = activeAge === bucketKey ? " aging-card--active" : "";
-    return `<a class="aging-card aging-card--${tone}${activeClass}" href="${escapeHtml(href)}" role="listitem" title="Filtrar o Kanban por esta faixa etaria (somente abertos)">
+  const card = (tone: string, icon: string, value: number, title: string, hint: string): string => {
+    return `<div class="aging-card aging-card--${tone}" role="listitem">
       <div class="aging-card__iconwrap">${icon}</div>
       <div class="aging-card__value">${value}</div>
       <h3 class="aging-card__title">${title}</h3>
       <p class="aging-card__hint">${hint}</p>
-    </a>`;
+    </div>`;
   };
 
   const noDateNote =
@@ -308,23 +252,18 @@ function renderOpenAgeDashboardHtml(b: OpenAgeBuckets, hrefs: AgingDashHrefs, ac
       ? ` <span class="aging-dash__nodate" title="Sem data de abertura valida no cache">· ${b.noDate} sem data</span>`
       : "";
 
-  const clearLink =
-    activeAge !== ""
-      ? `<a class="aging-dash__clear" href="${escapeHtml(hrefs.clear)}">Limpar faixa etaria no Kanban</a>`
-      : "";
-
   return `<section class="aging-dash" aria-labelledby="aging-dash-title">
     <div class="aging-dash__intro">
       <h2 id="aging-dash-title" class="aging-dash__title">Idade dos chamados abertos</h2>
-      <p class="aging-dash__subtitle">Contagem global no cache. <strong>Clique num cartão</strong> para aplicar a mesma faixa no Kanban abaixo (mantém busca, status e grupo; ativa <strong>somente abertos</strong>).</p>
-      <p class="aging-dash__total"><span class="aging-dash__total-num">${total}</span><span class="aging-dash__total-label"> chamados abertos</span>${noDateNote}${clearLink ? ` · ${clearLink}` : ""}</p>
+      <p class="aging-dash__subtitle">Contagem global no cache (todos os abertos, desde a abertura). <strong>Não filtra</strong> o Kanban — use <strong>Só abertos</strong> e os restantes filtros para ver o quadro.</p>
+      <p class="aging-dash__total"><span class="aging-dash__total-num">${total}</span><span class="aging-dash__total-label"> chamados abertos</span>${noDateNote}</p>
     </div>
     <div class="aging-dash__grid" role="list">
-      ${card("week", icons.week, b.week, "Esta semana", "Abertos ha ate 7 dias", hrefs.week, "week")}
-      ${card("d15", icons.d15, b.days15, "A 15 dias", "Entre 8 e 15 dias abertos", hrefs.d15, "d15")}
-      ${card("d30", icons.d30, b.days30, "A 30 dias", "Entre 16 e 30 dias abertos", hrefs.d30, "d30")}
-      ${card("d60", icons.d60, b.days60, "A 60 dias", "Entre 31 e 60 dias abertos", hrefs.d60, "d60")}
-      ${card("over", icons.over, b.over60, "Mais de 60 dias", "Envelhecidos — priorizar revisao", hrefs.over, "over")}
+      ${card("week", icons.week, b.week, "Esta semana", "Abertos ha ate 7 dias")}
+      ${card("d15", icons.d15, b.days15, "A 15 dias", "Entre 8 e 15 dias abertos")}
+      ${card("d30", icons.d30, b.days30, "A 30 dias", "Entre 16 e 30 dias abertos")}
+      ${card("d60", icons.d60, b.days60, "A 60 dias", "Entre 31 e 60 dias abertos")}
+      ${card("over", icons.over, b.over60, "Mais de 60 dias", "Envelhecidos — priorizar revisao")}
     </div>
   </section>`;
 }
@@ -440,15 +379,13 @@ function startHealthServer(): void {
         const assignedGroupFilter = typeof body.assignedGroup === "string" ? body.assignedGroup : "";
         const pendenciaParam = typeof body.pendencia === "string" ? body.pendencia : "";
         const onlyOpen = body.open === true || body.open === 1 || body.open === "1";
-        const ageBucketParam = normalizeAgeBucketParam(typeof body.age === "string" ? body.age : "");
         const where = await buildKanbanWhere({
           q,
           statusFilter,
           groupFilter,
           assignedGroupFilter,
           onlyOpen,
-          pendenciaParam,
-          ageBucket: ageBucketParam
+          pendenciaParam
         });
         const rows = await prisma.ticket.findMany({
           where,
@@ -575,21 +512,21 @@ function startHealthServer(): void {
     }
 
     if (method === "GET" && parsedUrl.pathname === "/") {
+      if (parsedUrl.searchParams.has("age")) {
+        const redirectParams = new URLSearchParams(parsedUrl.searchParams);
+        redirectParams.delete("age");
+        const qs = redirectParams.toString();
+        res.writeHead(302, { Location: qs ? `/?${qs}` : "/" });
+        res.end();
+        return;
+      }
       const q = (parsedUrl.searchParams.get("q") || "").trim();
       const statusFilter = (parsedUrl.searchParams.get("status") || "").trim();
       const groupFilter = (parsedUrl.searchParams.get("group") || "").trim();
       const assignedGroupFilter = (parsedUrl.searchParams.get("assignedGroup") || "").trim();
       const onlyOpen = parsedUrl.searchParams.get("open") === "1";
-      const ageBucketParam = normalizeAgeBucketParam(parsedUrl.searchParams.get("age") || "");
       const pendenciaParam = (parsedUrl.searchParams.get("pendencia") || "").trim();
-      const openFilterEffective = onlyOpen || Boolean(ageBucketParam);
-      if (ageBucketParam && !onlyOpen) {
-        const redirectParams = new URLSearchParams(parsedUrl.searchParams);
-        redirectParams.set("open", "1");
-        res.writeHead(302, { Location: `/?${redirectParams.toString()}` });
-        res.end();
-        return;
-      }
+      const openFilterEffective = onlyOpen;
       let latestTickets: Array<{
         glpiTicketId: number;
         title: string | null;
@@ -616,7 +553,8 @@ function startHealthServer(): void {
         over60: 0,
         noDate: 0
       };
-      let groupPerfSectionHtml = renderGroupPerformanceSection([], escapeHtml);
+      let perfGroupRowCount = 0;
+      let groupPerfSectionHtml = renderGroupPerformanceSection([], escapeHtml, true);
       try {
         const where = await buildKanbanWhere({
           q,
@@ -624,8 +562,7 @@ function startHealthServer(): void {
           groupFilter,
           assignedGroupFilter,
           onlyOpen,
-          pendenciaParam,
-          ageBucket: ageBucketParam
+          pendenciaParam
         });
 
         const [totalDb, totalFiltered, glpiTotalRow, kanbanStored, scope] = await Promise.all([
@@ -686,7 +623,9 @@ function startHealthServer(): void {
         ]);
         ageBuckets = ageBucketsResult;
         latestTickets = latestTicketRows;
-        groupPerfSectionHtml = renderGroupPerformanceSection(computeGroupPerformance(perfTicketRows), escapeHtml);
+        const computedPerfRows = computeGroupPerformance(perfTicketRows);
+        perfGroupRowCount = computedPerfRows.length;
+        groupPerfSectionHtml = renderGroupPerformanceSection(computedPerfRows, escapeHtml, true);
         statuses = statusRows.map((item) => item.status).filter((item): item is string => Boolean(item));
         groups = groupRows.map((item) => item.contractGroupName).filter((item): item is string => Boolean(item));
       } catch (error) {
@@ -825,14 +764,13 @@ function startHealthServer(): void {
         `<span class="filter-pill${muted ? " filter-pill--muted" : ""}"><span class="filter-pill__k">${escapeHtml(
           label
         )}</span><span class="filter-pill__v">${value}</span></span>`;
-      const openLabel = openFilterEffective ? (ageBucketParam && !onlyOpen ? "Sim · idade" : "Sim") : "Nao";
+      const openLabel = openFilterEffective ? "Sim" : "Nao";
       const filterPillsHtml = [
         pill("Busca", q ? escapeHtml(q) : "—", !q),
         pill("Status", statusFilter ? escapeHtml(statusFilter) : "Todos", !statusFilter),
         pill("Grupo", groupFilter ? escapeHtml(groupFilter) : "Todos", !groupFilter),
         pill("Grupo técnico", assignedGroupFilter ? escapeHtml(assignedGroupFilter) : "—", !assignedGroupFilter),
         pill("Abertos", escapeHtml(openLabel), !openFilterEffective),
-        ...(ageBucketParam ? [pill("Idade", escapeHtml(ageLabelForSummary(ageBucketParam)), false)] : []),
         pill("Pendência", escapeHtml(pendenciaLabelForSummary(pendenciaParam)), pendenciaParam === ""),
         pill(
           "Sync cache",
@@ -841,62 +779,7 @@ function startHealthServer(): void {
         )
       ].join("");
 
-      const agingDashHrefs: AgingDashHrefs = {
-        week: homeKanbanSearch({
-          q,
-          status: statusFilter,
-          group: groupFilter,
-          assignedGroup: assignedGroupFilter,
-          pendencia: pendenciaParam,
-          openIsOne: true,
-          age: "week"
-        }),
-        d15: homeKanbanSearch({
-          q,
-          status: statusFilter,
-          group: groupFilter,
-          assignedGroup: assignedGroupFilter,
-          pendencia: pendenciaParam,
-          openIsOne: true,
-          age: "d15"
-        }),
-        d30: homeKanbanSearch({
-          q,
-          status: statusFilter,
-          group: groupFilter,
-          assignedGroup: assignedGroupFilter,
-          pendencia: pendenciaParam,
-          openIsOne: true,
-          age: "d30"
-        }),
-        d60: homeKanbanSearch({
-          q,
-          status: statusFilter,
-          group: groupFilter,
-          assignedGroup: assignedGroupFilter,
-          pendencia: pendenciaParam,
-          openIsOne: true,
-          age: "d60"
-        }),
-        over: homeKanbanSearch({
-          q,
-          status: statusFilter,
-          group: groupFilter,
-          assignedGroup: assignedGroupFilter,
-          pendencia: pendenciaParam,
-          openIsOne: true,
-          age: "over"
-        }),
-        clear: homeKanbanSearch({
-          q,
-          status: statusFilter,
-          group: groupFilter,
-          assignedGroup: assignedGroupFilter,
-          pendencia: pendenciaParam,
-          openIsOne: onlyOpen
-        })
-      };
-      const openAgeDashboardHtml = renderOpenAgeDashboardHtml(ageBuckets, agingDashHrefs, ageBucketParam);
+      const openAgeDashboardHtml = renderOpenAgeDashboardHtml(ageBuckets);
 
       const pageLeadHtml =
         ticketSyncScope === "all"
@@ -908,9 +791,8 @@ function startHealthServer(): void {
         status: statusFilter,
         group: groupFilter,
         assignedGroup: assignedGroupFilter,
-        open: openFilterEffective,
-        pendencia: pendenciaParam,
-        age: ageBucketParam
+        open: onlyOpen,
+        pendencia: pendenciaParam
       }).replace(/</g, "\\u003c");
 
       const html = `<!doctype html>
@@ -1015,6 +897,12 @@ function startHealthServer(): void {
       .metric:hover { border-color: rgba(29, 78, 216, 0.28); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06); }
       .metric strong { display: block; font-size: 1.5rem; font-weight: 700; color: var(--brand); letter-spacing: -0.02em; margin-bottom: 0.35rem; }
       .metric .small { color: var(--ink-muted); font-size: 0.8rem; line-height: 1.35; }
+      .kanban-filters-stack {
+        margin: 0 0 1.35rem 0;
+      }
+      .kanban-filters-stack .filters-shell {
+        margin-bottom: 0;
+      }
       .filters-shell {
         background: var(--surface);
         border: 1px solid rgba(148, 163, 184, 0.28);
@@ -1276,27 +1164,9 @@ function startHealthServer(): void {
         border: 1px solid rgba(15, 23, 42, 0.06);
         box-shadow: var(--shadow-sm);
         transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-        text-decoration: none;
         color: inherit;
         display: block;
-        cursor: pointer;
-      }
-      .aging-card:focus-visible {
-        outline: 3px solid var(--brand);
-        outline-offset: 3px;
-      }
-      .aging-card--active {
-        box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.4), 0 12px 28px rgba(15, 23, 42, 0.12);
-        border-color: rgba(29, 78, 216, 0.45);
-      }
-      .aging-dash__clear {
-        font-weight: 600;
-        font-size: 0.8rem;
-        color: #1d4ed8;
-        text-decoration: none;
-      }
-      .aging-dash__clear:hover {
-        text-decoration: underline;
+        cursor: default;
       }
       .aging-card:hover {
         transform: translateY(-3px);
@@ -1393,6 +1263,16 @@ function startHealthServer(): void {
         line-height: 1.55;
         color: var(--ink-muted);
         max-width: 88ch;
+      }
+      .perf-section--accordion-body {
+        margin: 0;
+        padding: 0;
+        border: none;
+        box-shadow: none;
+        background: transparent;
+      }
+      .perf-section__lead--accordion {
+        margin: 0 0 1rem 0;
       }
       .perf-table-wrap {
         overflow-x: auto;
@@ -1524,11 +1404,6 @@ function startHealthServer(): void {
       .kanban-fs-root:-webkit-full-screen .kanban-column-body {
         max-height: min(72vh, 900px);
         overflow-y: auto;
-      }
-      .kanban-fs-root:fullscreen .aging-dash,
-      .kanban-fs-root:-webkit-full-screen .aging-dash {
-        flex-shrink: 0;
-        margin-bottom: 1rem;
       }
       .small { font-size: 0.8125rem; color: var(--ink-muted); line-height: 1.4; }
       .kanban-legend {
@@ -1742,10 +1617,10 @@ function startHealthServer(): void {
     <details class="top-accordion">
       <summary class="top-accordion__summary">
         <span class="top-accordion__chevron" aria-hidden="true"></span>
-        <span class="top-accordion__title">Painel de métricas e filtros</span>
-        <span class="top-accordion__meta">${escapeHtml(String(filteredTotal))} no filtro · ${escapeHtml(
-        String(latestTickets.length)
-      )} cards · sync: ${ticketSyncScope === "all" ? "todos" : "só abertos"}</span>
+        <span class="top-accordion__title">Painel de métricas</span>
+        <span class="top-accordion__meta">${escapeHtml(String(syncedTotal))} no SQLite · escopo de sync: ${
+          ticketSyncScope === "all" ? "todos os chamados" : "só abertos"
+        } · GLPI ${syncStatus.isRunning ? "a sincronizar" : "parado"}</span>
       </summary>
       <div class="top-accordion__body">
     <div class="dashboard">
@@ -1776,15 +1651,27 @@ function startHealthServer(): void {
         }</span>
       </div>
     </div>
-
+      </div>
+    </details>
+    ${openAgeDashboardHtml}
+    <details class="top-accordion">
+      <summary class="top-accordion__summary">
+        <span class="top-accordion__chevron" aria-hidden="true"></span>
+        <span class="top-accordion__title">Performance por grupo atribuído</span>
+        <span class="top-accordion__meta">${perfGroupRowCount} grupo(s) no cache</span>
+      </summary>
+      <div class="top-accordion__body">
+        ${groupPerfSectionHtml}
+      </div>
+    </details>
+    <div class="kanban-filters-stack">
     <div class="filters-shell">
       <header class="filters-shell__head">
-        <h2 class="filters-shell__title">Filtros do quadro</h2>
-        <p class="filters-shell__lede">Resumo · ajuste · cache GLPI</p>
+        <h2 class="filters-shell__title">Filtros do Kanban</h2>
+        <p class="filters-shell__lede">Aplicam ao quadro abaixo (até 200 cards por coluna) · escopo de cache e recálculo de pendência</p>
       </header>
       <div class="filters-shell__pills" aria-label="Filtros aplicados">${filterPillsHtml}</div>
       <form class="filters-grid" method="GET" action="/">
-        <input type="hidden" name="age" value="${escapeHtml(ageBucketParam)}" />
         <label>Busca
           <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, título ou conteúdo" autocomplete="off" />
         </label>
@@ -1907,11 +1794,8 @@ function startHealthServer(): void {
         });
       })();
     </script>
-      </div>
-    </details>
+    </div>
     <div class="kanban-fs-root" id="kanban-fullscreen-root">
-    ${openAgeDashboardHtml}
-    ${groupPerfSectionHtml}
     <div class="section-head section-head--kanban">
       <div>
         <h2 class="section-title">Kanban por status</h2>
@@ -2356,7 +2240,6 @@ function startHealthServer(): void {
       const openOnly = parsedUrl.searchParams.get("open") === "1";
       const ticketsPendencia = (parsedUrl.searchParams.get("pendencia") || "").trim();
       const ticketsQ = (parsedUrl.searchParams.get("q") || "").trim();
-      const ticketsAge = normalizeAgeBucketParam(parsedUrl.searchParams.get("age") || "");
       try {
         const ticketsWhere = await buildKanbanWhere({
           q: ticketsQ,
@@ -2364,8 +2247,7 @@ function startHealthServer(): void {
           groupFilter: group,
           assignedGroupFilter: assignedGroup,
           onlyOpen: openOnly,
-          pendenciaParam: ticketsPendencia,
-          ageBucket: ticketsAge
+          pendenciaParam: ticketsPendencia
         });
 
         const tickets = await prisma.ticket.findMany({

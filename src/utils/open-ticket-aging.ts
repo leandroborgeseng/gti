@@ -1,4 +1,3 @@
-import type { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { ticketWhereNotClosed } from "./ticket-status";
 
@@ -68,66 +67,4 @@ export async function getOpenTicketAgeBuckets(): Promise<OpenAgeBuckets> {
 
 export function sumOpenAgeBuckets(b: OpenAgeBuckets): number {
   return b.week + b.days15 + b.days30 + b.days60 + b.over60 + b.noDate;
-}
-
-const VALID_AGE_BUCKETS = new Set(["week", "d15", "d30", "d60", "over"]);
-
-export function normalizeAgeBucketParam(raw: string): string {
-  const k = raw.trim().toLowerCase();
-  return VALID_AGE_BUCKETS.has(k) ? k : "";
-}
-
-function isoCutoff(ms: number): string {
-  return new Date(ms).toISOString();
-}
-
-/**
- * Filtro Prisma em `dateCreation` (string ISO) alinhado às mesmas faixas do dashboard de idade.
- * Só usar em conjunto com `ticketWhereNotClosed()`.
- */
-export function ageBucketToPrismaWhere(bucket: string): Prisma.TicketWhereInput | null {
-  const b = normalizeAgeBucketParam(bucket);
-  if (!b) {
-    return null;
-  }
-  const now = Date.now();
-
-  if (b === "week") {
-    return {
-      AND: [{ dateCreation: { not: null } }, { dateCreation: { gt: isoCutoff(now - 8 * DAY_MS) } }]
-    };
-  }
-  if (b === "d15") {
-    return {
-      AND: [
-        { dateCreation: { not: null } },
-        { dateCreation: { gt: isoCutoff(now - 16 * DAY_MS) } },
-        { dateCreation: { lte: isoCutoff(now - 8 * DAY_MS) } }
-      ]
-    };
-  }
-  if (b === "d30") {
-    return {
-      AND: [
-        { dateCreation: { not: null } },
-        { dateCreation: { gt: isoCutoff(now - 31 * DAY_MS) } },
-        { dateCreation: { lte: isoCutoff(now - 16 * DAY_MS) } }
-      ]
-    };
-  }
-  if (b === "d60") {
-    return {
-      AND: [
-        { dateCreation: { not: null } },
-        { dateCreation: { gt: isoCutoff(now - 61 * DAY_MS) } },
-        { dateCreation: { lte: isoCutoff(now - 31 * DAY_MS) } }
-      ]
-    };
-  }
-  if (b === "over") {
-    return {
-      AND: [{ dateCreation: { not: null } }, { dateCreation: { lte: isoCutoff(now - 61 * DAY_MS) } }]
-    };
-  }
-  return null;
 }

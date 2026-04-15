@@ -1,6 +1,5 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
-import { ageBucketToPrismaWhere } from "./open-ticket-aging";
 import { ticketWhereNotClosed } from "./ticket-status";
 
 export function pendenciaFilterWhere(raw: string): Prisma.TicketWhereInput | null {
@@ -40,26 +39,6 @@ export function pendenciaLabelForSummary(value: string): string {
   return "(todas)";
 }
 
-export function ageLabelForSummary(ageBucket: string): string {
-  const k = ageBucket.trim().toLowerCase();
-  if (k === "week") {
-    return "Esta semana (ate 7 dias)";
-  }
-  if (k === "d15") {
-    return "8 a 15 dias abertos";
-  }
-  if (k === "d30") {
-    return "16 a 30 dias abertos";
-  }
-  if (k === "d60") {
-    return "31 a 60 dias abertos";
-  }
-  if (k === "over") {
-    return "Mais de 60 dias abertos";
-  }
-  return "(todas as idades)";
-}
-
 export type KanbanFilterInput = {
   q: string;
   statusFilter: string;
@@ -67,8 +46,6 @@ export type KanbanFilterInput = {
   assignedGroupFilter: string;
   onlyOpen: boolean;
   pendenciaParam: string;
-  /** week | d15 | d30 | d60 | over — vazio ignora. */
-  ageBucket: string;
 };
 
 async function assignedGroupTicketIds(assignedGroupFilter: string): Promise<number[]> {
@@ -97,11 +74,9 @@ async function assignedGroupTicketIds(assignedGroupFilter: string): Promise<numb
 }
 
 export async function buildKanbanWhere(input: KanbanFilterInput): Promise<Prisma.TicketWhereInput> {
-  const { q, statusFilter, groupFilter, assignedGroupFilter, onlyOpen, pendenciaParam, ageBucket } = input;
+  const { q, statusFilter, groupFilter, assignedGroupFilter, onlyOpen, pendenciaParam } = input;
   const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
-  const ageWhereClause = ageBucketToPrismaWhere(ageBucket);
   const ids = await assignedGroupTicketIds(assignedGroupFilter);
-  const enforceOpenForAge = Boolean(ageWhereClause);
 
   return {
     AND: [
@@ -124,9 +99,8 @@ export async function buildKanbanWhere(input: KanbanFilterInput): Promise<Prisma
             ]
           }
         : {},
-      ...(onlyOpen || enforceOpenForAge ? [ticketWhereNotClosed()] : []),
-      ...(pendenciaWhereClause ? [pendenciaWhereClause] : []),
-      ...(ageWhereClause ? [ageWhereClause] : [])
+      ...(onlyOpen ? [ticketWhereNotClosed()] : []),
+      ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
     ]
   };
 }
