@@ -34,9 +34,15 @@ export async function ensureSqliteSchema(): Promise<void> {
   await addColumnIfMissing("Ticket", "dateModification", "TEXT");
   await addColumnIfMissing("Ticket", "updatedAt", "DATETIME");
   await addColumnIfMissing("Ticket", "waitingParty", "TEXT");
+  await addColumnIfMissing("Ticket", "requesterName", "TEXT");
+  await addColumnIfMissing("Ticket", "requesterEmail", "TEXT");
+  await addColumnIfMissing("Ticket", "requesterUserId", "INTEGER");
 
   await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX IF NOT EXISTS "Ticket_glpiTicketId_key" ON "Ticket"("glpiTicketId");
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "Ticket_requesterEmail_idx" ON "Ticket"("requesterEmail");
   `);
 
   await prisma.$executeRawUnsafe(`

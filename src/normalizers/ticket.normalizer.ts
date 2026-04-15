@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { logger } from "../config/logger";
 import { NormalizedTicket } from "../types/glpi.types";
+import { extractRequesterContact } from "../utils/ticket-requester";
 
 type JsonObject = Record<string, unknown>;
 
@@ -108,6 +109,8 @@ export function normalizeTicket(raw: unknown): NormalizedTicket {
     logger.warn({ ticketId }, "Ticket sem grupo tecnico atribuido");
   }
 
+  const reqContact = extractRequesterContact(raw);
+
   return {
     id: ticketId || 0,
     title: asString(ticket.name ?? ticket.title),
@@ -118,6 +121,9 @@ export function normalizeTicket(raw: unknown): NormalizedTicket {
     date_modification: asString(ticket.date_mod ?? ticket.date_modification ?? ticket.updated_at),
     contract_group_id: contractGroupId,
     contract_group_name: contractGroupName,
+    requester_name: reqContact.displayName,
+    requester_email: reqContact.email,
+    requester_user_id: reqContact.userId,
     raw: ticket as Prisma.InputJsonValue
   };
 }

@@ -16,7 +16,7 @@ import { extractGlpiScalarId } from "./utils/glpi-field-parse";
 import { computeGroupPerformance, renderGroupPerformanceSection } from "./utils/group-performance";
 import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
 import { getOpenTicketAgeBuckets, sumOpenAgeBuckets, type OpenAgeBuckets } from "./utils/open-ticket-aging";
-import { extractRequesterDisplayName } from "./utils/ticket-requester";
+import { extractRequesterContact } from "./utils/ticket-requester";
 import { getTicketSyncScope } from "./utils/ticket-sync-scope";
 
 let isSyncRunning = false;
@@ -224,8 +224,58 @@ function agingDashIcon(svgInner: string): string {
   return `<svg class="aging-card__svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svgInner}</svg>`;
 }
 
+function formatAgingPercentOfTotal(count: number, total: number): string {
+  if (total <= 0) {
+    return "—";
+  }
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 0 }).format((100 * count) / total);
+}
+
+/** Pizza da mesma ordem visual dos cartões (week → noDate). */
+function buildOpenAgePieSvg(b: OpenAgeBuckets): string {
+  const slices: { n: number; c: string }[] = [
+    { n: b.week, c: "#10b981" },
+    { n: b.days15, c: "#14b8a6" },
+    { n: b.days30, c: "#f59e0b" },
+    { n: b.days60, c: "#f97316" },
+    { n: b.over60, c: "#ef4444" },
+    { n: b.noDate, c: "#94a3b8" }
+  ];
+  const total = slices.reduce((s, x) => s + x.n, 0);
+  if (total <= 0) {
+    return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Sem chamados abertos no cache"><circle cx="0" cy="0" r="1" fill="#e2e8f0" /></svg>`;
+  }
+  const fullIdx = slices.findIndex((x) => x.n === total);
+  if (fullIdx >= 0) {
+    const c = slices[fullIdx].c;
+    return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="100% numa unica faixa etaria"><circle cx="0" cy="0" r="1" fill="${c}" /></svg>`;
+  }
+  const r = 0.98;
+  let angle = -Math.PI / 2;
+  let paths = "";
+  for (const { n, c } of slices) {
+    if (n <= 0) {
+      continue;
+    }
+    const sweep = (n / total) * 2 * Math.PI;
+    const next = angle + sweep;
+    const x1 = r * Math.cos(angle);
+    const y1 = r * Math.sin(angle);
+    const x2 = r * Math.cos(next);
+    const y2 = r * Math.sin(next);
+    const largeArc = sweep > Math.PI ? 1 : 0;
+    paths += `<path d="M 0 0 L ${x1.toFixed(4)} ${y1.toFixed(4)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(4)} ${y2.toFixed(4)} Z" fill="${c}" />`;
+    angle = next;
+  }
+  return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Distribuicao por idade (abertos no cache)">${paths}</svg>`;
+}
+
 function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
   const total = sumOpenAgeBuckets(b);
+  /** Abertos há mais de 7 dias (fora da faixa “esta semana”), indicador de envelhecimento. */
+  const delayedCount = b.days15 + b.days30 + b.days60 + b.over60;
+  const delayedPctLabel = total > 0 ? formatAgingPercentOfTotal(delayedCount, total) : "—";
+  const pieSvg = buildOpenAgePieSvg(b);
   const icons = {
     week: agingDashIcon('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
     d15: agingDashIcon('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'),
@@ -239,9 +289,18 @@ function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
   };
 
   const card = (tone: string, icon: string, value: number, title: string, hint: string): string => {
-    return `<div class="aging-card aging-card--${tone}" role="listitem">
+    const pct = formatAgingPercentOfTotal(value, total);
+    const pctHtml =
+      total > 0
+        ? `<span class="aging-card__pct" title="Percentual do total de abertos no cache">${escapeHtml(pct)}%</span>`
+        : "";
+    const aria = total > 0 ? ` aria-label="${escapeHtml(title)}: ${value}, ${pct} por cento do total"` : ` aria-label="${escapeHtml(title)}: ${value}"`;
+    return `<div class="aging-card aging-card--${tone}" role="listitem"${aria}>
       <div class="aging-card__iconwrap">${icon}</div>
-      <div class="aging-card__value">${value}</div>
+      <div class="aging-card__value-row">
+        <span class="aging-card__value">${value}</span>
+        ${pctHtml}
+      </div>
       <h3 class="aging-card__title">${title}</h3>
       <p class="aging-card__hint">${hint}</p>
     </div>`;
@@ -252,11 +311,24 @@ function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
       ? ` <span class="aging-dash__nodate" title="Sem data de abertura valida no cache">· ${b.noDate} sem data</span>`
       : "";
 
+  const delayedLine =
+    total > 0
+      ? `<span class="aging-dash__delayed" title="Chamados com mais de 7 dias desde a data de abertura (exclui a faixa “esta semana”)"><span class="aging-dash__delayed-k">Atraso relativo</span> <span class="aging-dash__delayed-v">${delayedCount}</span> <span class="aging-dash__delayed-p">(${escapeHtml(
+          delayedPctLabel
+        )}% &gt; 7 dias)</span></span>`
+      : "";
+
   return `<section class="aging-dash" aria-labelledby="aging-dash-title">
     <div class="aging-dash__intro">
       <h2 id="aging-dash-title" class="aging-dash__title">Idade dos chamados abertos</h2>
-      <p class="aging-dash__subtitle">Contagem global no cache (todos os abertos, desde a abertura). <strong>Não filtra</strong> o Kanban — use <strong>Só abertos</strong> e os restantes filtros para ver o quadro.</p>
-      <p class="aging-dash__total"><span class="aging-dash__total-num">${total}</span><span class="aging-dash__total-label"> chamados abertos</span>${noDateNote}</p>
+      <p class="aging-dash__subtitle">Contagem global no cache. Em cada cartão: número absoluto e <strong>percentual do total</strong> de abertos. O gráfico de pizza usa as mesmas cores dos cartões (o segmento <strong>cinza</strong> é “sem data” válida). <strong>Não filtra</strong> o Kanban — use <strong>Só abertos</strong> e os filtros junto ao quadro.</p>
+      <div class="aging-dash__total-row">
+        <p class="aging-dash__total">
+          <span class="aging-dash__total-num">${total}</span><span class="aging-dash__total-label"> chamados abertos</span>${noDateNote}
+          ${delayedLine}
+        </p>
+        <div class="aging-dash__pie-wrap">${pieSvg}</div>
+      </div>
     </div>
     <div class="aging-dash__grid" role="list">
       ${card("week", icons.week, b.week, "Esta semana", "Abertos ha ate 7 dias")}
@@ -430,6 +502,9 @@ function startHealthServer(): void {
               dateCreation: true,
               dateModification: true,
               contractGroupName: true,
+              requesterName: true,
+              requesterEmail: true,
+              requesterUserId: true,
               rawJson: true
             }
           });
@@ -440,6 +515,7 @@ function startHealthServer(): void {
           }
           const raw = asJsonRecord(ticket.rawJson);
           const history = await loadAndPersistWaitingParty(glpiId, ticket.status);
+          const reqFb = extractRequesterContact(ticket.rawJson);
           const payload = {
             glpiTicketId: ticket.glpiTicketId,
             name: ticket.title ?? "",
@@ -451,6 +527,9 @@ function startHealthServer(): void {
             dateCreation: ticket.dateCreation,
             dateModification: ticket.dateModification,
             contractGroupName: ticket.contractGroupName,
+            requesterName: ticket.requesterName ?? reqFb.displayName,
+            requesterEmail: ticket.requesterEmail ?? reqFb.email,
+            requesterUserId: ticket.requesterUserId ?? reqFb.userId,
             history
           };
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -536,6 +615,9 @@ function startHealthServer(): void {
         dateModification: string | null;
         waitingParty: string | null;
         updatedAt: Date;
+        requesterName: string | null;
+        requesterEmail: string | null;
+        requesterUserId: number | null;
         rawJson: unknown;
       }> = [];
       let statuses: string[] = [];
@@ -596,6 +678,9 @@ function startHealthServer(): void {
               dateModification: true,
               waitingParty: true,
               updatedAt: true,
+              requesterName: true,
+              requesterEmail: true,
+              requesterUserId: true,
               rawJson: true
             }
           }),
@@ -639,6 +724,9 @@ function startHealthServer(): void {
           title: string | null;
           status: string | null;
           contractGroupName: string | null;
+          requesterName: string | null;
+          requesterEmail: string | null;
+          requesterUserId: number | null;
           dateCreation: string | null;
           dateModification: string | null;
           waitingParty: string | null;
@@ -695,8 +783,11 @@ function startHealthServer(): void {
             .map((ticket) => {
               const safeTitle = escapeHtml(ticket.title || "(sem titulo)");
               const safeGroup = escapeHtml(ticket.contractGroupName || "-");
-              const requesterName = extractRequesterDisplayName(ticket.rawJson);
-              const safeRequester = escapeHtml(requesterName || "—");
+              const reqFromRaw = extractRequesterContact(ticket.rawJson);
+              const reqName = ticket.requesterName ?? reqFromRaw.displayName;
+              const reqEmail = ticket.requesterEmail ?? reqFromRaw.email;
+              const safeRequester = escapeHtml(reqName || "—");
+              const safeEmail = reqEmail ? escapeHtml(reqEmail) : "";
               const daysOpen = openDaysApprox(ticket.dateCreation, now);
               const cardStyle = cardHeatChromeStyle(daysOpen);
               const openFor = formatTicketAge(ticket.dateCreation, now);
@@ -725,7 +816,9 @@ function startHealthServer(): void {
                 <div class="card-title">${safeTitle}</div>
                 <span class="pend-badge pend-badge--${escapeHtml(pendClass)}">${escapeHtml(pendLabel)}</span>
                 <div class="card-meta">Grupo: ${safeGroup}</div>
-                <div class="card-meta">Solicitante: <strong>${safeRequester}</strong></div>
+                <div class="card-meta">Solicitante: <strong>${safeRequester}</strong>${
+                  safeEmail ? ` · <span class="card-meta--fine">${safeEmail}</span>` : ""
+                }</div>
                 <div class="card-meta">Aberto há <strong>${escapeHtml(openFor)}</strong> · Sem interação <strong>${escapeHtml(
                   idleFor
                 )}</strong></div>
@@ -1129,14 +1222,49 @@ function startHealthServer(): void {
         color: var(--ink-muted);
         max-width: 72ch;
       }
+      .aging-dash__total-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.85rem 1.25rem;
+      }
       .aging-dash__total {
         margin: 0;
+        flex: 1 1 14rem;
         font-size: 0.84rem;
         color: var(--ink-muted);
         display: flex;
         flex-wrap: wrap;
         align-items: baseline;
         gap: 0.25rem 0.6rem;
+      }
+      .aging-dash__delayed {
+        flex-basis: 100%;
+        margin-top: 0.35rem;
+        font-size: 0.8rem;
+        line-height: 1.45;
+        color: #334155;
+      }
+      .aging-dash__delayed-k { font-weight: 600; color: #64748b; margin-right: 0.25rem; }
+      .aging-dash__delayed-v { font-weight: 800; font-variant-numeric: tabular-nums; color: #b45309; }
+      .aging-dash__delayed-p { font-weight: 700; font-variant-numeric: tabular-nums; color: #b91c1c; }
+      .aging-dash__pie-wrap {
+        flex-shrink: 0;
+        width: 4.75rem;
+        height: 4.75rem;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.65);
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+        padding: 0.2rem;
+        box-sizing: border-box;
+      }
+      .aging-dash__pie-svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+        border-radius: 50%;
       }
       .aging-dash__total-num {
         font-size: 1.45rem;
@@ -1185,13 +1313,26 @@ function startHealthServer(): void {
         border-radius: 11px;
       }
       .aging-card__svg { width: 1.28rem; height: 1.28rem; }
+      .aging-card__value-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.35rem 0.45rem;
+        margin-bottom: 0.42rem;
+      }
       .aging-card__value {
         font-size: 1.85rem;
         font-weight: 800;
         letter-spacing: -0.04em;
         line-height: 1;
-        margin-bottom: 0.42rem;
         font-variant-numeric: tabular-nums;
+      }
+      .aging-card__pct {
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: rgba(15, 23, 42, 0.5);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.02em;
       }
       .aging-card__title {
         margin: 0 0 0.22rem 0;
@@ -1332,12 +1473,12 @@ function startHealthServer(): void {
       .perf-stack__30 { background: #fbbf24; }
       .perf-stack__60 { background: #fb923c; }
       .perf-stack__ov { background: #f87171; }
-      .perf-td--weeks { min-width: 5.5rem; }
+      .perf-td--weeks { min-width: 14rem; }
       .perf-weeks {
         display: flex;
         align-items: flex-end;
         justify-content: flex-end;
-        gap: 0.28rem;
+        gap: 0.15rem;
         height: 44px;
       }
       .perf-week {
@@ -1345,7 +1486,7 @@ function startHealthServer(): void {
         flex-direction: column;
         align-items: center;
         justify-content: flex-end;
-        width: 1.15rem;
+        width: 0.78rem;
         height: 100%;
       }
       .perf-week__bar {
@@ -1904,6 +2045,7 @@ function startHealthServer(): void {
             </label>
           </div>
           <p class="small modal-hint">Rótulos atuais: <span id="ticket-edit-labels"></span></p>
+          <p class="small modal-hint" id="ticket-edit-requester" style="margin-top:0.35rem"></p>
           <p class="small modal-error" id="ticket-edit-error" hidden></p>
           <div class="modal-actions">
             <button type="button" class="btn-secondary" data-close-modal>Cancelar</button>
@@ -1992,6 +2134,7 @@ function startHealthServer(): void {
         const elStatusId = document.getElementById("ticket-edit-status-id");
         const elPriorityId = document.getElementById("ticket-edit-priority-id");
         const elLabels = document.getElementById("ticket-edit-labels");
+        const elRequester = document.getElementById("ticket-edit-requester");
         const elError = document.getElementById("ticket-edit-error");
         const board = document.getElementById("kanban-board");
         if (!modal || !form || !elId || !elName || !elQuillHost || !elStatusId || !elPriorityId || !elLabels || !elError || !board) return;
@@ -2134,6 +2277,7 @@ function startHealthServer(): void {
           elStatusId.value = "";
           elPriorityId.value = "";
           elLabels.textContent = "";
+          if (elRequester) elRequester.textContent = "";
           renderHistory(null);
           const res = await fetch("/api/tickets/glpi/" + glpiId);
           const data = await res.json().catch(function () { return null; });
@@ -2151,6 +2295,15 @@ function startHealthServer(): void {
           }
           elLabels.textContent =
             "status: " + (data.statusLabel || "—") + " | prioridade: " + (data.priorityLabel || "—");
+          if (elRequester) {
+            var rp = [];
+            if (data.requesterName) rp.push(String(data.requesterName));
+            if (data.requesterEmail) rp.push(String(data.requesterEmail));
+            if (data.requesterUserId != null && data.requesterUserId !== "")
+              rp.push("GLPI user #" + String(data.requesterUserId));
+            elRequester.textContent =
+              rp.length > 0 ? "Solicitante (cache): " + rp.join(" · ") : "Solicitante (cache): nao identificado";
+          }
           renderHistory(data.history || null);
           openModal();
           requestAnimationFrame(function () {

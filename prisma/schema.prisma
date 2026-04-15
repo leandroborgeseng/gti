@@ -18,6 +18,12 @@ model Ticket {
   dateModification  String?
   contractGroupId   Int?
   contractGroupName String?
+  /** Nome de exibição do solicitante (melhor esforço a partir do JSON GLPI). */
+  requesterName     String?
+  /** E-mail do solicitante, se vier no payload da pesquisa GLPI. */
+  requesterEmail    String?
+  /** users_id do requerente no GLPI (útil para buscar User na API se faltar e-mail). */
+  requesterUserId   Int?
   /** cliente | empresa | na | unknown — inferido pelo histórico GLPI (cache). */
   waitingParty      String?
   rawJson           Json
@@ -26,6 +32,7 @@ model Ticket {
   attributes        TicketAttribute[]
 
   @@index([waitingParty])
+  @@index([requesterEmail])
 }
 
 model TicketAttribute {

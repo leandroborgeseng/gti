@@ -37,6 +37,9 @@ export async function persistNormalizedTicket(
         dateModification: normalized.date_modification,
         contractGroupId: normalized.contract_group_id,
         contractGroupName: normalized.contract_group_name,
+        requesterName: normalized.requester_name,
+        requesterEmail: normalized.requester_email,
+        requesterUserId: normalized.requester_user_id,
         rawJson: normalized.raw
       },
       create: {
@@ -49,6 +52,9 @@ export async function persistNormalizedTicket(
         dateModification: normalized.date_modification,
         contractGroupId: normalized.contract_group_id,
         contractGroupName: normalized.contract_group_name,
+        requesterName: normalized.requester_name,
+        requesterEmail: normalized.requester_email,
+        requesterUserId: normalized.requester_user_id,
         rawJson: normalized.raw
       },
       select: {

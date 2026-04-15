@@ -1,8 +1,12 @@
 import { isTicketClosedStatus } from "./ticket-status";
 
 const DAY_MS = 86400000;
-const WINDOW_28_MS = 28 * DAY_MS;
+/** Janela principal para criados, fechados e lead time (dias). */
+const WINDOW_PERF_DAYS = 90;
+const WINDOW_PERF_MS = WINDOW_PERF_DAYS * DAY_MS;
 const WEEK_MS = 7 * DAY_MS;
+/** Semanas no histograma de fechamentos (13×7 d; fechos contados só na janela de performance). */
+const THROUGHPUT_N_WEEKS = 13;
 
 export type PerfAgeSegment = {
   week: number;
@@ -16,13 +20,13 @@ export type GroupPerformanceRow = {
   groupLabel: string;
   backlogOpen: number;
   backlogAge: PerfAgeSegment;
-  opened28d: number;
-  closed28d: number;
-  netClosedVsOpened28: number;
-  medianLeadDaysClosed28: number | null;
-  p90LeadDaysClosed28: number | null;
-  /** Índice 0 = semana mais antiga (dias 22–28 atrás), 3 = semana mais recente (últimos 7 dias). */
-  throughputWeeks: [number, number, number, number];
+  opened90d: number;
+  closed90d: number;
+  netClosedVsOpened90: number;
+  medianLeadDaysClosed90: number | null;
+  p90LeadDaysClosed90: number | null;
+  /** Índice 0 = semana mais antiga (~91–84 d), último = últimos 7 dias. */
+  throughputWeeks: number[];
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -104,6 +108,48 @@ function groupKey(contractGroupName: string | null): string {
   return t.length > 0 ? t : "Sem grupo";
 }
 
+function emptyThroughputWeeks(): number[] {
+  return Array.from({ length: THROUGHPUT_N_WEEKS }, () => 0);
+}
+
+/** Rótulos “dias atrás” para cada fatia do histograma (índice 0 = mais antigo). */
+function throughputBinLabels(): string[] {
+  const n = THROUGHPUT_N_WEEKS;
+  const labels: string[] = [];
+  for (let j = 0; j < n; j += 1) {
+    const hi = (n - j) * 7;
+    const lo = Math.max(0, (n - 1 - j) * 7);
+    labels.push(`−${hi}…−${lo} d`);
+  }
+  return labels;
+}
+
+/** Mais performático primeiro: maior saldo fechos−criações, lead mais baixo, mais fechos, P90 menor, menos backlog. */
+function compareGroupPerformanceBestFirst(a: GroupPerformanceRow, b: GroupPerformanceRow): number {
+  const netA = a.netClosedVsOpened90;
+  const netB = b.netClosedVsOpened90;
+  if (netB !== netA) {
+    return netB - netA;
+  }
+  const medA = a.medianLeadDaysClosed90 ?? Number.POSITIVE_INFINITY;
+  const medB = b.medianLeadDaysClosed90 ?? Number.POSITIVE_INFINITY;
+  if (medA !== medB) {
+    return medA - medB;
+  }
+  if (b.closed90d !== a.closed90d) {
+    return b.closed90d - a.closed90d;
+  }
+  const p90a = a.p90LeadDaysClosed90 ?? Number.POSITIVE_INFINITY;
+  const p90b = b.p90LeadDaysClosed90 ?? Number.POSITIVE_INFINITY;
+  if (p90a !== p90b) {
+    return p90a - p90b;
+  }
+  if (a.backlogOpen !== b.backlogOpen) {
+    return a.backlogOpen - b.backlogOpen;
+  }
+  return a.groupLabel.localeCompare(b.groupLabel, "pt-BR");
+}
+
 export type TicketPerfInput = {
   contractGroupName: string | null;
   status: string | null;
@@ -116,10 +162,10 @@ export function computeGroupPerformance(tickets: TicketPerfInput[], nowMs: numbe
   type Acc = {
     backlogAge: PerfAgeSegment;
     backlogOpen: number;
-    opened28d: number;
-    closed28d: number;
-    leads28: number[];
-    weekClosed: [number, number, number, number];
+    opened90d: number;
+    closed90d: number;
+    leads90: number[];
+    weekClosed: number[];
   };
 
   const map = new Map<string, Acc>();
@@ -130,17 +176,17 @@ export function computeGroupPerformance(tickets: TicketPerfInput[], nowMs: numbe
       a = {
         backlogAge: emptyAge(),
         backlogOpen: 0,
-        opened28d: 0,
-        closed28d: 0,
-        leads28: [],
-        weekClosed: [0, 0, 0, 0]
+        opened90d: 0,
+        closed90d: 0,
+        leads90: [],
+        weekClosed: emptyThroughputWeeks()
       };
       map.set(k, a);
     }
     return a;
   };
 
-  const t28 = nowMs - WINDOW_28_MS;
+  const tWin = nowMs - WINDOW_PERF_MS;
 
   for (const t of tickets) {
     const g = groupKey(t.contractGroupName);
@@ -150,21 +196,21 @@ export function computeGroupPerformance(tickets: TicketPerfInput[], nowMs: numbe
     const closedMs = parseMs(closedIso);
     const closed = isTicketClosedStatus(t.status);
 
-    if (createdMs !== null && createdMs >= t28 && createdMs <= nowMs) {
-      acc.opened28d += 1;
+    if (createdMs !== null && createdMs >= tWin && createdMs <= nowMs) {
+      acc.opened90d += 1;
     }
 
-    if (closed && closedMs !== null && closedMs >= t28 && closedMs <= nowMs) {
-      acc.closed28d += 1;
+    if (closed && closedMs !== null && closedMs >= tWin && closedMs <= nowMs) {
+      acc.closed90d += 1;
       if (createdMs !== null && closedMs >= createdMs) {
         const leadDays = Math.floor((closedMs - createdMs) / DAY_MS);
-        acc.leads28.push(leadDays);
+        acc.leads90.push(leadDays);
       }
-      for (let w = 0; w < 4; w += 1) {
-        const end = nowMs - w * WEEK_MS;
+      for (let k = 0; k < THROUGHPUT_N_WEEKS; k += 1) {
+        const end = nowMs - k * WEEK_MS;
         const start = end - WEEK_MS;
         if (closedMs >= start && closedMs < end) {
-          acc.weekClosed[3 - w] += 1;
+          acc.weekClosed[THROUGHPUT_N_WEEKS - 1 - k] += 1;
           break;
         }
       }
@@ -181,34 +227,26 @@ export function computeGroupPerformance(tickets: TicketPerfInput[], nowMs: numbe
 
   const rows: GroupPerformanceRow[] = [];
   for (const [groupLabel, acc] of map) {
-    const leadsSorted = [...acc.leads28].sort((a, b) => a - b);
+    const leadsSorted = [...acc.leads90].sort((a, b) => a - b);
     rows.push({
       groupLabel,
       backlogOpen: acc.backlogOpen,
       backlogAge: acc.backlogAge,
-      opened28d: acc.opened28d,
-      closed28d: acc.closed28d,
-      netClosedVsOpened28: acc.closed28d - acc.opened28d,
-      medianLeadDaysClosed28: medianSorted(leadsSorted),
-      p90LeadDaysClosed28: p90Sorted(leadsSorted),
+      opened90d: acc.opened90d,
+      closed90d: acc.closed90d,
+      netClosedVsOpened90: acc.closed90d - acc.opened90d,
+      medianLeadDaysClosed90: medianSorted(leadsSorted),
+      p90LeadDaysClosed90: p90Sorted(leadsSorted),
       throughputWeeks: acc.weekClosed
     });
   }
 
-  rows.sort((a, b) => {
-    if (b.backlogOpen !== a.backlogOpen) {
-      return b.backlogOpen - a.backlogOpen;
-    }
-    const ma = a.medianLeadDaysClosed28 ?? -1;
-    const mb = b.medianLeadDaysClosed28 ?? -1;
-    return mb - ma;
-  });
+  rows.sort(compareGroupPerformanceBestFirst);
 
   return rows;
 }
 
-const perfLeadHtml =
-  "Comparação no <strong>cache local</strong>: backlog aberto por idade, criações vs fechos nos últimos <strong>28 dias</strong>, tempo até fechar (mediana e P90 entre fechados nesse período) e fechados por <strong>semana</strong> (4 semanas). Grupo = <code>contractGroupName</code> do ticket (mesmo rótulo do card).";
+const perfLeadHtml = `Comparação no <strong>cache local</strong>: backlog aberto por idade; criados, fechados e lead time (mediana e P90) na janela dos últimos <strong>${WINDOW_PERF_DAYS} dias</strong>; fechamentos por <strong>semana</strong> (${THROUGHPUT_N_WEEKS} barras, mesma janela). Grupo = <code>contractGroupName</code> do ticket (mesmo rótulo do card). Linhas do <strong>mais ao menos performático</strong>: maior saldo (fechados−criados), menor mediana de dias até fechar, mais fechados na janela, menor P90, menor backlog aberto.`;
 
 export function renderGroupPerformanceSection(
   rows: GroupPerformanceRow[],
@@ -227,6 +265,7 @@ export function renderGroupPerformanceSection(
   }
 
   const maxWeek = Math.max(1, ...rows.flatMap((r) => r.throughputWeeks));
+  const weekBinLabels = throughputBinLabels();
 
   const barStack = (age: PerfAgeSegment, total: number): string => {
     if (total <= 0) {
@@ -247,27 +286,27 @@ export function renderGroupPerformanceSection(
       .join("")}</div>`;
   };
 
-  const weekBars = (w: [number, number, number, number]): string => {
-    const labels = ["−28…−22 d", "−21…−15 d", "−14…−8 d", "−7…0 d"];
-    return `<div class="perf-weeks" role="img" aria-label="Fechados por semana (4 semanas)">${w
+  const weekBars = (w: number[]): string => {
+    return `<div class="perf-weeks" role="img" aria-label="Fechados por semana (${THROUGHPUT_N_WEEKS} semanas)">${w
       .map((n, i) => {
         const h = maxWeek > 0 ? Math.round((n / maxWeek) * 100) : 0;
-        return `<div class="perf-week" title="${escapeHtml(labels[i] || "")}: ${n} fechados"><span class="perf-week__bar" style="height:${h}%"></span><span class="perf-week__n">${n}</span></div>`;
+        const lab = weekBinLabels[i] ?? "";
+        return `<div class="perf-week" title="${escapeHtml(lab)}: ${n} fechados"><span class="perf-week__bar" style="height:${h}%"></span><span class="perf-week__n">${n}</span></div>`;
       })
       .join("")}</div>`;
   };
 
   const tableRows = rows
     .map((r) => {
-      const net = r.netClosedVsOpened28;
+      const net = r.netClosedVsOpened90;
       const netCls = net > 0 ? "perf-net--pos" : net < 0 ? "perf-net--neg" : "perf-net--zero";
-      const med = r.medianLeadDaysClosed28 != null ? String(Math.round(r.medianLeadDaysClosed28 * 10) / 10) : "—";
-      const p90 = r.p90LeadDaysClosed28 != null ? String(Math.round(r.p90LeadDaysClosed28 * 10) / 10) : "—";
+      const med = r.medianLeadDaysClosed90 != null ? String(Math.round(r.medianLeadDaysClosed90 * 10) / 10) : "—";
+      const p90 = r.p90LeadDaysClosed90 != null ? String(Math.round(r.p90LeadDaysClosed90 * 10) / 10) : "—";
       return `<tr>
         <td class="perf-td perf-td--name">${escapeHtml(r.groupLabel)}</td>
         <td class="perf-td perf-td--stack">${barStack(r.backlogAge, r.backlogOpen)}<span class="perf-td__sub">${r.backlogOpen} abertos</span></td>
-        <td class="perf-td perf-num">${r.opened28d}</td>
-        <td class="perf-td perf-num">${r.closed28d}</td>
+        <td class="perf-td perf-num">${r.opened90d}</td>
+        <td class="perf-td perf-num">${r.closed90d}</td>
         <td class="perf-td perf-num ${netCls}">${net > 0 ? "+" : ""}${net}</td>
         <td class="perf-td perf-num">${med}</td>
         <td class="perf-td perf-num">${p90}</td>
@@ -282,12 +321,12 @@ export function renderGroupPerformanceSection(
           <tr>
             <th>Grupo</th>
             <th>Backlog aberto (idade)</th>
-            <th>Criados<br/><span class="perf-th-sub">28 d</span></th>
-            <th>Fechados<br/><span class="perf-th-sub">28 d</span></th>
-            <th>Saldo<br/><span class="perf-th-sub">F−C</span></th>
+            <th>Criados<br/><span class="perf-th-sub">${WINDOW_PERF_DAYS} d</span></th>
+            <th>Fechados<br/><span class="perf-th-sub">${WINDOW_PERF_DAYS} d</span></th>
+            <th>Saldo<br/><span class="perf-th-sub">F−C (${WINDOW_PERF_DAYS} d)</span></th>
             <th>Mediana<br/><span class="perf-th-sub">dias até fechar</span></th>
             <th>P90<br/><span class="perf-th-sub">dias</span></th>
-            <th>Throughput<br/><span class="perf-th-sub">4 semanas</span></th>
+            <th>Throughput<br/><span class="perf-th-sub">${THROUGHPUT_N_WEEKS} sem.</span></th>
           </tr>
         </thead>
         <tbody>${tableRows}</tbody>
