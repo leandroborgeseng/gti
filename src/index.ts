@@ -13,7 +13,6 @@ import { enrichWaitingPartyBatch, loadAndPersistWaitingParty } from "./services/
 import { fetchGlpiTicketJson, patchGlpiTicketJson } from "./services/glpi-ticket-write.service";
 import { persistTicketFromRaw } from "./services/ticket-persist.service";
 import { extractGlpiScalarId } from "./utils/glpi-field-parse";
-import { computeGroupPerformance, renderGroupPerformanceSection } from "./utils/group-performance";
 import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
 import { getOpenTicketAgeBuckets, sumOpenAgeBuckets, type OpenAgeBuckets } from "./utils/open-ticket-aging";
 import { extractRequesterContact } from "./utils/ticket-requester";
@@ -231,29 +230,35 @@ function formatAgingPercentOfTotal(count: number, total: number): string {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 0 }).format((100 * count) / total);
 }
 
-/** Pizza da mesma ordem visual dos cartões (week → noDate). */
+function agingPieSliceTitle(label: string, count: number, total: number): string {
+  const pct = formatAgingPercentOfTotal(count, total);
+  return escapeHtml(`${label}: ${count} (${pct}%)`);
+}
+
+/** Pizza da mesma ordem visual dos cartões (week → noDate). Tooltip nativo via <title> em cada fatia. */
 function buildOpenAgePieSvg(b: OpenAgeBuckets): string {
-  const slices: { n: number; c: string }[] = [
-    { n: b.week, c: "#10b981" },
-    { n: b.days15, c: "#14b8a6" },
-    { n: b.days30, c: "#f59e0b" },
-    { n: b.days60, c: "#f97316" },
-    { n: b.over60, c: "#ef4444" },
-    { n: b.noDate, c: "#94a3b8" }
+  const slices: { n: number; c: string; label: string }[] = [
+    { n: b.week, c: "#10b981", label: "Esta semana (ate 7 dias)" },
+    { n: b.days15, c: "#14b8a6", label: "8 a 15 dias" },
+    { n: b.days30, c: "#f59e0b", label: "16 a 30 dias" },
+    { n: b.days60, c: "#f97316", label: "31 a 60 dias" },
+    { n: b.over60, c: "#ef4444", label: "Mais de 60 dias" },
+    { n: b.noDate, c: "#94a3b8", label: "Sem data de abertura" }
   ];
   const total = slices.reduce((s, x) => s + x.n, 0);
   if (total <= 0) {
-    return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Sem chamados abertos no cache"><circle cx="0" cy="0" r="1" fill="#e2e8f0" /></svg>`;
+    return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Sem chamados abertos no filtro"><circle cx="0" cy="0" r="1" fill="#e2e8f0"><title>Sem chamados abertos no filtro</title></circle></svg>`;
   }
   const fullIdx = slices.findIndex((x) => x.n === total);
   if (fullIdx >= 0) {
-    const c = slices[fullIdx].c;
-    return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="100% numa unica faixa etaria"><circle cx="0" cy="0" r="1" fill="${c}" /></svg>`;
+    const s = slices[fullIdx];
+    const tip = agingPieSliceTitle(s.label, s.n, total);
+    return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="100% numa unica faixa etaria"><circle cx="0" cy="0" r="1" fill="${s.c}"><title>${tip}</title></circle></svg>`;
   }
   const r = 0.98;
   let angle = -Math.PI / 2;
   let paths = "";
-  for (const { n, c } of slices) {
+  for (const { n, c, label } of slices) {
     if (n <= 0) {
       continue;
     }
@@ -264,10 +269,11 @@ function buildOpenAgePieSvg(b: OpenAgeBuckets): string {
     const x2 = r * Math.cos(next);
     const y2 = r * Math.sin(next);
     const largeArc = sweep > Math.PI ? 1 : 0;
-    paths += `<path d="M 0 0 L ${x1.toFixed(4)} ${y1.toFixed(4)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(4)} ${y2.toFixed(4)} Z" fill="${c}" />`;
+    const tip = agingPieSliceTitle(label, n, total);
+    paths += `<path d="M 0 0 L ${x1.toFixed(4)} ${y1.toFixed(4)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(4)} ${y2.toFixed(4)} Z" fill="${c}"><title>${tip}</title></path>`;
     angle = next;
   }
-  return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Distribuicao por idade (abertos no cache)">${paths}</svg>`;
+  return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Distribuicao por idade (abertos no filtro)">${paths}</svg>`;
 }
 
 function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
@@ -292,7 +298,7 @@ function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
     const pct = formatAgingPercentOfTotal(value, total);
     const pctHtml =
       total > 0
-        ? `<span class="aging-card__pct" title="Percentual do total de abertos no cache">${escapeHtml(pct)}%</span>`
+        ? `<span class="aging-card__pct" title="Percentual do total de abertos no filtro atual">${escapeHtml(pct)}%</span>`
         : "";
     const aria = total > 0 ? ` aria-label="${escapeHtml(title)}: ${value}, ${pct} por cento do total"` : ` aria-label="${escapeHtml(title)}: ${value}"`;
     return `<div class="aging-card aging-card--${tone}" role="listitem"${aria}>
@@ -321,7 +327,7 @@ function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
   return `<section class="aging-dash" aria-labelledby="aging-dash-title">
     <div class="aging-dash__intro">
       <h2 id="aging-dash-title" class="aging-dash__title">Idade dos chamados abertos</h2>
-      <p class="aging-dash__subtitle">Contagem global no cache. Em cada cartão: número absoluto e <strong>percentual do total</strong> de abertos. O gráfico de pizza usa as mesmas cores dos cartões (o segmento <strong>cinza</strong> é “sem data” válida). <strong>Não filtra</strong> o Kanban — use <strong>Só abertos</strong> e os filtros junto ao quadro.</p>
+      <p class="aging-dash__subtitle">Contagem de <strong>chamados não fechados</strong> que obedecem aos <strong>mesmos filtros</strong> que o quadro (busca, status, grupo, pendência, etc.). O painel usa sempre só <strong>abertos</strong>, mesmo com «Só abertos» = Não no Kanban. Em cada cartão: número e <strong>percentual do total</strong> deste conjunto; o segmento <strong>cinza</strong> na pizza é “sem data” válida.</p>
       <div class="aging-dash__total-row">
         <p class="aging-dash__total">
           <span class="aging-dash__total-num">${total}</span><span class="aging-dash__total-label"> chamados abertos</span>${noDateNote}
@@ -622,9 +628,7 @@ function startHealthServer(): void {
       }> = [];
       let statuses: string[] = [];
       let groups: string[] = [];
-      let syncedTotal = 0;
       let filteredTotal = 0;
-      let glpiRemoteTotal: number | null = null;
       let kanbanSettings: KanbanSettings = {};
       let ticketSyncScope: Awaited<ReturnType<typeof getTicketSyncScope>> = "open";
       let ageBuckets: OpenAgeBuckets = {
@@ -635,8 +639,6 @@ function startHealthServer(): void {
         over60: 0,
         noDate: 0
       };
-      let perfGroupRowCount = 0;
-      let groupPerfSectionHtml = renderGroupPerformanceSection([], escapeHtml, true);
       try {
         const where = await buildKanbanWhere({
           q,
@@ -646,25 +648,27 @@ function startHealthServer(): void {
           onlyOpen,
           pendenciaParam
         });
+        const whereAge = await buildKanbanWhere({
+          q,
+          statusFilter,
+          groupFilter,
+          assignedGroupFilter,
+          onlyOpen,
+          pendenciaParam,
+          forceNonClosed: true
+        });
 
-        const [totalDb, totalFiltered, glpiTotalRow, kanbanStored, scope] = await Promise.all([
-          prisma.ticket.count(),
+        const [totalFiltered, kanbanStored, scope] = await Promise.all([
           prisma.ticket.count({ where }),
-          prisma.syncState.findUnique({ where: { key: "glpi_ticket_total" } }),
           readKanbanSettings(),
           getTicketSyncScope()
         ]);
         ticketSyncScope = scope;
-        syncedTotal = totalDb;
         filteredTotal = totalFiltered;
         kanbanSettings = kanbanStored;
-        if (glpiTotalRow?.value) {
-          const parsedTotal = Number(glpiTotalRow.value);
-          glpiRemoteTotal = Number.isFinite(parsedTotal) ? parsedTotal : null;
-        }
 
-        const [ageBucketsResult, latestTicketRows, statusRows, groupRows, perfTicketRows] = await Promise.all([
-          getOpenTicketAgeBuckets(),
+        const [ageBucketsResult, latestTicketRows, statusRows, groupRows] = await Promise.all([
+          getOpenTicketAgeBuckets(whereAge),
           prisma.ticket.findMany({
             where,
             orderBy: [{ dateCreation: "asc" }, { glpiTicketId: "asc" }],
@@ -695,22 +699,10 @@ function startHealthServer(): void {
             distinct: ["contractGroupName"],
             select: { contractGroupName: true },
             orderBy: { contractGroupName: "asc" }
-          }),
-          prisma.ticket.findMany({
-            select: {
-              contractGroupName: true,
-              status: true,
-              dateCreation: true,
-              dateModification: true,
-              rawJson: true
-            }
           })
         ]);
         ageBuckets = ageBucketsResult;
         latestTickets = latestTicketRows;
-        const computedPerfRows = computeGroupPerformance(perfTicketRows);
-        perfGroupRowCount = computedPerfRows.length;
-        groupPerfSectionHtml = renderGroupPerformanceSection(computedPerfRows, escapeHtml, true);
         statuses = statusRows.map((item) => item.status).filter((item): item is string => Boolean(item));
         groups = groupRows.map((item) => item.contractGroupName).filter((item): item is string => Boolean(item));
       } catch (error) {
@@ -845,14 +837,6 @@ function startHealthServer(): void {
         .map((item) => `<option value="${escapeHtml(item)}" ${item === groupFilter ? "selected" : ""}>${escapeHtml(item)}</option>`)
         .join("");
 
-      const remaining =
-        glpiRemoteTotal !== null && glpiRemoteTotal >= 0 ? Math.max(glpiRemoteTotal - syncedTotal, 0) : null;
-      const remoteLabel =
-        glpiRemoteTotal === null
-          ? "Total remoto GLPI ainda nao disponivel (aparece apos a primeira pagina com header Content-Range)."
-          : String(glpiRemoteTotal);
-      const remainingLabel = remaining === null ? "—" : String(remaining);
-
       const pill = (label: string, value: string, muted = false): string =>
         `<span class="filter-pill${muted ? " filter-pill--muted" : ""}"><span class="filter-pill__k">${escapeHtml(
           label
@@ -877,7 +861,7 @@ function startHealthServer(): void {
       const pageLeadHtml =
         ticketSyncScope === "all"
           ? "Visão em Kanban sincronizada com o GLPI. O <strong>escopo de sincronização</strong> está em <strong>todos os chamados</strong>: após cada sync, fechados também ficam no SQLite. A <strong>pendência inferida</strong> usa o campo <code>waitingParty</code> (modal ou botão de recálculo)."
-          : "Visão em Kanban sincronizada com o GLPI. Por defeito o cache mantém só chamados <strong>abertos</strong>; no painel colapsável abaixo pode guardar escopo <strong>todos no cache</strong>. A <strong>pendência inferida</strong> usa <code>waitingParty</code> (modal ou recálculo).";
+          : "Visão em Kanban sincronizada com o GLPI. Por defeito o cache mantém só chamados <strong>abertos</strong>; nos filtros abaixo pode guardar escopo <strong>todos no cache</strong>. A <strong>pendência inferida</strong> usa <code>waitingParty</code> (modal ou recálculo).";
 
       const filterJsonForScript = JSON.stringify({
         q,
@@ -929,67 +913,6 @@ function startHealthServer(): void {
       .page-title { font-size: clamp(1.65rem, 3vw, 2.1rem); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.5rem 0; color: var(--ink); }
       .page-lead { margin: 0; max-width: 62ch; font-size: 0.95rem; line-height: 1.55; color: var(--ink-muted); }
       .muted { color: var(--ink-muted); font-size: 0.9rem; }
-      .top-accordion {
-        margin-bottom: 1.35rem;
-        border: 1px solid rgba(148, 163, 184, 0.45);
-        border-radius: var(--radius-lg);
-        background: rgba(255, 255, 255, 0.55);
-        box-shadow: var(--shadow-sm);
-        overflow: hidden;
-      }
-      .top-accordion__summary {
-        list-style: none;
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0.5rem 1rem;
-        padding: 0.65rem 1rem;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 0.9rem;
-        color: var(--ink);
-        background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(241,245,249,0.9) 100%);
-        border-bottom: 1px solid rgba(148, 163, 184, 0.25);
-      }
-      .top-accordion__summary::-webkit-details-marker { display: none; }
-      .top-accordion__chevron {
-        display: inline-block;
-        width: 0.5rem;
-        height: 0.5rem;
-        border-right: 2px solid var(--brand);
-        border-bottom: 2px solid var(--brand);
-        transform: rotate(-45deg);
-        transition: transform 0.18s ease;
-        flex-shrink: 0;
-      }
-      details[open] > .top-accordion__summary .top-accordion__chevron {
-        transform: rotate(45deg);
-      }
-      .top-accordion__title { flex: 1 1 auto; min-width: 12rem; }
-      .top-accordion__meta {
-        font-size: 0.78rem;
-        font-weight: 500;
-        color: var(--ink-muted);
-        max-width: 100%;
-      }
-      .top-accordion__body { padding: 1rem 1rem 1.1rem; }
-      .dashboard {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 0.75rem;
-        margin-bottom: 1.15rem;
-      }
-      .metric {
-        background: var(--surface);
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        border-radius: 12px;
-        padding: 0.85rem 1rem;
-        box-shadow: none;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
-      }
-      .metric:hover { border-color: rgba(29, 78, 216, 0.28); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06); }
-      .metric strong { display: block; font-size: 1.5rem; font-weight: 700; color: var(--brand); letter-spacing: -0.02em; margin-bottom: 0.35rem; }
-      .metric .small { color: var(--ink-muted); font-size: 0.8rem; line-height: 1.35; }
       .kanban-filters-stack {
         margin: 0 0 1.35rem 0;
       }
@@ -1161,6 +1084,7 @@ function startHealthServer(): void {
         margin: 0.5rem 0 0 0;
         font-size: 0.78rem;
         font-weight: 500;
+        min-height: 1.35em;
       }
       .section-head { margin: 0 0 0.75rem 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.75rem 1rem; justify-content: space-between; }
       .section-head--kanban { align-items: flex-start; gap: 0.75rem 1.25rem; }
@@ -1265,6 +1189,10 @@ function startHealthServer(): void {
         height: 100%;
         display: block;
         border-radius: 50%;
+      }
+      .aging-dash__pie-svg path,
+      .aging-dash__pie-svg circle {
+        cursor: help;
       }
       .aging-dash__total-num {
         font-size: 1.45rem;
@@ -1382,127 +1310,6 @@ function startHealthServer(): void {
         color: #b91c1c;
       }
       .aging-card--over .aging-card__value { color: #991b1b; }
-      .perf-section {
-        margin: 0 0 1.75rem 0;
-        padding: 1.35rem 1.35rem 1.45rem;
-        border-radius: var(--radius-lg);
-        background: linear-gradient(165deg, #ffffff 0%, #f8fafc 55%, #f1f5f9 100%);
-        border: 1px solid rgba(148, 163, 184, 0.42);
-        box-shadow: var(--shadow-md);
-      }
-      .perf-section__head { margin-bottom: 1rem; }
-      .perf-section__title {
-        margin: 0 0 0.45rem 0;
-        font-size: 1.08rem;
-        font-weight: 800;
-        letter-spacing: -0.02em;
-        color: var(--ink);
-      }
-      .perf-section__lead {
-        margin: 0;
-        font-size: 0.84rem;
-        line-height: 1.55;
-        color: var(--ink-muted);
-        max-width: 88ch;
-      }
-      .perf-section--accordion-body {
-        margin: 0;
-        padding: 0;
-        border: none;
-        box-shadow: none;
-        background: transparent;
-      }
-      .perf-section__lead--accordion {
-        margin: 0 0 1rem 0;
-      }
-      .perf-table-wrap {
-        overflow-x: auto;
-        border-radius: 12px;
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        background: rgba(255, 255, 255, 0.75);
-      }
-      .perf-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.8rem;
-      }
-      .perf-table th,
-      .perf-table td {
-        padding: 0.65rem 0.7rem;
-        text-align: left;
-        border-bottom: 1px solid #e2e8f0;
-        vertical-align: middle;
-      }
-      .perf-table th {
-        background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%);
-        font-weight: 700;
-        color: #334155;
-        white-space: nowrap;
-      }
-      .perf-th-sub {
-        display: block;
-        font-weight: 500;
-        font-size: 0.68rem;
-        color: #64748b;
-        margin-top: 0.15rem;
-      }
-      .perf-td--name { font-weight: 600; color: var(--ink); min-width: 9rem; }
-      .perf-td--stack { min-width: 11rem; }
-      .perf-td__sub { display: block; font-size: 0.68rem; color: #64748b; margin-top: 0.25rem; }
-      .perf-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-      .perf-net--pos { color: #15803d; font-weight: 700; }
-      .perf-net--neg { color: #b91c1c; font-weight: 700; }
-      .perf-net--zero { color: #64748b; }
-      .perf-stack {
-        display: flex;
-        height: 10px;
-        border-radius: 6px;
-        overflow: hidden;
-        background: #e2e8f0;
-        min-width: 72px;
-      }
-      .perf-stack--empty {
-        justify-content: center;
-        align-items: center;
-        font-size: 0.7rem;
-        color: #94a3b8;
-      }
-      .perf-stack__seg { display: block; height: 100%; min-width: 2px; }
-      .perf-stack__w { background: #34d399; }
-      .perf-stack__15 { background: #2dd4bf; }
-      .perf-stack__30 { background: #fbbf24; }
-      .perf-stack__60 { background: #fb923c; }
-      .perf-stack__ov { background: #f87171; }
-      .perf-td--weeks { min-width: 14rem; }
-      .perf-weeks {
-        display: flex;
-        align-items: flex-end;
-        justify-content: flex-end;
-        gap: 0.15rem;
-        height: 44px;
-      }
-      .perf-week {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: flex-end;
-        width: 0.78rem;
-        height: 100%;
-      }
-      .perf-week__bar {
-        display: block;
-        width: 100%;
-        min-height: 2px;
-        border-radius: 3px 3px 0 0;
-        background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
-        align-self: stretch;
-      }
-      .perf-week__n {
-        font-size: 0.62rem;
-        color: #64748b;
-        margin-top: 0.12rem;
-        font-variant-numeric: tabular-nums;
-      }
       .kanban-fs-root { margin-bottom: 0; }
       .kanban-fs-root:fullscreen,
       .kanban-fs-root:-webkit-full-screen {
@@ -1755,61 +1562,12 @@ function startHealthServer(): void {
       <p class="page-lead">${pageLeadHtml}</p>
     </header>
 
-    <details class="top-accordion">
-      <summary class="top-accordion__summary">
-        <span class="top-accordion__chevron" aria-hidden="true"></span>
-        <span class="top-accordion__title">Painel de métricas</span>
-        <span class="top-accordion__meta">${escapeHtml(String(syncedTotal))} no SQLite · escopo de sync: ${
-          ticketSyncScope === "all" ? "todos os chamados" : "só abertos"
-        } · GLPI ${syncStatus.isRunning ? "a sincronizar" : "parado"}</span>
-      </summary>
-      <div class="top-accordion__body">
-    <div class="dashboard">
-      <div class="metric">
-        <strong>${syncedTotal}</strong>
-        <span class="small">Chamados no banco (cache)</span>
-      </div>
-      <div class="metric">
-        <strong>${escapeHtml(remoteLabel)}</strong>
-        <span class="small">Total remoto GLPI (quando disponivel)</span>
-      </div>
-      <div class="metric">
-        <strong>${escapeHtml(remainingLabel)}</strong>
-        <span class="small">Falta sincronizar (estimado)</span>
-      </div>
-      <div class="metric">
-        <strong>${filteredTotal}</strong>
-        <span class="small">Resultado do filtro atual (contagem no SQLite)</span>
-      </div>
-      <div class="metric">
-        <strong>${latestTickets.length}</strong>
-        <span class="small">Cards no quadro (ate 200 do filtro, mais antigos primeiro em cada coluna)</span>
-      </div>
-      <div class="metric">
-        <strong>${syncStatus.isRunning ? "Rodando" : "Parado"}</strong>
-        <span class="small">Sincronizacao GLPI — pagina ${syncStatus.lastPage || 0}, carregados ${syncStatus.lastLoaded || 0}, gravados ${
-          syncStatus.lastSaved || 0
-        }</span>
-      </div>
-    </div>
-      </div>
-    </details>
     ${openAgeDashboardHtml}
-    <details class="top-accordion">
-      <summary class="top-accordion__summary">
-        <span class="top-accordion__chevron" aria-hidden="true"></span>
-        <span class="top-accordion__title">Performance por grupo atribuído</span>
-        <span class="top-accordion__meta">${perfGroupRowCount} grupo(s) no cache</span>
-      </summary>
-      <div class="top-accordion__body">
-        ${groupPerfSectionHtml}
-      </div>
-    </details>
     <div class="kanban-filters-stack">
     <div class="filters-shell">
       <header class="filters-shell__head">
         <h2 class="filters-shell__title">Filtros do Kanban</h2>
-        <p class="filters-shell__lede">Aplicam ao quadro abaixo (até 200 cards por coluna) · escopo de cache e recálculo de pendência</p>
+        <p class="filters-shell__lede">Aplicam ao quadro, ao painel de idade dos abertos e ao recálculo de pendência (até 200 cards por coluna)</p>
       </header>
       <div class="filters-shell__pills" aria-label="Filtros aplicados">${filterPillsHtml}</div>
       <form class="filters-grid" method="GET" action="/">
@@ -1860,18 +1618,21 @@ function startHealthServer(): void {
           <button type="button" class="btn-secondary" id="btn-save-sync-scope">Guardar escopo</button>
           <button type="button" class="btn-secondary" id="btn-recalc-pendencia" title="Até 200 tickets com os filtros atuais">Recalcular pendência</button>
         </div>
-        <p class="filters-shell__sync-msg" id="sync-toolbar-msg" hidden></p>
+        <p class="filters-shell__sync-msg" id="sync-toolbar-msg" role="status" aria-live="polite" hidden></p>
       </footer>
     </div>
     <script type="application/json" id="kanban-filter-json">${filterJsonForScript}</script>
     <script>
       (function () {
         var msg = document.getElementById("sync-toolbar-msg");
-        function show(text, ok) {
+        function show(text, kind) {
           if (!msg) return;
           msg.hidden = false;
           msg.textContent = text;
-          msg.style.color = ok ? "#15803d" : "#b45309";
+          var color = "#b45309";
+          if (kind === true || kind === "ok") color = "#15803d";
+          else if (kind === "progress") color = "#1d4ed8";
+          msg.style.color = color;
         }
         var filterEl = document.getElementById("kanban-filter-json");
         var filterState = {};
@@ -1905,7 +1666,15 @@ function startHealthServer(): void {
         });
         document.getElementById("btn-recalc-pendencia")?.addEventListener("click", function () {
           var btn = document.getElementById("btn-recalc-pendencia");
-          if (btn) btn.disabled = true;
+          if (!btn || btn.disabled) return;
+          var origLabel = btn.textContent;
+          btn.disabled = true;
+          btn.setAttribute("aria-busy", "true");
+          btn.textContent = "A recalcular…";
+          show(
+            "A recalcular pendência nos chamados do filtro (até 200). Aguarde — pode demorar se o GLPI estiver lento.",
+            "progress"
+          );
           fetch("/api/tickets/recalc-pendencia", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1920,17 +1689,25 @@ function startHealthServer(): void {
               if (!x.res.ok) {
                 throw new Error((x.data && x.data.error) || "Falha no recálculo");
               }
-              var n = x.data.updated != null ? x.data.updated : 0;
-              show("Pendência recalculada para " + n + " chamado(s). A recarregar…", true);
+              var scanned = x.data.scanned != null ? x.data.scanned : 0;
+              var updated = x.data.updated != null ? x.data.updated : 0;
+              show(
+                "Concluído: " +
+                  scanned +
+                  " chamado(s) processados; pendência gravada em " +
+                  updated +
+                  ". A atualizar o quadro…",
+                true
+              );
               setTimeout(function () {
                 window.location.reload();
-              }, 500);
+              }, 1100);
             })
             .catch(function (err) {
               show(String(err && err.message ? err.message : err), false);
-            })
-            .finally(function () {
-              if (btn) btn.disabled = false;
+              btn.disabled = false;
+              btn.removeAttribute("aria-busy");
+              btn.textContent = origLabel;
             });
         });
       })();

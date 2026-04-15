@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { ticketWhereNotClosed } from "./ticket-status";
 
@@ -18,9 +19,14 @@ export type OpenAgeBuckets = {
 
 const DAY_MS = 86400000;
 
-export async function getOpenTicketAgeBuckets(): Promise<OpenAgeBuckets> {
+/**
+ * @param filterWhere Critérios adicionais (ex.: mesmo `buildKanbanWhere` com `forceNonClosed: true`).
+ *                    Se omitido, conta todos os abertos no cache.
+ */
+export async function getOpenTicketAgeBuckets(filterWhere?: Prisma.TicketWhereInput): Promise<OpenAgeBuckets> {
+  const where = filterWhere ?? ticketWhereNotClosed();
   const rows = await prisma.ticket.findMany({
-    where: ticketWhereNotClosed(),
+    where,
     select: { dateCreation: true }
   });
 

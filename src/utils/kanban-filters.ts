@@ -46,6 +46,11 @@ export type KanbanFilterInput = {
   assignedGroupFilter: string;
   onlyOpen: boolean;
   pendenciaParam: string;
+  /**
+   * Se true, restringe a tickets não fechados mesmo com onlyOpen=false.
+   * Usado no painel «Idade dos chamados abertos» (sempre só abertos + filtros).
+   */
+  forceNonClosed?: boolean;
 };
 
 async function assignedGroupTicketIds(assignedGroupFilter: string): Promise<number[]> {
@@ -74,9 +79,10 @@ async function assignedGroupTicketIds(assignedGroupFilter: string): Promise<numb
 }
 
 export async function buildKanbanWhere(input: KanbanFilterInput): Promise<Prisma.TicketWhereInput> {
-  const { q, statusFilter, groupFilter, assignedGroupFilter, onlyOpen, pendenciaParam } = input;
+  const { q, statusFilter, groupFilter, assignedGroupFilter, onlyOpen, pendenciaParam, forceNonClosed } = input;
   const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
   const ids = await assignedGroupTicketIds(assignedGroupFilter);
+  const enforceNotClosed = onlyOpen || Boolean(forceNonClosed);
 
   return {
     AND: [
@@ -99,7 +105,7 @@ export async function buildKanbanWhere(input: KanbanFilterInput): Promise<Prisma
             ]
           }
         : {},
-      ...(onlyOpen ? [ticketWhereNotClosed()] : []),
+      ...(enforceNotClosed ? [ticketWhereNotClosed()] : []),
       ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
     ]
   };
