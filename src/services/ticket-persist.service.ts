@@ -3,6 +3,7 @@ import { logger } from "../config/logger";
 import { flattenAttributes } from "../lib/ticket-attributes-flatten";
 import { normalizeTicket } from "../normalizers/ticket.normalizer";
 import type { NormalizedTicket } from "../types/glpi.types";
+import { enrichNormalizedTicketObservers, enrichNormalizedTicketRequester } from "./glpi-user.service";
 import { getTicketSyncScope } from "../utils/ticket-sync-scope";
 import { isTicketClosedStatus } from "../utils/ticket-status";
 
@@ -24,38 +25,40 @@ export async function persistNormalizedTicket(
   }
 
   try {
+    const enrichedReq = await enrichNormalizedTicketRequester(normalized);
+    const enriched = await enrichNormalizedTicketObservers(enrichedReq);
     const savedTicket = await prisma.ticket.upsert({
       where: {
-        glpiTicketId: normalized.id
+        glpiTicketId: enriched.id
       },
       update: {
-        title: normalized.title,
-        content: normalized.content,
-        status: normalized.status,
-        priority: normalized.priority,
-        dateCreation: normalized.date_creation,
-        dateModification: normalized.date_modification,
-        contractGroupId: normalized.contract_group_id,
-        contractGroupName: normalized.contract_group_name,
-        requesterName: normalized.requester_name,
-        requesterEmail: normalized.requester_email,
-        requesterUserId: normalized.requester_user_id,
-        rawJson: normalized.raw
+        title: enriched.title,
+        content: enriched.content,
+        status: enriched.status,
+        priority: enriched.priority,
+        dateCreation: enriched.date_creation,
+        dateModification: enriched.date_modification,
+        contractGroupId: enriched.contract_group_id,
+        contractGroupName: enriched.contract_group_name,
+        requesterName: enriched.requester_name,
+        requesterEmail: enriched.requester_email,
+        requesterUserId: enriched.requester_user_id,
+        rawJson: enriched.raw
       },
       create: {
-        glpiTicketId: normalized.id,
-        title: normalized.title,
-        content: normalized.content,
-        status: normalized.status,
-        priority: normalized.priority,
-        dateCreation: normalized.date_creation,
-        dateModification: normalized.date_modification,
-        contractGroupId: normalized.contract_group_id,
-        contractGroupName: normalized.contract_group_name,
-        requesterName: normalized.requester_name,
-        requesterEmail: normalized.requester_email,
-        requesterUserId: normalized.requester_user_id,
-        rawJson: normalized.raw
+        glpiTicketId: enriched.id,
+        title: enriched.title,
+        content: enriched.content,
+        status: enriched.status,
+        priority: enriched.priority,
+        dateCreation: enriched.date_creation,
+        dateModification: enriched.date_modification,
+        contractGroupId: enriched.contract_group_id,
+        contractGroupName: enriched.contract_group_name,
+        requesterName: enriched.requester_name,
+        requesterEmail: enriched.requester_email,
+        requesterUserId: enriched.requester_user_id,
+        rawJson: enriched.raw
       },
       select: {
         id: true

@@ -1,5 +1,6 @@
 import http from "node:http";
 import cron from "node-cron";
+import { Prisma } from "@prisma/client";
 import { AxiosError } from "axios";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
@@ -9,12 +10,14 @@ import { syncTickets, SyncProgress, SyncTicketsResult } from "./jobs/sync-ticket
 import { ensureSqliteSchema } from "./scripts/bootstrap-db";
 import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
+import { enrichObserverRows, fetchCachedGlpiUserContact } from "./services/glpi-user.service";
 import { enrichWaitingPartyBatch, loadAndPersistWaitingParty } from "./services/glpi-ticket-history.service";
 import { fetchGlpiTicketJson, patchGlpiTicketJson } from "./services/glpi-ticket-write.service";
 import { persistTicketFromRaw } from "./services/ticket-persist.service";
 import { extractGlpiScalarId } from "./utils/glpi-field-parse";
 import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
 import { getOpenTicketAgeBuckets, sumOpenAgeBuckets, type OpenAgeBuckets } from "./utils/open-ticket-aging";
+import { extractObserversFromTicketRaw } from "./utils/ticket-observers";
 import { extractRequesterContact } from "./utils/ticket-requester";
 import { getTicketSyncScope } from "./utils/ticket-sync-scope";
 
@@ -212,6 +215,24 @@ function formatDateTime(value: string | Date | null | undefined): string {
   }).format(date);
 }
 
+const KANBAN_SYNC_STALE_MS = 24 * 60 * 60 * 1000;
+
+function kanbanSyncIconSvg(syncStale: boolean): string {
+  if (syncStale) {
+    return '<svg class="card-sync-flag__svg" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="#d97706"/><path d="M10 5.5V11M10 14.5h.01" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>';
+  }
+  return '<svg class="card-sync-flag__svg" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="#16a34a"/><path d="M6 10.2l2.4 2.2L14.2 7" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+
+function kanbanCardSyncTooltipText(
+  dateMod: string | null,
+  updatedAt: Date,
+  syncStale: boolean
+): string {
+  const base = `GLPI ${formatDateTime(dateMod)} · Sync ${formatDateTime(updatedAt)}`;
+  return syncStale ? `${base}. Última gravação no cache há mais de 24 h.` : `${base}. Cache sincronizado nas últimas 24 h.`;
+}
+
 function applySyncProgress(progress: SyncProgress): void {
   syncStatus.lastPage = progress.page;
   syncStatus.lastLoaded = progress.loaded;
@@ -256,7 +277,7 @@ function buildOpenAgePieSvg(b: OpenAgeBuckets): string {
     const s = slices[fullIdx];
     const tip = agingPieSliceTitle(s.label, s.n, total);
     const pctStr = `${formatAgingPercentOfTotal(s.n, total)}%`;
-    const soloLabel = `<text x="0" y="0" class="aging-dash__pie-label" font-size="0.32" text-anchor="middle" dominant-baseline="middle">${escapeHtml(
+    const soloLabel = `<text x="0" y="0" class="aging-dash__pie-label" font-size="0.38" text-anchor="middle" dominant-baseline="middle">${escapeHtml(
       pctStr
     )}</text>`;
     return `<svg class="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="100% numa unica faixa etaria"><circle cx="0" cy="0" r="1" fill="${s.c}"><title>${tip}</title></circle>${soloLabel}</svg>`;
@@ -296,7 +317,7 @@ function buildOpenAgePieSvg(b: OpenAgeBuckets): string {
     if (sweep >= MIN_SWEEP_FOR_LABEL) {
       const tx = LABEL_RADIUS * Math.cos(seg.mid);
       const ty = LABEL_RADIUS * Math.sin(seg.mid);
-      labels += `<text x="${tx.toFixed(3)}" y="${ty.toFixed(3)}" class="aging-dash__pie-label" font-size="0.19" text-anchor="middle" dominant-baseline="middle">${escapeHtml(
+      labels += `<text x="${tx.toFixed(3)}" y="${ty.toFixed(3)}" class="aging-dash__pie-label" font-size="0.22" text-anchor="middle" dominant-baseline="middle">${escapeHtml(
         seg.pctStr
       )}</text>`;
     }
@@ -356,7 +377,6 @@ function renderOpenAgeDashboardHtml(b: OpenAgeBuckets): string {
   return `<section class="aging-dash" aria-labelledby="aging-dash-title">
     <div class="aging-dash__intro">
       <h2 id="aging-dash-title" class="aging-dash__title">Idade dos chamados abertos</h2>
-      <p class="aging-dash__subtitle">Contagem de <strong>chamados não fechados</strong> que obedecem aos <strong>mesmos filtros</strong> que o quadro (busca, status, grupo, pendência, etc.). O painel usa sempre só <strong>abertos</strong>, mesmo com «Só abertos» = Não no Kanban. Em cada cartão: número e <strong>percentual do total</strong> deste conjunto; na mini pizza o <strong>percentual aparece nas fatias</strong> (fatias muito finas omitem o texto). O segmento <strong>cinza</strong> é “sem data” válida.</p>
       <div class="aging-dash__total-row">
         <p class="aging-dash__total">
           <span class="aging-dash__total-num">${total}</span><span class="aging-dash__total-label"> chamados abertos</span>${noDateNote}
@@ -549,6 +569,51 @@ function startHealthServer(): void {
           const raw = asJsonRecord(ticket.rawJson);
           const history = await loadAndPersistWaitingParty(glpiId, ticket.status);
           const reqFb = extractRequesterContact(ticket.rawJson);
+          let requesterName = ticket.requesterName?.trim() ? ticket.requesterName : reqFb.displayName ?? null;
+          let requesterEmail = ticket.requesterEmail ?? reqFb.email ?? null;
+          let requesterUserId = ticket.requesterUserId ?? reqFb.userId;
+          const hasReqEmail = Boolean(requesterEmail && requesterEmail.trim().includes("@"));
+          const needsRequesterApi =
+            requesterUserId != null &&
+            requesterUserId > 0 &&
+            (!requesterName?.trim() || !hasReqEmail);
+          let workingRaw: Record<string, unknown> =
+            ticket.rawJson && typeof ticket.rawJson === "object" && !Array.isArray(ticket.rawJson)
+              ? { ...(ticket.rawJson as Record<string, unknown>) }
+              : {};
+          if (needsRequesterApi) {
+            const c = await fetchCachedGlpiUserContact(requesterUserId);
+            if (c?.displayName || c?.email) {
+              if (!requesterName?.trim() && c.displayName) {
+                requesterName = c.displayName;
+              }
+              if (!hasReqEmail && c.email) {
+                requesterEmail = c.email;
+              }
+              if (c.displayName) {
+                workingRaw.users_id_requester_name = c.displayName;
+              }
+              if (c.email) {
+                workingRaw.users_id_requester_email = c.email;
+              }
+            }
+          }
+          const observerRows = extractObserversFromTicketRaw(workingRaw, requesterUserId ?? null);
+          const observersResolved = await enrichObserverRows(observerRows);
+          workingRaw.__gti_observers_resolved = observersResolved.map((r) => ({
+            userId: r.userId,
+            displayName: r.displayName,
+            email: r.email
+          }));
+          await prisma.ticket.update({
+            where: { glpiTicketId: glpiId },
+            data: {
+              requesterName: requesterName ?? null,
+              requesterEmail: requesterEmail ?? null,
+              requesterUserId,
+              rawJson: workingRaw as Prisma.InputJsonValue
+            }
+          });
           const payload = {
             glpiTicketId: ticket.glpiTicketId,
             name: ticket.title ?? "",
@@ -560,9 +625,10 @@ function startHealthServer(): void {
             dateCreation: ticket.dateCreation,
             dateModification: ticket.dateModification,
             contractGroupName: ticket.contractGroupName,
-            requesterName: ticket.requesterName ?? reqFb.displayName,
-            requesterEmail: ticket.requesterEmail ?? reqFb.email,
-            requesterUserId: ticket.requesterUserId ?? reqFb.userId,
+            requesterName: requesterName ?? "",
+            requesterEmail: requesterEmail ?? "",
+            requesterUserId,
+            observers: observersResolved,
             history
           };
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -825,10 +891,20 @@ function startHealthServer(): void {
                 ticket.waitingParty === "unknown"
                   ? ticket.waitingParty
                   : "none";
+              const updAt = ticket.updatedAt instanceof Date ? ticket.updatedAt : new Date(ticket.updatedAt);
+              const syncAgeMs = now.getTime() - updAt.getTime();
+              const syncStale = !Number.isFinite(syncAgeMs) || syncAgeMs > KANBAN_SYNC_STALE_MS;
+              const syncTip = escapeHtml(kanbanCardSyncTooltipText(ticket.dateModification, updAt, syncStale));
+              const syncFlag = `<span class="card-sync-flag${syncStale ? " card-sync-flag--stale" : ""}" title="${syncTip}" aria-label="${syncTip}" role="img">${kanbanSyncIconSvg(
+                syncStale
+              )}</span>`;
               return `<div class="kanban-card" draggable="false" role="button" tabindex="0" data-glpi-id="${
                 ticket.glpiTicketId
               }" data-waiting="${escapeHtml(pendClass)}" style="${escapeHtml(cardStyle)}">
-                <div class="card-id">#${ticket.glpiTicketId}</div>
+                <div class="kanban-card__head">
+                  <div class="card-id">#${ticket.glpiTicketId}</div>
+                  ${syncFlag}
+                </div>
                 <div class="card-title">${safeTitle}</div>
                 <span class="pend-badge pend-badge--${escapeHtml(pendClass)}">${escapeHtml(pendLabel)}</span>
                 <div class="card-meta">Grupo: ${safeGroup}</div>
@@ -838,9 +914,6 @@ function startHealthServer(): void {
                 <div class="card-meta">Aberto há <strong>${escapeHtml(openFor)}</strong> · Sem interação <strong>${escapeHtml(
                   idleFor
                 )}</strong></div>
-                <div class="card-meta card-meta--fine">GLPI ${formatDateTime(ticket.dateModification)} · Sync ${formatDateTime(
-                  ticket.updatedAt
-                )}</div>
               </div>`;
             })
             .join("");
@@ -880,11 +953,6 @@ function startHealthServer(): void {
       ].join("");
 
       const openAgeDashboardHtml = renderOpenAgeDashboardHtml(ageBuckets);
-
-      const pageLeadHtml =
-        ticketSyncScope === "all"
-          ? "Visão em Kanban sincronizada com o GLPI. O <strong>escopo de sincronização</strong> está em <strong>todos os chamados</strong>: após cada sync, fechados também ficam no SQLite. A <strong>pendência inferida</strong> usa o campo <code>waitingParty</code> (modal ou botão de recálculo)."
-          : "Visão em Kanban sincronizada com o GLPI. Por defeito o cache mantém só chamados <strong>abertos</strong>; nos filtros abaixo pode guardar escopo <strong>todos no cache</strong>. A <strong>pendência inferida</strong> usa <code>waitingParty</code> (modal ou recálculo).";
 
       const filterJsonForScript = JSON.stringify({
         q,
@@ -1142,9 +1210,9 @@ function startHealthServer(): void {
         border: 1px solid rgba(148, 163, 184, 0.4);
         box-shadow: var(--shadow-md), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
       }
-      .aging-dash__intro { margin-bottom: 1.1rem; }
+      .aging-dash__intro { margin-bottom: 0.85rem; }
       .aging-dash__title {
-        margin: 0 0 0.4rem 0;
+        margin: 0 0 0.5rem 0;
         font-size: 1.12rem;
         font-weight: 800;
         letter-spacing: -0.025em;
@@ -1160,13 +1228,6 @@ function startHealthServer(): void {
         border-radius: 99px;
         background: linear-gradient(180deg, #2563eb, #7c3aed);
         flex-shrink: 0;
-      }
-      .aging-dash__subtitle {
-        margin: 0 0 0.65rem 0;
-        font-size: 0.86rem;
-        line-height: 1.55;
-        color: var(--ink-muted);
-        max-width: 72ch;
       }
       .aging-dash__total-row {
         display: flex;
@@ -1197,13 +1258,13 @@ function startHealthServer(): void {
       .aging-dash__delayed-p { font-weight: 700; font-variant-numeric: tabular-nums; color: #b91c1c; }
       .aging-dash__pie-wrap {
         flex-shrink: 0;
-        width: 4.75rem;
-        height: 4.75rem;
+        width: 7.75rem;
+        height: 7.75rem;
         border-radius: 50%;
         background: rgba(255, 255, 255, 0.65);
         border: 1px solid rgba(148, 163, 184, 0.35);
         box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-        padding: 0.2rem;
+        padding: 0.28rem;
         box-sizing: border-box;
       }
       .aging-dash__pie-svg {
@@ -1456,7 +1517,23 @@ function startHealthServer(): void {
       }
       .kanban-card:hover { transform: translateY(-2px); filter: brightness(1.02); }
       .kanban-card:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
-      .card-id { font-size: 0.72rem; font-weight: 700; color: var(--ink-muted); letter-spacing: 0.02em; }
+      .kanban-card__head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.4rem;
+      }
+      .card-sync-flag {
+        flex-shrink: 0;
+        cursor: help;
+        line-height: 0;
+        margin-top: 0.06rem;
+        opacity: 0.92;
+      }
+      .card-sync-flag:hover { opacity: 1; }
+      .card-sync-flag__svg { width: 1.05rem; height: 1.05rem; display: block; }
+      .card-sync-flag--stale .card-sync-flag__svg { filter: drop-shadow(0 0 1px rgba(120, 53, 15, 0.35)); }
+      .card-id { font-size: 0.72rem; font-weight: 700; color: var(--ink-muted); letter-spacing: 0.02em; min-width: 0; }
       .card-title { font-size: 0.9rem; font-weight: 600; color: var(--ink); line-height: 1.35; }
       .card-meta { font-size: 0.78rem; color: #334155; line-height: 1.4; }
       .card-meta--fine { font-size: 0.72rem; color: #64748b; }
@@ -1532,6 +1609,7 @@ function startHealthServer(): void {
       .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
       @media (max-width: 560px) { .modal-grid { grid-template-columns: 1fr; } }
       .modal-hint { margin: 0; font-size: 0.85rem; color: var(--ink-muted); }
+      .modal-hint--multiline { white-space: pre-line; line-height: 1.55; }
       .modal-error { margin: 0; font-size: 0.88rem; font-weight: 500; color: #b91c1c; }
       .modal-actions { display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 0.25rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; }
       .btn-secondary {
@@ -1594,7 +1672,6 @@ function startHealthServer(): void {
     <header class="page-header">
       <p class="page-kicker">Operação · GLPI</p>
       <h1 class="page-title">Quadro de chamados</h1>
-      <p class="page-lead">${pageLeadHtml}</p>
     </header>
 
     ${openAgeDashboardHtml}
@@ -1777,10 +1854,10 @@ function startHealthServer(): void {
         </div>
         <form id="ticket-edit-form">
           <input type="hidden" id="ticket-edit-glpi-id" />
-          <label class="modal-field">Título (GLPI <code>name</code>)
+          <label class="modal-field">Título
             <input type="text" id="ticket-edit-name" required />
           </label>
-          <label class="modal-field modal-field-rich">Descrição (rich text / HTML — enviado como <code>content</code> no GLPI)
+          <label class="modal-field modal-field-rich">Descrição
             <div id="ticket-edit-quill" class="ticket-quill-editor" aria-label="Descrição formatada"></div>
           </label>
           <div id="ticket-history-section">
@@ -1799,7 +1876,8 @@ function startHealthServer(): void {
             </label>
           </div>
           <p class="small modal-hint">Rótulos atuais: <span id="ticket-edit-labels"></span></p>
-          <p class="small modal-hint" id="ticket-edit-requester" style="margin-top:0.35rem"></p>
+          <p class="small modal-hint modal-hint--multiline" id="ticket-edit-requester" style="margin-top:0.35rem"></p>
+          <p class="small modal-hint modal-hint--multiline" id="ticket-edit-observers" style="margin-top:0.35rem"></p>
           <p class="small modal-error" id="ticket-edit-error" hidden></p>
           <div class="modal-actions">
             <button type="button" class="btn-secondary" data-close-modal>Cancelar</button>
@@ -1943,6 +2021,7 @@ function startHealthServer(): void {
         const elPriorityId = document.getElementById("ticket-edit-priority-id");
         const elLabels = document.getElementById("ticket-edit-labels");
         const elRequester = document.getElementById("ticket-edit-requester");
+        const elObservers = document.getElementById("ticket-edit-observers");
         const elError = document.getElementById("ticket-edit-error");
         const board = document.getElementById("kanban-board");
         if (!modal || !form || !elId || !elName || !elQuillHost || !elStatusId || !elPriorityId || !elLabels || !elError || !board) return;
@@ -2086,6 +2165,7 @@ function startHealthServer(): void {
           elPriorityId.value = "";
           elLabels.textContent = "";
           if (elRequester) elRequester.textContent = "";
+          if (elObservers) elObservers.textContent = "";
           renderHistory(null);
           const res = await fetch("/api/tickets/glpi/" + glpiId);
           const data = await res.json().catch(function () { return null; });
@@ -2104,13 +2184,29 @@ function startHealthServer(): void {
           elLabels.textContent =
             "status: " + (data.statusLabel || "—") + " | prioridade: " + (data.priorityLabel || "—");
           if (elRequester) {
-            var rp = [];
-            if (data.requesterName) rp.push(String(data.requesterName));
-            if (data.requesterEmail) rp.push(String(data.requesterEmail));
+            var rq = [];
+            if (data.requesterName) rq.push("Nome: " + String(data.requesterName));
+            if (data.requesterEmail) rq.push("E-mail: " + String(data.requesterEmail));
             if (data.requesterUserId != null && data.requesterUserId !== "")
-              rp.push("GLPI user #" + String(data.requesterUserId));
+              rq.push("ID utilizador GLPI: " + String(data.requesterUserId));
             elRequester.textContent =
-              rp.length > 0 ? "Solicitante (cache): " + rp.join(" · ") : "Solicitante (cache): nao identificado";
+              rq.length > 0 ? "Solicitante\n" + rq.join("\n") : "Solicitante: nao identificado no cache (sem nome nem ID).";
+          }
+          if (elObservers) {
+            var obs = data.observers || [];
+            if (obs.length === 0) {
+              elObservers.textContent =
+                "Observadores: nenhum encontrado no JSON do GLPI (campos _users_id_observer / team com papel observer). Apos sincronizar com dados completos, abra de novo o chamado.";
+            } else {
+              var ol = obs.map(function (o) {
+                var bits = [];
+                if (o.displayName) bits.push(String(o.displayName));
+                if (o.email) bits.push(String(o.email));
+                if (o.userId != null && o.userId !== "") bits.push("ID " + String(o.userId));
+                return bits.length ? "· " + bits.join(" — ") : "· Utilizador #" + String(o.userId != null ? o.userId : "?");
+              });
+              elObservers.textContent = "Observadores (" + obs.length + ")\n" + ol.join("\n");
+            }
           }
           renderHistory(data.history || null);
           openModal();

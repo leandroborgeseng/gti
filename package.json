@@ -1,6 +1,7 @@
 {
   "name": "glpi-sync-mvp",
   "version": "1.0.0",
+  "description": "Sincronização de chamados GLPI para SQLite, quadro Kanban na web e API HTTP (Node.js + TypeScript + Prisma).",
   "private": true,
   "type": "commonjs",
   "scripts": {

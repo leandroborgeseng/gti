@@ -7,8 +7,10 @@ datasource db {
   url      = "file:./data.db"
 }
 
+/// Chamado sincronizado do GLPI (uma linha por `glpiTicketId`).
 model Ticket {
   id                Int      @id @default(autoincrement())
+  /// Identificador do chamado no GLPI.
   glpiTicketId      Int      @unique
   title             String?
   content           String?
@@ -26,6 +28,7 @@ model Ticket {
   requesterUserId   Int?
   /** cliente | empresa | na | unknown — inferido pelo histórico GLPI (cache). */
   waitingParty      String?
+  /// Payload bruto do GLPI (JSON) para campos não mapeados e enriquecimentos.
   rawJson           Json
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -35,6 +38,7 @@ model Ticket {
   @@index([requesterEmail])
 }
 
+/// Atributo achatado do JSON do ticket (para pesquisas e filtros auxiliares).
 model TicketAttribute {
   id        Int      @id @default(autoincrement())
   ticketId  Int
@@ -50,6 +54,7 @@ model TicketAttribute {
   @@index([keyPath])
 }
 
+/// Chave-valor genérico (cursor de sync, escopo, totais, etc.).
 model SyncState {
   key       String   @id
   value     String?

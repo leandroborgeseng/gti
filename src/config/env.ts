@@ -13,7 +13,7 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
 function getEnv(name: string): string {
   const value = process.env[name];
   if (!value || !value.trim()) {
-    throw new Error(`Variavel de ambiente obrigatoria ausente: ${name}`);
+    throw new Error(`Variável de ambiente obrigatória ausente: ${name}`);
   }
   return value;
 }

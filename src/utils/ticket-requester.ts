@@ -7,7 +7,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function authorFromUserObject(value: unknown): string | null {
   const o = asRecord(value);
-  const name = o.name ?? o.login ?? o.realname;
+  const name = o.name ?? o.completename ?? o.friendlyname ?? o.login ?? o.realname;
   if (typeof name === "string" && name.trim()) {
     return name.trim();
   }
@@ -79,7 +79,21 @@ export function extractRequesterContact(rawJson: unknown): RequesterContact {
     }
   };
 
+  const uidReq = ticket.users_id_requester;
+  if (uidReq && typeof uidReq === "object" && !Array.isArray(uidReq)) {
+    fillRequesterFromUserObject(uidReq);
+  } else if (uidReq !== undefined && uidReq !== null) {
+    if (!userId) {
+      userId = parsePositiveInt(uidReq);
+    }
+  }
+
   fillRequesterFromUserObject(ticket.user ?? ticket.requester);
+  if (typeof ticket.requester === "number" || typeof ticket.requester === "string") {
+    if (!userId) {
+      userId = parsePositiveInt(ticket.requester);
+    }
+  }
 
   const reqArr = ticket._users_id_requester;
   if (Array.isArray(reqArr) && reqArr.length > 0) {
@@ -99,7 +113,9 @@ export function extractRequesterContact(rawJson: unknown): RequesterContact {
     const nameFields = [
       ticket.users_id_recipient_name,
       ticket.users_id_requester_name,
+      ticket.users_id_requester_label,
       ticket.requester_name,
+      ticket.requester_completename,
       ticket.author_name
     ];
     for (const f of nameFields) {
