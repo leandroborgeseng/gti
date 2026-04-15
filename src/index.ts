@@ -1132,21 +1132,37 @@ function startHealthServer(): void {
         {
           label: "Operação",
           items: [
-            { href: "/dashboard", label: "Dashboard", icon: "📊" },
-            { href: "/measurements", label: "Medições", icon: "🧮" },
-            { href: "/glosas", label: "Glosas", icon: "⚖️" }
+            { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
+            { href: "/measurements", label: "Medições", icon: "measurements" },
+            { href: "/glosas", label: "Glosas", icon: "glosas" }
           ]
         },
         {
           label: "Cadastros",
           items: [
-            { href: "/contracts", label: "Contratos", icon: "📁" },
-            { href: "/suppliers", label: "Fornecedores", icon: "🏢" },
-            { href: "/fiscais", label: "Fiscais", icon: "👥" },
-            { href: "/reports", label: "Relatórios", icon: "📄" }
+            { href: "/contracts", label: "Contratos", icon: "contracts" },
+            { href: "/suppliers", label: "Fornecedores", icon: "suppliers" },
+            { href: "/fiscais", label: "Fiscais", icon: "fiscais" },
+            { href: "/reports", label: "Relatórios", icon: "reports" }
           ]
         }
       ];
+      const iconMap: Record<string, string> = {
+        dashboard:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"></rect><rect x="13" y="3" width="8" height="5" rx="1.5"></rect><rect x="13" y="10" width="8" height="11" rx="1.5"></rect><rect x="3" y="13" width="8" height="8" rx="1.5"></rect></svg>',
+        measurements:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"></line><rect x="5" y="11" width="3" height="7" rx="1"></rect><rect x="10.5" y="7" width="3" height="11" rx="1"></rect><rect x="16" y="4" width="3" height="14" rx="1"></rect></svg>',
+        glosas:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"></path><path d="M4 8h8a3 3 0 0 1 0 6H8a3 3 0 0 0 0 6h12"></path></svg>',
+        contracts:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>',
+        suppliers:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V7l8-4 8 4v14"></path><path d="M9 21v-6h6v6"></path><path d="M8 11h.01"></path><path d="M16 11h.01"></path></svg>',
+        fiscais:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"></circle><circle cx="17" cy="9" r="2.5"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M14 20a4 4 0 0 1 8 0"></path></svg>',
+        reports:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l5 5v13H6z"></path><path d="M15 3v5h5"></path><line x1="9" y1="13" x2="17" y2="13"></line><line x1="9" y1="17" x2="17" y2="17"></line></svg>'
+      };
       const currentPath = parsedUrl.pathname === "/" ? "/dashboard" : parsedUrl.pathname;
       const isDashboardPage = currentPath === "/dashboard";
       const pageMeta: Record<string, { title: string; kicker: string; description: string }> = {
@@ -1215,8 +1231,9 @@ function startHealthServer(): void {
             .map((item) => {
               const isActive = currentPath === item.href;
               const shortLabel = item.label.slice(0, 2).toUpperCase();
+              const iconSvg = iconMap[item.icon] ?? iconMap.reports;
               return `<a href="${item.href}" title="${escapeHtml(item.label)}" data-short="${escapeHtml(shortLabel)}" class="app-nav__item${isActive ? " app-nav__item--active" : ""}">
-                <span class="app-nav__item-icon" aria-hidden="true">${escapeHtml(item.icon)}</span>
+                <span class="app-nav__item-icon" aria-hidden="true">${iconSvg}</span>
                 <span class="app-nav__item-label">${escapeHtml(item.label)}</span>
               </a>`;
             })
@@ -1344,7 +1361,12 @@ function startHealthServer(): void {
         align-items: center;
         gap: 0.55rem;
       }
-      .app-nav__item-icon { width: 1.05rem; display: inline-flex; justify-content: center; }
+      .app-nav__item-icon { display: none; }
+      .app-nav__item-icon svg {
+        width: 1rem;
+        height: 1rem;
+        display: block;
+      }
       .app-nav__item:hover { background: #eff6ff; color: #1e40af; transform: translateX(2px); }
       .app-nav__item--active {
         background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
@@ -1354,8 +1376,7 @@ function startHealthServer(): void {
       .app-layout--sidebar-collapsed .app-sidebar { width: 78px; padding-left: 0.5rem; padding-right: 0.5rem; }
       .app-layout--sidebar-collapsed .app-sidebar__title,
       .app-layout--sidebar-collapsed .app-nav__section-label,
-      .app-layout--sidebar-collapsed .app-nav__item-label,
-      .app-layout--sidebar-collapsed .app-nav__item-icon { display: none; }
+      .app-layout--sidebar-collapsed .app-nav__item-label { display: none; }
       .app-layout--sidebar-collapsed .app-sidebar__head { justify-content: center; }
       .app-layout--sidebar-collapsed .app-nav__section { border: none; background: transparent; }
       .app-layout--sidebar-collapsed .app-nav__section-summary { display: none; }
@@ -1369,18 +1390,14 @@ function startHealthServer(): void {
         border: 1px solid #dbeafe;
         background: #eff6ff;
         color: #1e40af;
+        gap: 0;
       }
-      .app-layout--sidebar-collapsed .app-nav__item::before {
-        content: attr(data-short);
-        font-size: 0.74rem;
-        font-weight: 700;
-      }
+      .app-layout--sidebar-collapsed .app-nav__item-icon { display: inline-flex; }
       .app-layout--sidebar-collapsed .app-nav__item--active {
         border-color: #1d4ed8;
         background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
         color: #fff;
       }
-      .app-layout--sidebar-collapsed .app-nav__item--active::before { color: #fff; }
       .app-main { flex: 1 1 auto; min-width: 0; }
       .app-shell { max-width: 1320px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
       .module-landing {

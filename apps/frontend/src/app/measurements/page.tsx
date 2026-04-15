@@ -1,17 +1,14 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { getMeasurements } from "@/lib/api";
 
-const rows = [
-  { id: "m1", contract: "CT-001/2025", ref: "04/2026", status: "UNDER_REVIEW" },
-  { id: "m2", contract: "CT-014/2024", ref: "04/2026", status: "OPEN" }
-];
-
-export default function MeasurementsPage(): JSX.Element {
+export default async function MeasurementsPage(): Promise<JSX.Element> {
+  const rows = await getMeasurements().catch(() => []);
   return (
     <Card>
       <div className="mb-4 flex items-center justify-between">
         <h3 className="font-semibold">Medições</h3>
-        <button className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white">Nova medição</button>
+        <span className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">{rows.length} medições</span>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
@@ -26,8 +23,10 @@ export default function MeasurementsPage(): JSX.Element {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-b border-border">
-                <td className="py-2">{r.contract}</td>
-                <td className="py-2">{r.ref}</td>
+                <td className="py-2">{r.contract?.name ?? r.contractId}</td>
+                <td className="py-2">
+                  {String(r.referenceMonth).padStart(2, "0")}/{r.referenceYear}
+                </td>
                 <td className="py-2">{r.status}</td>
                 <td className="py-2">
                   <Link className="text-blue-600 hover:underline" href={`/measurements/${r.id}`}>
@@ -36,6 +35,13 @@ export default function MeasurementsPage(): JSX.Element {
                 </td>
               </tr>
             ))}
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-6 text-center text-slate-500">
+                  Nenhuma medição encontrada.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

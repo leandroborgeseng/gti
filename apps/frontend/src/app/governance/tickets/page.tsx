@@ -1,11 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-
-const tickets = [
-  { id: "gov-001", ticketId: "48210", contrato: "CT-04/2025", prioridade: "CRITICAL", status: "SLA_VIOLATED", prazo: "2026-04-16T09:00:00Z" },
-  { id: "gov-002", ticketId: "48199", contrato: "CT-01/2026", prioridade: "HIGH", status: "IN_PROGRESS", prazo: "2026-04-15T18:30:00Z" },
-  { id: "gov-003", ticketId: "48120", contrato: "CT-18/2024", prioridade: "MEDIUM", status: "SENT_TO_CONTROLADORIA", prazo: "2026-04-12T12:00:00Z" }
-];
+import { GovernanceListActions } from "@/components/actions/governance-actions";
+import { getGovernanceTickets } from "@/lib/api";
 
 const statusColor: Record<string, string> = {
   OPEN: "bg-slate-100 text-slate-700",
@@ -17,7 +13,8 @@ const statusColor: Record<string, string> = {
   SENT_TO_CONTROLADORIA: "bg-purple-100 text-purple-700"
 };
 
-export default function GovernanceTicketsPage(): JSX.Element {
+export default async function GovernanceTicketsPage(): Promise<JSX.Element> {
+  const tickets = await getGovernanceTickets().catch(() => []);
   return (
     <div className="space-y-4">
       <Card>
@@ -25,6 +22,9 @@ export default function GovernanceTicketsPage(): JSX.Element {
         <p className="text-sm text-slate-600">
           Acompanhe descumprimentos, escalonamentos e encaminhamentos para controladoria sem alterar a integração já existente com o GLPI.
         </p>
+        <div className="mt-3">
+          <GovernanceListActions />
+        </div>
       </Card>
 
       <Card className="overflow-x-auto">
@@ -43,9 +43,9 @@ export default function GovernanceTicketsPage(): JSX.Element {
             {tickets.map((ticket) => (
               <tr key={ticket.id} className="border-b">
                 <td className="px-2 py-2 font-medium">#{ticket.ticketId}</td>
-                <td className="px-2 py-2">{ticket.contrato}</td>
-                <td className="px-2 py-2">{ticket.prioridade}</td>
-                <td className="px-2 py-2">{new Date(ticket.prazo).toLocaleString("pt-BR")}</td>
+                <td className="px-2 py-2">{ticket.contract?.number ?? "-"}</td>
+                <td className="px-2 py-2">{ticket.priority ?? "-"}</td>
+                <td className="px-2 py-2">{ticket.slaDeadline ? new Date(ticket.slaDeadline).toLocaleString("pt-BR") : "-"}</td>
                 <td className="px-2 py-2">
                   <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusColor[ticket.status]}`}>{ticket.status}</span>
                 </td>
@@ -56,6 +56,13 @@ export default function GovernanceTicketsPage(): JSX.Element {
                 </td>
               </tr>
             ))}
+            {tickets.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-2 py-6 text-center text-slate-500">
+                  Nenhum chamado de governança cadastrado.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </Card>

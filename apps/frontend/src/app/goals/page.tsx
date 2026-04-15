@@ -1,13 +1,9 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { getGoals } from "@/lib/api";
 
-const goals = [
-  { id: "g1", title: "Regulamentação da Lei 14.129/2021", status: "PLANNED", progresso: 0 },
-  { id: "g2", title: "Mapeamento de dados LGPD", status: "PLANNED", progresso: 15 },
-  { id: "g3", title: "Melhoria do PDTIC", status: "IN_PROGRESS", progresso: 47 }
-];
-
-export default function GoalsPage(): JSX.Element {
+export default async function GoalsPage(): Promise<JSX.Element> {
+  const goals = await getGoals().catch(() => []);
   return (
     <div className="space-y-4">
       <Card>
@@ -30,7 +26,7 @@ export default function GoalsPage(): JSX.Element {
               <tr key={goal.id} className="border-b">
                 <td className="px-2 py-2 font-medium">{goal.title}</td>
                 <td className="px-2 py-2">{goal.status}</td>
-                <td className="px-2 py-2">{goal.progresso}%</td>
+                <td className="px-2 py-2">{goal.calculatedProgress ?? 0}%</td>
                 <td className="px-2 py-2">
                   <Link href={`/goals/${goal.id}`} className="text-blue-700 hover:underline">
                     Ver detalhe
@@ -38,6 +34,13 @@ export default function GoalsPage(): JSX.Element {
                 </td>
               </tr>
             ))}
+            {goals.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-2 py-6 text-center text-slate-500">
+                  Nenhuma meta encontrada.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </Card>
