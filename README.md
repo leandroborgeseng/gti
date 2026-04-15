@@ -123,6 +123,7 @@ Para acompanhar a execução por etapas e sem quebra:
 - `docs/migracao-etapa-1-paridade-dados.md`
 - `docs/migracao-etapa-2-simplificacao.md`
 - `docs/validacao-etapa-2-5-regressao.md`
+- `docs/implementacao-pendente.md` — o que falta implementar (backlog atual)
 
 ## Validação de regressão rápida
 
