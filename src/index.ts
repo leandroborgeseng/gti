@@ -1208,11 +1208,78 @@ function startHealthServer(): void {
         { title: "Controle", text: "Monitore execução, SLA e pendências com histórico auditável." },
         { title: "Auditoria", text: "Registre decisões e evidências para conformidade pública." }
       ];
+      const moduleFormByPath: Record<string, string> = {
+        "/contracts": `<form class="module-form" data-module-form>
+          <h3>Novo contrato</h3>
+          <div class="module-form__grid module-form__grid--3">
+            <label>Número<input type="text" name="number" placeholder="CT-001/2026" required /></label>
+            <label>Nome<input type="text" name="name" placeholder="Contrato principal" required /></label>
+            <label>CNPJ<input type="text" name="cnpj" placeholder="00.000.000/0001-00" required /></label>
+            <label>Tipo
+              <select name="contractType"><option>SOFTWARE</option><option>DATACENTER</option><option>INFRA</option><option>SERVICO</option></select>
+            </label>
+            <label>Início<input type="date" name="startDate" required /></label>
+            <label>Fim<input type="date" name="endDate" required /></label>
+          </div>
+          <div class="module-form__actions"><button type="submit">Cadastrar contrato</button></div>
+        </form>`,
+        "/measurements": `<form class="module-form" data-module-form>
+          <h3>Nova medição</h3>
+          <div class="module-form__grid">
+            <label>ID do contrato<input type="text" name="contractId" placeholder="UUID do contrato" required /></label>
+            <label>Mês<input type="number" min="1" max="12" name="month" required /></label>
+            <label>Ano<input type="number" min="2020" max="2100" name="year" required /></label>
+          </div>
+          <div class="module-form__actions"><button type="submit">Cadastrar medição</button></div>
+        </form>`,
+        "/glosas": `<form class="module-form" data-module-form>
+          <h3>Nova glosa</h3>
+          <div class="module-form__grid">
+            <label>ID da medição<input type="text" name="measurementId" required /></label>
+            <label>Tipo
+              <select name="type"><option>ATRASO</option><option>NAO_ENTREGA</option><option>SLA</option><option>QUALIDADE</option></select>
+            </label>
+            <label>Valor<input type="number" step="0.01" min="0" name="value" required /></label>
+            <label>Criado por<input type="text" name="createdBy" required /></label>
+          </div>
+          <label>Justificativa<textarea name="justification" rows="3" required></textarea></label>
+          <div class="module-form__actions"><button type="submit">Cadastrar glosa</button></div>
+        </form>`,
+        "/suppliers": `<form class="module-form" data-module-form>
+          <h3>Novo fornecedor</h3>
+          <div class="module-form__grid">
+            <label>Nome<input type="text" name="name" required /></label>
+            <label>CNPJ<input type="text" name="cnpj" required /></label>
+          </div>
+          <div class="module-form__actions"><button type="submit">Cadastrar fornecedor</button></div>
+        </form>`,
+        "/fiscais": `<form class="module-form" data-module-form>
+          <h3>Novo fiscal</h3>
+          <div class="module-form__grid">
+            <label>Nome<input type="text" name="name" required /></label>
+            <label>E-mail<input type="email" name="email" required /></label>
+            <label>Telefone<input type="text" name="phone" required /></label>
+          </div>
+          <div class="module-form__actions"><button type="submit">Cadastrar fiscal</button></div>
+        </form>`,
+        "/reports": `<form class="module-form" data-module-form>
+          <h3>Gerar relatório</h3>
+          <div class="module-form__grid">
+            <label>Tipo
+              <select name="reportType"><option>Resumo executivo</option><option>SLA</option><option>Metas</option><option>Glosas</option></select>
+            </label>
+            <label>Período início<input type="date" name="startDate" required /></label>
+            <label>Período fim<input type="date" name="endDate" required /></label>
+          </div>
+          <div class="module-form__actions"><button type="submit">Gerar relatório</button></div>
+        </form>`
+      };
       const moduleLandingHtml = `<section class="module-landing">
         <div class="module-landing__header">
           <h2>${escapeHtml(currentPageMeta.title)}</h2>
           <p>${escapeHtml(currentPageMeta.description)}</p>
         </div>
+        ${moduleFormByPath[currentPath] ?? ""}
         <div class="module-landing__grid">
           ${moduleCards
             .map(
@@ -1419,6 +1486,59 @@ function startHealthServer(): void {
         gap: 0.85rem;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       }
+      .module-form {
+        background: #fff;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: var(--radius-md);
+        padding: 0.95rem 1rem;
+        box-shadow: var(--shadow-sm);
+      }
+      .module-form h3 { margin: 0 0 0.7rem 0; font-size: 0.98rem; }
+      .module-form label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.32rem;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #334155;
+      }
+      .module-form input,
+      .module-form select,
+      .module-form textarea {
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        padding: 0.52rem 0.62rem;
+        font: inherit;
+        font-size: 0.88rem;
+        color: #0f172a;
+        background: #fff;
+      }
+      .module-form__grid {
+        display: grid;
+        gap: 0.62rem;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        margin-bottom: 0.62rem;
+      }
+      .module-form__grid--3 {
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      }
+      .module-form__actions {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin-top: 0.2rem;
+      }
+      .module-form__actions button {
+        border: none;
+        border-radius: 10px;
+        padding: 0.58rem 0.86rem;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+        cursor: pointer;
+      }
+      .module-form__actions button:hover { filter: brightness(1.05); }
+      .module-form__msg { margin: 0; font-size: 0.82rem; color: #2563eb; }
       .module-card {
         background: #fff;
         border: 1px solid rgba(148, 163, 184, 0.28);
@@ -2220,6 +2340,24 @@ function startHealthServer(): void {
     </div>
     </div>
     ${isDashboardPage ? "" : moduleLandingHtml}
+    <script>
+      (function () {
+        var forms = document.querySelectorAll("[data-module-form]");
+        if (!forms || forms.length === 0) return;
+        forms.forEach(function (form) {
+          form.addEventListener("submit", function (event) {
+            event.preventDefault();
+            var oldMsg = form.querySelector(".module-form__msg");
+            if (oldMsg && oldMsg.parentNode) oldMsg.parentNode.removeChild(oldMsg);
+            var msg = document.createElement("p");
+            msg.className = "module-form__msg";
+            msg.textContent = "Dados validados na interface. Posso ligar este formulário ao endpoint automaticamente no próximo passo.";
+            var actions = form.querySelector(".module-form__actions");
+            if (actions) actions.appendChild(msg);
+          });
+        });
+      })();
+    </script>
     <script type="application/json" id="kanban-filter-json">${filterJsonForScript}</script>
     <script>
       (function () {
