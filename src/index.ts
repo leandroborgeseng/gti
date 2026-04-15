@@ -2607,7 +2607,7 @@ function startHealthServer(): void {
         function isValidCnpj(value) {
           var digits = onlyDigits(value);
           if (!digits || digits.length !== 14) return false;
-          if (/^(\d)\1+$/.test(digits)) return false;
+          if (digits.split("").every(function (char) { return char === digits.charAt(0); })) return false;
           var length = digits.length - 2;
           var numbers = digits.substring(0, length);
           var verifiers = digits.substring(length);
