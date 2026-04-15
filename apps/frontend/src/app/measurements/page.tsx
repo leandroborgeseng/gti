@@ -3,6 +3,13 @@ import { Card } from "@/components/ui/card";
 import { MeasurementForm } from "@/components/actions/measurement-form";
 import { getMeasurements } from "@/lib/api";
 
+const statusLabel: Record<string, string> = {
+  OPEN: "Aberta",
+  UNDER_REVIEW: "Em revisão",
+  APPROVED: "Aprovada",
+  GLOSSED: "Glosada"
+};
+
 export default async function MeasurementsPage(): Promise<JSX.Element> {
   const rows = await getMeasurements().catch(() => []);
   return (
@@ -20,22 +27,22 @@ export default async function MeasurementsPage(): Promise<JSX.Element> {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-slate-500">
-                <th className="py-2">ID</th>
                 <th className="py-2">Contrato</th>
                 <th className="py-2">Referência</th>
                 <th className="py-2">Status</th>
+                <th className="py-2">Valor aprovado</th>
                 <th className="py-2">Ações</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b border-border">
-                  <td className="py-2 font-mono text-xs text-slate-500">{r.id}</td>
                   <td className="py-2">{r.contract?.name ?? r.contractId}</td>
                   <td className="py-2">
                     {String(r.referenceMonth).padStart(2, "0")}/{r.referenceYear}
                   </td>
-                  <td className="py-2">{r.status}</td>
+                  <td className="py-2">{statusLabel[r.status] ?? r.status}</td>
+                  <td className="py-2">R$ {Number(r.totalApprovedValue).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="py-2">
                     <Link className="text-blue-600 hover:underline" href={`/measurements/${r.id}`}>
                       Abrir

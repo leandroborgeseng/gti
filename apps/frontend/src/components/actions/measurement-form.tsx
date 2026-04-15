@@ -6,6 +6,9 @@ import { createMeasurement } from "@/lib/api";
 export function MeasurementForm(): JSX.Element {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const now = new Date();
+  const defaultMonth = now.getMonth() + 1;
+  const defaultYear = now.getFullYear();
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -29,8 +32,9 @@ export function MeasurementForm(): JSX.Element {
   return (
     <form className="grid gap-2 md:grid-cols-4" onSubmit={(event) => void onSubmit(event)}>
       <input required name="contractId" className="rounded-lg border border-border px-3 py-2 text-sm md:col-span-2" placeholder="ID do contrato" />
-      <input required type="number" min={1} max={12} name="referenceMonth" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Mês" />
-      <input required type="number" min={2000} max={2100} name="referenceYear" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Ano" />
+      <input required type="number" min={1} max={12} name="referenceMonth" defaultValue={defaultMonth} className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Mês" />
+      <input required type="number" min={2000} max={2100} name="referenceYear" defaultValue={defaultYear} className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Ano" />
+      <p className="text-xs text-slate-500 md:col-span-4">Dica: use a competência atual para facilitar o fluxo de cálculo e aprovação.</p>
       <div className="md:col-span-4 flex items-center gap-3">
         <button
           type="submit"

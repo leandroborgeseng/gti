@@ -67,6 +67,9 @@ export class MeasurementsService {
       }
     });
     if (!measurement) throw new NotFoundException("Medição não encontrada");
+    if (measurement.status === MeasurementStatus.APPROVED) {
+      throw new BadRequestException("Medição aprovada não pode ser recalculada");
+    }
 
     let measured = new Prisma.Decimal(0);
     if (measurement.contract.contractType === "SOFTWARE") {
@@ -93,11 +96,13 @@ export class MeasurementsService {
     }
 
     const glosas = measurement.glosas.reduce((acc, g) => acc.add(g.value), new Prisma.Decimal(0));
-    const approved = measured.sub(glosas);
+    const approvedRaw = measured.sub(glosas);
+    const approved = approvedRaw.lt(0) ? new Prisma.Decimal(0) : approvedRaw;
+    const nextStatus = glosas.gt(0) ? MeasurementStatus.GLOSSED : MeasurementStatus.UNDER_REVIEW;
     const updated = await this.prisma.measurement.update({
       where: { id },
       data: {
-        status: MeasurementStatus.UNDER_REVIEW,
+        status: nextStatus,
         totalMeasuredValue: measured,
         totalGlosedValue: glosas,
         totalApprovedValue: approved
@@ -110,6 +115,12 @@ export class MeasurementsService {
   async approve(id: string): Promise<unknown> {
     const measurement = await this.prisma.measurement.findFirst({ where: { id, deletedAt: null } });
     if (!measurement) throw new NotFoundException("Medição não encontrada");
+    if (measurement.status === MeasurementStatus.OPEN) {
+      throw new BadRequestException("Calcule a medição antes de aprovar");
+    }
+    if (measurement.status === MeasurementStatus.APPROVED) {
+      throw new BadRequestException("Medição já está aprovada");
+    }
     if (measurement.totalMeasuredValue.lte(0)) {
       throw new BadRequestException("Não é possível aprovar medição sem cálculo");
     }

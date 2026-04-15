@@ -2,6 +2,16 @@ import { Card } from "@/components/ui/card";
 import { GovernanceDetailActions } from "@/components/actions/governance-actions";
 import { getGovernanceTicket } from "@/lib/api";
 
+const statusLabel: Record<string, string> = {
+  OPEN: "Aberto",
+  ACKNOWLEDGED: "Ciente",
+  IN_PROGRESS: "Em andamento",
+  SLA_VIOLATED: "SLA violado",
+  EXTENDED_DEADLINE: "Prazo estendido",
+  ESCALATED: "Escalonado",
+  SENT_TO_CONTROLADORIA: "Enviado à controladoria"
+};
+
 type PageProps = {
   params: { id: string };
 };
@@ -19,13 +29,12 @@ export default async function GovernanceTicketDetailPage({ params }: PageProps):
     <div className="space-y-4">
       <Card>
         <h3 className="text-lg font-semibold">Chamado de governança #{ticket.ticketId}</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Registre ações obrigatórias do gestor, extensão de prazo e envio para controladoria com processo SEI.
-        </p>
-        <p className="mt-2 text-sm text-slate-700">
-          Status: {ticket.status} | Contrato: {ticket.contract?.number ?? "-"} | Prazo SLA:{" "}
-          {ticket.slaDeadline ? new Date(ticket.slaDeadline).toLocaleString("pt-BR") : "-"}
-        </p>
+        <div className="mt-2 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+          <p><strong>Status:</strong> {statusLabel[ticket.status] ?? ticket.status}</p>
+          <p><strong>Contrato:</strong> {ticket.contract?.number ?? "-"}</p>
+          <p><strong>Prazo SLA:</strong> {ticket.slaDeadline ? new Date(ticket.slaDeadline).toLocaleString("pt-BR") : "-"}</p>
+          <p><strong>Prioridade:</strong> {ticket.priority ?? "-"}</p>
+        </div>
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">

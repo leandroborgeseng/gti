@@ -136,15 +136,15 @@ export async function createContract(payload: {
   companyName: string;
   cnpj: string;
   contractType: "SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO";
-  lawType: "LEI_8666" | "LEI_14133";
+  lawType?: "LEI_8666" | "LEI_14133";
   startDate: string;
   endDate: string;
-  totalValue: number;
+  totalValue?: number;
   monthlyValue: number;
-  status: "ACTIVE" | "EXPIRED" | "SUSPENDED";
+  status?: "ACTIVE" | "EXPIRED" | "SUSPENDED";
   slaTarget?: number;
   fiscalId: string;
-  managerId: string;
+  managerId?: string;
   supplierId?: string;
 }): Promise<Contract> {
   return request("/contracts", { method: "POST", body: JSON.stringify(payload) });
@@ -183,7 +183,7 @@ export async function createGlosa(payload: {
   type: "ATRASO" | "NAO_ENTREGA" | "SLA" | "QUALIDADE";
   value: number;
   justification: string;
-  createdBy: string;
+  createdBy?: string;
 }): Promise<Glosa> {
   return request("/glosas", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -211,7 +211,7 @@ export async function getGovernanceTickets(): Promise<GovernanceTicket[]> {
 export async function createGovernanceTicket(payload: {
   ticketId: string;
   contractId: string;
-  openedAt: string;
+  openedAt?: string;
 }): Promise<GovernanceTicket> {
   return request("/governance/tickets", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -265,8 +265,8 @@ export async function createGoal(payload: {
   title: string;
   description?: string;
   year: number;
-  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
-  priority: string;
+  status?: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+  priority?: string;
   responsibleId: string;
 }): Promise<Goal> {
   return request("/goals", { method: "POST", body: JSON.stringify(payload) });

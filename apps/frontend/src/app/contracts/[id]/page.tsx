@@ -1,6 +1,12 @@
 import { Card } from "@/components/ui/card";
 import { getContract } from "@/lib/api";
 
+const statusLabel: Record<string, string> = {
+  ACTIVE: "Ativo",
+  EXPIRED: "Encerrado",
+  SUSPENDED: "Suspenso"
+};
+
 export default async function ContractDetailPage({ params }: { params: { id: string } }): Promise<JSX.Element> {
   const contract = await getContract(params.id).catch(() => null);
   if (!contract) {
@@ -16,13 +22,14 @@ export default async function ContractDetailPage({ params }: { params: { id: str
         <h3 className="mb-2 font-semibold">
           {contract.number} - {contract.name}
         </h3>
-        <p className="text-sm text-slate-600">
-          {contract.companyName} | Tipo: {contract.contractType} | Status: {contract.status}
-        </p>
-        <p className="mt-2 text-sm text-slate-700">
-          Valor total: {contract.totalValue} | Valor mensal: {contract.monthlyValue} | Vigência até{" "}
-          {new Date(contract.endDate).toLocaleDateString("pt-BR")}
-        </p>
+        <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+          <p><strong>Fornecedor:</strong> {contract.companyName}</p>
+          <p><strong>Status:</strong> {statusLabel[contract.status] ?? contract.status}</p>
+          <p><strong>Tipo:</strong> {contract.contractType}</p>
+          <p><strong>Vigência final:</strong> {new Date(contract.endDate).toLocaleDateString("pt-BR")}</p>
+          <p><strong>Valor mensal:</strong> R$ {Number(contract.monthlyValue).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <p><strong>Valor total:</strong> R$ {Number(contract.totalValue).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+        </div>
       </Card>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

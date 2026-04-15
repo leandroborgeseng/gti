@@ -15,19 +15,48 @@ export class CreateGoalDto {
   @Max(2100)
   year!: number;
 
+  @IsOptional()
   @IsEnum(GoalStatus)
-  status!: GoalStatus;
+  status?: GoalStatus;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  priority!: string;
+  priority?: string;
 
   @IsString()
   @IsNotEmpty()
   responsibleId!: string;
 }
 
-export class UpdateGoalDto extends CreateGoalDto {}
+export class UpdateGoalDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(2020)
+  @Max(2100)
+  year?: number;
+
+  @IsOptional()
+  @IsEnum(GoalStatus)
+  status?: GoalStatus;
+
+  @IsOptional()
+  @IsString()
+  priority?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  responsibleId?: string;
+}
 
 export class CreateGoalActionDto {
   @IsString()

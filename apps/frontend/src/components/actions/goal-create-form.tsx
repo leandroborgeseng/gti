@@ -17,7 +17,7 @@ export function GoalCreateForm(): JSX.Element {
         description: String(data.get("description") ?? "") || undefined,
         year: Number(data.get("year") ?? new Date().getFullYear()),
         status: String(data.get("goalStatus") ?? "PLANNED") as "PLANNED" | "IN_PROGRESS" | "COMPLETED",
-        priority: String(data.get("priority") ?? "MÉDIA"),
+        priority: String(data.get("priority") ?? "") || undefined,
         responsibleId: String(data.get("responsibleId") ?? "")
       });
       setStatus("Meta cadastrada com sucesso.");
@@ -33,13 +33,13 @@ export function GoalCreateForm(): JSX.Element {
     <form className="grid gap-2 md:grid-cols-3" onSubmit={(event) => void onSubmit(event)}>
       <input required name="title" className="rounded-lg border border-border px-3 py-2 text-sm md:col-span-2" placeholder="Título da meta" />
       <input required type="number" name="year" min={2020} max={2100} className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Ano" />
-      <select name="goalStatus" className="rounded-lg border border-border px-3 py-2 text-sm">
-        <option value="PLANNED">PLANNED</option>
-        <option value="IN_PROGRESS">IN_PROGRESS</option>
-        <option value="COMPLETED">COMPLETED</option>
-      </select>
-      <input required name="priority" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Prioridade" />
       <input required name="responsibleId" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Responsável" />
+      <input name="priority" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Prioridade (opcional)" />
+      <select name="goalStatus" className="rounded-lg border border-border px-3 py-2 text-sm">
+        <option value="PLANNED">Planejada</option>
+        <option value="IN_PROGRESS">Em andamento</option>
+        <option value="COMPLETED">Concluída</option>
+      </select>
       <textarea name="description" className="rounded-lg border border-border px-3 py-2 text-sm md:col-span-3" rows={2} placeholder="Descrição" />
       <div className="md:col-span-3 flex items-center gap-3">
         <button

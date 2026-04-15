@@ -14,20 +14,27 @@ const statusColor: Record<string, string> = {
   SENT_TO_CONTROLADORIA: "bg-purple-100 text-purple-700"
 };
 
+const statusLabel: Record<string, string> = {
+  OPEN: "Aberto",
+  ACKNOWLEDGED: "Ciente",
+  IN_PROGRESS: "Em andamento",
+  SLA_VIOLATED: "SLA violado",
+  EXTENDED_DEADLINE: "Prazo estendido",
+  ESCALATED: "Escalonado",
+  SENT_TO_CONTROLADORIA: "Enviado à controladoria"
+};
+
 export default async function GovernanceTicketsPage(): Promise<JSX.Element> {
   const tickets = await getGovernanceTickets().catch(() => []);
   return (
     <div className="space-y-4">
       <Card>
         <h3 className="mb-1 text-lg font-semibold">Novo chamado de governança</h3>
-        <p className="mb-3 text-sm text-slate-600">Cadastre o chamado com vínculo contratual para iniciar o fluxo de SLA.</p>
+        <p className="mb-3 text-sm text-slate-600">Cadastro rápido com vínculo contratual e monitoramento de SLA.</p>
         <GovernanceCreateForm />
       </Card>
       <Card>
         <h3 className="mb-1 text-lg font-semibold">Governança de chamados com SLA</h3>
-        <p className="text-sm text-slate-600">
-          Acompanhe descumprimentos, escalonamentos e encaminhamentos para controladoria sem alterar a integração já existente com o GLPI.
-        </p>
         <div className="mt-3">
           <GovernanceListActions />
         </div>
@@ -53,7 +60,7 @@ export default async function GovernanceTicketsPage(): Promise<JSX.Element> {
                 <td className="px-2 py-2">{ticket.priority ?? "-"}</td>
                 <td className="px-2 py-2">{ticket.slaDeadline ? new Date(ticket.slaDeadline).toLocaleString("pt-BR") : "-"}</td>
                 <td className="px-2 py-2">
-                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusColor[ticket.status]}`}>{ticket.status}</span>
+                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusColor[ticket.status]}`}>{statusLabel[ticket.status] ?? ticket.status}</span>
                 </td>
                 <td className="px-2 py-2">
                   <Link className="text-blue-700 hover:underline" href={`/governance/tickets/${ticket.id}`}>

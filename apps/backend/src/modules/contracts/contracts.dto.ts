@@ -25,8 +25,9 @@ export class CreateContractDto {
   @IsEnum(ContractType)
   contractType!: ContractType;
 
+  @IsOptional()
   @IsEnum(LawType)
-  lawType!: LawType;
+  lawType?: LawType;
 
   @IsDateString()
   startDate!: string;
@@ -34,16 +35,18 @@ export class CreateContractDto {
   @IsDateString()
   endDate!: string;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  totalValue!: number;
+  totalValue?: number;
 
   @IsNumber()
   @Min(0)
   monthlyValue!: number;
 
+  @IsOptional()
   @IsEnum(ContractStatus)
-  status!: ContractStatus;
+  status?: ContractStatus;
 
   @IsOptional()
   @IsNumber()
@@ -52,12 +55,83 @@ export class CreateContractDto {
   @IsString()
   fiscalId!: string;
 
+  @IsOptional()
   @IsString()
-  managerId!: string;
+  managerId?: string;
 
   @IsOptional()
   @IsString()
   supplierId?: string;
 }
 
-export class UpdateContractDto extends CreateContractDto {}
+export class UpdateContractDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  number?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  companyName?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  cnpj?: string;
+
+  @IsOptional()
+  @IsEnum(ContractType)
+  contractType?: ContractType;
+
+  @IsOptional()
+  @IsEnum(LawType)
+  lawType?: LawType;
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  totalValue?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthlyValue?: number;
+
+  @IsOptional()
+  @IsEnum(ContractStatus)
+  status?: ContractStatus;
+
+  @IsOptional()
+  @IsNumber()
+  slaTarget?: number;
+
+  @IsOptional()
+  @IsString()
+  fiscalId?: string;
+
+  @IsOptional()
+  @IsString()
+  managerId?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierId?: string;
+}

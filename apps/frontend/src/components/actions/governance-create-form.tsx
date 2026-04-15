@@ -15,7 +15,7 @@ export function GovernanceCreateForm(): JSX.Element {
       await createGovernanceTicket({
         ticketId: String(data.get("ticketId") ?? ""),
         contractId: String(data.get("contractId") ?? ""),
-        openedAt: String(data.get("openedAt") ?? "")
+        openedAt: String(data.get("openedAt") ?? "") || undefined
       });
       setStatus("Chamado de governança criado com sucesso.");
       event.currentTarget.reset();
@@ -30,7 +30,10 @@ export function GovernanceCreateForm(): JSX.Element {
     <form className="grid gap-2 md:grid-cols-3" onSubmit={(event) => void onSubmit(event)}>
       <input required name="ticketId" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="ID do ticket GLPI" />
       <input required name="contractId" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="ID do contrato" />
-      <input required type="datetime-local" name="openedAt" className="rounded-lg border border-border px-3 py-2 text-sm" />
+      <input type="datetime-local" name="openedAt" className="rounded-lg border border-border px-3 py-2 text-sm" />
+      <p className="text-xs text-slate-500 md:col-span-3">
+        Se não informar a data de abertura, o sistema usa automaticamente a data/hora atual.
+      </p>
       <div className="md:col-span-3 flex items-center gap-3">
         <button
           type="submit"

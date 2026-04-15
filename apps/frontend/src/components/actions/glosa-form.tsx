@@ -13,8 +13,12 @@ export function GlosaForm(): JSX.Element {
     const measurementId = String(formData.get("measurementId") ?? "").trim();
     const type = String(formData.get("type") ?? "ATRASO") as "ATRASO" | "NAO_ENTREGA" | "SLA" | "QUALIDADE";
     const value = Number(formData.get("value") ?? 0);
-    const createdBy = String(formData.get("createdBy") ?? "").trim();
+    const createdBy = String(formData.get("createdBy") ?? "").trim() || undefined;
     const justification = String(formData.get("justification") ?? "").trim();
+    if (!Number.isFinite(value) || value <= 0) {
+      setStatus("Informe um valor de glosa maior que zero.");
+      return;
+    }
     try {
       setBusy(true);
       await createGlosa({ measurementId, type, value, createdBy, justification });
@@ -31,14 +35,15 @@ export function GlosaForm(): JSX.Element {
     <form className="grid gap-3 md:grid-cols-2" onSubmit={(event) => void onSubmit(event)}>
       <input required name="measurementId" className="rounded-lg border border-border px-3 py-2" placeholder="ID da medição" />
       <select required name="type" className="rounded-lg border border-border px-3 py-2">
-        <option value="ATRASO">ATRASO</option>
-        <option value="NAO_ENTREGA">NAO_ENTREGA</option>
+        <option value="ATRASO">Atraso</option>
+        <option value="NAO_ENTREGA">Não entrega</option>
         <option value="SLA">SLA</option>
-        <option value="QUALIDADE">QUALIDADE</option>
+        <option value="QUALIDADE">Qualidade</option>
       </select>
-      <input required min={0} step="0.01" type="number" name="value" className="rounded-lg border border-border px-3 py-2" placeholder="Valor da glosa" />
-      <input required name="createdBy" className="rounded-lg border border-border px-3 py-2" placeholder="Criado por" />
+      <input required min={0.01} step="0.01" type="number" name="value" className="rounded-lg border border-border px-3 py-2" placeholder="Valor da glosa" />
+      <input name="createdBy" className="rounded-lg border border-border px-3 py-2" placeholder="Responsável (opcional)" />
       <textarea required name="justification" className="md:col-span-2 rounded-lg border border-border px-3 py-2" placeholder="Justificativa" />
+      <p className="text-xs text-slate-500 md:col-span-2">A glosa só pode ser lançada após calcular a medição.</p>
       <div className="md:col-span-2 flex items-center gap-3">
         <button
           type="submit"

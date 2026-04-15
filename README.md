@@ -114,3 +114,20 @@ npm run dev
 ## Documentação e idioma
 
 Toda a **documentação de projeto**, **ficheiros de exemplo** (`.env.example`), **regras Cursor** em `.cursor/rules/` e **textos orientados ao utilizador** na interface devem estar em **português do Brasil (pt-BR)**.
+
+## Migração incremental (sistema antigo -> novo)
+
+Para acompanhar a execução por etapas e sem quebra:
+
+- `docs/migracao-etapa-0-baseline.md`
+- `docs/migracao-etapa-1-paridade-dados.md`
+- `docs/migracao-etapa-2-simplificacao.md`
+- `docs/validacao-etapa-2-5-regressao.md`
+
+## Validação de regressão rápida
+
+Com os serviços no ar, execute:
+
+```bash
+npm run smoke:regression
+```

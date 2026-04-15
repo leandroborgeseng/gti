@@ -3,6 +3,12 @@ import { Card } from "@/components/ui/card";
 import { ContractForm } from "@/components/actions/contract-form";
 import { getContracts } from "@/lib/api";
 
+const statusLabel: Record<string, string> = {
+  ACTIVE: "Ativo",
+  EXPIRED: "Encerrado",
+  SUSPENDED: "Suspenso"
+};
+
 export default async function ContractsPage(): Promise<JSX.Element> {
   const contracts = await getContracts().catch(() => []);
   return (
@@ -20,10 +26,10 @@ export default async function ContractsPage(): Promise<JSX.Element> {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-slate-500">
-                <th className="py-2">ID</th>
                 <th className="py-2">Número</th>
                 <th className="py-2">Nome</th>
                 <th className="py-2">Fornecedor</th>
+                <th className="py-2">Valor mensal</th>
                 <th className="py-2">Vigência</th>
                 <th className="py-2">Status</th>
                 <th className="py-2">Ações</th>
@@ -32,12 +38,12 @@ export default async function ContractsPage(): Promise<JSX.Element> {
             <tbody>
               {contracts.map((c) => (
                 <tr key={c.id} className="border-b border-border">
-                  <td className="py-2 font-mono text-xs text-slate-500">{c.id}</td>
                   <td className="py-2">{c.number}</td>
                   <td className="py-2">{c.name}</td>
                   <td className="py-2">{c.supplier?.name ?? c.companyName}</td>
+                  <td className="py-2">R$ {Number(c.monthlyValue).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="py-2">{new Date(c.endDate).toLocaleDateString("pt-BR")}</td>
-                  <td className="py-2">{c.status}</td>
+                  <td className="py-2">{statusLabel[c.status] ?? c.status}</td>
                   <td className="py-2">
                     <Link href={`/contracts/${c.id}`} className="text-blue-600 hover:underline">
                       Ver detalhes

@@ -2,6 +2,12 @@ import { Card } from "@/components/ui/card";
 import { GoalActions } from "@/components/actions/goal-actions";
 import { getGoal } from "@/lib/api";
 
+const statusLabel: Record<string, string> = {
+  PLANNED: "Planejada",
+  IN_PROGRESS: "Em andamento",
+  COMPLETED: "Concluída"
+};
+
 type PageProps = {
   params: { id: string };
 };
@@ -21,12 +27,12 @@ export default async function GoalDetailPage({ params }: PageProps): Promise<JSX
     <div className="space-y-4">
       <Card>
         <h3 className="text-lg font-semibold">{goal.title}</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Gerencie desdobramentos, progresso automático por ações e vínculos com contratos/chamados.
-        </p>
-        <p className="mt-3 text-sm">
-          <strong>Progresso calculado:</strong> {average}%
-        </p>
+        <div className="mt-2 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+          <p><strong>Status:</strong> {statusLabel[goal.status] ?? goal.status}</p>
+          <p><strong>Progresso:</strong> {average}%</p>
+          <p><strong>Ano:</strong> {goal.year}</p>
+          <p><strong>Responsável:</strong> {goal.responsibleId}</p>
+        </div>
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">

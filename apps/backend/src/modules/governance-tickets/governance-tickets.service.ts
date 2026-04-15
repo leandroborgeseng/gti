@@ -21,7 +21,7 @@ export class GovernanceTicketsService {
       data: {
         ticketId: dto.ticketId,
         contractId: dto.contractId,
-        openedAt: new Date(dto.openedAt)
+        openedAt: dto.openedAt ? new Date(dto.openedAt) : new Date()
       }
     });
     await this.createEvent(created.id, "OPENED", "Chamado criado na governança.");
@@ -116,7 +116,7 @@ export class GovernanceTicketsService {
       throw new BadRequestException("Novo prazo deve ser maior que o prazo anterior");
     }
 
-    await this.prisma.ticketDeadlineExtension.create({
+    const extension = await this.prisma.ticketDeadlineExtension.create({
       data: {
         ticketGovernanceId: id,
         previousDeadline: current.slaDeadline,
@@ -125,6 +125,7 @@ export class GovernanceTicketsService {
         createdBy: dto.createdBy
       }
     });
+    await this.createAudit("TicketDeadlineExtension", extension.id, "CREATE", null, extension);
 
     const updated = await this.prisma.ticketGovernance.update({
       where: { id },
@@ -150,7 +151,7 @@ export class GovernanceTicketsService {
     const current = await this.requireTicket(id);
     if (!dto.seiProcessNumber.trim()) throw new BadRequestException("Número do processo SEI é obrigatório");
     const controladoriaUserId = dto.controladoriaUserId?.trim() || "controladoria";
-    await this.prisma.ticketWatcher.upsert({
+    const controlWatcher = await this.prisma.ticketWatcher.upsert({
       where: {
         ticketGovernanceId_userId_role: {
           ticketGovernanceId: id,
@@ -161,6 +162,7 @@ export class GovernanceTicketsService {
       create: { ticketGovernanceId: id, userId: controladoriaUserId, role: TicketWatcherRole.CONTROLADORIA },
       update: {}
     });
+    await this.createAudit("TicketWatcher", controlWatcher.id, "UPSERT", null, controlWatcher);
     const updated = await this.prisma.ticketGovernance.update({
       where: { id },
       data: {
@@ -189,18 +191,28 @@ export class GovernanceTicketsService {
     for (const item of candidates) {
       if (!item.slaDeadline || item.slaDeadline >= now) continue;
       if (item.status === TicketGovernanceStatus.EXTENDED_DEADLINE) {
-        await this.prisma.ticketGovernance.update({
+        const previous = {
+          status: item.status,
+          controladoriaNotified: item.controladoriaNotified
+        };
+        const updated = await this.prisma.ticketGovernance.update({
           where: { id: item.id },
           data: { status: TicketGovernanceStatus.ESCALATED, controladoriaNotified: true }
         });
         await this.createEvent(item.id, "ESCALATED", "Prazo estendido descumprido; escalonamento automático.");
+        await this.createAudit("TicketGovernance", item.id, "AUTO_ESCALATE", previous, updated);
         escalated += 1;
       } else if (item.status !== TicketGovernanceStatus.SENT_TO_CONTROLADORIA) {
-        await this.prisma.ticketGovernance.update({
+        const previous = {
+          status: item.status,
+          managerNotified: item.managerNotified
+        };
+        const updated = await this.prisma.ticketGovernance.update({
           where: { id: item.id },
           data: { status: TicketGovernanceStatus.SLA_VIOLATED, managerNotified: true }
         });
         await this.createEvent(item.id, "SLA_VIOLATED", "SLA violado automaticamente.");
+        await this.createAudit("TicketGovernance", item.id, "AUTO_SLA_VIOLATION", previous, updated);
         slaViolated += 1;
       }
     }

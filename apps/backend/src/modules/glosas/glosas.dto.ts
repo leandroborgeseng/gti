@@ -1,5 +1,5 @@
 import { GlosaType } from "@prisma/client";
-import { IsEnum, IsNotEmpty, IsNumber, IsString, Min } from "class-validator";
+import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from "class-validator";
 
 export class CreateGlosaDto {
   @IsString()
@@ -10,14 +10,14 @@ export class CreateGlosaDto {
   type!: GlosaType;
 
   @IsNumber()
-  @Min(0)
+  @Min(0.01)
   value!: number;
 
   @IsString()
   @IsNotEmpty()
   justification!: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  createdBy!: string;
+  createdBy?: string;
 }

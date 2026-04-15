@@ -10,8 +10,9 @@ export class CreateTicketGovernanceDto {
   @IsNotEmpty()
   contractId!: string;
 
+  @IsOptional()
   @IsDateString()
-  openedAt!: string;
+  openedAt?: string;
 }
 
 export class AcknowledgeTicketDto {

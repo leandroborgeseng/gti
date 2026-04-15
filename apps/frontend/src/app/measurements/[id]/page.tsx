@@ -2,6 +2,13 @@ import { Card } from "@/components/ui/card";
 import { MeasurementActions } from "@/components/actions/measurement-actions";
 import { getMeasurement } from "@/lib/api";
 
+const statusLabel: Record<string, string> = {
+  OPEN: "Aberta",
+  UNDER_REVIEW: "Em revisão",
+  APPROVED: "Aprovada",
+  GLOSSED: "Glosada"
+};
+
 export default async function MeasurementDetailPage({ params }: { params: { id: string } }): Promise<JSX.Element> {
   const measurement = await getMeasurement(params.id).catch(() => null);
   if (!measurement) {
@@ -17,13 +24,13 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
         <h3 className="mb-2 font-semibold">
           Medição {String(measurement.referenceMonth).padStart(2, "0")}/{measurement.referenceYear}
         </h3>
-        <p className="text-sm text-slate-600">Cálculo automático por tipo de contrato, aplicação de glosas e aprovação.</p>
-        <p className="mt-2 text-sm text-slate-700">
-          Contrato: {measurement.contract?.name ?? measurement.contractId} | Status: {measurement.status}
-        </p>
+        <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+          <p><strong>Contrato:</strong> {measurement.contract?.name ?? measurement.contractId}</p>
+          <p><strong>Status:</strong> {statusLabel[measurement.status] ?? measurement.status}</p>
+        </div>
       </Card>
       <Card>
-        <MeasurementActions measurementId={measurement.id} />
+        <MeasurementActions measurementId={measurement.id} measurementStatus={measurement.status} />
       </Card>
       <Card>
         <h4 className="mb-2 font-medium">Resumo financeiro</h4>

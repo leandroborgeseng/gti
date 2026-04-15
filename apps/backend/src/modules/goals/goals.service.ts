@@ -25,7 +25,13 @@ export class GoalsService implements OnModuleInit {
   }
 
   async create(dto: CreateGoalDto): Promise<unknown> {
-    const created = await this.prisma.goal.create({ data: dto });
+    const created = await this.prisma.goal.create({
+      data: {
+        ...dto,
+        status: dto.status ?? "PLANNED",
+        priority: dto.priority?.trim() || "MÉDIA"
+      }
+    });
     await this.createAudit("Goal", created.id, "CREATE", null, created);
     return this.findOne(created.id);
   }
@@ -49,7 +55,13 @@ export class GoalsService implements OnModuleInit {
 
   async update(id: string, dto: UpdateGoalDto): Promise<unknown> {
     const prev = await this.requireGoal(id);
-    const updated = await this.prisma.goal.update({ where: { id }, data: dto });
+    const updated = await this.prisma.goal.update({
+      where: { id },
+      data: {
+        ...dto,
+        priority: dto.priority?.trim() || undefined
+      }
+    });
     await this.createAudit("Goal", id, "UPDATE", prev, updated);
     return this.findOne(id);
   }
@@ -104,6 +116,7 @@ export class GoalsService implements OnModuleInit {
         responsibleId: "manual"
       }
     });
+    await this.createAudit("GoalAction", updated.id, "CREATE_MANUAL_PROGRESS", null, updated);
     await this.recalculateGoalStatus(goalId);
     await this.createAudit("Goal", goalId, "MANUAL_PROGRESS", null, { progress: dto.progress });
     return updated;
@@ -173,13 +186,17 @@ export class GoalsService implements OnModuleInit {
   }
 
   private async recalculateGoalStatus(goalId: string): Promise<void> {
+    const currentGoal = await this.prisma.goal.findUnique({ where: { id: goalId }, select: { id: true, status: true } });
+    if (!currentGoal) return;
     const actions = await this.prisma.goalAction.findMany({ where: { goalId }, select: { progress: true } });
     if (actions.length === 0) return;
     const progress = this.calculateProgress(actions.map((a) => a.progress));
     let status: GoalStatus = "PLANNED";
     if (progress >= 100) status = "COMPLETED";
     else if (progress > 0) status = "IN_PROGRESS";
-    await this.prisma.goal.update({ where: { id: goalId }, data: { status } });
+    if (status === currentGoal.status) return;
+    const updatedGoal = await this.prisma.goal.update({ where: { id: goalId }, data: { status } });
+    await this.createAudit("Goal", goalId, "AUTO_STATUS_UPDATE", currentGoal, updatedGoal);
   }
 
   private calculateProgress(values: number[]): number {
