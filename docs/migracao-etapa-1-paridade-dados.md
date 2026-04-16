@@ -12,7 +12,7 @@ Mapear funcionalidades do sistema antigo para o sistema atual com foco em:
 
 - Projeto legado: `gestao_de_contratos`
 - Arquivos de referência:
-  - `prisma/schema.prisma`
+  - `apps/backend/prisma/schema.prisma`
   - componentes de contratos, medições, metas e kanban GLPI.
 
 ## Mapa de paridade funcional

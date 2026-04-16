@@ -337,3 +337,57 @@ model Attachment {
   measurement   Measurement? @relation(fields: [measurementId], references: [id], onDelete: Restrict)
   glosa         Glosa?       @relation(fields: [glosaId], references: [id], onDelete: Restrict)
 }
+
+// ---------------------------------------------------------------------------
+// Cache de sincronização GLPI (Kanban / worker) — mesmo PostgreSQL que o Nest
+// ---------------------------------------------------------------------------
+
+/// Chamado sincronizado do GLPI (uma linha por `glpiTicketId`).
+model Ticket {
+  id                 Int      @id @default(autoincrement())
+  /// Identificador do chamado no GLPI.
+  glpiTicketId       Int      @unique
+  title              String?
+  content            String?  @db.Text
+  status             String?
+  priority           String?
+  dateCreation       String?
+  dateModification   String?
+  contractGroupId    Int?
+  contractGroupName  String?
+  requesterName      String?
+  requesterEmail     String?
+  requesterUserId    Int?
+  /// cliente | empresa | na | unknown — inferido pelo histórico GLPI (cache).
+  waitingParty       String?
+  rawJson            Json
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  attributes         TicketAttribute[]
+
+  @@index([waitingParty])
+  @@index([requesterEmail])
+}
+
+/// Atributo achatado do JSON do ticket (pesquisas e filtros auxiliares).
+model TicketAttribute {
+  id        Int      @id @default(autoincrement())
+  ticketId  Int
+  keyPath   String
+  valueType String
+  valueText String?  @db.Text
+  valueJson String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, keyPath])
+  @@index([keyPath])
+}
+
+/// Chave-valor genérico (cursor de sync, escopo Kanban, etc.).
+model SyncState {
+  key       String   @id
+  value     String?  @db.Text
+  updatedAt DateTime @updatedAt
+}

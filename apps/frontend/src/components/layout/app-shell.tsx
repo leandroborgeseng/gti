@@ -6,6 +6,7 @@ import { Sidebar } from "./sidebar";
 
 const titles: Record<string, string> = {
   "/dashboard": "Painel executivo",
+  "/chamados": "Chamados GLPI",
   "/contracts": "Contratos",
   "/measurements": "Medições",
   "/glosas": "Glosas",
@@ -19,7 +20,6 @@ const titles: Record<string, string> = {
 export function AppShell({ children }: PropsWithChildren): JSX.Element {
   const pathname = usePathname();
   const title =
-    (pathname?.startsWith("/operacao/glpi") ? "Chamados GLPI" : null) ||
     titles[pathname ?? ""] ||
     (pathname?.startsWith("/contracts/")
       ? "Detalhe do contrato"

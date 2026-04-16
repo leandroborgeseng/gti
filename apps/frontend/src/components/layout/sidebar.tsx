@@ -1,12 +1,11 @@
 "use client";
 
-import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navItems: Array<{ href: Route; label: string }> = [
+const navItems: Array<{ href: string; label: string }> = [
   { href: "/dashboard", label: "Painel executivo" },
-  { href: "/operacao/glpi/dashboard" as Route, label: "Chamados (GLPI)" },
+  { href: "/chamados", label: "Chamados (GLPI)" },
   { href: "/contracts", label: "Contratos" },
   { href: "/measurements", label: "Medições" },
   { href: "/glosas", label: "Glosas" },
@@ -28,10 +27,7 @@ export function Sidebar(): JSX.Element {
       <nav className="flex-1 space-y-0.5 px-2 py-3" aria-label="Navegação principal">
         {navItems.map((item) => {
           const hrefStr = String(item.href);
-          const active =
-            hrefStr.startsWith("/operacao/glpi") && pathname?.startsWith("/operacao/glpi")
-              ? true
-              : pathname === item.href || Boolean(pathname?.startsWith(`${item.href}/`));
+          const active = pathname === item.href || Boolean(pathname?.startsWith(`${item.href}/`));
           return (
             <Link
               key={item.href}

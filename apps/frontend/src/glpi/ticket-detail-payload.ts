@@ -1,0 +1,126 @@
+import { Prisma } from "@prisma/client";
+import { prisma } from "./config/prisma";
+import { logger } from "./config/logger";
+import { fetchGlpiTicketJson } from "./services/glpi-ticket-write.service";
+import { enrichObserverRows, fetchCachedGlpiUserContact } from "./services/glpi-user.service";
+import { loadAndPersistWaitingParty } from "./services/glpi-ticket-history.service";
+import { extractGlpiScalarId } from "./utils/glpi-field-parse";
+import { extractObserversFromTicketRaw } from "./utils/ticket-observers";
+import { extractRequesterContact } from "./utils/ticket-requester";
+import { asJsonRecord, extractTicketContext, PRIORITY_OPTIONS, STATUS_OPTIONS } from "./ticket-json";
+import { toErrorLog } from "./errors";
+
+export async function buildTicketDetailPayload(glpiId: number): Promise<Record<string, unknown> | null> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { glpiTicketId: glpiId },
+    select: {
+      glpiTicketId: true,
+      title: true,
+      content: true,
+      status: true,
+      priority: true,
+      dateCreation: true,
+      dateModification: true,
+      contractGroupName: true,
+      requesterName: true,
+      requesterEmail: true,
+      requesterUserId: true,
+      rawJson: true
+    }
+  });
+  if (!ticket) {
+    return null;
+  }
+
+  const history = await loadAndPersistWaitingParty(glpiId, ticket.status);
+  let workingRaw: Record<string, unknown> =
+    ticket.rawJson && typeof ticket.rawJson === "object" && !Array.isArray(ticket.rawJson)
+      ? { ...(ticket.rawJson as Record<string, unknown>) }
+      : {};
+  let requesterName = ticket.requesterName?.trim() ? ticket.requesterName : null;
+  let requesterEmail = ticket.requesterEmail ?? null;
+  let requesterUserId = ticket.requesterUserId ?? null;
+  const preObserverRows = extractObserversFromTicketRaw(workingRaw, requesterUserId ?? null);
+  const hasUnnamedObserver = preObserverRows.some((o) => !o.displayName && !o.email);
+  const shouldFetchFreshRaw = !requesterName || requesterUserId == null || preObserverRows.length === 0 || hasUnnamedObserver;
+  if (shouldFetchFreshRaw) {
+    try {
+      const freshUnknown = await fetchGlpiTicketJson(glpiId);
+      const freshRaw = asJsonRecord(freshUnknown);
+      if (Object.keys(freshRaw).length > 0) {
+        workingRaw = { ...workingRaw, ...freshRaw };
+      }
+    } catch (error) {
+      logger.warn({ glpiId, error: toErrorLog(error) }, "Falha no fetch em tempo real para complementar modal");
+    }
+  }
+
+  const reqFb = extractRequesterContact(workingRaw);
+  if (!requesterName?.trim()) {
+    requesterName = reqFb.displayName ?? null;
+  }
+  if (!requesterEmail) {
+    requesterEmail = reqFb.email ?? null;
+  }
+  if (requesterUserId == null) {
+    requesterUserId = reqFb.userId;
+  }
+  const hasReqEmail = Boolean(requesterEmail && requesterEmail.trim().includes("@"));
+  const requesterUserIdSafe = requesterUserId;
+  const needsRequesterApi =
+    requesterUserIdSafe != null && requesterUserIdSafe > 0 && (!requesterName?.trim() || !hasReqEmail);
+  if (needsRequesterApi) {
+    const c = await fetchCachedGlpiUserContact(requesterUserIdSafe as number);
+    if (c?.displayName || c?.email) {
+      if (!requesterName?.trim() && c.displayName) {
+        requesterName = c.displayName;
+      }
+      if (!hasReqEmail && c.email) {
+        requesterEmail = c.email;
+      }
+      if (c.displayName) {
+        workingRaw.users_id_requester_name = c.displayName;
+      }
+      if (c.email) {
+        workingRaw.users_id_requester_email = c.email;
+      }
+    }
+  }
+  const observerRows = extractObserversFromTicketRaw(workingRaw, requesterUserId ?? null);
+  const observersResolved = await enrichObserverRows(observerRows);
+  workingRaw.__gti_observers_resolved = observersResolved.map((r) => ({
+    userId: r.userId,
+    displayName: r.displayName,
+    email: r.email
+  }));
+  await prisma.ticket.update({
+    where: { glpiTicketId: glpiId },
+    data: {
+      requesterName: requesterName ?? null,
+      requesterEmail: requesterEmail ?? null,
+      requesterUserId,
+      rawJson: workingRaw as Prisma.InputJsonValue
+    }
+  });
+
+  return {
+    glpiTicketId: ticket.glpiTicketId,
+    name: ticket.title ?? "",
+    content: ticket.content ?? "",
+    statusLabel: ticket.status,
+    priorityLabel: ticket.priority,
+    statusId: extractGlpiScalarId(workingRaw.status),
+    priorityId: extractGlpiScalarId(workingRaw.priority),
+    dateCreation: ticket.dateCreation,
+    dateModification: ticket.dateModification,
+    contractGroupName: ticket.contractGroupName,
+    requesterName: requesterName ?? "",
+    requesterEmail: requesterEmail ?? "",
+    requesterUserId,
+    observers: observersResolved,
+    context: extractTicketContext(workingRaw),
+    statusOptions: STATUS_OPTIONS,
+    priorityOptions: PRIORITY_OPTIONS,
+    history
+  };
+}

@@ -1,6 +1,6 @@
 # GTI — Quadro e sincronização GLPI
 
-Serviço em **Node.js + TypeScript** que sincroniza chamados do **GLPI** para **SQLite** (Prisma), expõe um **quadro Kanban** na web, filtros, painel de idade dos abertos, modal de edição com histórico e API HTTP. Pensado para correr num **único processo** (por exemplo no Railway).
+Serviço em **Node.js + TypeScript** que sincroniza chamados do **GLPI** para **PostgreSQL** (Prisma, mesma base que o backend Nest em `apps/backend`). O **quadro Kanban** e as APIs HTTP vivem na app **Next** (`apps/frontend`, rota `/chamados`). O **`npm start`** na raiz mantém um **worker opcional** (cron de sincronização).
 
 ## Requisitos
 
@@ -11,9 +11,11 @@ Serviço em **Node.js + TypeScript** que sincroniza chamados do **GLPI** para **
 
 1. Copie `.env.example` para `.env`.
 2. Preencha as variáveis obrigatórias (ver comentários no `.env.example`):
+   - **`DATABASE_URL`** — PostgreSQL (o mesmo valor em `apps/backend/.env` e `apps/frontend/.env.local`)
    - `GLPI_BASE_URL`, `GLPI_DOC_URL`
    - `GLPI_CLIENT_ID`, `GLPI_CLIENT_SECRET`
    - `GLPI_USERNAME`, `GLPI_PASSWORD`
+3. Aplique migrações Prisma no PostgreSQL: `npm run prisma:deploy` (ou `cd apps/backend && npm run prisma:migrate` em desenvolvimento).
 
 Opcional: `GLPI_TICKETS_PATH`, `GLPI_TICKETS_PAGE_SIZE`, `GLPI_TICKETS_FETCH_CONCURRENCY`, `CRON_EXPRESSION`, `PORT`, `HTTP_TIMEOUT_MS`, `LOG_LEVEL`.
 
@@ -32,8 +34,9 @@ O servidor sobe na porta definida por `PORT` (padrão **3000**).
 | Script | Descrição |
 |--------|-----------|
 | `dev` / `start` / `sync` | Arranca o processo (HTTP + cron de sincronização) |
-| `prisma:generate` | Gera o cliente Prisma |
-| `prisma:push` | Aplica o schema ao SQLite (`data.db`) |
+| `prisma:generate` | Gera o cliente Prisma a partir de `apps/backend/prisma/schema.prisma` |
+| `prisma:migrate` | Cria/aplica migrações em desenvolvimento (Prisma Migrate) |
+| `prisma:deploy` | Aplica migrações pendentes em CI/produção |
 
 ## Endpoints HTTP (resumo)
 
@@ -45,17 +48,18 @@ O servidor sobe na porta definida por `PORT` (padrão **3000**).
 
 ## Comportamento da sincronização
 
-- Na arranque, garante o schema SQLite e tenta autenticar no GLPI.
+- Na arranque, confirma a ligação ao PostgreSQL e tenta autenticar no GLPI.
 - Descarrega o OpenAPI (`doc.json`) para descobrir o caminho dos tickets, se não estiver fixo no `.env`.
 - Sincroniza chamados **logo ao iniciar** e de seguida conforme `CRON_EXPRESSION` (padrão: a cada 5 minutos).
-- O **âmbito** “só abertos” vs “todos no cache” pode ser guardado na interface (estado em SQLite).
+- O **âmbito** “só abertos” vs “todos no cache” pode ser guardado na interface (estado em PostgreSQL, tabela `SyncState`).
 - A sync usa cache local de usuários ativos (TTL de 24h) para preencher solicitantes por `users_id` sem chamadas por ticket.
 - Chamadas pontuais a `GET /User/...` permanecem no fluxo do modal (`GET /api/tickets/glpi/:id`) para completar dados quando necessário.
 
 ## Base de dados
 
-- Ficheiro SQLite: `prisma/data.db` (caminho definido no `schema.prisma`).
-- Modelos principais: `Ticket`, `TicketAttribute`, `SyncState`.
+- **PostgreSQL** (`DATABASE_URL`): schema e migrações em **`apps/backend/prisma/`** (contratos, medições, governança, etc.).
+- Cache GLPI no mesmo servidor: modelos **`Ticket`**, **`TicketAttribute`**, **`SyncState`** (migration `20260415140000_add_glpi_sync_cache`).
+- Migração de dados antigos em SQLite: exportar/importar manualmente (ex. `pgloader`) ou voltar a sincronizar a partir do GLPI.
 
 ## Stack e evolução (TypeScript + Next)
 
@@ -83,7 +87,7 @@ Para não quebrar o sistema atual de GLPI, o novo módulo foi iniciado em estrut
 
 - Layout com sidebar fixa + header + conteúdo responsivo.
 - Rotas:
-  - `/operacao/glpi/...` — proxy do quadro Kanban (HTML do servidor Node, sem shell React)
+  - `/chamados` — quadro Kanban GLPI (React + APIs no mesmo processo Next)
   - `/dashboard`
   - `/contracts`
   - `/contracts/[id]`
@@ -95,14 +99,11 @@ Para não quebrar o sistema atual de GLPI, o novo módulo foi iniciado em estrut
   - `/reports`
 - Dashboard com KPIs e gráficos base (Recharts).
 
-### Experiência única (Next + servidor GLPI)
+### Experiência única (Next + GLPI)
 
-O **Next** é a interface principal: gestão contratual, metas, etc. O **servidor Node** na raiz mantém o Kanban GLPI, cron e APIs (`/api/kanban`, …). Para um só domínio:
+O **Next** em `apps/frontend` concentra a gestão contratual, o Kanban em **`/chamados`**, as rotas **`/api/kanban`**, **`/api/tickets/glpi/…`**, o cron de sincronização (`instrumentation.ts`) e o **PostgreSQL** via **`DATABASE_URL`** (mesmo URL que o Nest). Variáveis **`GLPI_*`** e **`CRON_EXPRESSION`** definem-se no `.env` / `.env.local` (o frontend também tenta `../../.env` na raiz).
 
-1. **No processo Next** (`apps/frontend`): defina **`GLPI_SYNC_ORIGIN`** com a URL interna ou pública do servidor Node (ex.: `http://127.0.0.1:3000`). O Next encaminha `/api/kanban`, `/api/tickets/glpi/…`, etc., e serve o Kanban em **`/operacao/glpi/*`** (proxy reverso).
-2. **No processo Node**: defina **`GTI_NEXT_PUBLIC_URL`** com a URL pública da app Next (a mesma que o utilizador abre no browser). Os GET a `/contracts`, `/goals`, … respondem **302** para o Next; o menu do Kanban aponta para essas URLs. Se não definir **`GTI_GLPI_UI_BASE`**, assume-se **`GTI_NEXT_PUBLIC_URL` + `/operacao/glpi`** para o formulário de filtros e links do quadro.
-
-Assim desaparecem os formulários HTML duplicados no Node; o Kanban continua optimizado no processo GLPI e a gestão contratual fica só no Next.
+O **`npm start`** na raiz do repositório mantém-se como **worker opcional** (só sincronização + cron), útil se quiser separar processos em produção; não serve mais HTML nem APIs HTTP duplicadas.
 
 ### Como iniciar o novo módulo
 

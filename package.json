@@ -1,7 +1,7 @@
 {
   "name": "glpi-sync-mvp",
   "version": "1.0.0",
-  "description": "Sincronização de chamados GLPI para SQLite, quadro Kanban na web e API HTTP (Node.js + TypeScript + Prisma).",
+  "description": "Sincronização de chamados GLPI para PostgreSQL (partilhado com o backend Nest), Kanban Next e worker Node (TypeScript + Prisma).",
   "private": true,
   "type": "commonjs",
   "scripts": {
@@ -10,8 +10,9 @@
     "sync": "tsx src/index.ts",
     "smoke:regression": "tsx src/scripts/regression-smoke.ts",
     "typecheck": "tsc --noEmit",
-    "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push"
+    "prisma:generate": "prisma generate --schema apps/backend/prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema apps/backend/prisma/schema.prisma",
+    "prisma:deploy": "prisma migrate deploy --schema apps/backend/prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",
