@@ -14,13 +14,14 @@ Estabelecer uma linha de base objetiva do comportamento atual para permitir evol
 
 ## Inventário funcional atual (resumo)
 
-### Núcleo operacional (`src/index.ts`)
+### Núcleo operacional (`apps/frontend` + worker opcional)
 
-- Quadro Kanban de chamados GLPI.
+- Quadro Kanban de chamados GLPI (`/chamados`).
 - Modal de detalhamento/edição de chamado.
 - Publicação de acompanhamento no chamado.
 - Proxy para anexos/imagens GLPI.
 - Filtros operacionais e recálculo de pendência.
+- Sincronização GLPI: `instrumentation.ts` e/ou `npm run start:worker`.
 
 ### Módulos de gestão (`apps/backend` + `apps/frontend`)
 

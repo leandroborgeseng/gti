@@ -9,7 +9,7 @@ A interface de **gestão contratual** e o **Kanban GLPI** estão em **`apps/fron
 | Processo | O quê |
 |----------|--------|
 | **`apps/frontend` (Next.js)** | React, Route Handlers GLPI, cron de sync, Prisma (PostgreSQL). |
-| **Raiz `npm start` (`src/index.ts`)** | Worker **opcional**: só sincronização + cron (sem HTTP). |
+| **`npm run start:worker` (`apps/frontend/scripts/glpi-worker-cli.ts`)** | Worker **opcional**: só sincronização + cron (sem HTTP), mesmo código que o Next. |
 
 ## PWA
 

@@ -1,3 +1,13 @@
+/**
+ * Cliente HTTP único para a API GLPI (OAuth2 Bearer).
+ *
+ * - Injeta o token em cada pedido via {@link getAccessToken}.
+ * - Em `401`, força refresh do token e repete uma vez.
+ * - Retentativas com backoff para `429`, erros `5xx` e timeout.
+ *
+ * Ajuste `HTTP_TIMEOUT_MS` e o paralelismo da sync (`GLPI_TICKETS_FETCH_CONCURRENCY`) para respeitar
+ * a capacidade do servidor GLPI.
+ */
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
 import { env } from "../config/env";
 import { getAccessToken } from "./auth.service";

@@ -369,7 +369,10 @@ model Ticket {
 
   @@index([waitingParty])
   @@index([requesterEmail])
+  @@index([status, dateCreation])
+  @@index([dateModification])
 }
+
 
 /// Atributo achatado do JSON do ticket (pesquisas e filtros auxiliares).
 model TicketAttribute {

@@ -1,6 +1,6 @@
 # GTI — Quadro e sincronização GLPI
 
-Serviço em **Node.js + TypeScript** que sincroniza chamados do **GLPI** para **PostgreSQL** (Prisma, mesma base que o backend Nest em `apps/backend`). O **quadro Kanban** e as APIs HTTP vivem na app **Next** (`apps/frontend`, rota `/chamados`). O **`npm start`** na raiz mantém um **worker opcional** (cron de sincronização).
+Serviço em **Node.js + TypeScript** que sincroniza chamados do **GLPI** para **PostgreSQL** (Prisma, mesma base que o backend Nest em `apps/backend`). O **quadro Kanban** e as APIs HTTP vivem na app **Next** (`apps/frontend`, rota `/chamados`). Na raiz, **`npm start`** sobe o **Next** em produção; **`npm run start:worker`** é opcional (só cron + sync GLPI).
 
 ## Requisitos
 
@@ -25,21 +25,45 @@ Opcional: `GLPI_TICKETS_PATH`, `GLPI_TICKETS_PAGE_SIZE`, `GLPI_TICKETS_FETCH_CON
 npm install
 npm run prisma:generate
 # Interface Next (porta 3001 por defeito):
-cd apps/frontend && npm run dev
-# Worker GLPI (cron + sync) na raiz:
 npm run dev
+# Opcional — worker só GLPI (cron + sync, sem HTTP):
+npm run dev:worker
 ```
 
-Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`npm start`** (sobe o Next) e, se quiser o cron GLPI, crie um **segundo** serviço com **`npm run start:worker`**. O build deve incluir **`npm run build`** na raiz (ou defina o comando de build assim no painel).
+### Docker (só a app Next)
+
+O contentor **não** inclui PostgreSQL: a base fica num **serviço separado** (ex.: **Railway Postgres**), com `DATABASE_URL` persistente e cópias de segurança geridas pela plataforma.
+
+Na raiz, com Docker instalado:
+
+```bash
+cp .env.example .env   # uma vez: preencha DATABASE_URL (Postgres no Railway) e GLPI_*
+docker compose build
+docker compose up
+```
+
+O `docker-compose.yml` usa `env_file: .env` na raiz (não inclui Postgres). O serviço `app` corre `prisma migrate deploy` no arranque e inicia o Next (porta `3000` por defeito). Ver `Dockerfile`.
+
+Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`npm start`** (sobe o Next) e, se quiser o cron GLPI noutro processo, crie um **segundo** serviço com **`npm run start:worker`**. O build deve incluir **`npm run build`** na raiz (ou defina o comando de build assim no painel).
+
+### Checklist rápida — produção hoje (Railway)
+
+1. **PostgreSQL** (plugin Railway): copie `DATABASE_URL` para o serviço da app; se a ligação falhar, acrescente `?sslmode=require` (ou `&sslmode=require`) ao URL.
+2. **Variáveis** na app: todas as `GLPI_*` obrigatórias (ver `.env.example`), `DATABASE_URL`, `NODE_ENV=production`. A Railway define **`PORT`** automaticamente; o Next usa essa porta.
+3. **Build:** `npm run build` (na raiz do repo).
+4. **Start:** `npm start` — corre `prisma migrate deploy` e inicia o Next.
+5. **Opcional:** segundo serviço com `npm run start:worker` e as mesmas variáveis (só sync GLPI).
+6. **Teste:** `GET /health` no domínio publicado.
 
 ## Scripts úteis (`npm run`)
 
 | Script | Descrição |
 |--------|-----------|
 | `start` | **Next.js** (Kanban + gestão); na Railway usa a variável **`PORT`**. |
-| `start:worker` | Worker só GLPI (cron + sync); usar como **segundo** serviço se precisar. |
+| `start:worker` | Worker só GLPI (`apps/frontend/scripts/glpi-worker-cli.ts`); **segundo** serviço se precisar. |
 | `build` | Compila o frontend (`apps/frontend`) para deploy na Railway na raiz do repo. |
-| `dev` / `sync` | Arranca o worker GLPI em local (`tsx`) |
+| `dev` | Next em desenvolvimento (`apps/frontend`, porta 3001). |
+| `dev:worker` / `sync` | Worker só GLPI (cron + sync). |
 | `postinstall` | Gera o cliente Prisma (corre no `npm install`, incl. Railway em produção) |
 | `prisma:generate` | Gera o cliente Prisma a partir de `apps/backend/prisma/schema.prisma` |
 | `prisma:migrate` | Cria/aplica migrações em desenvolvimento (Prisma Migrate) |
@@ -110,7 +134,7 @@ Para não quebrar o sistema atual de GLPI, o novo módulo foi iniciado em estrut
 
 O **Next** em `apps/frontend` concentra a gestão contratual, o Kanban em **`/chamados`**, as rotas **`/api/kanban`**, **`/api/tickets/glpi/…`**, o cron de sincronização (`instrumentation.ts`) e o **PostgreSQL** via **`DATABASE_URL`** (mesmo URL que o Nest). Variáveis **`GLPI_*`** e **`CRON_EXPRESSION`** definem-se no `.env` / `.env.local` (o frontend também tenta `../../.env` na raiz).
 
-O **`npm start`** na raiz do repositório mantém-se como **worker opcional** (só sincronização + cron), útil se quiser separar processos em produção; não serve mais HTML nem APIs HTTP duplicadas.
+O **`npm run start:worker`** na raiz mantém-se como **processo opcional** (só sincronização + cron), útil para separar CPU do servidor web; não expõe HTTP.
 
 ### Como iniciar o novo módulo
 
@@ -136,6 +160,12 @@ npm run dev
 ## Documentação e idioma
 
 Toda a **documentação de projeto**, **ficheiros de exemplo** (`.env.example`), **regras Cursor** em `.cursor/rules/` e **textos orientados ao utilizador** na interface devem estar em **português do Brasil (pt-BR)**.
+
+- **`AGENTS.md`** — mapa do monorepo e comandos para agentes.
+- **`docs/revisao-fase-0-baseline.md`** — processos e decisão stack (Next).
+- **`docs/bd-glpi-cache.md`** — modelo de cache GLPI no PostgreSQL.
+- **`docs/glpi-sync-arquitetura.md`** — fluxo de sync, token e cron.
+- **`docs/modulos.md`** — índice rápido de pastas.
 
 ## Migração incremental (sistema antigo -> novo)
 

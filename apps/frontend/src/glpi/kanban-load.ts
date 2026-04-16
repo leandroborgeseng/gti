@@ -16,7 +16,6 @@ const EMPTY_OPEN_AGE_BUCKETS: OpenAgeBuckets = {
   noDate: 0
 };
 import { getTicketSyncScope } from "./utils/ticket-sync-scope";
-import { extractRequesterContact } from "./utils/ticket-requester";
 import { mergeColumnOrder, readKanbanSettings, type KanbanSettings } from "./kanban-settings";
 
 const KANBAN_SYNC_STALE_MS = 24 * 60 * 60 * 1000;
@@ -202,8 +201,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
         updatedAt: true,
         requesterName: true,
         requesterEmail: true,
-        requesterUserId: true,
-        rawJson: true
+        requesterUserId: true
       }
     }),
     prisma.ticket.findMany({
@@ -266,10 +264,9 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     const cardsRaw = ticketsByStatus.get(statusKey) || [];
     const columnStyle = buildColumnInlineStyle(statusKey);
     const cards: KanbanCardDto[] = cardsRaw.map((ticket) => {
-      const reqFromRaw = extractRequesterContact(ticket.rawJson);
       const reqFromCache = ticket.requesterUserId ? requesterFallbackById.get(ticket.requesterUserId) : null;
-      const reqName = ticket.requesterName ?? reqFromRaw.displayName ?? reqFromCache?.displayName ?? null;
-      const reqEmail = ticket.requesterEmail ?? reqFromRaw.email ?? reqFromCache?.email ?? null;
+      const reqName = ticket.requesterName ?? reqFromCache?.displayName ?? null;
+      const reqEmail = ticket.requesterEmail ?? reqFromCache?.email ?? null;
       const pendLabel =
         ticket.waitingParty === "cliente"
           ? "Aguardando cliente"

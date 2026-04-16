@@ -1,0 +1,10 @@
+# Só a aplicação Next. Postgres fora (ex.: Railway): defina `DATABASE_URL` no `.env` na raiz.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env

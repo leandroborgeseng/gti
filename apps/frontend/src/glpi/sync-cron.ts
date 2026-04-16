@@ -10,6 +10,15 @@ import { toErrorLog } from "./errors";
 
 let isSyncRunning = false;
 
+/** Opções do arranque da sincronização (processo Next vs worker CLI). */
+export type BootstrapGlpiSyncOptions = {
+  /**
+   * Quando `true` (padrão no Next), evita segundo cron em HMR.
+   * No worker dedicado, use `false`.
+   */
+  enableHmrGuard?: boolean;
+};
+
 export const syncStatus = {
   isRunning: false,
   runs: 0,
@@ -44,6 +53,7 @@ export async function runSyncWithGuard(): Promise<void> {
   syncStatus.lastLoaded = 0;
   syncStatus.lastSaved = 0;
   syncStatus.lastFailed = 0;
+  const startedMs = Date.now();
   try {
     await loadOpenApiSpec().catch((error) => {
       logger.warn({ error: toErrorLog(error) }, "Falha ao atualizar doc OpenAPI, usando endpoint padrão");
@@ -57,10 +67,22 @@ export async function runSyncWithGuard(): Promise<void> {
     });
     syncStatus.lastSuccessAt = new Date().toISOString();
     syncStatus.lastError = null;
+    logger.info(
+      {
+        durationMs: Date.now() - startedMs,
+        loaded: result.loaded,
+        saved: result.saved,
+        failed: result.failed
+      },
+      "Sincronização GLPI concluída"
+    );
   } catch (error) {
     const details = toErrorLog(error);
     syncStatus.lastError = details.message;
-    logger.error({ error: details }, `Falha na sincronização de tickets: ${details.message}`);
+    logger.error(
+      { error: details, durationMs: Date.now() - startedMs },
+      `Falha na sincronização de tickets: ${details.message}`
+    );
   } finally {
     isSyncRunning = false;
     syncStatus.isRunning = false;
@@ -69,11 +91,15 @@ export async function runSyncWithGuard(): Promise<void> {
 }
 
 export function startGlpiSyncCron(): void {
+  if (process.env.GLPI_CRON_DISABLED === "1") {
+    logger.info("Cron GLPI desativado (GLPI_CRON_DISABLED=1)");
+    return;
+  }
   try {
     cron.schedule(env.CRON_EXPRESSION, () => {
       void runSyncWithGuard();
     });
-    logger.info({ cron: env.CRON_EXPRESSION }, "Cron de sincronização GLPI iniciado (Next.js)");
+    logger.info({ cron: env.CRON_EXPRESSION }, "Cron de sincronização GLPI iniciado");
   } catch (error) {
     logger.error(
       { error: toErrorLog(error), cron: env.CRON_EXPRESSION },
@@ -84,9 +110,13 @@ export function startGlpiSyncCron(): void {
 
 const globalCron = globalThis as { __glpiNextCronStarted?: boolean };
 
-/** Schema, token, primeira sync e agendamento periódico — idempotente em dev (HMR). */
-export async function bootstrapGlpiSyncInNext(): Promise<void> {
-  if (globalCron.__glpiNextCronStarted) {
+/**
+ * Arranque da sincronização GLPI (schema auxiliar, token, primeira sync, cron).
+ * Partilhado pelo Next (`instrumentation`) e pelo worker CLI na raiz do monorepo.
+ */
+export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}): Promise<void> {
+  const enableHmrGuard = options.enableHmrGuard ?? true;
+  if (enableHmrGuard && globalCron.__glpiNextCronStarted) {
     return;
   }
 
@@ -100,5 +130,17 @@ export async function bootstrapGlpiSyncInNext(): Promise<void> {
 
   await runSyncWithGuard();
   startGlpiSyncCron();
-  globalCron.__glpiNextCronStarted = true;
+  if (enableHmrGuard) {
+    globalCron.__glpiNextCronStarted = true;
+  }
+}
+
+/** Next.js: evita duplicar o cron em HMR. */
+export async function bootstrapGlpiSyncInNext(): Promise<void> {
+  await bootstrapGlpiSync({ enableHmrGuard: true });
+}
+
+/** Processo dedicado (CLI `tsx apps/frontend/scripts/glpi-worker-cli.ts`): mesma lógica, sem guard de HMR. */
+export async function bootstrapGlpiWorkerProcess(): Promise<void> {
+  await bootstrapGlpiSync({ enableHmrGuard: false });
 }

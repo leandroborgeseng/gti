@@ -1,34 +1,30 @@
 {
   "name": "glpi-sync-mvp",
   "version": "1.0.1",
-  "description": "Sincronização de chamados GLPI para PostgreSQL (partilhado com o backend Nest), Kanban Next e worker Node (TypeScript + Prisma).",
+  "description": "Kanban GLPI e gestão contratual em Next.js; worker de sync opcional (código em apps/frontend).",
   "private": true,
   "type": "commonjs",
   "scripts": {
     "postinstall": "prisma generate --schema apps/backend/prisma/schema.prisma",
     "build": "npm ci && cd apps/frontend && npm ci && npm run build",
     "start": "npm run prisma:deploy && cd apps/frontend && npm run start",
-    "start:worker": "tsx src/index.ts",
-    "dev": "tsx src/index.ts",
-    "sync": "tsx src/index.ts",
-    "smoke:regression": "tsx src/scripts/regression-smoke.ts",
-    "typecheck": "tsc --noEmit",
+    "start:worker": "tsx apps/frontend/scripts/glpi-worker-cli.ts",
+    "dev": "cd apps/frontend && npm run dev",
+    "dev:worker": "tsx apps/frontend/scripts/glpi-worker-cli.ts",
+    "sync": "tsx apps/frontend/scripts/glpi-worker-cli.ts",
+    "smoke:regression": "tsx scripts/regression-smoke.ts",
+    "typecheck": "npm run prisma:generate && (cd apps/frontend && npm run typecheck) && (cd apps/backend && npm run typecheck)",
     "prisma:generate": "prisma generate --schema apps/backend/prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema apps/backend/prisma/schema.prisma",
     "prisma:deploy": "prisma migrate deploy --schema apps/backend/prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",
-    "axios": "^1.9.0",
-    "dotenv": "^16.4.5",
-    "node-cron": "^3.0.3",
-    "pino": "^9.3.2",
     "prisma": "^6.6.0",
     "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "@types/node-cron": "^3.0.11",
     "typescript": "^5.6.3"
   }
 }

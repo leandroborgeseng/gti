@@ -1,3 +1,8 @@
+/**
+ * OAuth2 password grant contra o GLPI: cache do `access_token` em memória com margem de segurança
+ * antes do `expires_in`, e uma única promessa em voo (`inFlightTokenPromise`) para evitar múltiplos
+ * pedidos de token em paralelo (thundering herd).
+ */
 import axios from "axios";
 import { Buffer } from "node:buffer";
 import { env } from "../config/env";
