@@ -8,6 +8,5 @@ export const prisma =
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"]
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.glpiPrisma = prisma;
-}
+/** Evita múltiplas instâncias do Prisma no mesmo processo (dev com HMR e produção no Next). */
+globalForPrisma.glpiPrisma = prisma;

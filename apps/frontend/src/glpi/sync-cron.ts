@@ -69,10 +69,17 @@ export async function runSyncWithGuard(): Promise<void> {
 }
 
 export function startGlpiSyncCron(): void {
-  cron.schedule(env.CRON_EXPRESSION, () => {
-    void runSyncWithGuard();
-  });
-  logger.info({ cron: env.CRON_EXPRESSION }, "Cron de sincronização GLPI iniciado (Next.js)");
+  try {
+    cron.schedule(env.CRON_EXPRESSION, () => {
+      void runSyncWithGuard();
+    });
+    logger.info({ cron: env.CRON_EXPRESSION }, "Cron de sincronização GLPI iniciado (Next.js)");
+  } catch (error) {
+    logger.error(
+      { error: toErrorLog(error), cron: env.CRON_EXPRESSION },
+      "Expressão de cron inválida ou falha ao agendar; a app continua sem agendamento"
+    );
+  }
 }
 
 const globalCron = globalThis as { __glpiNextCronStarted?: boolean };
@@ -82,7 +89,6 @@ export async function bootstrapGlpiSyncInNext(): Promise<void> {
   if (globalCron.__glpiNextCronStarted) {
     return;
   }
-  globalCron.__glpiNextCronStarted = true;
 
   await ensureSqliteSchema();
   await loadOpenApiSpec().catch((error) => {
@@ -94,4 +100,5 @@ export async function bootstrapGlpiSyncInNext(): Promise<void> {
 
   await runSyncWithGuard();
   startGlpiSyncCron();
+  globalCron.__glpiNextCronStarted = true;
 }

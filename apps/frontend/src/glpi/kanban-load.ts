@@ -1,7 +1,20 @@
 import { prisma } from "./config/prisma";
 import { getCachedUsersByIds } from "./services/glpi-users-cache.service";
 import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
-import { getOpenTicketAgeBuckets, sumOpenAgeBuckets, type OpenAgeBuckets } from "./utils/open-ticket-aging";
+import {
+  getOpenTicketAgeBuckets,
+  sumOpenAgeBuckets,
+  type OpenAgeBuckets
+} from "./utils/open-ticket-aging";
+
+const EMPTY_OPEN_AGE_BUCKETS: OpenAgeBuckets = {
+  week: 0,
+  days15: 0,
+  days30: 0,
+  days60: 0,
+  over60: 0,
+  noDate: 0
+};
 import { getTicketSyncScope } from "./utils/ticket-sync-scope";
 import { extractRequesterContact } from "./utils/ticket-requester";
 import { mergeColumnOrder, readKanbanSettings, type KanbanSettings } from "./kanban-settings";
@@ -120,6 +133,34 @@ export type KanbanBoardPayload = {
   statuses: string[];
   groups: string[];
 };
+
+/**
+ * Payload mínimo quando a base ou o cache não estão disponíveis (evita derrubar o Server Component).
+ */
+export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): KanbanBoardPayload {
+  const q = (searchParams.get("q") || "").trim();
+  const statusFilter = (searchParams.get("status") || "").trim();
+  const groupFilter = (searchParams.get("group") || "").trim();
+  const onlyOpen = searchParams.get("open") === "1";
+  const pendenciaParam = (searchParams.get("pendencia") || "").trim();
+  return {
+    q,
+    statusFilter,
+    groupFilter,
+    onlyOpen,
+    pendenciaParam,
+    pendenciaSummary: pendenciaLabelForSummary(pendenciaParam),
+    filteredTotal: 0,
+    ticketSyncScope: "open",
+    kanbanSettings: {},
+    orderedStatusKeys: [],
+    columns: [],
+    ageBuckets: EMPTY_OPEN_AGE_BUCKETS,
+    ageTotal: 0,
+    statuses: [],
+    groups: []
+  };
+}
 
 export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Promise<KanbanBoardPayload> {
   const q = (searchParams.get("q") || "").trim();

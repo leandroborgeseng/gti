@@ -1,4 +1,4 @@
-import { loadKanbanBoardPayload } from "@/glpi/kanban-load";
+import { buildFallbackKanbanBoardPayload, loadKanbanBoardPayload } from "@/glpi/kanban-load";
 import { ChamadosBoard } from "./chamados-board";
 
 type Search = Record<string, string | string[] | undefined>;
@@ -17,14 +17,27 @@ function buildSearchParams(raw: Search): URLSearchParams {
 
 export default async function ChamadosPage({ searchParams }: { searchParams: Search }): Promise<JSX.Element> {
   const sp = buildSearchParams(searchParams);
-  const payload = await loadKanbanBoardPayload(sp);
+  let payload = buildFallbackKanbanBoardPayload(sp);
+  let loadError: string | null = null;
+  try {
+    payload = await loadKanbanBoardPayload(sp);
+  } catch (err) {
+    loadError = err instanceof Error ? err.message : String(err);
+  }
   const boardKey = sp.toString();
   return (
-    <div className="space-y-2">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Chamados GLPI</h1>
-        <p className="mt-1 text-sm text-slate-600">Quadro Kanban sincronizado com o cache local (mesmo processo Next.js).</p>
+    <div className="chamados-glpi-page">
+      <header className="page-header">
+        <p className="page-kicker">Operação · GLPI</p>
+        <h1 className="page-title">Quadro de chamados</h1>
+        <p className="page-lead">Acompanhe o Kanban operacional com filtros, pendências e detalhamento de chamados.</p>
       </header>
+      {loadError ? (
+        <div className="chamados-load-error" role="alert">
+          <strong>Não foi possível carregar o quadro.</strong> Verifique <code>DATABASE_URL</code>, migrações Prisma e a
+          ligação ao PostgreSQL. Detalhes: {loadError}
+        </div>
+      ) : null}
       <ChamadosBoard key={boardKey} initial={payload} />
     </div>
   );
