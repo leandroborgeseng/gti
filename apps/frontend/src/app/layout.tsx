@@ -1,6 +1,5 @@
 import "./globals.css";
 import { PropsWithChildren } from "react";
-import { AppShell } from "@/components/layout/app-shell";
 
 export const metadata = {
   title: "Gestão de Contratos Públicos",
@@ -10,9 +9,7 @@ export const metadata = {
 export default function RootLayout({ children }: PropsWithChildren): JSX.Element {
   return (
     <html lang="pt-BR">
-      <body>
-        <AppShell>{children}</AppShell>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

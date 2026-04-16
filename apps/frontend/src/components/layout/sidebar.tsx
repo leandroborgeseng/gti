@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems: Array<{ href: Route; label: string }> = [
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard", label: "Painel executivo" },
+  { href: "/operacao/glpi/dashboard" as Route, label: "Chamados (GLPI)" },
   { href: "/contracts", label: "Contratos" },
   { href: "/measurements", label: "Medições" },
   { href: "/glosas", label: "Glosas" },
@@ -26,7 +27,11 @@ export function Sidebar(): JSX.Element {
       </div>
       <nav className="flex-1 space-y-0.5 px-2 py-3" aria-label="Navegação principal">
         {navItems.map((item) => {
-          const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+          const hrefStr = String(item.href);
+          const active =
+            hrefStr.startsWith("/operacao/glpi") && pathname?.startsWith("/operacao/glpi")
+              ? true
+              : pathname === item.href || Boolean(pathname?.startsWith(`${item.href}/`));
           return (
             <Link
               key={item.href}

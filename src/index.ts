@@ -22,6 +22,21 @@ import { getOpenTicketAgeBuckets, sumOpenAgeBuckets, type OpenAgeBuckets } from 
 import { extractObserversFromTicketRaw } from "./utils/ticket-observers";
 import { extractRequesterContact } from "./utils/ticket-requester";
 import { getTicketSyncScope } from "./utils/ticket-sync-scope";
+import {
+  GTI_DELEGABLE_TO_NEXT,
+  gtiGlpiUiBase,
+  gtiHrefDelegable,
+  gtiHrefGlpiPage,
+  gtiKanbanFiltersAction,
+  gtiNextPublicBase
+} from "./gti-public-urls";
+
+/** Href no HTML do menu lateral (Next para gestão; prefixo de proxy para o Kanban). */
+function gtiNavBrowserHref(href: string): string {
+  if (href === "/dashboard") return gtiHrefGlpiPage("/dashboard");
+  if (GTI_DELEGABLE_TO_NEXT.has(href)) return gtiHrefDelegable(href);
+  return href;
+}
 
 let isSyncRunning = false;
 type SyncRuntimeStatus = {
@@ -866,32 +881,25 @@ function startHealthServer(): void {
       "/goals"
     ]);
     if (method === "GET" && appPages.has(parsedUrl.pathname)) {
-      /** Se definido, encaminha módulos de gestão contratual para a app Next (lista + modal). O Kanban GLPI mantém-se em / e /dashboard. */
-      const nextBaseRaw = (process.env.GTI_NEXT_APP_URL || "").trim().replace(/\/+$/, "");
-      const nextDelegable = new Set([
-        "/contracts",
-        "/measurements",
-        "/glosas",
-        "/suppliers",
-        "/fiscais",
-        "/reports",
-        "/governance/tickets",
-        "/goals"
-      ]);
-      if (nextBaseRaw && nextDelegable.has(parsedUrl.pathname)) {
-        const safeBase = nextBaseRaw.startsWith("https://") || nextBaseRaw.startsWith("http://");
-        if (safeBase) {
-          const dest = `${nextBaseRaw}${parsedUrl.pathname}${parsedUrl.search}`;
-          res.writeHead(302, { Location: dest });
-          res.end();
+      if (GTI_DELEGABLE_TO_NEXT.has(parsedUrl.pathname)) {
+        const nextB = gtiNextPublicBase();
+        if (!nextB || (!nextB.startsWith("https://") && !nextB.startsWith("http://"))) {
+          res.writeHead(503, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(
+            "<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Configuração</title></head><body style=\"font-family:system-ui;padding:2rem;max-width:40rem\"><h1>Configuração necessária</h1><p>Defina <strong>GTI_NEXT_PUBLIC_URL</strong> com a URL pública da aplicação Next (gestão contratual), por exemplo <code>https://seu-frontend.up.railway.app</code>.</p><p>O servidor GLPI não serve mais formulários duplicados nestas rotas.</p></body></html>"
+          );
           return;
         }
+        res.writeHead(302, { Location: `${nextB}${parsedUrl.pathname}${parsedUrl.search}` });
+        res.end();
+        return;
       }
       if (parsedUrl.searchParams.has("age")) {
         const redirectParams = new URLSearchParams(parsedUrl.searchParams);
         redirectParams.delete("age");
         const qs = redirectParams.toString();
-        res.writeHead(302, { Location: qs ? `/?${qs}` : "/" });
+        const home = gtiGlpiUiBase() ? `${gtiGlpiUiBase()}/dashboard` : "/";
+        res.writeHead(302, { Location: qs ? `${home}?${qs}` : home });
         res.end();
         return;
       }
@@ -1256,263 +1264,7 @@ function startHealthServer(): void {
         { title: "Controle", text: "Monitore execução, SLA e pendências com histórico auditável." },
         { title: "Auditoria", text: "Registre decisões e evidências para conformidade pública." }
       ];
-      const moduleFormByPath: Record<string, string> = {
-        "/contracts": `<form class="module-form" data-module-form data-form-kind="contract">
-          <h3>Cadastro completo do contrato</h3>
-          <div class="module-section">
-            <h4>Identificação</h4>
-            <p class="module-section__hint">Preencha os dados centrais para rastreabilidade contratual e auditoria.</p>
-            <div class="module-form__grid module-form__grid--3">
-              <label>Número do contrato *<input type="text" name="number" placeholder="CT-001/2026" required /></label>
-              <label>Nome do contrato *<input type="text" name="name" placeholder="Gestão de infraestrutura de TIC" required /></label>
-              <label>Empresa contratada *<input type="text" name="companyName" required /></label>
-              <label>CNPJ *<input type="text" name="cnpj" data-cnpj placeholder="00.000.000/0001-00" required /></label>
-              <label>Tipo de contrato *
-                <select name="contractType" required><option>SOFTWARE</option><option>DATACENTER</option><option>INFRA</option><option>SERVICO</option></select>
-              </label>
-              <label>Processo administrativo<input type="text" name="processNumber" placeholder="00000.000000/2026-00" /></label>
-            </div>
-            <label>Objeto do contrato *<textarea name="description" rows="4" placeholder="Descreva escopo, limites e entregáveis." required></textarea></label>
-          </div>
-          <div class="module-section">
-            <h4>Base legal</h4>
-            <div class="module-form__grid module-form__grid--3">
-              <label>Lei aplicável *
-                <select name="lawType" required><option value="LEI_8666">Lei 8.666</option><option value="LEI_14133">Lei 14.133</option></select>
-              </label>
-              <label>Data início *<input type="date" name="startDate" required /></label>
-              <label>Data fim *<input type="date" name="endDate" required /></label>
-              <label class="module-inline-check"><input type="checkbox" name="allowAdditives" /> Permitir aditivos</label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>Valores</h4>
-            <div class="module-form__grid module-form__grid--3">
-              <label>Valor global *<input type="number" step="0.01" min="0" name="totalValue" required /></label>
-              <label>Valor mensal *<input type="number" step="0.01" min="0" name="monthlyValue" required /></label>
-              <label>Índice de reajuste<input type="text" name="adjustIndex" placeholder="IPCA, IGP-M, INPC..." /></label>
-              <label>Data-base do reajuste<input type="date" name="adjustDate" /></label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>SLA contratual</h4>
-            <div class="module-form__grid module-form__grid--3">
-              <label class="module-inline-check"><input type="checkbox" name="hasSla" /> Possui SLA</label>
-              <label>SLA mínimo (%)<input type="number" step="0.1" min="0" max="100" name="slaTarget" /></label>
-              <span></span>
-              <label>Resposta baixa (h)<input type="number" min="0" name="slaLowHours" /></label>
-              <label>Resposta média (h)<input type="number" min="0" name="slaMediumHours" /></label>
-              <label>Resposta alta (h)<input type="number" min="0" name="slaHighHours" /></label>
-              <label>Resposta crítica (h)<input type="number" min="0" name="slaCriticalHours" /></label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>Responsáveis</h4>
-            <div class="module-form__grid">
-              <label>Fiscal do contrato (ID) *<input type="text" name="fiscalId" required /></label>
-              <label>Gestor do contrato (ID) *<input type="text" name="managerId" required /></label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>Observações</h4>
-            <label>Observações para auditoria<textarea name="notes" rows="3" placeholder="Registre observações relevantes para governança."></textarea></label>
-          </div>
-          <div class="module-section">
-            <h4>Módulo (software)</h4>
-            <div class="module-form__grid">
-              <label>Nome do módulo<input type="text" name="moduleName" /></label>
-              <label>Responsável do módulo<input type="text" name="moduleOwner" /></label>
-              <label>Peso do módulo (%)<input type="number" min="0" max="100" name="moduleWeight" /></label>
-            </div>
-            <label>Descrição do módulo<textarea name="moduleDescription" rows="2"></textarea></label>
-          </div>
-          <div class="module-section">
-            <h4>Funcionalidade</h4>
-            <div class="module-form__grid">
-              <label>Nome da funcionalidade<input type="text" name="featureName" /></label>
-              <label>Peso da funcionalidade (%)<input type="number" min="0" max="100" name="featureWeight" /></label>
-              <label>Status
-                <select name="featureStatus"><option>NOT_STARTED</option><option>IN_PROGRESS</option><option>DELIVERED</option><option>VALIDATED</option></select>
-              </label>
-            </div>
-            <label>Descrição detalhada<textarea name="featureDescription" rows="2"></textarea></label>
-            <label>Critério de aceite *<textarea name="acceptanceCriteria" rows="3" required placeholder="Descreva critérios objetivos de validação da entrega."></textarea></label>
-          </div>
-          <div class="module-section">
-            <h4>Serviço (datacenter)</h4>
-            <div class="module-form__grid">
-              <label>Nome do serviço<input type="text" name="serviceName" placeholder="VM, Storage, Backup..." /></label>
-              <label>Unidade de cobrança<input type="text" name="serviceUnit" placeholder="GB, VM, Mbps" /></label>
-              <label>Valor unitário<input type="number" step="0.01" min="0" name="serviceUnitValue" /></label>
-            </div>
-            <label>Descrição do serviço<textarea name="serviceDescription" rows="2"></textarea></label>
-            <label>SLA associado (opcional)<input type="text" name="serviceSla" /></label>
-          </div>
-          <div class="module-form__actions"><button type="submit">Salvar cadastro completo</button><span class="module-pill module-pill--warn">Campos com * são obrigatórios</span></div>
-        </form>`,
-        "/measurements": `<form class="module-form" data-module-form data-form-kind="measurement">
-          <h3>Medição mensal com controle de evidências</h3>
-          <div class="module-section">
-            <h4>Referência</h4>
-            <div class="module-form__grid">
-              <label>Contrato (ID) *<input type="text" name="contractId" required /></label>
-              <label>Mês *<input type="number" min="1" max="12" name="month" required /></label>
-              <label>Ano *<input type="number" min="2020" max="2100" name="year" required /></label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>Dados automáticos (somente leitura)</h4>
-            <div class="module-form__grid">
-              <label>Valor contratual mensal<input type="text" value="Calculado após vínculo do contrato" readonly /></label>
-              <label>Percentual de entrega<input type="text" value="Calculado automaticamente" readonly /></label>
-              <label>Valor medido<input type="text" value="Calculado automaticamente" readonly /></label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>Input do usuário</h4>
-            <p class="module-section__hint">Para SOFTWARE, valide funcionalidades. Para DATACENTER, informe quantidades.</p>
-            <div class="module-form__grid module-form__grid--3">
-              <label class="module-inline-check"><input type="checkbox" name="featureValidated1" /> Funcionalidade A validada pelo fiscal</label>
-              <label class="module-inline-check"><input type="checkbox" name="featureValidated2" /> Funcionalidade B validada pelo fiscal</label>
-              <label class="module-inline-check"><input type="checkbox" name="featureValidated3" /> Funcionalidade C validada pelo fiscal</label>
-              <label>Quantidade VM<input type="number" min="0" name="qtyVm" /></label>
-              <label>Quantidade Storage (GB)<input type="number" min="0" name="qtyStorage" /></label>
-              <label>Quantidade Backup (GB)<input type="number" min="0" name="qtyBackup" /></label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>Glosa direta na medição</h4>
-            <div class="module-form__grid">
-              <label>Tipo de glosa<select name="glosaType"><option>ATRASO</option><option>NAO_ENTREGA</option><option>SLA</option><option>QUALIDADE</option></select></label>
-              <label>Valor da glosa<input type="number" step="0.01" min="0" name="glosaValue" /></label>
-            </div>
-            <label>Justificativa da glosa<textarea name="glosaJustification" rows="3"></textarea></label>
-          </div>
-          <div class="module-section">
-            <h4>Evidências</h4>
-            <label>Upload de evidências *<input type="file" name="evidenceFiles" multiple required /></label>
-            <p class="module-section__hint">Aprovação é bloqueada sem evidência anexada.</p>
-          </div>
-          <div class="module-form__actions">
-            <button type="submit">Salvar medição para análise</button>
-            <button type="button" data-approve-action>Aprovar medição</button>
-            <span class="module-pill module-pill--warn">Atenção: sem item preenchido a medição não deve ser aprovada.</span>
-          </div>
-        </form>`,
-        "/glosas": `<form class="module-form" data-module-form data-form-kind="glosa">
-          <h3>Cadastro de glosa com evidência obrigatória</h3>
-          <div class="module-section">
-            <h4>Dados da glosa</h4>
-            <div class="module-form__grid">
-              <label>ID da medição *<input type="text" name="measurementId" required /></label>
-              <label>Tipo *<select name="type" required><option>ATRASO</option><option>NAO_ENTREGA</option><option>SLA</option><option>QUALIDADE</option></select></label>
-              <label>Valor *<input type="number" step="0.01" min="0" name="value" required /></label>
-              <label>Responsável pela glosa *<input type="text" name="createdBy" required /></label>
-            </div>
-            <label>Justificativa detalhada *<textarea name="justification" rows="4" required placeholder="Registre causa, impacto e referência contratual."></textarea></label>
-          </div>
-          <div class="module-section">
-            <h4>Evidência de suporte</h4>
-            <label>Anexo obrigatório *<input type="file" name="evidenceFile" required /></label>
-          </div>
-          <div class="module-form__actions"><button type="submit">Registrar glosa</button><span class="module-pill module-pill--danger">Sem justificativa + evidência a glosa não deve ser aceita</span></div>
-        </form>`,
-        "/governance/tickets": `<form class="module-form" data-module-form data-form-kind="governance">
-          <h3>Governança de chamado com SLA e escalonamento</h3>
-          <div class="module-section">
-            <h4>Dados do chamado</h4>
-            <div class="module-form__grid">
-              <label>ID GLPI (somente leitura)<input type="text" name="glpiId" value="Informado via integração GLPI" readonly /></label>
-              <label>Data de abertura *<input type="datetime-local" name="openedAt" required /></label>
-              <label class="module-inline-check"><input type="checkbox" name="companyAware" required /> Empresa ciente? *</label>
-              <label>Data da ciência *<input type="datetime-local" name="acknowledgedAt" required /></label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>Classificação</h4>
-            <div class="module-form__grid">
-              <label>Prioridade *<select name="priority" required><option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option></select></label>
-              <label>Tipo *<select name="ticketType" required><option>CORRETIVA</option><option>EVOLUTIVA</option></select></label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>SLA</h4>
-            <div class="module-form__grid">
-              <label>Prazo calculado<input type="text" value="Calculado automaticamente após classificação" readonly /></label>
-              <label>Contagem regressiva<input type="text" value="Em tempo real no painel operacional" readonly /></label>
-            </div>
-          </div>
-          <div class="module-section">
-            <h4>Descumprimento e ação do gestor</h4>
-            <label>Ação do gestor (obrigatória em violação)<textarea name="managerAction" rows="3" placeholder="Descreva ação corretiva adotada pelo gestor."></textarea></label>
-            <label class="module-inline-check"><input type="checkbox" name="managerNotified" /> Notificação formal da empresa realizada</label>
-          </div>
-          <div class="module-section">
-            <h4>Novo prazo</h4>
-            <div class="module-form__grid">
-              <label>Novo prazo<input type="datetime-local" name="newDeadline" /></label>
-            </div>
-            <label>Justificativa do novo prazo<textarea name="deadlineJustification" rows="3"></textarea></label>
-          </div>
-          <div class="module-section">
-            <h4>Controladoria</h4>
-            <label>Número do processo SEI (obrigatório em escalonamento)<input type="text" name="seiProcessNumber" placeholder="00000.000000/2026-00" /></label>
-          </div>
-          <div class="module-form__actions"><button type="submit">Salvar fluxo de governança</button><span class="module-pill module-pill--warn">Campos condicionais serão exigidos conforme etapa do fluxo</span></div>
-        </form>`,
-        "/goals": `<form class="module-form" data-module-form data-form-kind="goals">
-          <h3>Metas e desdobramentos estratégicos</h3>
-          <div class="module-section">
-            <h4>Meta</h4>
-            <div class="module-form__grid module-form__grid--3">
-              <label>Título da meta *<input type="text" name="goalTitle" required /></label>
-              <label>Ano *<input type="number" min="2020" max="2100" name="goalYear" required /></label>
-              <label>Prioridade *<input type="text" name="goalPriority" required /></label>
-              <label>Responsável *<input type="text" name="goalOwner" required /></label>
-              <label>Status *<select name="goalStatus" required><option>PLANNED</option><option>IN_PROGRESS</option><option>COMPLETED</option></select></label>
-            </div>
-            <label>Descrição detalhada *<textarea name="goalDescription" rows="4" required></textarea></label>
-          </div>
-          <div class="module-section">
-            <h4>Desdobramento (ação)</h4>
-            <div class="module-form__grid module-form__grid--3">
-              <label>Título da ação *<input type="text" name="actionTitle" required /></label>
-              <label>Responsável da ação *<input type="text" name="actionOwner" required /></label>
-              <label>Prazo *<input type="date" name="actionDueDate" required /></label>
-              <label>Status da ação *<select name="actionStatus" required><option>NOT_STARTED</option><option>IN_PROGRESS</option><option>COMPLETED</option></select></label>
-              <label>Progresso (%) *<input type="number" min="0" max="100" name="actionProgress" required /></label>
-            </div>
-            <label>Descrição da ação *<textarea name="actionDescription" rows="3" required></textarea></label>
-          </div>
-          <div class="module-form__actions"><button type="submit">Salvar meta e ação</button><span class="module-pill module-pill--ok">Use progresso para apoiar decisão de priorização</span></div>
-        </form>`,
-        "/suppliers": `<form class="module-form" data-module-form data-form-kind="simple">
-          <h3>Cadastro de fornecedor</h3>
-          <div class="module-form__grid">
-            <label>Nome *<input type="text" name="name" required /></label>
-            <label>CNPJ *<input type="text" name="cnpj" data-cnpj required /></label>
-          </div>
-          <div class="module-form__actions"><button type="submit">Cadastrar fornecedor</button></div>
-        </form>`,
-        "/fiscais": `<form class="module-form" data-module-form data-form-kind="simple">
-          <h3>Cadastro de fiscal</h3>
-          <div class="module-form__grid">
-            <label>Nome *<input type="text" name="name" required /></label>
-            <label>E-mail *<input type="email" name="email" required /></label>
-            <label>Telefone *<input type="text" name="phone" required /></label>
-          </div>
-          <div class="module-form__actions"><button type="submit">Cadastrar fiscal</button></div>
-        </form>`,
-        "/reports": `<form class="module-form" data-module-form data-form-kind="simple">
-          <h3>Geração de relatório</h3>
-          <div class="module-form__grid">
-            <label>Tipo *<select name="reportType" required><option>Resumo executivo</option><option>SLA</option><option>Metas</option><option>Glosas</option></select></label>
-            <label>Período início *<input type="date" name="startDate" required /></label>
-            <label>Período fim *<input type="date" name="endDate" required /></label>
-          </div>
-          <div class="module-form__actions"><button type="submit">Gerar relatório</button></div>
-        </form>`
-      };
+      const moduleFormByPath: Record<string, string> = {};
       const moduleLandingHtml = `<section class="module-landing">
         <div class="module-landing__header">
           <h2>${escapeHtml(currentPageMeta.title)}</h2>
@@ -1538,7 +1290,7 @@ function startHealthServer(): void {
               const isActive = currentPath === item.href;
               const shortLabel = item.label.slice(0, 2).toUpperCase();
               const iconSvg = iconMap[item.icon] ?? iconMap.reports;
-              return `<a href="${item.href}" title="${escapeHtml(item.label)}" data-short="${escapeHtml(shortLabel)}" class="app-nav__item${isActive ? " app-nav__item--active" : ""}">
+              return `<a href="${escapeHtml(gtiNavBrowserHref(item.href))}" title="${escapeHtml(item.label)}" data-short="${escapeHtml(shortLabel)}" class="app-nav__item${isActive ? " app-nav__item--active" : ""}">
                 <span class="app-nav__item-icon" aria-hidden="true">${iconSvg}</span>
                 <span class="app-nav__item-label">${escapeHtml(item.label)}</span>
               </a>`;
@@ -2570,7 +2322,7 @@ function startHealthServer(): void {
         <p class="filters-shell__lede">Aplicam ao quadro, ao painel de idade dos abertos e ao recálculo de pendência (até 200 cards por coluna)</p>
       </header>
       <div class="filters-shell__pills" aria-label="Filtros aplicados">${filterPillsHtml}</div>
-      <form id="kanban-filters-form" class="filters-grid" method="GET" action="${escapeHtml(parsedUrl.pathname)}">
+      <form id="kanban-filters-form" class="filters-grid" method="GET" action="${escapeHtml(gtiKanbanFiltersAction(parsedUrl.pathname))}">
         <label>Busca
           <input type="text" name="q" value="${escapeHtml(q)}" placeholder="ID, título ou conteúdo" autocomplete="off" />
         </label>

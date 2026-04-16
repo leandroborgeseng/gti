@@ -36,13 +36,16 @@ Este documento resume o que **ainda não está completo** ou **vale evoluir**, a
 
 ## Longo prazo / opcional
 
-8. **Paridade visual com o sistema antigo**  
+8. **Módulo de projetos**  
+   Vincular tarefas que não passam pelo gestor de chamados (GLPI); planeamento fora do ciclo ticket.
+
+9. **Paridade visual com o sistema antigo**  
    Copiar mais padrões de layout/fluxo sem reintroduzir complexidade de dados.
 
-9. **Integrações adicionais**  
+10. **Integrações adicionais**  
    Notificações (e-mail/push), webhooks, filas.
 
-10. **Testes automatizados e2e**  
+11. **Testes automatizados e2e**  
     Playwright ou similar para GLPI + módulo de contratos.
 
 ## Como acompanhar o projeto no GitHub

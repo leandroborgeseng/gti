@@ -79,6 +79,7 @@ Para não quebrar o sistema atual de GLPI, o novo módulo foi iniciado em estrut
 
 - Layout com sidebar fixa + header + conteúdo responsivo.
 - Rotas:
+  - `/operacao/glpi/...` — proxy do quadro Kanban (HTML do servidor Node, sem shell React)
   - `/dashboard`
   - `/contracts`
   - `/contracts/[id]`
@@ -90,7 +91,14 @@ Para não quebrar o sistema atual de GLPI, o novo módulo foi iniciado em estrut
   - `/reports`
 - Dashboard com KPIs e gráficos base (Recharts).
 
-Se o **quadro GLPI** (`npm start` na raiz) e o **Next** estiverem em URLs diferentes (por exemplo dois serviços no Railway), defina no processo do servidor Node a variável **`GTI_NEXT_APP_URL`** com a URL pública do Next (sem barra final). Os links do menu para contratos, metas, medições, etc. passam a **redireccionar (302)** para a app Next, onde está a interface com lista e modal.
+### Experiência única (Next + servidor GLPI)
+
+O **Next** é a interface principal: gestão contratual, metas, etc. O **servidor Node** na raiz mantém o Kanban GLPI, cron e APIs (`/api/kanban`, …). Para um só domínio:
+
+1. **No processo Next** (`apps/frontend`): defina **`GLPI_SYNC_ORIGIN`** com a URL interna ou pública do servidor Node (ex.: `http://127.0.0.1:3000`). O Next encaminha `/api/kanban`, `/api/tickets/glpi/…`, etc., e serve o Kanban em **`/operacao/glpi/*`** (proxy reverso).
+2. **No processo Node**: defina **`GTI_NEXT_PUBLIC_URL`** com a URL pública da app Next (a mesma que o utilizador abre no browser). Os GET a `/contracts`, `/goals`, … respondem **302** para o Next; o menu do Kanban aponta para essas URLs. Se não definir **`GTI_GLPI_UI_BASE`**, assume-se **`GTI_NEXT_PUBLIC_URL` + `/operacao/glpi`** para o formulário de filtros e links do quadro.
+
+Assim desaparecem os formulários HTML duplicados no Node; o Kanban continua optimizado no processo GLPI e a gestão contratual fica só no Next.
 
 ### Como iniciar o novo módulo
 
