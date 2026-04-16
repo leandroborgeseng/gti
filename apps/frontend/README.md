@@ -31,6 +31,6 @@ npm run typecheck
 
 Variáveis: copiar `.env.example` para `.env.local`.
 
-**Prisma:** o schema único está em **`apps/backend/prisma/schema.prisma`**. O `npm run build` gera o cliente a partir desse ficheiro; o `tsconfig` aponta `@prisma/client` para `apps/backend/node_modules`. É necessário **`DATABASE_URL`** (PostgreSQL) igual ao do backend.
+**Prisma:** o schema único está em **`apps/backend/prisma/schema.prisma`**. O cliente gerado fica em **`node_modules/.prisma/client` na raiz** do monorepo (ver `output` no gerador). O `tsconfig` aponta `@prisma/client` para a raiz. Na raiz, `npm install` corre **`postinstall`** com `prisma generate` (necessário no Railway). É necessário **`DATABASE_URL`** (PostgreSQL) igual ao do backend.
 
 **Build:** `GLPI_SKIP_BOOTSTRAP=1` é definido no script `build` para não arrancar o cron nem exigir credenciais GLPI durante `next build` (usa URLs fictícias só na fase de compilação).

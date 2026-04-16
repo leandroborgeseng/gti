@@ -1,5 +1,7 @@
 generator client {
   provider = "prisma-client-js"
+  /// Monorepo: o worker na raiz e o Railway importam `@prisma/client` de `/app/node_modules`.
+  output   = "../../../node_modules/.prisma/client"
 }
 
 datasource db {

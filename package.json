@@ -5,6 +5,7 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
+    "postinstall": "prisma generate --schema apps/backend/prisma/schema.prisma",
     "start": "tsx src/index.ts",
     "dev": "tsx src/index.ts",
     "sync": "tsx src/index.ts",
@@ -20,12 +21,12 @@
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",
     "pino": "^9.3.2",
+    "prisma": "^6.6.0",
     "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/node-cron": "^3.0.11",
-    "prisma": "^6.6.0",
     "typescript": "^5.6.3"
   }
 }

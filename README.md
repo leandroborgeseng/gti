@@ -34,6 +34,7 @@ O servidor sobe na porta definida por `PORT` (padrão **3000**).
 | Script | Descrição |
 |--------|-----------|
 | `dev` / `start` / `sync` | Arranca o processo (HTTP + cron de sincronização) |
+| `postinstall` | Gera o cliente Prisma (corre no `npm install`, incl. Railway em produção) |
 | `prisma:generate` | Gera o cliente Prisma a partir de `apps/backend/prisma/schema.prisma` |
 | `prisma:migrate` | Cria/aplica migrações em desenvolvimento (Prisma Migrate) |
 | `prisma:deploy` | Aplica migrações pendentes em CI/produção |

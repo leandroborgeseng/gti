@@ -4,6 +4,7 @@
   "private": true,
   "description": "Backend NestJS para gestão de contratos públicos (PostgreSQL + Prisma).",
   "scripts": {
+    "postinstall": "prisma generate --schema prisma/schema.prisma",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "build": "nest build",
