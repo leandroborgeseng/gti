@@ -1,5 +1,9 @@
 # Stack unificado (TypeScript + Next.js)
 
+## React já está em uso
+
+A interface de **gestão contratual** (contratos, metas, medições, modais, sidebar, etc.) é **100 % React** em `apps/frontend`. O único ecrã que ainda não é React é o **Kanban GLPI** (HTML do processo na raiz do monorepo), servido via `/operacao/glpi` até migração.
+
 ## Situação actual
 
 Todo o código de negócio já está em **TypeScript**. O que parecem “duas linguagens” são sobretudo **dois processos Node**:
