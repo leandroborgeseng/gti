@@ -1,12 +1,12 @@
 {
   "name": "glpi-sync-mvp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sincronização de chamados GLPI para PostgreSQL (partilhado com o backend Nest), Kanban Next e worker Node (TypeScript + Prisma).",
   "private": true,
   "type": "commonjs",
   "scripts": {
     "postinstall": "prisma generate --schema apps/backend/prisma/schema.prisma",
-    "build": "cd apps/frontend && npm ci && npm run build",
+    "build": "npm ci && cd apps/frontend && npm ci && npm run build",
     "start": "npm run prisma:deploy && cd apps/frontend && npm run start",
     "start:worker": "tsx src/index.ts",
     "dev": "tsx src/index.ts",

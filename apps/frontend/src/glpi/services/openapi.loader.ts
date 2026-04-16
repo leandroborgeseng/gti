@@ -3,6 +3,7 @@ import path from "node:path";
 import axios from "axios";
 import { env } from "../config/env";
 import { logger } from "../config/logger";
+import { toErrorLog } from "../errors";
 
 const TMP_OPENAPI_PATH = path.join("/tmp", "glpi-doc.json");
 let discoveredTicketsPath = normalizeApiPath(env.GLPI_TICKETS_PATH);
@@ -55,24 +56,34 @@ function detectTicketsPath(paths: Record<string, unknown>): string {
 }
 
 export async function loadOpenApiSpec(): Promise<Record<string, unknown>> {
-  const response = await axios.get<Record<string, unknown>>(env.GLPI_DOC_URL, {
-    timeout: env.HTTP_TIMEOUT_MS,
-    headers: {
-      Accept: "application/json",
-      "User-Agent": env.GLPI_USER_AGENT
+  try {
+    const response = await axios.get<Record<string, unknown>>(env.GLPI_DOC_URL, {
+      timeout: env.HTTP_TIMEOUT_MS,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": env.GLPI_USER_AGENT
+      }
+    });
+
+    await fs.writeFile(TMP_OPENAPI_PATH, JSON.stringify(response.data, null, 2), "utf-8").catch(() => {
+      /* /tmp pode ser só de leitura em alguns ambientes */
+    });
+
+    const paths = response.data.paths;
+    if (paths && typeof paths === "object") {
+      discoveredTicketsPath = detectTicketsPath(paths as Record<string, unknown>);
     }
-  });
 
-  await fs.writeFile(TMP_OPENAPI_PATH, JSON.stringify(response.data, null, 2), "utf-8");
+    logger.info({ path: TMP_OPENAPI_PATH, ticketsPath: discoveredTicketsPath }, "Doc OpenAPI GLPI baixado e endpoints descobertos");
 
-  const paths = response.data.paths;
-  if (paths && typeof paths === "object") {
-    discoveredTicketsPath = detectTicketsPath(paths as Record<string, unknown>);
+    return response.data;
+  } catch (error) {
+    logger.warn(
+      { error: toErrorLog(error), docUrl: env.GLPI_DOC_URL, fallbackPath: discoveredTicketsPath },
+      "OpenAPI GLPI indisponível; mantém GLPI_TICKETS_PATH / último path conhecido"
+    );
+    return { paths: {} };
   }
-
-  logger.info({ path: TMP_OPENAPI_PATH, ticketsPath: discoveredTicketsPath }, "Doc OpenAPI GLPI baixado e endpoints descobertos");
-
-  return response.data;
 }
 
 export function getDiscoveredTicketsPath(): string {

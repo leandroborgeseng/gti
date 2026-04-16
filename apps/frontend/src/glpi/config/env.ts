@@ -1,8 +1,21 @@
 import dotenv from "dotenv";
 import path from "node:path";
 
-dotenv.config();
-dotenv.config({ path: path.resolve(process.cwd(), "../../.env") });
+/** Carrega variáveis do monorepo e da pasta do Next (Railway / local). */
+function loadEnvFiles(): void {
+  const cwd = process.cwd();
+  const roots = [
+    path.resolve(cwd, "../../.env"),
+    path.resolve(cwd, "../../.env.local"),
+    path.resolve(cwd, ".env"),
+    path.resolve(cwd, ".env.local")
+  ];
+  for (const p of roots) {
+    dotenv.config({ path: p });
+  }
+}
+
+loadEnvFiles();
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const n = Math.trunc(Number(value));
@@ -26,8 +39,24 @@ function requireEnv(name: string, buildFallback: string): string {
   throw new Error(`Variável de ambiente obrigatória ausente: ${name}`);
 }
 
+/**
+ * Aceita `https://host/api.php`, `https://host/apirest.php` ou só `https://host` (assume API de alto nível).
+ */
+function normalizeGlpiApiBase(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "https://build.invalid/api.php";
+  }
+  if (/api\.php$/i.test(trimmed) || /apirest\.php$/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `${trimmed}/api.php`;
+}
+
+const rawGlpiBase = requireEnv("GLPI_BASE_URL", "https://build.invalid/api.php");
+
 export const env = {
-  GLPI_BASE_URL: requireEnv("GLPI_BASE_URL", "https://build.invalid/api.php"),
+  GLPI_BASE_URL: normalizeGlpiApiBase(rawGlpiBase),
   GLPI_DOC_URL: requireEnv("GLPI_DOC_URL", "https://build.invalid/api.php/v2/doc.json"),
   GLPI_CLIENT_ID: requireEnv("GLPI_CLIENT_ID", "build"),
   GLPI_CLIENT_SECRET: requireEnv("GLPI_CLIENT_SECRET", "build"),
@@ -36,6 +65,8 @@ export const env = {
   GLPI_TICKETS_PATH: process.env.GLPI_TICKETS_PATH || "/v2/Assistance/Ticket",
   GLPI_OAUTH_SCOPE: process.env.GLPI_OAUTH_SCOPE || "api",
   GLPI_USER_AGENT: process.env.GLPI_USER_AGENT || "glpi-sync-mvp/1.0",
+  /** Se definido, pedido OAuth2 de token usa este URL em vez de `{GLPI_BASE_URL}/token`. */
+  GLPI_TOKEN_URL: (process.env.GLPI_TOKEN_URL || "").trim(),
   PORT: Number(process.env.PORT || 3000),
   CRON_EXPRESSION: process.env.CRON_EXPRESSION || "*/5 * * * *",
   HTTP_TIMEOUT_MS: Number(process.env.HTTP_TIMEOUT_MS || 20000),

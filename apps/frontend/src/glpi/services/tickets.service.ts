@@ -123,7 +123,10 @@ export async function getTicketsPage(page: number, pageSize = 100, options: GetT
       const response: AxiosResponse<TicketsPageResponse | unknown[]> = await attempt();
       const status = response.status;
       if (status >= 400) {
-        lastError = new Error(`Falha ao buscar pagina de tickets (${status})`);
+        const rawBody =
+          typeof response.data === "string" ? response.data : JSON.stringify(response.data ?? "");
+        const body = rawBody.slice(0, 500);
+        lastError = new Error(`Falha ao buscar pagina de tickets (${status}) ${body}`);
         continue;
       }
       const tickets = pickTicketArray(response.data);

@@ -12,8 +12,16 @@ function isTokenValid(): boolean {
   return Boolean(cachedToken) && Date.now() < tokenExpiresAt;
 }
 
+function resolveTokenUrl(): string {
+  if (env.GLPI_TOKEN_URL) {
+    return env.GLPI_TOKEN_URL;
+  }
+  const base = env.GLPI_BASE_URL.replace(/\/+$/, "");
+  return `${base}/token`;
+}
+
 async function requestNewToken(): Promise<string> {
-  const url = `${env.GLPI_BASE_URL}/token`;
+  const url = resolveTokenUrl();
   const basePayload = {
     grant_type: "password",
     client_id: env.GLPI_CLIENT_ID,
