@@ -24,16 +24,22 @@ Opcional: `GLPI_TICKETS_PATH`, `GLPI_TICKETS_PAGE_SIZE`, `GLPI_TICKETS_FETCH_CON
 ```bash
 npm install
 npm run prisma:generate
+# Interface Next (porta 3001 por defeito):
+cd apps/frontend && npm run dev
+# Worker GLPI (cron + sync) na raiz:
 npm run dev
 ```
 
-O servidor sobe na porta definida por `PORT` (padrão **3000**).
+Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`npm start`** (sobe o Next) e, se quiser o cron GLPI, crie um **segundo** serviço com **`npm run start:worker`**. O build deve incluir **`npm run build`** na raiz (ou defina o comando de build assim no painel).
 
 ## Scripts úteis (`npm run`)
 
 | Script | Descrição |
 |--------|-----------|
-| `dev` / `start` / `sync` | Arranca o processo (HTTP + cron de sincronização) |
+| `start` | **Next.js** (Kanban + gestão); na Railway usa a variável **`PORT`**. |
+| `start:worker` | Worker só GLPI (cron + sync); usar como **segundo** serviço se precisar. |
+| `build` | Compila o frontend (`apps/frontend`) para deploy na Railway na raiz do repo. |
+| `dev` / `sync` | Arranca o worker GLPI em local (`tsx`) |
 | `postinstall` | Gera o cliente Prisma (corre no `npm install`, incl. Railway em produção) |
 | `prisma:generate` | Gera o cliente Prisma a partir de `apps/backend/prisma/schema.prisma` |
 | `prisma:migrate` | Cria/aplica migrações em desenvolvimento (Prisma Migrate) |

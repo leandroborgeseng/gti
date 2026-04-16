@@ -6,7 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "postinstall": "prisma generate --schema apps/backend/prisma/schema.prisma",
-    "start": "tsx src/index.ts",
+    "build": "cd apps/frontend && npm ci && npm run build",
+    "start": "cd apps/frontend && npm run start",
+    "start:worker": "tsx src/index.ts",
     "dev": "tsx src/index.ts",
     "sync": "tsx src/index.ts",
     "smoke:regression": "tsx src/scripts/regression-smoke.ts",
