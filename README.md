@@ -57,6 +57,10 @@ O servidor sobe na porta definida por `PORT` (padrão **3000**).
 - Ficheiro SQLite: `prisma/data.db` (caminho definido no `schema.prisma`).
 - Modelos principais: `Ticket`, `TicketAttribute`, `SyncState`.
 
+## Stack e evolução (TypeScript + Next)
+
+O projecto usa **uma linguagem (TypeScript)** no front e nos servidores Node. A direcção é **consolidar UI e APIs GLPI no Next.js** (Node + React num só deploy); ver **`docs/stack-unificado.md`**. Já existe **base PWA** (`app/manifest.ts`, metadados e `public/icon.svg`); service worker offline fica para uma fase seguinte.
+
 ## Novo módulo de contratos públicos (arquitetura isolada)
 
 Para não quebrar o sistema atual de GLPI, o novo módulo foi iniciado em estrutura paralela:
