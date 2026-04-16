@@ -7,7 +7,7 @@
   "scripts": {
     "postinstall": "prisma generate --schema apps/backend/prisma/schema.prisma",
     "build": "cd apps/frontend && npm ci && npm run build",
-    "start": "cd apps/frontend && npm run start",
+    "start": "npm run prisma:deploy && cd apps/frontend && npm run start",
     "start:worker": "tsx src/index.ts",
     "dev": "tsx src/index.ts",
     "sync": "tsx src/index.ts",
