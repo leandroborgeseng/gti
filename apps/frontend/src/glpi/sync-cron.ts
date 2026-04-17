@@ -208,9 +208,25 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
   await recordGlpiBootstrapCheckpoint("bootstrap_done");
 }
 
-/** Next.js: evita duplicar o cron em HMR. */
-export async function bootstrapGlpiSyncInNext(): Promise<void> {
-  await bootstrapGlpiSync({ enableHmrGuard: true });
+type GlpiBootstrapGlobal = typeof globalThis & {
+  /** Uma única promessa de arranque por processo Node (instrumentation + rotas API). */
+  __glpiBootstrapNextPromise?: Promise<void>;
+};
+
+/**
+ * Arranque GLPI no Next.js, **deduplicado** em `globalThis`.
+ * Em alguns deploys o `instrumentation.register()` não corre ou corre antes da BD estar pronta;
+ * o primeiro `GET /api/glpi/status` chama a mesma função como rede de segurança.
+ */
+export function bootstrapGlpiSyncInNext(): Promise<void> {
+  const g = globalThis as GlpiBootstrapGlobal;
+  if (!g.__glpiBootstrapNextPromise) {
+    g.__glpiBootstrapNextPromise = bootstrapGlpiSync({ enableHmrGuard: true }).catch((error) => {
+      g.__glpiBootstrapNextPromise = undefined;
+      throw error;
+    });
+  }
+  return g.__glpiBootstrapNextPromise;
 }
 
 /** Processo dedicado (CLI `tsx apps/frontend/scripts/glpi-worker-cli.ts`): mesma lógica, sem guard de HMR. */

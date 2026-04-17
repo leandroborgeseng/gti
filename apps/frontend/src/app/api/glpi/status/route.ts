@@ -41,7 +41,12 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
-    const { syncStatus } = await import("@/glpi/sync-cron");
+    const mod = await import("@/glpi/sync-cron");
+    /** Rede de segurança: em alguns ambientes o `instrumentation.register()` não corre; o mesmo bootstrap é deduplicado em `globalThis`. */
+    void mod.bootstrapGlpiSyncInNext().catch((error) => {
+      console.error("[GTI] Garantia de arranque GLPI (após GET /api/glpi/status):", error);
+    });
+    const { syncStatus } = mod;
     const [dbRead, arranqueGlpiUltimo] = await Promise.all([
       readGlpiSyncStatusFromDbDetailed(),
       readGlpiBootstrapLastCheckpoint()
@@ -65,7 +70,7 @@ export async function GET(): Promise<NextResponse> {
     } else if (!dbRead.linhaComValor && sync.runs === 0 && process.env.GLPI_SKIP_BOOTSTRAP !== "1") {
       if (!arranqueGlpiUltimo) {
         avisos.push(
-          "Não existe checkpoint de arranque (`glpi_bootstrap_last_v1`). O `register()` do instrumentation pode não ter corrido este bootstrap, ou falhou antes da primeira escrita na base (ver Deploy Logs à procura de «instrumentation» / «Falha no arranque da sincronização GLPI»)."
+          "Não existe checkpoint de arranque (`glpi_bootstrap_last_v1`) ainda. Este pedido também disparou o bootstrap GLPI (deduplicado com o instrumentation). Volte a chamar este URL dentro de alguns segundos. Se continuar vazio, veja Deploy Logs: «register() executado», «A agendar bootstrap» ou erros Prisma antes da primeira escrita."
         );
       } else if (arranqueGlpiUltimo.phase === "instrumentation_pre_bootstrap") {
         avisos.push(
