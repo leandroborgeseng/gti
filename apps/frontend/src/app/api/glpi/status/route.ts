@@ -7,9 +7,19 @@ import {
 } from "@/glpi/config/glpi-runtime-check";
 import {
   mergeGlpiSyncStatusForApi,
+  readGlpiBootstrapDoneAt,
   readGlpiBootstrapLastCheckpoint,
   readGlpiSyncStatusFromDbDetailed
 } from "@/glpi/glpi-sync-status-persistence";
+
+const FASES_ARRANQUE_PARCIAIS = new Set([
+  "bootstrap_enter",
+  "after_ensure_db",
+  "before_openapi_doc",
+  "after_openapi",
+  "after_token",
+  "before_run_sync"
+]);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,9 +57,10 @@ export async function GET(): Promise<NextResponse> {
       console.error("[GTI] Garantia de arranque GLPI (após GET /api/glpi/status):", error);
     });
     const { syncStatus } = mod;
-    const [dbRead, arranqueGlpiUltimo] = await Promise.all([
+    const [dbRead, arranqueGlpiUltimo, arranqueGlpiBootstrapConcluidoEm] = await Promise.all([
       readGlpiSyncStatusFromDbDetailed(),
-      readGlpiBootstrapLastCheckpoint()
+      readGlpiBootstrapLastCheckpoint(),
+      readGlpiBootstrapDoneAt()
     ]);
     const fromDb = dbRead.snapshot;
     const merged = mergeGlpiSyncStatusForApi(fromDb, { ...syncStatus });
@@ -114,6 +125,19 @@ export async function GET(): Promise<NextResponse> {
       }
     }
 
+    if (
+      arranqueGlpiUltimo &&
+      sync.lastStartedAt &&
+      FASES_ARRANQUE_PARCIAIS.has(arranqueGlpiUltimo.phase) &&
+      !Number.isNaN(Date.parse(arranqueGlpiUltimo.at)) &&
+      !Number.isNaN(Date.parse(sync.lastStartedAt)) &&
+      Date.parse(arranqueGlpiUltimo.at) > Date.parse(sync.lastStartedAt)
+    ) {
+      avisos.push(
+        "O checkpoint de arranque na BD é mais recente que o início da sync atual — é provável haver mais do que uma réplica a escrever na mesma base. Use 1 réplica para o serviço Next ou defina GLPI_CRON_DISABLED=1 nas réplicas só HTTP e um único worker de sync."
+      );
+    }
+
     return jsonUtf8({
       ok: true,
       missingEnv: [],
@@ -126,7 +150,8 @@ export async function GET(): Promise<NextResponse> {
         syncStateParseInvalido: dbRead.parseInvalido,
         prismaErro: dbRead.erroPrisma,
         arranqueGlpiUltimaFase: arranqueGlpiUltimo?.phase ?? null,
-        arranqueGlpiUltimaFaseEm: arranqueGlpiUltimo?.at ?? null
+        arranqueGlpiUltimaFaseEm: arranqueGlpiUltimo?.at ?? null,
+        arranqueGlpiBootstrapConcluidoEm: arranqueGlpiBootstrapConcluidoEm
       },
       avisos: avisos.length ? avisos : undefined
     });

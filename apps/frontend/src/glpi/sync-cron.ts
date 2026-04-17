@@ -8,8 +8,10 @@ import { getAccessToken } from "./services/auth.service";
 import { enrichWaitingPartyBatch } from "./services/glpi-ticket-history.service";
 import { toErrorLog } from "./errors";
 import {
+  limparSyncOrfaNaBdSeNecessario,
   persistGlpiSyncStatusSafe,
-  recordGlpiBootstrapCheckpoint
+  recordGlpiBootstrapCheckpoint,
+  recordGlpiBootstrapDoneMarker
 } from "./glpi-sync-status-persistence";
 
 /** Estado partilhado no `globalThis` — o Next pode instanciar `sync-cron` em mais do que um bundle (instrumentation vs rotas). */
@@ -83,6 +85,7 @@ function applySyncProgress(progress: SyncProgress): void {
 }
 
 export async function runSyncWithGuard(): Promise<void> {
+  await limparSyncOrfaNaBdSeNecessario();
   const store = getGlpiStore();
   if (store.isSyncRunning) {
     logger.warn("Sincronização anterior ainda em andamento, pulando execução");
@@ -207,6 +210,7 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
     store.nextCronStarted = true;
   }
   await recordGlpiBootstrapCheckpoint("bootstrap_done");
+  await recordGlpiBootstrapDoneMarker();
 }
 
 type GlpiBootstrapGlobal = typeof globalThis & {

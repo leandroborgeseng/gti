@@ -10,6 +10,9 @@ export const GLPI_SYNC_STATUS_STATE_KEY = "glpi_sync_status_v1";
 /** Última fase conhecida do `bootstrapGlpiSync` (diagnóstico quando `glpi_sync_status_v1` ainda não existe). */
 export const GLPI_BOOTSTRAP_LAST_KEY = "glpi_bootstrap_last_v1";
 
+/** Data ISO do último `bootstrap_done` bem-sucedido (não é sobrescrito por fases intermédias de outro arranque). */
+export const GLPI_BOOTSTRAP_DONE_KEY = "glpi_bootstrap_done_v1";
+
 export type GlpiBootstrapCheckpoint = {
   phase: string;
   at: string;
@@ -41,6 +44,63 @@ export async function readGlpiBootstrapLastCheckpoint(): Promise<GlpiBootstrapCh
     return { phase: o.phase, at: o.at };
   } catch {
     return null;
+  }
+}
+
+export async function recordGlpiBootstrapDoneMarker(): Promise<void> {
+  try {
+    const at = new Date().toISOString();
+    await prisma.syncState.upsert({
+      where: { key: GLPI_BOOTSTRAP_DONE_KEY },
+      create: { key: GLPI_BOOTSTRAP_DONE_KEY, value: at },
+      update: { value: at }
+    });
+  } catch (error) {
+    logger.warn({ error: toErrorLog(error) }, "Não foi possível gravar o marcador glpi_bootstrap_done_v1");
+  }
+}
+
+export async function readGlpiBootstrapDoneAt(): Promise<string | null> {
+  try {
+    const row = await prisma.syncState.findUnique({ where: { key: GLPI_BOOTSTRAP_DONE_KEY } });
+    const raw = row?.value?.trim();
+    if (!raw) return null;
+    if (Number.isNaN(Date.parse(raw))) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Se a BD indica sync em curso sem `lastFinishedAt` há mais de `GLPI_SYNC_ORPHAN_MS` ms, normaliza
+ * (reinício do contentor / réplica morta a meio da sync).
+ */
+export async function limparSyncOrfaNaBdSeNecessario(): Promise<void> {
+  try {
+    const rawMs = process.env.GLPI_SYNC_ORPHAN_MS?.trim();
+    const limiteMs = rawMs ? Math.max(120_000, Number(rawMs) || 14_400_000) : 14_400_000;
+
+    const snap = await readGlpiSyncStatusFromDb();
+    if (!snap?.isRunning || snap.lastFinishedAt) return;
+    if (!snap.lastStartedAt) return;
+    const t = Date.parse(snap.lastStartedAt);
+    if (Number.isNaN(t)) return;
+    if (Date.now() - t < limiteMs) return;
+
+    const { persistedAt: _p, ...rest } = snap;
+    await writeGlpiSyncStatusToDb({
+      ...rest,
+      isRunning: false,
+      lastFinishedAt: new Date().toISOString(),
+      lastError: rest.lastError || "Estado órfão: sync interrompida (reinício do processo ou excedeu GLPI_SYNC_ORPHAN_MS)."
+    });
+    logger.warn(
+      { lastStartedAt: snap.lastStartedAt, limiteMs },
+      "Estado de sync órfão na BD normalizado antes de nova execução"
+    );
+  } catch (error) {
+    logger.warn({ error: toErrorLog(error) }, "Não foi possível normalizar estado de sync órfão na BD");
   }
 }
 
