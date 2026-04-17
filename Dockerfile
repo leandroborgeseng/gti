@@ -1,7 +1,12 @@
 # Imagem única da aplicação (Next.js + GLPI + Prisma). PostgreSQL fica fora (ex.: Railway); passe `DATABASE_URL`.
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
+# OpenSSL para o Prisma; o schema tem de existir antes de `npm ci` porque o `postinstall` da raiz corre `prisma generate`.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
+COPY apps/backend/prisma ./apps/backend/prisma
 RUN npm ci
 COPY apps/frontend/package.json apps/frontend/package-lock.json ./apps/frontend/
 WORKDIR /app/apps/frontend
