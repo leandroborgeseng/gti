@@ -8,7 +8,48 @@ import { getAccessToken } from "./services/auth.service";
 import { enrichWaitingPartyBatch } from "./services/glpi-ticket-history.service";
 import { toErrorLog } from "./errors";
 
-let isSyncRunning = false;
+/** Estado partilhado no `globalThis` — o Next pode instanciar `sync-cron` em mais do que um bundle (instrumentation vs rotas). */
+type GlpiSyncStatus = {
+  isRunning: boolean;
+  runs: number;
+  lastStartedAt: string | null;
+  lastFinishedAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  lastLoaded: number;
+  lastSaved: number;
+  lastFailed: number;
+  lastPage: number;
+};
+
+type GlpiStore = {
+  syncStatus: GlpiSyncStatus;
+  isSyncRunning: boolean;
+  nextCronStarted: boolean;
+};
+
+function getGlpiStore(): GlpiStore {
+  const g = globalThis as { __glpiStore?: GlpiStore };
+  if (!g.__glpiStore) {
+    g.__glpiStore = {
+      isSyncRunning: false,
+      nextCronStarted: false,
+      syncStatus: {
+        isRunning: false,
+        runs: 0,
+        lastStartedAt: null,
+        lastFinishedAt: null,
+        lastSuccessAt: null,
+        lastError: null,
+        lastLoaded: 0,
+        lastSaved: 0,
+        lastFailed: 0,
+        lastPage: 0
+      }
+    };
+  }
+  return g.__glpiStore;
+}
 
 /** Opções do arranque da sincronização (processo Next vs worker CLI). */
 export type BootstrapGlpiSyncOptions = {
@@ -19,40 +60,31 @@ export type BootstrapGlpiSyncOptions = {
   enableHmrGuard?: boolean;
 };
 
-export const syncStatus = {
-  isRunning: false,
-  runs: 0,
-  lastStartedAt: null as string | null,
-  lastFinishedAt: null as string | null,
-  lastSuccessAt: null as string | null,
-  lastError: null as string | null,
-  lastLoaded: 0,
-  lastSaved: 0,
-  lastFailed: 0,
-  lastPage: 0
-};
+export const syncStatus = getGlpiStore().syncStatus;
 
 function applySyncProgress(progress: SyncProgress): void {
-  syncStatus.lastPage = progress.page;
-  syncStatus.lastLoaded = progress.loaded;
-  syncStatus.lastSaved = progress.saved;
-  syncStatus.lastFailed = progress.failed;
+  const s = getGlpiStore().syncStatus;
+  s.lastPage = progress.page;
+  s.lastLoaded = progress.loaded;
+  s.lastSaved = progress.saved;
+  s.lastFailed = progress.failed;
 }
 
 export async function runSyncWithGuard(): Promise<void> {
-  if (isSyncRunning) {
+  const store = getGlpiStore();
+  if (store.isSyncRunning) {
     logger.warn("Sincronização anterior ainda em andamento, pulando execução");
     return;
   }
 
-  isSyncRunning = true;
-  syncStatus.isRunning = true;
-  syncStatus.runs += 1;
-  syncStatus.lastStartedAt = new Date().toISOString();
-  syncStatus.lastPage = 0;
-  syncStatus.lastLoaded = 0;
-  syncStatus.lastSaved = 0;
-  syncStatus.lastFailed = 0;
+  store.isSyncRunning = true;
+  store.syncStatus.isRunning = true;
+  store.syncStatus.runs += 1;
+  store.syncStatus.lastStartedAt = new Date().toISOString();
+  store.syncStatus.lastPage = 0;
+  store.syncStatus.lastLoaded = 0;
+  store.syncStatus.lastSaved = 0;
+  store.syncStatus.lastFailed = 0;
   const startedMs = Date.now();
   try {
     await loadOpenApiSpec().catch((error) => {
@@ -61,12 +93,12 @@ export async function runSyncWithGuard(): Promise<void> {
     const result: SyncTicketsResult = await syncTickets({
       onProgress: applySyncProgress
     });
-    applySyncProgress({ page: syncStatus.lastPage || 1, ...result });
+    applySyncProgress({ page: store.syncStatus.lastPage || 1, ...result });
     await enrichWaitingPartyBatch(35).catch((error) => {
       logger.warn({ error: toErrorLog(error) }, "Enriquecimento waitingParty ignorado");
     });
-    syncStatus.lastSuccessAt = new Date().toISOString();
-    syncStatus.lastError = null;
+    store.syncStatus.lastSuccessAt = new Date().toISOString();
+    store.syncStatus.lastError = null;
     logger.info(
       {
         durationMs: Date.now() - startedMs,
@@ -78,15 +110,15 @@ export async function runSyncWithGuard(): Promise<void> {
     );
   } catch (error) {
     const details = toErrorLog(error);
-    syncStatus.lastError = details.message;
+    store.syncStatus.lastError = details.message;
     logger.error(
       { error: details, durationMs: Date.now() - startedMs },
       `Falha na sincronização de tickets: ${details.message}`
     );
   } finally {
-    isSyncRunning = false;
-    syncStatus.isRunning = false;
-    syncStatus.lastFinishedAt = new Date().toISOString();
+    store.isSyncRunning = false;
+    store.syncStatus.isRunning = false;
+    store.syncStatus.lastFinishedAt = new Date().toISOString();
   }
 }
 
@@ -108,15 +140,14 @@ export function startGlpiSyncCron(): void {
   }
 }
 
-const globalCron = globalThis as { __glpiNextCronStarted?: boolean };
-
 /**
  * Arranque da sincronização GLPI (schema auxiliar, token, primeira sync, cron).
  * Partilhado pelo Next (`instrumentation`) e pelo worker CLI na raiz do monorepo.
  */
 export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}): Promise<void> {
+  const store = getGlpiStore();
   const enableHmrGuard = options.enableHmrGuard ?? true;
-  if (enableHmrGuard && globalCron.__glpiNextCronStarted) {
+  if (enableHmrGuard && store.nextCronStarted) {
     return;
   }
 
@@ -137,7 +168,7 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
   /** Sempre agenda o cron para retentar sync/GLPI após falhas transitórias (Railway, rede, etc.). */
   startGlpiSyncCron();
   if (enableHmrGuard) {
-    globalCron.__glpiNextCronStarted = true;
+    store.nextCronStarted = true;
   }
 }
 
