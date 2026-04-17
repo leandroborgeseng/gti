@@ -7,6 +7,7 @@ import {
 } from "@/glpi/config/glpi-runtime-check";
 import {
   mergeGlpiSyncStatusForApi,
+  readGlpiBootstrapLastCheckpoint,
   readGlpiSyncStatusFromDbDetailed
 } from "@/glpi/glpi-sync-status-persistence";
 
@@ -41,7 +42,10 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const { syncStatus } = await import("@/glpi/sync-cron");
-    const dbRead = await readGlpiSyncStatusFromDbDetailed();
+    const [dbRead, arranqueGlpiUltimo] = await Promise.all([
+      readGlpiSyncStatusFromDbDetailed(),
+      readGlpiBootstrapLastCheckpoint()
+    ]);
     const fromDb = dbRead.snapshot;
     const merged = mergeGlpiSyncStatusForApi(fromDb, { ...syncStatus });
     const { persistedAt: _persistedAt, ...sync } = merged;
@@ -59,9 +63,36 @@ export async function GET(): Promise<NextResponse> {
         "Existe valor em SyncState para a chave de estado GLPI, mas o JSON é inválido ou não contém `runs` numérico."
       );
     } else if (!dbRead.linhaComValor && sync.runs === 0 && process.env.GLPI_SKIP_BOOTSTRAP !== "1") {
-      avisos.push(
-        "Nenhum registo persistido em SyncState ainda: o arranque GLPI pode não ter corrido, falhou antes da primeira gravação, ou este contentor usa outra DATABASE_URL que a instância que sincroniza."
-      );
+      if (!arranqueGlpiUltimo) {
+        avisos.push(
+          "Não existe checkpoint de arranque (`glpi_bootstrap_last_v1`). O `register()` do instrumentation pode não ter corrido este bootstrap, ou falhou antes da primeira escrita na base (ver Deploy Logs à procura de «instrumentation» / «Falha no arranque da sincronização GLPI»)."
+        );
+      } else if (arranqueGlpiUltimo.phase === "instrumentation_pre_bootstrap") {
+        avisos.push(
+          "Checkpoint «instrumentation_pre_bootstrap» sem progressão — o import de `sync-cron` ou o `bootstrapGlpiSyncInNext` pode ter falhado (ver Deploy Logs com stack trace)."
+        );
+      } else if (arranqueGlpiUltimo.phase === "after_run_sync" && !dbRead.linhaComValor) {
+        avisos.push(
+          "O arranque chegou a «after_run_sync», mas não há linha de estado da sync — as gravações em `glpi_sync_status_v1` podem estar a falhar (ver logs «Não foi possível persistir o estado da sincronização»)."
+        );
+      } else if (
+        (arranqueGlpiUltimo.phase === "after_token" ||
+          arranqueGlpiUltimo.phase === "before_run_sync") &&
+        !Number.isNaN(Date.parse(arranqueGlpiUltimo.at)) &&
+        Date.now() - Date.parse(arranqueGlpiUltimo.at) > 120_000
+      ) {
+        avisos.push(
+          `O último checkpoint («${arranqueGlpiUltimo.phase}») tem mais de 2 minutos — a primeira sincronização pode estar bloqueada (GLPI lento, rede ou exceção sem atualizar o checkpoint).`
+        );
+      } else if (arranqueGlpiUltimo.phase === "bootstrap_done" && !dbRead.linhaComValor) {
+        avisos.push(
+          "Arranque concluído (`bootstrap_done`) sem estado de sync na base — possível base nova ou `DATABASE_URL` diferente entre o arranque e este pedido, ou falhas repetidas ao persistir só a chave de estado da sync."
+        );
+      } else {
+        avisos.push(
+          `Último checkpoint de arranque: «${arranqueGlpiUltimo.phase}» em ${arranqueGlpiUltimo.at}. Ainda não há estado persistido da sincronização; confira Deploy Logs e conectividade com o GLPI.`
+        );
+      }
     }
 
     return jsonUtf8({
@@ -74,7 +105,9 @@ export async function GET(): Promise<NextResponse> {
         syncStateLinhaComValor: dbRead.linhaComValor,
         syncStateComprimentoValor: dbRead.comprimentoValor,
         syncStateParseInvalido: dbRead.parseInvalido,
-        prismaErro: dbRead.erroPrisma
+        prismaErro: dbRead.erroPrisma,
+        arranqueGlpiUltimaFase: arranqueGlpiUltimo?.phase ?? null,
+        arranqueGlpiUltimaFaseEm: arranqueGlpiUltimo?.at ?? null
       },
       avisos: avisos.length ? avisos : undefined
     });

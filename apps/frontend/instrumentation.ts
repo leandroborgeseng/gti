@@ -23,7 +23,9 @@ export async function register(): Promise<void> {
     return;
   }
 
-  void import("./src/glpi/sync-cron")
+  void import("./src/glpi/glpi-sync-status-persistence")
+    .then((p) => p.recordGlpiBootstrapCheckpoint("instrumentation_pre_bootstrap"))
+    .then(() => import("./src/glpi/sync-cron"))
     .then((mod) => mod.bootstrapGlpiSyncInNext())
     .catch((error) => {
       console.error("[instrumentation] Falha no arranque da sincronização GLPI:", error);

@@ -1,8 +1,46 @@
 import { prisma } from "./config/prisma";
 import { logger } from "./config/logger";
+import { toErrorLog } from "./errors";
 
 /** Chave em `SyncState` para o último estado da sincronização GLPI (partilhado entre processos). */
 export const GLPI_SYNC_STATUS_STATE_KEY = "glpi_sync_status_v1";
+
+/** Última fase conhecida do `bootstrapGlpiSync` (diagnóstico quando `glpi_sync_status_v1` ainda não existe). */
+export const GLPI_BOOTSTRAP_LAST_KEY = "glpi_bootstrap_last_v1";
+
+export type GlpiBootstrapCheckpoint = {
+  phase: string;
+  at: string;
+};
+
+export async function recordGlpiBootstrapCheckpoint(phase: string): Promise<void> {
+  try {
+    const payload = JSON.stringify({ phase, at: new Date().toISOString() });
+    await prisma.syncState.upsert({
+      where: { key: GLPI_BOOTSTRAP_LAST_KEY },
+      create: { key: GLPI_BOOTSTRAP_LAST_KEY, value: payload },
+      update: { value: payload }
+    });
+  } catch (error) {
+    logger.warn(
+      { error: toErrorLog(error), phase },
+      "Não foi possível gravar o checkpoint de arranque GLPI em SyncState"
+    );
+  }
+}
+
+export async function readGlpiBootstrapLastCheckpoint(): Promise<GlpiBootstrapCheckpoint | null> {
+  try {
+    const row = await prisma.syncState.findUnique({ where: { key: GLPI_BOOTSTRAP_LAST_KEY } });
+    const raw = row?.value;
+    if (typeof raw !== "string" || raw.length === 0) return null;
+    const o = JSON.parse(raw) as { phase?: unknown; at?: unknown };
+    if (typeof o.phase !== "string" || typeof o.at !== "string") return null;
+    return { phase: o.phase, at: o.at };
+  } catch {
+    return null;
+  }
+}
 
 export type GlpiSyncStatusSnapshot = {
   isRunning: boolean;

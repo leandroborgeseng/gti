@@ -7,7 +7,10 @@ import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
 import { enrichWaitingPartyBatch } from "./services/glpi-ticket-history.service";
 import { toErrorLog } from "./errors";
-import { persistGlpiSyncStatusSafe } from "./glpi-sync-status-persistence";
+import {
+  persistGlpiSyncStatusSafe,
+  recordGlpiBootstrapCheckpoint
+} from "./glpi-sync-status-persistence";
 
 /** Estado partilhado no `globalThis` — o Next pode instanciar `sync-cron` em mais do que um bundle (instrumentation vs rotas). */
 type GlpiSyncStatus = {
@@ -163,25 +166,32 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
     return;
   }
 
+  await recordGlpiBootstrapCheckpoint("bootstrap_enter");
   await ensureSqliteSchema().catch((error) => {
     logger.error(
       { error: toErrorLog(error) },
       "Arranque GLPI: ligação à base de dados falhou; a primeira sync pode falhar até DATABASE_URL estar correta. O cron continua a ser agendado."
     );
   });
+  await recordGlpiBootstrapCheckpoint("after_ensure_db");
   await loadOpenApiSpec().catch((error) => {
     logger.warn({ error: toErrorLog(error) }, "Falha no carregamento inicial do doc OpenAPI");
   });
+  await recordGlpiBootstrapCheckpoint("after_openapi");
   await getAccessToken().catch((error) => {
     logger.warn({ error: toErrorLog(error) }, "Falha na autenticação inicial; o cron fará novas tentativas");
   });
-
+  await recordGlpiBootstrapCheckpoint("after_token");
+  await recordGlpiBootstrapCheckpoint("before_run_sync");
   await runSyncWithGuard();
+  await recordGlpiBootstrapCheckpoint("after_run_sync");
   /** Sempre agenda o cron para retentar sync/GLPI após falhas transitórias (Railway, rede, etc.). */
   startGlpiSyncCron();
+  await recordGlpiBootstrapCheckpoint("after_cron");
   if (enableHmrGuard) {
     store.nextCronStarted = true;
   }
+  await recordGlpiBootstrapCheckpoint("bootstrap_done");
 }
 
 /** Next.js: evita duplicar o cron em HMR. */
