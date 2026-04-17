@@ -1,8 +1,8 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma } from "../../../../backend/node_modules/.prisma/client";
 
 /**
  * Cláusula `where` do modelo `Ticket`.
- * O namespace `Prisma` do cliente gerado na imagem Docker nem sempre exporta `TicketWhereInput`;
- * derivar a partir de `PrismaClient` mantém o build alinhado ao delegate real.
+ * O `@prisma/client` hoisted na raiz do monorepo (Docker) aponta para um default sem o namespace completo;
+ * os tipos oficiais vivem no output do `generator` do schema: `apps/backend/node_modules/.prisma/client`.
  */
-export type TicketWhereInput = NonNullable<Parameters<PrismaClient["ticket"]["findMany"]>[0]>["where"];
+export type TicketWhereInput = Prisma.TicketWhereInput;
