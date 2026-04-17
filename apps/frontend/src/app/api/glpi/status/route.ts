@@ -26,7 +26,7 @@ export async function GET(): Promise<NextResponse> {
       envChaves: glpiEnvKeyDiagnostics(),
       processCwd: process.cwd(),
       hint:
-        "No Railway: as variáveis têm de existir no MESMO serviço que faz deploy do Next (serviço da app → Variables, não só o Postgres). Para DATABASE_URL use «Variable Reference» na UI. Não envolva valores em aspas no campo (ou remova-as). Se templateLiteral for true, a referência Railway não foi resolvida — apague e volte a criar com o picker. Guarde e Redeploy."
+        "No Railway: (1) Variáveis no serviço que corre ESTE deploy (aba Variables desse serviço, não só Postgres). (2) Ao adicionar/editar variáveis, a Railway cria «staged changes» — tem de rever e fazer DEPLOY dessas alterações; sem isso o contentor continua sem as novas variáveis. (3) Redeploy explícito do serviço após aplicar. (4) DATABASE_URL: use referência ao Postgres pela UI. (5) Aspas extra no valor: remova. envChaves.chaveExiste=false em todas ⇒ o processo Node não recebeu nenhuma dessas chaves — quase sempre serviço errado ou alterações por aplicar."
     });
   }
 
