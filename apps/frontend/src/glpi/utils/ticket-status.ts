@@ -1,6 +1,6 @@
-import type { Prisma } from "@prisma/client";
+import type { TicketWhereInput } from "../types/ticket-where";
 
-function closedStatusFragments(): Prisma.TicketWhereInput[] {
+function closedStatusFragments(): TicketWhereInput[] {
   return [
     { status: { contains: "Fechado" } },
     { status: { contains: "fechado" } },
@@ -28,12 +28,12 @@ export function isTicketClosedStatus(status: string | null | undefined): boolean
 }
 
 /** Filtro Prisma: status parece fechado (substring). */
-export function ticketWhereClosed(): Prisma.TicketWhereInput {
+export function ticketWhereClosed(): TicketWhereInput {
   return { OR: closedStatusFragments() };
 }
 
 /** Filtro Prisma: exclui chamados considerados fechados. */
-export function ticketWhereNotClosed(): Prisma.TicketWhereInput {
+export function ticketWhereNotClosed(): TicketWhereInput {
   const parts = closedStatusFragments();
   return { NOT: parts.length === 1 ? parts[0]! : { OR: parts } };
 }

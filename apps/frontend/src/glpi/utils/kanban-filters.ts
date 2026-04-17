@@ -1,7 +1,7 @@
-import type { Prisma } from "@prisma/client";
+import type { TicketWhereInput } from "../types/ticket-where";
 import { ticketWhereNotClosed } from "./ticket-status";
 
-export function pendenciaFilterWhere(raw: string): Prisma.TicketWhereInput | null {
+export function pendenciaFilterWhere(raw: string): TicketWhereInput | null {
   const p = raw.trim().toLowerCase();
   if (!p) {
     return null;
@@ -51,7 +51,7 @@ export type KanbanFilterInput = {
   forceNonClosed?: boolean;
 };
 
-export function buildKanbanWhere(input: KanbanFilterInput): Prisma.TicketWhereInput {
+export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
   const { q, statusFilter, groupFilter, onlyOpen, pendenciaParam, forceNonClosed } = input;
   const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
   const enforceNotClosed = onlyOpen || Boolean(forceNonClosed);
