@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import path from "node:path";
+import { normalizeEnvValue } from "@/lib/normalize-env-value";
 
 /** Carrega variáveis do monorepo e da pasta do Next (Railway / local). */
 function loadEnvFiles(): void {
@@ -29,7 +30,7 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
 const allowBuildStubs = process.env.GLPI_SKIP_BOOTSTRAP === "1";
 
 function requireEnv(name: string, buildFallback: string): string {
-  const value = process.env[name]?.trim();
+  const value = normalizeEnvValue(process.env[name]);
   if (value) {
     return value;
   }
@@ -42,6 +43,15 @@ function requireEnv(name: string, buildFallback: string): string {
 /**
  * Aceita `https://host/api.php`, `https://host/apirest.php` ou só `https://host` (assume API de alto nível).
  */
+/** API v2 do GLPI usa prefixo `/v2` (ex.: `/v2/Assistance/Ticket`). */
+function normalizeTicketsPath(raw: string | undefined, fallback: string): string {
+  const v = normalizeEnvValue(raw) || fallback;
+  if (v.startsWith("/Assistance/") && !v.startsWith("/v2/")) {
+    return `/v2${v}`;
+  }
+  return v;
+}
+
 function normalizeGlpiApiBase(raw: string): string {
   const trimmed = raw.trim().replace(/\/+$/, "");
   if (!trimmed) {
@@ -62,11 +72,11 @@ export const env = {
   GLPI_CLIENT_SECRET: requireEnv("GLPI_CLIENT_SECRET", "build"),
   GLPI_USERNAME: requireEnv("GLPI_USERNAME", "build"),
   GLPI_PASSWORD: requireEnv("GLPI_PASSWORD", "build"),
-  GLPI_TICKETS_PATH: process.env.GLPI_TICKETS_PATH || "/v2/Assistance/Ticket",
-  GLPI_OAUTH_SCOPE: process.env.GLPI_OAUTH_SCOPE || "api",
-  GLPI_USER_AGENT: process.env.GLPI_USER_AGENT || "glpi-sync-mvp/1.0",
+  GLPI_TICKETS_PATH: normalizeTicketsPath(process.env.GLPI_TICKETS_PATH, "/v2/Assistance/Ticket"),
+  GLPI_OAUTH_SCOPE: normalizeEnvValue(process.env.GLPI_OAUTH_SCOPE) || "api",
+  GLPI_USER_AGENT: normalizeEnvValue(process.env.GLPI_USER_AGENT) || "glpi-sync-mvp/1.0",
   /** Se definido, pedido OAuth2 de token usa este URL em vez de `{GLPI_BASE_URL}/token`. */
-  GLPI_TOKEN_URL: (process.env.GLPI_TOKEN_URL || "").trim(),
+  GLPI_TOKEN_URL: normalizeEnvValue(process.env.GLPI_TOKEN_URL) || "",
   PORT: Number(process.env.PORT || 3000),
   CRON_EXPRESSION: process.env.CRON_EXPRESSION || "*/5 * * * *",
   HTTP_TIMEOUT_MS: Number(process.env.HTTP_TIMEOUT_MS || 20000),

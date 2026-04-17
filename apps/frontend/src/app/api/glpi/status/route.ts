@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { glpiEnvironmentReadiness } from "@/glpi/config/glpi-runtime-check";
+import { glpiEnvironmentReadiness, glpiEnvPresenceSummary } from "@/glpi/config/glpi-runtime-check";
 
 const JSON_UTF8 = { "content-type": "application/json; charset=utf-8" } as const;
 
@@ -17,8 +17,11 @@ export async function GET(): Promise<NextResponse> {
     return jsonUtf8({
       ok: false,
       missingEnv: readiness.missing,
+      unexpandedReferences: readiness.unexpandedReferences,
+      envPresence: glpiEnvPresenceSummary(),
+      processCwd: process.cwd(),
       hint:
-        "No Railway: abra o serviço onde corre o Next (não só o Postgres), separador Variables, e crie cada variável listada em missingEnv. Para DATABASE_URL, use «Add Variable Reference» e escolha a URL do plugin PostgreSQL (ou copie a connection string). Guarde e faça Redeploy. O GLPI não arranca enquanto faltar alguma destas variáveis neste serviço."
+        "No Railway: as variáveis têm de existir no MESMO serviço que faz deploy do Next (serviço da app → Variables, não só o Postgres). Para DATABASE_URL use «Variable Reference» na UI. Não envolva valores em aspas no campo (ou remova-as). Se templateLiteral for true, a referência Railway não foi resolvida — apague e volte a criar com o picker. Guarde e Redeploy."
     });
   }
 
