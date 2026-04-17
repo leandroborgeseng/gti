@@ -148,9 +148,17 @@ export async function GET(): Promise<NextResponse> {
         Boolean(arranqueGlpiBootstrapConcluidoEm) && !Number.isNaN(tBootstrapConcluido) && tBootstrapConcluido > 0;
 
       if (bootstrapConcluidoValido && tCheckpointArranque > tBootstrapConcluido) {
-        avisos.push(
-          `O checkpoint «${arranqueGlpiUltimo.phase}» (${arranqueGlpiUltimo.at}) é posterior ao último bootstrap concluído (${arranqueGlpiBootstrapConcluidoEm}) — típico de novo processo/redeploy ou de um novo arranque a disputar a mesma BD enquanto o estado da sync ainda reflete uma execução anterior (ex.: sync longa). Isto não indica, por si, várias réplicas do Next.`
-        );
+        /** Sync a correr que começou na mesma “vaga” que o último bootstrap (evita ruído: outro processo sobrescreve só o checkpoint). */
+        const sincronizacaoDaMesmaVaga =
+          sync.isRunning &&
+          !Number.isNaN(tInicioSync) &&
+          !Number.isNaN(tBootstrapConcluido) &&
+          Math.abs(tInicioSync - tBootstrapConcluido) < 120_000;
+        if (!sincronizacaoDaMesmaVaga) {
+          avisos.push(
+            `O checkpoint «${arranqueGlpiUltimo.phase}» (${arranqueGlpiUltimo.at}) é posterior ao último bootstrap concluído (${arranqueGlpiBootstrapConcluidoEm}) — típico de novo processo/redeploy ou de um novo arranque a disputar a mesma BD enquanto o estado da sync ainda reflete uma execução anterior (ex.: sync longa). Isto não indica, por si, várias réplicas do Next.`
+          );
+        }
       } else if (!bootstrapConcluidoValido) {
         avisos.push(
           "O checkpoint de arranque na BD é mais recente que o início da sync atual e ainda não há marcador de bootstrap concluído nesta base — pode haver mais do que uma réplica do Next a escrever na mesma base. Use 1 réplica ou GLPI_CRON_DISABLED=1 nas réplicas só HTTP e um worker de sync único."
