@@ -1,0 +1,15 @@
+{
+  "GLPI_BASE_URL": "https://exemplo.gov.br/api.php",
+  "GLPI_DOC_URL": "https://exemplo.gov.br/api.php/v2.2.0/doc.json",
+  "GLPI_TICKETS_PATH": "/v2/Assistance/Ticket",
+  "GLPI_CLIENT_ID": "SUBSTITUIR",
+  "GLPI_CLIENT_SECRET": "SUBSTITUIR",
+  "GLPI_USERNAME": "SUBSTITUIR",
+  "GLPI_PASSWORD": "SUBSTITUIR",
+  "GLPI_USER_AGENT": "glpi-sync-mvp/1.0",
+  "CRON_EXPRESSION": "*/5 * * * *",
+  "HTTP_TIMEOUT_MS": "20000",
+  "PORT": "3000",
+  "GLPI_OAUTH_SCOPE": "api",
+  "DATABASE_URL": "postgresql://usuario:senha@host:5432/base?schema=public"
+}

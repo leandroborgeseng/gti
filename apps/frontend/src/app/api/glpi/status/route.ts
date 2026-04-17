@@ -26,7 +26,7 @@ export async function GET(): Promise<NextResponse> {
       envChaves: glpiEnvKeyDiagnostics(),
       processCwd: process.cwd(),
       hint:
-        "No Railway: (1) Variáveis no serviço que corre ESTE deploy (aba Variables desse serviço, não só Postgres). (2) Ao adicionar/editar variáveis, a Railway cria «staged changes» — tem de rever e fazer DEPLOY dessas alterações; sem isso o contentor continua sem as novas variáveis. (3) Redeploy explícito do serviço após aplicar. (4) DATABASE_URL: use referência ao Postgres pela UI. (5) Aspas extra no valor: remova. envChaves.chaveExiste=false em todas ⇒ o processo Node não recebeu nenhuma dessas chaves — quase sempre serviço errado ou alterações por aplicar."
+        "No Railway: (1) Variáveis no serviço deste deploy ou use UMA variável `GTI_ENV_JSON` com todo o JSON (ver apps/frontend/.env.example). (2) Aplique «staged changes» e faça redeploy. (3) DATABASE_URL dentro do JSON: prefira referência `${{NomeDoPostgres.DATABASE_URL}}` gravada pela UI. (4) envChaves tudo false ⇒ nada chegou ao processo — serviço errado ou alterações por aplicar."
     });
   }
 

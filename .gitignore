@@ -17,3 +17,5 @@ prisma/data.db-journal
 apps/backend/dist/
 apps/frontend/.next/
 apps/frontend/tsconfig.tsbuildinfo
+# Segredos GLPI / Postgres em JSON local (nunca versionar)
+apps/frontend/config/glpi-env.local.json

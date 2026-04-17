@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import path from "node:path";
 import { normalizeEnvValue } from "@/lib/normalize-env-value";
+import { mergeExtraEnvFromFilesAndJson } from "@/glpi/config/merge-extra-env";
 
 /** Carrega variáveis do monorepo e da pasta do Next (Railway / local). */
 function loadEnvFiles(): void {
@@ -17,6 +18,8 @@ function loadEnvFiles(): void {
 }
 
 loadEnvFiles();
+/** Opcional: `config/glpi-env.local.json` (gitignored) ou variável `GTI_ENV_JSON` na Railway. */
+mergeExtraEnvFromFilesAndJson();
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const n = Math.trunc(Number(value));

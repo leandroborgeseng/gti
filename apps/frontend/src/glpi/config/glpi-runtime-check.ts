@@ -1,4 +1,5 @@
 import { looksLikeRailwayTemplateLiteral, normalizeEnvValue } from "@/lib/normalize-env-value";
+import { mergeExtraEnvFromFilesAndJson } from "@/glpi/config/merge-extra-env";
 
 /**
  * Verifica variáveis necessárias para o GLPI **sem** importar `./env` (que lança se faltar algo).
@@ -19,6 +20,7 @@ export type GlpiReadiness =
   | { ok: false; missing: string[]; unexpandedReferences?: string[] };
 
 export function glpiEnvironmentReadiness(): GlpiReadiness {
+  mergeExtraEnvFromFilesAndJson();
   const missing: string[] = [];
   const unexpandedReferences: string[] = [];
   for (const k of GLPI_REQUIRED) {
@@ -40,6 +42,7 @@ export function glpiEnvironmentReadiness(): GlpiReadiness {
 
 /** Diagnóstico sem valores (só se existe valor normalizado). */
 export function glpiEnvPresenceSummary(): Record<string, { set: boolean; templateLiteral: boolean }> {
+  mergeExtraEnvFromFilesAndJson();
   const out: Record<string, { set: boolean; templateLiteral: boolean }> = {};
   for (const k of GLPI_REQUIRED) {
     const raw = process.env[k];
@@ -58,6 +61,7 @@ export function glpiEnvPresenceSummary(): Record<string, { set: boolean; templat
  * Ajuda a distinguir «Railway não injetou» (chave ausente) de «valor vazio».
  */
 export function glpiEnvKeyDiagnostics(): Record<string, { chaveExiste: boolean; comprimentoValor: number }> {
+  mergeExtraEnvFromFilesAndJson();
   const out: Record<string, { chaveExiste: boolean; comprimentoValor: number }> = {};
   for (const k of GLPI_REQUIRED) {
     const raw = process.env[k];
