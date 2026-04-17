@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loginWithDatabase } from "@/lib/auth-issue-token";
 import { GTI_TOKEN_COOKIE } from "@/lib/auth-cookie-name";
+import { ensureBootstrapAdminIfNoUsers } from "@/lib/ensure-bootstrap-admin";
 
 export async function POST(req: Request): Promise<NextResponse> {
   let body: { email?: string; password?: string };
@@ -16,6 +17,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   try {
+    await ensureBootstrapAdminIfNoUsers();
     const { access_token, expires_in, user } = await loginWithDatabase(email, password);
     const res = NextResponse.json({ ok: true, expires_in, user });
     res.cookies.set(GTI_TOKEN_COOKIE, access_token, {
