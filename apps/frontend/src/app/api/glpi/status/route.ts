@@ -5,6 +5,10 @@ import {
   glpiEnvKeyDiagnostics,
   glpiEnvPresenceSummary
 } from "@/glpi/config/glpi-runtime-check";
+import {
+  mergeGlpiSyncStatusForApi,
+  readGlpiSyncStatusFromDb
+} from "@/glpi/glpi-sync-status-persistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,21 +41,18 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const { syncStatus } = await import("@/glpi/sync-cron");
+    let fromDb = null as Awaited<ReturnType<typeof readGlpiSyncStatusFromDb>>;
+    try {
+      fromDb = await readGlpiSyncStatusFromDb();
+    } catch {
+      fromDb = null;
+    }
+    const merged = mergeGlpiSyncStatusForApi(fromDb, { ...syncStatus });
+    const { persistedAt: _persistedAt, ...sync } = merged;
     return jsonUtf8({
       ok: true,
       missingEnv: [],
-      sync: {
-        isRunning: syncStatus.isRunning,
-        runs: syncStatus.runs,
-        lastStartedAt: syncStatus.lastStartedAt,
-        lastFinishedAt: syncStatus.lastFinishedAt,
-        lastSuccessAt: syncStatus.lastSuccessAt,
-        lastError: syncStatus.lastError,
-        lastLoaded: syncStatus.lastLoaded,
-        lastSaved: syncStatus.lastSaved,
-        lastFailed: syncStatus.lastFailed,
-        lastPage: syncStatus.lastPage
-      }
+      sync
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

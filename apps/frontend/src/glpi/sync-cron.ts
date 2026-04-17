@@ -7,6 +7,7 @@ import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
 import { enrichWaitingPartyBatch } from "./services/glpi-ticket-history.service";
 import { toErrorLog } from "./errors";
+import { persistGlpiSyncStatusSafe } from "./glpi-sync-status-persistence";
 
 /** Estado partilhado no `globalThis` — o Next pode instanciar `sync-cron` em mais do que um bundle (instrumentation vs rotas). */
 type GlpiSyncStatus = {
@@ -62,12 +63,20 @@ export type BootstrapGlpiSyncOptions = {
 
 export const syncStatus = getGlpiStore().syncStatus;
 
+/** Evita escritas excessivas em `SyncState` durante `onProgress`. */
+let lastProgressDbWriteMs = 0;
+
 function applySyncProgress(progress: SyncProgress): void {
   const s = getGlpiStore().syncStatus;
   s.lastPage = progress.page;
   s.lastLoaded = progress.loaded;
   s.lastSaved = progress.saved;
   s.lastFailed = progress.failed;
+  const now = Date.now();
+  if (now - lastProgressDbWriteMs >= 5000) {
+    lastProgressDbWriteMs = now;
+    void persistGlpiSyncStatusSafe({ ...s });
+  }
 }
 
 export async function runSyncWithGuard(): Promise<void> {
@@ -85,6 +94,8 @@ export async function runSyncWithGuard(): Promise<void> {
   store.syncStatus.lastLoaded = 0;
   store.syncStatus.lastSaved = 0;
   store.syncStatus.lastFailed = 0;
+  lastProgressDbWriteMs = 0;
+  await persistGlpiSyncStatusSafe({ ...store.syncStatus });
   const startedMs = Date.now();
   try {
     await loadOpenApiSpec().catch((error) => {
@@ -119,6 +130,7 @@ export async function runSyncWithGuard(): Promise<void> {
     store.isSyncRunning = false;
     store.syncStatus.isRunning = false;
     store.syncStatus.lastFinishedAt = new Date().toISOString();
+    await persistGlpiSyncStatusSafe({ ...store.syncStatus });
   }
 }
 
