@@ -24,8 +24,10 @@ COPY package.json package-lock.json ./
 COPY apps ./apps
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV GLPI_SKIP_BOOTSTRAP=1
-RUN npx prisma generate --schema apps/backend/prisma/schema.prisma
-RUN cd apps/frontend && npm run build
+# O `generator output` do schema deve ser a raiz do monorepo (`node_modules/.prisma/client`); caso contrário o Next falha em «Collecting page data» com «did not initialize yet».
+RUN npx prisma generate --schema apps/backend/prisma/schema.prisma \
+  && test -f node_modules/.prisma/client/index.js \
+  && cd apps/frontend && npm run build
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
