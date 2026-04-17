@@ -1,13 +1,40 @@
 import { authHeadersForApi, readBrowserAuthToken } from "@/lib/auth-token";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3000/api";
-
-/** URL base da API Nest (com `/api`) para links e `FormData` fora de `request()`. */
+/**
+ * Base da API de gestão (`.../api`), sem obrigar `NEXT_PUBLIC_BACKEND_URL`.
+ * Por omissão: mesmo host que a app Next (`/api/...` no browser; cabeçalhos `Host` no servidor).
+ */
 export function getBackendApiBaseUrl(): string {
-  return API_BASE_URL;
+  const fromEnv = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\/+$/, "");
+  }
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api`;
+  }
+  return "";
+}
+
+async function resolveRequestApiBase(): Promise<string> {
+  const fromEnv = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\/+$/, "");
+  }
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api`;
+  }
+  const { headers } = await import("next/headers");
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = (h.get("x-forwarded-proto") ?? "http").split(",")[0]?.trim() || "http";
+  if (host) {
+    return `${proto}://${host}/api`.replace(/\/+$/, "");
+  }
+  return "http://127.0.0.1:4000/api";
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const apiBase = await resolveRequestApiBase();
   const auth = await authHeadersForApi();
   const isFormData = init?.body instanceof FormData;
   const extra = (init?.headers ?? {}) as Record<string, string>;
@@ -15,7 +42,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!isFormData && !headers["Content-Type"] && !headers["content-type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const pathPart = path.startsWith("/") ? path : `/${path}`;
+  const response = await fetch(`${apiBase}${pathPart}`, {
     ...init,
     headers,
     cache: "no-store"
@@ -254,7 +282,8 @@ export async function uploadMeasurementAttachment(measurementId: string, file: F
   form.append("file", file);
   const t = readBrowserAuthToken();
   const headers: HeadersInit = t ? { Authorization: `Bearer ${t}` } : {};
-  const response = await fetch(`${API_BASE_URL}/measurements/${measurementId}/attachments`, {
+  const apiBase = await resolveRequestApiBase();
+  const response = await fetch(`${apiBase}/measurements/${measurementId}/attachments`, {
     method: "POST",
     headers,
     body: form,
@@ -271,7 +300,8 @@ export async function uploadGlosaAttachment(glosaId: string, file: File): Promis
   form.append("file", file);
   const t = readBrowserAuthToken();
   const headers: HeadersInit = t ? { Authorization: `Bearer ${t}` } : {};
-  const response = await fetch(`${API_BASE_URL}/glosas/${glosaId}/attachments`, {
+  const apiBase = await resolveRequestApiBase();
+  const response = await fetch(`${apiBase}/glosas/${glosaId}/attachments`, {
     method: "POST",
     headers,
     body: form,
