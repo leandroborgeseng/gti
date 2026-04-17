@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import type { InputJsonValue } from "@prisma/client/runtime/library";
 import { logger } from "../config/logger";
 import { NormalizedTicket } from "../types/glpi.types";
 import { extractRequesterContact } from "../utils/ticket-requester";
@@ -125,6 +125,6 @@ export function normalizeTicket(raw: unknown): NormalizedTicket {
     requester_name: reqContact.displayName,
     requester_email: reqContact.email,
     requester_user_id: reqContact.userId,
-    raw: ticket as Prisma.InputJsonValue
+    raw: ticket as InputJsonValue
   };
 }

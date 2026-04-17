@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import type { InputJsonValue } from "@prisma/client/runtime/library";
 import { prisma } from "./config/prisma";
 import { logger } from "./config/logger";
 import { fetchGlpiTicketJson } from "./services/glpi-ticket-write.service";
@@ -99,7 +99,7 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
       requesterName: requesterName ?? null,
       requesterEmail: requesterEmail ?? null,
       requesterUserId,
-      rawJson: workingRaw as Prisma.InputJsonValue
+      rawJson: workingRaw as InputJsonValue
     }
   });
 

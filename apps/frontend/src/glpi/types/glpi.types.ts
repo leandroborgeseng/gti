@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import type { InputJsonValue } from "@prisma/client/runtime/library";
 
 export interface GlpiAuthResponse {
   access_token: string;
@@ -19,5 +19,5 @@ export interface NormalizedTicket {
   requester_name: string | null;
   requester_email: string | null;
   requester_user_id: number | null;
-  raw: Prisma.InputJsonValue;
+  raw: InputJsonValue;
 }
