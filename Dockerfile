@@ -32,6 +32,8 @@ RUN npx prisma generate --schema apps/backend/prisma/schema.prisma \
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# O stage `builder` usa GLPI_SKIP_BOOTSTRAP=1 só para `next build`. No runtime o arranque GLPI deve estar ativo.
+ENV GLPI_SKIP_BOOTSTRAP=
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 RUN apt-get update \

@@ -28,11 +28,19 @@ export function isStaleRunningSync(lastStartedAt: string | null, isRunning: bool
   return Date.now() - t > STALE_RUN_MS;
 }
 
-export async function readGlpiSyncStatusFromDb(): Promise<GlpiSyncStatusSnapshot | null> {
-  const row = await prisma.syncState.findUnique({ where: { key: GLPI_SYNC_STATUS_STATE_KEY } });
-  if (!row?.value) return null;
+export type GlpiSyncStatusDbRead = {
+  snapshot: GlpiSyncStatusSnapshot | null;
+  /** Existe linha em `SyncState` com `value` não vazio. */
+  linhaComValor: boolean;
+  comprimentoValor: number;
+  /** JSON inválido ou falta o campo numérico `runs`. */
+  parseInvalido: boolean;
+  erroPrisma: string | null;
+};
+
+function parseSnapshotFromJsonString(raw: string): GlpiSyncStatusSnapshot | null {
   try {
-    const parsed = JSON.parse(row.value) as Partial<GlpiSyncStatusSnapshot>;
+    const parsed = JSON.parse(raw) as Partial<GlpiSyncStatusSnapshot>;
     if (typeof parsed.runs !== "number") return null;
     return {
       isRunning: Boolean(parsed.isRunning),
@@ -51,6 +59,46 @@ export async function readGlpiSyncStatusFromDb(): Promise<GlpiSyncStatusSnapshot
   } catch {
     return null;
   }
+}
+
+/** Leitura detalhada para diagnóstico em `/api/glpi/status`. */
+export async function readGlpiSyncStatusFromDbDetailed(): Promise<GlpiSyncStatusDbRead> {
+  try {
+    const row = await prisma.syncState.findUnique({ where: { key: GLPI_SYNC_STATUS_STATE_KEY } });
+    const raw = row?.value;
+    const comprimentoValor = typeof raw === "string" ? raw.length : 0;
+    if (comprimentoValor === 0) {
+      return {
+        snapshot: null,
+        linhaComValor: false,
+        comprimentoValor: 0,
+        parseInvalido: false,
+        erroPrisma: null
+      };
+    }
+    const snapshot = parseSnapshotFromJsonString(raw);
+    return {
+      snapshot,
+      linhaComValor: true,
+      comprimentoValor,
+      parseInvalido: snapshot === null,
+      erroPrisma: null
+    };
+  } catch (error) {
+    const erroPrisma = error instanceof Error ? error.message : String(error);
+    return {
+      snapshot: null,
+      linhaComValor: false,
+      comprimentoValor: 0,
+      parseInvalido: false,
+      erroPrisma
+    };
+  }
+}
+
+export async function readGlpiSyncStatusFromDb(): Promise<GlpiSyncStatusSnapshot | null> {
+  const r = await readGlpiSyncStatusFromDbDetailed();
+  return r.snapshot;
 }
 
 export async function writeGlpiSyncStatusToDb(

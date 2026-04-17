@@ -7,7 +7,7 @@ import {
 } from "@/glpi/config/glpi-runtime-check";
 import {
   mergeGlpiSyncStatusForApi,
-  readGlpiSyncStatusFromDb
+  readGlpiSyncStatusFromDbDetailed
 } from "@/glpi/glpi-sync-status-persistence";
 
 export const runtime = "nodejs";
@@ -41,18 +41,42 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const { syncStatus } = await import("@/glpi/sync-cron");
-    let fromDb = null as Awaited<ReturnType<typeof readGlpiSyncStatusFromDb>>;
-    try {
-      fromDb = await readGlpiSyncStatusFromDb();
-    } catch {
-      fromDb = null;
-    }
+    const dbRead = await readGlpiSyncStatusFromDbDetailed();
+    const fromDb = dbRead.snapshot;
     const merged = mergeGlpiSyncStatusForApi(fromDb, { ...syncStatus });
     const { persistedAt: _persistedAt, ...sync } = merged;
+
+    const avisos: string[] = [];
+    if (process.env.GLPI_SKIP_BOOTSTRAP === "1") {
+      avisos.push(
+        "GLPI_SKIP_BOOTSTRAP=1 neste processo: o instrumentation não arranca a sincronização (esperado no build; no runtime do serviço web remove esta variável ou use um worker com bootstrap ativo)."
+      );
+    }
+    if (dbRead.erroPrisma) {
+      avisos.push(`Falha ao ler SyncState na base: ${dbRead.erroPrisma}`);
+    } else if (dbRead.parseInvalido) {
+      avisos.push(
+        "Existe valor em SyncState para a chave de estado GLPI, mas o JSON é inválido ou não contém `runs` numérico."
+      );
+    } else if (!dbRead.linhaComValor && sync.runs === 0 && process.env.GLPI_SKIP_BOOTSTRAP !== "1") {
+      avisos.push(
+        "Nenhum registo persistido em SyncState ainda: o arranque GLPI pode não ter corrido, falhou antes da primeira gravação, ou este contentor usa outra DATABASE_URL que a instância que sincroniza."
+      );
+    }
+
     return jsonUtf8({
       ok: true,
       missingEnv: [],
-      sync
+      sync,
+      diagnosticoSync: {
+        glpiSkipBootstrap: process.env.GLPI_SKIP_BOOTSTRAP === "1",
+        glpiCronDisabled: process.env.GLPI_CRON_DISABLED === "1",
+        syncStateLinhaComValor: dbRead.linhaComValor,
+        syncStateComprimentoValor: dbRead.comprimentoValor,
+        syncStateParseInvalido: dbRead.parseInvalido,
+        prismaErro: dbRead.erroPrisma
+      },
+      avisos: avisos.length ? avisos : undefined
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
