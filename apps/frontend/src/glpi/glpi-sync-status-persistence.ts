@@ -66,8 +66,7 @@ export async function readGlpiSyncStatusFromDbDetailed(): Promise<GlpiSyncStatus
   try {
     const row = await prisma.syncState.findUnique({ where: { key: GLPI_SYNC_STATUS_STATE_KEY } });
     const raw = row?.value;
-    const comprimentoValor = typeof raw === "string" ? raw.length : 0;
-    if (comprimentoValor === 0) {
+    if (typeof raw !== "string" || raw.length === 0) {
       return {
         snapshot: null,
         linhaComValor: false,
@@ -76,6 +75,7 @@ export async function readGlpiSyncStatusFromDbDetailed(): Promise<GlpiSyncStatus
         erroPrisma: null
       };
     }
+    const comprimentoValor = raw.length;
     const snapshot = parseSnapshotFromJsonString(raw);
     return {
       snapshot,
