@@ -7,12 +7,22 @@ function nestApiBase(): string {
 
 export async function POST(req: Request): Promise<NextResponse> {
   const body = await req.json();
-  const r = await fetch(`${nestApiBase()}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store"
-  });
+  const base = nestApiBase();
+  let r: Response;
+  try {
+    r = await fetch(`${base}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store"
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return new NextResponse(
+      `Servidor de autenticação indisponível (${base}). Configure BACKEND_INTERNAL_URL ou NEXT_PUBLIC_BACKEND_URL. Detalhe: ${msg}`,
+      { status: 502 }
+    );
+  }
   const text = await r.text();
   if (!r.ok) {
     return new NextResponse(text || "Credenciais inválidas", { status: r.status });
