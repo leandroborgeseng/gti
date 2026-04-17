@@ -2,6 +2,7 @@ import { env } from "../config/env";
 import { prisma } from "../config/prisma";
 import { logger } from "../config/logger";
 import { normalizeTicket } from "../normalizers/ticket.normalizer";
+import type { NormalizedTicket } from "../types/glpi.types";
 import { ensureActiveUsersCacheFresh, getCachedUsersByIds } from "../services/glpi-users-cache.service";
 import { persistNormalizedTicket } from "../services/ticket-persist.service";
 import { getTicketsPage, type TicketsPageResult } from "../services/tickets.service";
@@ -23,8 +24,16 @@ interface SyncTicketsOptions {
   pageSize?: number;
   /** Páginas GLPI a buscar em paralelo (prefetch). */
   fetchConcurrency?: number;
+  /** Tickets por página a persistir em paralelo na BD (sobrepor env). */
+  persistConcurrency?: number;
   onProgress?: (progress: SyncProgress) => void;
 }
+
+type PersistTask = {
+  normalized: NormalizedTicket;
+  raw: unknown;
+  requesterFallback: RequesterContact | null | undefined;
+};
 
 function parseIsoDate(value: string | null | undefined): number | null {
   if (!value) return null;
@@ -46,6 +55,7 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
 
   const pageSize = options.pageSize ?? env.GLPI_TICKETS_PAGE_SIZE;
   const fetchConcurrency = options.fetchConcurrency ?? env.GLPI_TICKETS_FETCH_CONCURRENCY;
+  const persistConcurrency = options.persistConcurrency ?? env.GLPI_SYNC_PERSIST_CONCURRENCY;
   const onProgress = options.onProgress;
   let page = 1;
   let loadedCount = 0;
@@ -65,7 +75,10 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     ticketPages.set(p, getTicketsPage(p, pageSize));
   }
 
-  logger.info({ pageSize, fetchConcurrency }, "Sincronizacao GLPI: tamanho de pagina e paralelismo");
+  logger.info(
+    { pageSize, fetchConcurrency, persistConcurrency },
+    "Sincronizacao GLPI: tamanho de pagina, prefetch GLPI e persistencia na BD"
+  );
 
   if (syncScope === "open") {
     const removedClosed = await prisma.ticket.deleteMany({ where: ticketWhereClosed() });
@@ -95,6 +108,9 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
       });
     }
 
+    const openScopeClosedIds: number[] = [];
+    const persistQueue: PersistTask[] = [];
+
     for (let i = 0; i < rawTickets.length; i += 1) {
       const rawTicket = rawTickets[i];
       const normalized = normalizedPage[i];
@@ -116,33 +132,40 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
         maxDateCreation = normalized.date_creation;
       }
 
+      const fb =
+        normalized.requester_user_id != null
+          ? (requesterFallbackMap.get(normalized.requester_user_id) ?? null)
+          : null;
+
       if (isTicketClosedStatus(normalized.status)) {
         if (syncScope === "open") {
-          await prisma.ticket.deleteMany({ where: { glpiTicketId: normalized.id } });
+          openScopeClosedIds.push(normalized.id);
           continue;
         }
-        const persistClosed = await persistNormalizedTicket(
-          normalized,
-          rawTicket,
-          normalized.requester_user_id ? requesterFallbackMap.get(normalized.requester_user_id) ?? null : null
-        );
-        if (persistClosed === "saved") {
+        persistQueue.push({ normalized, raw: rawTicket, requesterFallback: fb });
+        continue;
+      }
+
+      persistQueue.push({ normalized, raw: rawTicket, requesterFallback: fb });
+    }
+
+    if (syncScope === "open" && openScopeClosedIds.length > 0) {
+      const uniqueClosed = [...new Set(openScopeClosedIds)];
+      await prisma.ticket.deleteMany({ where: { glpiTicketId: { in: uniqueClosed } } });
+    }
+
+    const chunk = Math.max(1, persistConcurrency);
+    for (let c = 0; c < persistQueue.length; c += chunk) {
+      const slice = persistQueue.slice(c, c + chunk);
+      const outcomes = await Promise.all(
+        slice.map((t) => persistNormalizedTicket(t.normalized, t.raw, t.requesterFallback))
+      );
+      for (const o of outcomes) {
+        if (o === "saved") {
           savedCount += 1;
         } else {
           failedCount += 1;
         }
-        continue;
-      }
-
-      const persistResult = await persistNormalizedTicket(
-        normalized,
-        rawTicket,
-        normalized.requester_user_id ? requesterFallbackMap.get(normalized.requester_user_id) ?? null : null
-      );
-      if (persistResult === "saved") {
-        savedCount += 1;
-      } else {
-        failedCount += 1;
       }
     }
 
