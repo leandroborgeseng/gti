@@ -83,8 +83,8 @@ export const env = {
   PORT: Number(process.env.PORT || 3000),
   CRON_EXPRESSION: process.env.CRON_EXPRESSION || "*/5 * * * *",
   HTTP_TIMEOUT_MS: Number(process.env.HTTP_TIMEOUT_MS || 20000),
-  /** Quantidade de tickets por requisição ao GLPI (50–500). */
-  GLPI_TICKETS_PAGE_SIZE: clampInt(process.env.GLPI_TICKETS_PAGE_SIZE, 50, 500, 250),
-  /** Quantas páginas de tickets são pedidas em paralelo (antecipação). 1 = sequencial. */
-  GLPI_TICKETS_FETCH_CONCURRENCY: clampInt(process.env.GLPI_TICKETS_FETCH_CONCURRENCY, 1, 12, 4)
+  /** Quantidade de tickets por requisição ao GLPI (50–500). Padrão mais alto: menos voltas ao servidor. */
+  GLPI_TICKETS_PAGE_SIZE: clampInt(process.env.GLPI_TICKETS_PAGE_SIZE, 50, 500, 300),
+  /** Quantas páginas são pedidas em paralelo (prefetch). 1 = sequencial; mais agentes = mais carga no GLPI. */
+  GLPI_TICKETS_FETCH_CONCURRENCY: clampInt(process.env.GLPI_TICKETS_FETCH_CONCURRENCY, 1, 16, 8)
 };
