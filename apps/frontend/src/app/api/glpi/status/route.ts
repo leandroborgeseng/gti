@@ -86,8 +86,17 @@ export async function GET(): Promise<NextResponse> {
           "A primeira sync foi lançada em segundo plano há mais de 10 minutos e ainda não há estado persistido — falha na sync ou na escrita em SyncState (ver Deploy Logs: «Primeira sincronização GLPI em segundo plano» ou erro Prisma). Pode forçar uma sync com POST /api/glpi/sync e o cabeçalho x-gti-glpi-sync-secret (variável GLPI_SYNC_TRIGGER_SECRET)."
         );
       } else if (
+        arranqueGlpiUltimo.phase === "after_ensure_db" &&
+        !Number.isNaN(Date.parse(arranqueGlpiUltimo.at)) &&
+        Date.now() - Date.parse(arranqueGlpiUltimo.at) > 35_000
+      ) {
+        avisos.push(
+          "Checkpoint «after_ensure_db» antigo: o arranque costumava ficar preso no download do OpenAPI (`GLPI_DOC_URL`). Com o limite de ~25s isso deve libertar; confirme que o contentor alcança o URL do doc (firewall, DNS, TLS) e que `GLPI_DOC_URL` está correto para a v2 do GLPI."
+        );
+      } else if (
         (arranqueGlpiUltimo.phase === "after_token" ||
-          arranqueGlpiUltimo.phase === "before_run_sync") &&
+          arranqueGlpiUltimo.phase === "before_run_sync" ||
+          arranqueGlpiUltimo.phase === "before_openapi_doc") &&
         !Number.isNaN(Date.parse(arranqueGlpiUltimo.at)) &&
         Date.now() - Date.parse(arranqueGlpiUltimo.at) > 120_000
       ) {

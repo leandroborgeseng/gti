@@ -174,6 +174,7 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
     );
   });
   await recordGlpiBootstrapCheckpoint("after_ensure_db");
+  await recordGlpiBootstrapCheckpoint("before_openapi_doc");
   await loadOpenApiSpec().catch((error) => {
     logger.warn({ error: toErrorLog(error) }, "Falha no carregamento inicial do doc OpenAPI");
   });

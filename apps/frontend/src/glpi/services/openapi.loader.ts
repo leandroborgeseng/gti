@@ -55,10 +55,18 @@ function detectTicketsPath(paths: Record<string, unknown>): string {
   return "/v2/Assistance/Ticket";
 }
 
+/** O doc OpenAPI não deve bloquear o arranque indefinidamente (ex.: `HTTP_TIMEOUT_MS` muito alto ou rede presa). */
+const OPENAPI_FETCH_MAX_MS = 25_000;
+
 export async function loadOpenApiSpec(): Promise<Record<string, unknown>> {
+  const timeoutMs = Math.min(Math.max(env.HTTP_TIMEOUT_MS, 3_000), OPENAPI_FETCH_MAX_MS);
+  const controller = new AbortController();
+  const kill = setTimeout(() => controller.abort(), timeoutMs + 2_000);
+
   try {
     const response = await axios.get<Record<string, unknown>>(env.GLPI_DOC_URL, {
-      timeout: env.HTTP_TIMEOUT_MS,
+      timeout: timeoutMs,
+      signal: controller.signal,
       headers: {
         Accept: "application/json",
         "User-Agent": env.GLPI_USER_AGENT
@@ -79,10 +87,12 @@ export async function loadOpenApiSpec(): Promise<Record<string, unknown>> {
     return response.data;
   } catch (error) {
     logger.warn(
-      { error: toErrorLog(error), docUrl: env.GLPI_DOC_URL, fallbackPath: discoveredTicketsPath },
+      { error: toErrorLog(error), docUrl: env.GLPI_DOC_URL, timeoutMs, fallbackPath: discoveredTicketsPath },
       "OpenAPI GLPI indisponível; mantém GLPI_TICKETS_PATH / último path conhecido"
     );
     return { paths: {} };
+  } finally {
+    clearTimeout(kill);
   }
 }
 
