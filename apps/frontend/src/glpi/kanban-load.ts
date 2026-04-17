@@ -1,4 +1,3 @@
-import type { Ticket } from "@prisma/client";
 import { prisma } from "./config/prisma";
 import { getCachedUsersByIds } from "./services/glpi-users-cache.service";
 import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
@@ -21,9 +20,9 @@ import { mergeColumnOrder, readKanbanSettings, type KanbanSettings } from "./kan
 
 const KANBAN_SYNC_STALE_MS = 24 * 60 * 60 * 1000;
 
-/** Alinhado ao `select` do `findMany` distinto (evita `TicketGetPayload` no namespace Prisma em alguns builds). */
-type DistinctStatusRow = Pick<Ticket, "status">;
-type DistinctGroupRow = Pick<Ticket, "contractGroupName">;
+/** Forma do `select` nos `findMany` distintos (tipos explícitos — o pacote `@prisma/client` do frontend nem sempre exporta `Ticket`). */
+type DistinctStatusRow = { status: string | null };
+type DistinctGroupRow = { contractGroupName: string | null };
 
 function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "-";
