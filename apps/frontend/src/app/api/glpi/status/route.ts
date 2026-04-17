@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { diagnosticoPlataformaEnv } from "@/glpi/config/env-diagnostics";
 import {
   glpiEnvironmentReadiness,
   glpiEnvKeyDiagnostics,
   glpiEnvPresenceSummary
 } from "@/glpi/config/glpi-runtime-check";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const JSON_UTF8 = { "content-type": "application/json; charset=utf-8" } as const;
 
@@ -24,9 +28,10 @@ export async function GET(): Promise<NextResponse> {
       unexpandedReferences: readiness.unexpandedReferences,
       envPresence: glpiEnvPresenceSummary(),
       envChaves: glpiEnvKeyDiagnostics(),
+      plataforma: diagnosticoPlataformaEnv(),
       processCwd: process.cwd(),
       hint:
-        "No Railway: (1) Variáveis no serviço deste deploy ou use UMA variável `GTI_ENV_JSON` com todo o JSON (ver apps/frontend/.env.example). (2) Aplique «staged changes» e faça redeploy. (3) DATABASE_URL dentro do JSON: prefira referência `${{NomeDoPostgres.DATABASE_URL}}` gravada pela UI. (4) envChaves tudo false ⇒ nada chegou ao processo — serviço errado ou alterações por aplicar."
+        "Veja `plataforma`: se `railway.*` vier tudo false, este contentor pode não ser um deploy Railway normal. Se `gtiEnvJsonDefinida` for false, a variável `GTI_ENV_JSON` não existe neste processo (crie-a neste serviço, aplique alterações e redeploy). Se for true mas `missingEnv` continuar, o JSON está inválido ou as chaves têm nomes errados. Variáveis soltas no painel também precisam estar neste mesmo serviço e aplicadas antes do redeploy."
     });
   }
 
