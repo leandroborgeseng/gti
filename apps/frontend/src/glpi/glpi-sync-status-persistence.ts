@@ -7,23 +7,62 @@ const isBuildStub = process.env.GLPI_SKIP_BOOTSTRAP === "1";
 /** Chave em `SyncState` para o último estado da sincronização GLPI (partilhado entre processos). */
 export const GLPI_SYNC_STATUS_STATE_KEY = "glpi_sync_status_v1";
 
-/** Última fase conhecida do `bootstrapGlpiSync` (diagnóstico quando `glpi_sync_status_v1` ainda não existe). */
+/** Legado: antes Next e worker partilhavam a mesma chave (falsos avisos multi-réplica). */
 export const GLPI_BOOTSTRAP_LAST_KEY = "glpi_bootstrap_last_v1";
 
-/** Data ISO do último `bootstrap_done` bem-sucedido (não é sobrescrito por fases intermédias de outro arranque). */
+/** Checkpoints do processo Next (instrumentation / API). */
+export const GLPI_BOOTSTRAP_LAST_KEY_NEXT = "glpi_bootstrap_last_v1_next";
+
+/** Checkpoints do worker CLI (`glpi-worker-cli.ts`). */
+export const GLPI_BOOTSTRAP_LAST_KEY_WORKER = "glpi_bootstrap_last_v1_worker";
+
+/** Legado: marcador único de bootstrap concluído. */
 export const GLPI_BOOTSTRAP_DONE_KEY = "glpi_bootstrap_done_v1";
+
+export const GLPI_BOOTSTRAP_DONE_KEY_NEXT = "glpi_bootstrap_done_v1_next";
+export const GLPI_BOOTSTRAP_DONE_KEY_WORKER = "glpi_bootstrap_done_v1_worker";
+
+export function isGlpiWorkerProcess(): boolean {
+  return process.env.GLPI_WORKER_PROCESS === "1";
+}
 
 export type GlpiBootstrapCheckpoint = {
   phase: string;
   at: string;
 };
 
+function bootstrapLastKeyForWriter(): string {
+  return isGlpiWorkerProcess() ? GLPI_BOOTSTRAP_LAST_KEY_WORKER : GLPI_BOOTSTRAP_LAST_KEY_NEXT;
+}
+
+function bootstrapDoneKeyForWriter(): string {
+  return isGlpiWorkerProcess() ? GLPI_BOOTSTRAP_DONE_KEY_WORKER : GLPI_BOOTSTRAP_DONE_KEY_NEXT;
+}
+
+function parseCheckpointValue(raw: string): GlpiBootstrapCheckpoint | null {
+  try {
+    const o = JSON.parse(raw) as { phase?: unknown; at?: unknown };
+    if (typeof o.phase !== "string" || typeof o.at !== "string") return null;
+    return { phase: o.phase, at: o.at };
+  } catch {
+    return null;
+  }
+}
+
+async function readCheckpointByKey(key: string): Promise<GlpiBootstrapCheckpoint | null> {
+  const row = await prisma.syncState.findUnique({ where: { key } });
+  const raw = row?.value;
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  return parseCheckpointValue(raw);
+}
+
 export async function recordGlpiBootstrapCheckpoint(phase: string): Promise<void> {
   try {
     const payload = JSON.stringify({ phase, at: new Date().toISOString() });
+    const key = bootstrapLastKeyForWriter();
     await prisma.syncState.upsert({
-      where: { key: GLPI_BOOTSTRAP_LAST_KEY },
-      create: { key: GLPI_BOOTSTRAP_LAST_KEY, value: payload },
+      where: { key },
+      create: { key, value: payload },
       update: { value: payload }
     });
   } catch (error) {
@@ -34,14 +73,21 @@ export async function recordGlpiBootstrapCheckpoint(phase: string): Promise<void
   }
 }
 
+/** Último checkpoint do **Next** (chave nova), ou legado `glpi_bootstrap_last_v1` se ainda não migrado. */
 export async function readGlpiBootstrapLastCheckpoint(): Promise<GlpiBootstrapCheckpoint | null> {
   try {
-    const row = await prisma.syncState.findUnique({ where: { key: GLPI_BOOTSTRAP_LAST_KEY } });
-    const raw = row?.value;
-    if (typeof raw !== "string" || raw.length === 0) return null;
-    const o = JSON.parse(raw) as { phase?: unknown; at?: unknown };
-    if (typeof o.phase !== "string" || typeof o.at !== "string") return null;
-    return { phase: o.phase, at: o.at };
+    const next = await readCheckpointByKey(GLPI_BOOTSTRAP_LAST_KEY_NEXT);
+    if (next) return next;
+    return await readCheckpointByKey(GLPI_BOOTSTRAP_LAST_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Último checkpoint do **worker** CLI (processo separado). */
+export async function readGlpiBootstrapLastCheckpointWorker(): Promise<GlpiBootstrapCheckpoint | null> {
+  try {
+    return await readCheckpointByKey(GLPI_BOOTSTRAP_LAST_KEY_WORKER);
   } catch {
     return null;
   }
@@ -50,23 +96,40 @@ export async function readGlpiBootstrapLastCheckpoint(): Promise<GlpiBootstrapCh
 export async function recordGlpiBootstrapDoneMarker(): Promise<void> {
   try {
     const at = new Date().toISOString();
+    const key = bootstrapDoneKeyForWriter();
     await prisma.syncState.upsert({
-      where: { key: GLPI_BOOTSTRAP_DONE_KEY },
-      create: { key: GLPI_BOOTSTRAP_DONE_KEY, value: at },
+      where: { key },
+      create: { key, value: at },
       update: { value: at }
     });
   } catch (error) {
-    logger.warn({ error: toErrorLog(error) }, "Não foi possível gravar o marcador glpi_bootstrap_done_v1");
+    logger.warn({ error: toErrorLog(error) }, "Não foi possível gravar o marcador de bootstrap concluído");
   }
 }
 
+async function readDoneIsoByKey(key: string): Promise<string | null> {
+  const row = await prisma.syncState.findUnique({ where: { key } });
+  const raw = row?.value?.trim();
+  if (!raw) return null;
+  if (Number.isNaN(Date.parse(raw))) return null;
+  return raw;
+}
+
+/** Data ISO do último `bootstrap_done` no processo **Next** (ou legado). */
 export async function readGlpiBootstrapDoneAt(): Promise<string | null> {
   try {
-    const row = await prisma.syncState.findUnique({ where: { key: GLPI_BOOTSTRAP_DONE_KEY } });
-    const raw = row?.value?.trim();
-    if (!raw) return null;
-    if (Number.isNaN(Date.parse(raw))) return null;
-    return raw;
+    const next = await readDoneIsoByKey(GLPI_BOOTSTRAP_DONE_KEY_NEXT);
+    if (next) return next;
+    return await readDoneIsoByKey(GLPI_BOOTSTRAP_DONE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Data ISO do último `bootstrap_done` no **worker** CLI. */
+export async function readGlpiBootstrapDoneAtWorker(): Promise<string | null> {
+  try {
+    return await readDoneIsoByKey(GLPI_BOOTSTRAP_DONE_KEY_WORKER);
   } catch {
     return null;
   }

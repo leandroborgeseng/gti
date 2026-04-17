@@ -8,7 +8,9 @@ import {
 import {
   mergeGlpiSyncStatusForApi,
   readGlpiBootstrapDoneAt,
+  readGlpiBootstrapDoneAtWorker,
   readGlpiBootstrapLastCheckpoint,
+  readGlpiBootstrapLastCheckpointWorker,
   readGlpiSyncStatusFromDbDetailed
 } from "@/glpi/glpi-sync-status-persistence";
 
@@ -57,11 +59,14 @@ export async function GET(): Promise<NextResponse> {
       console.error("[GTI] Garantia de arranque GLPI (após GET /api/glpi/status):", error);
     });
     const { syncStatus } = mod;
-    const [dbRead, arranqueGlpiUltimo, arranqueGlpiBootstrapConcluidoEm] = await Promise.all([
-      readGlpiSyncStatusFromDbDetailed(),
-      readGlpiBootstrapLastCheckpoint(),
-      readGlpiBootstrapDoneAt()
-    ]);
+    const [dbRead, arranqueGlpiUltimo, arranqueGlpiBootstrapConcluidoEm, arranqueWorkerUltimo, arranqueWorkerConcluidoEm] =
+      await Promise.all([
+        readGlpiSyncStatusFromDbDetailed(),
+        readGlpiBootstrapLastCheckpoint(),
+        readGlpiBootstrapDoneAt(),
+        readGlpiBootstrapLastCheckpointWorker(),
+        readGlpiBootstrapDoneAtWorker()
+      ]);
     const fromDb = dbRead.snapshot;
     const merged = mergeGlpiSyncStatusForApi(fromDb, { ...syncStatus });
     const { persistedAt: _persistedAt, ...sync } = merged;
@@ -151,7 +156,10 @@ export async function GET(): Promise<NextResponse> {
         prismaErro: dbRead.erroPrisma,
         arranqueGlpiUltimaFase: arranqueGlpiUltimo?.phase ?? null,
         arranqueGlpiUltimaFaseEm: arranqueGlpiUltimo?.at ?? null,
-        arranqueGlpiBootstrapConcluidoEm: arranqueGlpiBootstrapConcluidoEm
+        arranqueGlpiBootstrapConcluidoEm: arranqueGlpiBootstrapConcluidoEm,
+        arranqueWorkerUltimaFase: arranqueWorkerUltimo?.phase ?? null,
+        arranqueWorkerUltimaFaseEm: arranqueWorkerUltimo?.at ?? null,
+        arranqueWorkerBootstrapConcluidoEm: arranqueWorkerConcluidoEm
       },
       avisos: avisos.length ? avisos : undefined
     });

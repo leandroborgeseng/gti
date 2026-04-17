@@ -19,6 +19,8 @@ function toErrorLog(error: unknown): { message: string; stack?: string } {
 }
 
 async function main(): Promise<void> {
+  /** Separa checkpoints em `SyncState` dos do servidor Next (evita colisão na mesma BD). */
+  process.env.GLPI_WORKER_PROCESS = "1";
   const { logger } = await import("../src/glpi/config/logger");
   const { bootstrapGlpiWorkerProcess } = await import("../src/glpi/sync-cron");
   try {
