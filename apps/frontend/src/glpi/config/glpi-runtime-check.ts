@@ -52,3 +52,19 @@ export function glpiEnvPresenceSummary(): Record<string, { set: boolean; templat
   }
   return out;
 }
+
+/**
+ * Indica se a chave existe em `process.env` e o comprimento do valor bruto (sem revelar conteúdo).
+ * Ajuda a distinguir «Railway não injetou» (chave ausente) de «valor vazio».
+ */
+export function glpiEnvKeyDiagnostics(): Record<string, { chaveExiste: boolean; comprimentoValor: number }> {
+  const out: Record<string, { chaveExiste: boolean; comprimentoValor: number }> = {};
+  for (const k of GLPI_REQUIRED) {
+    const raw = process.env[k];
+    out[k] = {
+      chaveExiste: Object.prototype.hasOwnProperty.call(process.env, k),
+      comprimentoValor: typeof raw === "string" ? raw.length : 0
+    };
+  }
+  return out;
+}
