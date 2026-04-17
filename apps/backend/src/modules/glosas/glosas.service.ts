@@ -1,17 +1,22 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { getAuditActorId, getAuditActorLabel } from "../../common/audit-actor";
 import { MeasurementStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { StorageService } from "../../storage/storage.service";
 import { CreateGlosaDto } from "./glosas.dto";
 
 @Injectable()
 export class GlosasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService
+  ) {}
 
   async create(dto: CreateGlosaDto): Promise<unknown> {
     const measurement = await this.prisma.measurement.findFirst({ where: { id: dto.measurementId, deletedAt: null } });
     if (!measurement) throw new NotFoundException("Medição não encontrada");
     if (measurement.status === MeasurementStatus.OPEN) throw new BadRequestException("Calcule a medição antes de registrar glosa");
-    const createdBy = dto.createdBy?.trim() || "system";
+    const createdBy = dto.createdBy?.trim() || getAuditActorLabel();
     const glosa = await this.prisma.glosa.create({
       data: {
         measurementId: dto.measurementId,
@@ -45,23 +50,36 @@ export class GlosasService {
 
   async findAll(): Promise<unknown> {
     return this.prisma.glosa.findMany({
-      include: { measurement: { include: { contract: true } } },
+      include: { measurement: { include: { contract: true } }, attachments: true },
       orderBy: { createdAt: "desc" }
     });
   }
 
-  async addAttachment(glosaId: string, payload: { fileName: string; mimeType: string; filePath: string }): Promise<unknown> {
+  async findOne(id: string): Promise<unknown> {
+    const glosa = await this.prisma.glosa.findFirst({
+      where: { id },
+      include: { measurement: { include: { contract: true } }, attachments: true }
+    });
+    if (!glosa) throw new NotFoundException("Glosa não encontrada");
+    return glosa;
+  }
+
+  async addAttachmentUpload(glosaId: string, file: Express.Multer.File): Promise<unknown> {
     const exists = await this.prisma.glosa.findUnique({ where: { id: glosaId } });
     if (!exists) throw new NotFoundException("Glosa não encontrada");
+    if (!file.buffer?.length) {
+      throw new BadRequestException("Ficheiro vazio");
+    }
+    const { filePath } = await this.storage.saveGlosaFile(glosaId, file.buffer, file.originalname, file.mimetype);
     const attachment = await this.prisma.attachment.create({
       data: {
         glosaId,
-        fileName: payload.fileName,
-        mimeType: payload.mimeType,
-        filePath: payload.filePath
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        filePath
       }
     });
-    await this.audit("Attachment", attachment.id, "CREATE", "system", null, attachment);
+    await this.audit("Attachment", attachment.id, "CREATE", getAuditActorId(), null, attachment);
     return attachment;
   }
 

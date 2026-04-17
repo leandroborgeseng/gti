@@ -1,11 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { getAuditActorId } from "../../common/audit-actor";
 import { MeasurementItemType, MeasurementStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { StorageService } from "../../storage/storage.service";
 import { CreateMeasurementDto } from "./measurements.dto";
 
 @Injectable()
 export class MeasurementsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService
+  ) {}
 
   async create(dto: CreateMeasurementDto): Promise<unknown> {
     const duplicate = await this.prisma.measurement.findFirst({
@@ -51,7 +56,7 @@ export class MeasurementsService {
   async findOne(id: string): Promise<unknown> {
     const m = await this.prisma.measurement.findFirst({
       where: { id, deletedAt: null },
-      include: { contract: true, items: true, glosas: true }
+      include: { contract: true, items: true, glosas: true, attachments: true }
     });
     if (!m) throw new NotFoundException("Medição não encontrada");
     return m;
@@ -132,15 +137,24 @@ export class MeasurementsService {
     return updated;
   }
 
-  async addAttachment(measurementId: string, payload: { fileName: string; mimeType: string; filePath: string }): Promise<unknown> {
+  async addAttachmentUpload(measurementId: string, file: Express.Multer.File): Promise<unknown> {
     const exists = await this.prisma.measurement.findFirst({ where: { id: measurementId, deletedAt: null } });
     if (!exists) throw new NotFoundException("Medição não encontrada");
+    if (!file.buffer?.length) {
+      throw new BadRequestException("Ficheiro vazio");
+    }
+    const { filePath } = await this.storage.saveMeasurementFile(
+      measurementId,
+      file.buffer,
+      file.originalname,
+      file.mimetype
+    );
     const attachment = await this.prisma.attachment.create({
       data: {
         measurementId,
-        fileName: payload.fileName,
-        mimeType: payload.mimeType,
-        filePath: payload.filePath
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        filePath
       }
     });
     await this.audit("Attachment", attachment.id, "CREATE", null, attachment);
@@ -153,7 +167,7 @@ export class MeasurementsService {
         entity,
         entityId,
         action,
-        userId: "system",
+        userId: getAuditActorId(),
         oldData: oldData ? (oldData as Prisma.InputJsonValue) : undefined,
         newData: newData ? (newData as Prisma.InputJsonValue) : undefined
       }

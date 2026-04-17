@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Glosa } from "@/lib/api";
@@ -58,21 +59,35 @@ export function GlosasView({ glosas }: Props): JSX.Element {
                 <th className="px-5 py-3 text-right">Valor</th>
                 <th className="px-5 py-3">Criado por</th>
                 <th className="px-5 py-3">Data</th>
+                <th className="px-5 py-3 text-right"> </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {glosas.map((g) => (
                 <tr key={g.id} className="transition hover:bg-slate-50/60">
-                  <td className="whitespace-nowrap px-5 py-3 font-mono text-xs text-slate-600">{g.measurementId}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-xs text-slate-600">
+                    {g.measurement ? (
+                      <span className="font-mono">
+                        {String(g.measurement.referenceMonth).padStart(2, "0")}/{g.measurement.referenceYear}
+                      </span>
+                    ) : (
+                      <span className="font-mono">{g.measurementId}</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-slate-800">{typeLabel[g.type] ?? g.type}</td>
                   <td className="px-5 py-3 text-right tabular-nums text-slate-800">{g.value}</td>
                   <td className="px-5 py-3 text-slate-600">{g.createdBy}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-slate-600">{new Date(g.createdAt).toLocaleDateString("pt-BR")}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-right">
+                    <Link href={`/glosas/${g.id}`} className="text-sm font-medium text-blue-700 hover:text-blue-900">
+                      Abrir
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {glosas.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-14 text-center text-sm text-slate-500">
+                  <td colSpan={6} className="px-5 py-14 text-center text-sm text-slate-500">
                     Nenhuma glosa ainda. Clique em &quot;Nova glosa&quot; após calcular a medição.
                   </td>
                 </tr>

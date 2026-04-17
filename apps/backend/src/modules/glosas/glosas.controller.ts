@@ -1,6 +1,23 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  MaxFileSizeValidator,
+  Param,
+  ParseFilePipe,
+  Post,
+  UploadedFile,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { memoryStorage } from "multer";
 import { CreateGlosaDto } from "./glosas.dto";
 import { GlosasService } from "./glosas.service";
+
+function uploadMaxBytes(): number {
+  const n = Number(process.env.UPLOAD_MAX_MB ?? "10");
+  return (Number.isFinite(n) && n > 0 ? n : 10) * 1024 * 1024;
+}
 
 @Controller("glosas")
 export class GlosasController {
@@ -16,11 +33,28 @@ export class GlosasController {
     return this.service.findAll();
   }
 
+  @Get(":id")
+  findOne(@Param("id") id: string): Promise<unknown> {
+    return this.service.findOne(id);
+  }
+
   @Post(":id/attachments")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: uploadMaxBytes() + 1024 }
+    })
+  )
   addAttachment(
-    @Body() payload: { fileName: string; mimeType: string; filePath: string },
-    @Param("id") id: string
+    @Param("id") id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [new MaxFileSizeValidator({ maxSize: uploadMaxBytes() })]
+      })
+    )
+    file: Express.Multer.File
   ): Promise<unknown> {
-    return this.service.addAttachment(id, payload);
+    return this.service.addAttachmentUpload(id, file);
   }
 }

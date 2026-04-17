@@ -1,5 +1,95 @@
-import { ContractStatus, ContractType, LawType } from "@prisma/client";
+import { ContractFeatureStatus, ContractStatus, ContractType, LawType } from "@prisma/client";
+import { Type } from "class-transformer";
 import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from "class-validator";
+
+export class CreateContractModuleDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  weight!: number;
+}
+
+export class UpdateContractModuleDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  weight?: number;
+}
+
+export class CreateContractFeatureDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  weight!: number;
+
+  @IsOptional()
+  @IsEnum(ContractFeatureStatus)
+  status?: ContractFeatureStatus;
+}
+
+export class UpdateContractFeatureDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  weight?: number;
+
+  @IsOptional()
+  @IsEnum(ContractFeatureStatus)
+  status?: ContractFeatureStatus;
+}
+
+export class CreateContractServiceDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  unit!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  unitValue!: number;
+}
+
+export class UpdateContractServiceDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  unit?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  unitValue?: number;
+}
 
 export class CreateContractDto {
   @IsString()

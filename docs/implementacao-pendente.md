@@ -14,19 +14,19 @@ Este documento resume o que **ainda não está completo** ou **vale evoluir**, a
 1. **Frontend com lockfile** *(feito)*  
    `apps/frontend/package-lock.json` versionado; usar `npm ci` no deploy.
 
-2. **Smoke test opcional em pipeline**  
-   Executar `npm run smoke:regression` só em job manual ou com serviços mockados (hoje assume servidores no ar).
+2. **Smoke test opcional em pipeline** *(feito)*  
+   Workflow manual em `.github/workflows/smoke-manual.yml` (`workflow_dispatch` com URLs da app e da API). Executa `npm run smoke:regression` na raiz.
 
-3. **Cadastro de estrutura do contrato na UI**  
-   Telas para criar/editar **módulos**, **funcionalidades** (software) e **serviços** (datacenter) sem depender só do Prisma/API manual ou seeds.
+3. **Cadastro de estrutura do contrato na UI** *(parcial — edição na ficha do contrato)*  
+   Na rota `/contracts/[id]`, módulos, funcionalidades (por módulo) e serviços passam a ser criados/editados/removidos via API Nest (`POST/PUT/DELETE` em `/api/contracts/...`). **UX de pesos:** resumo da soma dos módulos (meta 1), soma por módulo nas funcionalidades, destaque quando fora da tolerância e confirmação ao gravar se a soma projetada não for ≈ 1 (`apps/frontend/src/lib/contract-weights.ts`). A rota `(gestao)/contracts/[id]` reutiliza o mesmo editor. **Opcional futuro:** reordenar módulos/funcionalidades (ex.: `sortOrder` no Prisma + API) para suportar arrastar e largar com persistência.
 
-4. **Upload real de anexos**  
-   Hoje há placeholder em `Attachment`; falta storage (disco/S3), limite de tamanho, tipos MIME e vínculo estável na medição/glosa.
+4. **Upload real de anexos** *(feito — disco local)*  
+   `POST` multipart em `/api/measurements/:id/attachments` e `/api/glosas/:id/attachments`; ficheiros em `UPLOAD_ROOT` (ex.: `./uploads`); limite `UPLOAD_MAX_MB`; MIME permitidos com lista extensível `UPLOAD_EXTRA_MIME`. Download: `GET /api/attachments/:id/download`. UI de envio na ficha da medição (`/measurements/[id]`) e na ficha da glosa (`GET /api/glosas/:id`, rota `/glosas/[id]`). Para S3, substituir `StorageService` numa fase seguinte.
 
 ## Médio prazo
 
-5. **Autenticação e perfis**  
-   Utilizador real no `AuditLog` (substituir `system` onde fizer sentido), login e autorização por rota/módulo.
+5. **Autenticação e perfis** *(parcial — MVP JWT)*  
+   Modelo `User` (papéis `ADMIN`, `EDITOR`, `VIEWER`), `POST /api/auth/login`, JWT global nas rotas Nest, `AuditLog.userId` e operações críticas com ator do contexto (`getAuditActorId` / `getAuditActorLabel` para glosas). Next: `/login`, cookie `gti_token`, middleware nas rotas de gestão, proxy `/api/attachments/:id/download`, link **Sair**. Seed: `npx prisma db seed` (credenciais `BOOTSTRAP_ADMIN_*` em `apps/backend/.env.example`). Smoke: `SMOKE_EMAIL`/`SMOKE_PASSWORD` ou `SMOKE_API_BEARER`. **Pendente:** gestão de utilizadores na UI, perfis por módulo finos, refresh token, cookie httpOnly + BFF se endurecer segurança.
 
 6. **Relatórios e exportação**  
    PDF/Excel, filtros por competência e pacote para auditoria externa.
@@ -50,5 +50,5 @@ Este documento resume o que **ainda não está completo** ou **vale evoluir**, a
 
 ## Como acompanhar o projeto no GitHub
 
-- **Actions**: não há workflow ativo (deploy Railway não depende de checks no GitHub).
+- **Actions**: workflow manual de smoke em `.github/workflows/smoke-manual.yml` (o deploy na Railway não depende de checks obrigatórios no GitHub).
 - **Commits recentes** em `main`: simplificação de fluxos e documentação de migração/validação.

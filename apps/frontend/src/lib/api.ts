@@ -1,12 +1,23 @@
+import { authHeadersForApi, readBrowserAuthToken } from "@/lib/auth-token";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3000/api";
 
+/** URL base da API Nest (com `/api`) para links e `FormData` fora de `request()`. */
+export function getBackendApiBaseUrl(): string {
+  return API_BASE_URL;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const auth = await authHeadersForApi();
+  const isFormData = init?.body instanceof FormData;
+  const extra = (init?.headers ?? {}) as Record<string, string>;
+  const headers: Record<string, string> = { ...auth, ...extra };
+  if (!isFormData && !headers["Content-Type"] && !headers["content-type"]) {
+    headers["Content-Type"] = "application/json";
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    },
+    headers,
     cache: "no-store"
   });
   if (!response.ok) {
@@ -39,6 +50,14 @@ export type Contract = {
   services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
 };
 
+export type AttachmentRecord = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  filePath: string;
+  createdAt: string;
+};
+
 export type Measurement = {
   id: string;
   contractId: string;
@@ -51,7 +70,7 @@ export type Measurement = {
   contract?: { id: string; number?: string; name: string };
   items?: Array<{ id: string; type: string; referenceId: string; quantity: string; calculatedValue: string }>;
   glosas?: Array<{ id: string; type: string; value: string; justification: string; createdBy: string; createdAt: string }>;
-  attachments?: Array<{ id: string; fileName: string; filePath: string; createdAt: string }>;
+  attachments?: Array<AttachmentRecord>;
 };
 
 export type Glosa = {
@@ -63,6 +82,7 @@ export type Glosa = {
   createdBy: string;
   createdAt: string;
   measurement?: { id: string; referenceMonth: number; referenceYear: number; contract?: { number?: string; name: string } };
+  attachments?: Array<AttachmentRecord>;
 };
 
 export type GovernanceTicket = {
@@ -150,6 +170,119 @@ export async function createContract(payload: {
   return request("/contracts", { method: "POST", body: JSON.stringify(payload) });
 }
 
+export type ContractFeatureStatus = "NOT_STARTED" | "IN_PROGRESS" | "DELIVERED" | "VALIDATED";
+
+export async function createContractModule(contractId: string, payload: { name: string; weight: number }): Promise<Contract> {
+  return request(`/contracts/${contractId}/modules`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateContractModule(
+  contractId: string,
+  moduleId: string,
+  payload: { name?: string; weight?: number }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/modules/${moduleId}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export async function deleteContractModule(contractId: string, moduleId: string): Promise<Contract> {
+  return request(`/contracts/${contractId}/modules/${moduleId}`, { method: "DELETE" });
+}
+
+export async function createContractFeature(
+  contractId: string,
+  moduleId: string,
+  payload: { name: string; weight: number; status?: ContractFeatureStatus }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/modules/${moduleId}/features`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateContractFeature(
+  contractId: string,
+  moduleId: string,
+  featureId: string,
+  payload: { name?: string; weight?: number; status?: ContractFeatureStatus }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/modules/${moduleId}/features/${featureId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteContractFeature(contractId: string, moduleId: string, featureId: string): Promise<Contract> {
+  return request(`/contracts/${contractId}/modules/${moduleId}/features/${featureId}`, { method: "DELETE" });
+}
+
+export async function createContractService(
+  contractId: string,
+  payload: { name: string; unit: string; unitValue: number }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/services`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateContractService(
+  contractId: string,
+  serviceId: string,
+  payload: { name?: string; unit?: string; unitValue?: number }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/services/${serviceId}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export async function deleteContractService(contractId: string, serviceId: string): Promise<Contract> {
+  return request(`/contracts/${contractId}/services/${serviceId}`, { method: "DELETE" });
+}
+
+/** Download same-origin com cookie de sessão (evita expor JWT na URL do Nest). */
+export function attachmentDownloadUrl(attachmentId: string): string {
+  return `/api/attachments/${attachmentId}/download`;
+}
+
+async function parseUploadError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { message?: string | string[]; error?: string };
+    const m = payload.message;
+    if (Array.isArray(m)) {
+      return m.join("; ");
+    }
+    return (typeof m === "string" ? m : payload.error) || `HTTP ${response.status}`;
+  } catch {
+    return `HTTP ${response.status}`;
+  }
+}
+
+export async function uploadMeasurementAttachment(measurementId: string, file: File): Promise<AttachmentRecord> {
+  const form = new FormData();
+  form.append("file", file);
+  const t = readBrowserAuthToken();
+  const headers: HeadersInit = t ? { Authorization: `Bearer ${t}` } : {};
+  const response = await fetch(`${API_BASE_URL}/measurements/${measurementId}/attachments`, {
+    method: "POST",
+    headers,
+    body: form,
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(await parseUploadError(response));
+  }
+  return (await response.json()) as AttachmentRecord;
+}
+
+export async function uploadGlosaAttachment(glosaId: string, file: File): Promise<AttachmentRecord> {
+  const form = new FormData();
+  form.append("file", file);
+  const t = readBrowserAuthToken();
+  const headers: HeadersInit = t ? { Authorization: `Bearer ${t}` } : {};
+  const response = await fetch(`${API_BASE_URL}/glosas/${glosaId}/attachments`, {
+    method: "POST",
+    headers,
+    body: form,
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(await parseUploadError(response));
+  }
+  return (await response.json()) as AttachmentRecord;
+}
+
 export async function getMeasurements(): Promise<Measurement[]> {
   return request("/measurements");
 }
@@ -176,6 +309,10 @@ export async function approveMeasurement(id: string): Promise<Measurement> {
 
 export async function getGlosas(): Promise<Glosa[]> {
   return request("/glosas");
+}
+
+export async function getGlosa(id: string): Promise<Glosa> {
+  return request(`/glosas/${id}`);
 }
 
 export async function createGlosa(payload: {

@@ -1,6 +1,10 @@
 .DS_Store
 **/.DS_Store
 
+# Ficheiros carregados pelo Nest (UPLOAD_ROOT)
+uploads/
+apps/backend/uploads/
+
 node_modules
 .env
 data.db

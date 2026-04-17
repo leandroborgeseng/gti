@@ -1,0 +1,40 @@
+# Smoke de regressão disparado só manualmente (não bloqueia push nem deploy na Railway).
+name: Smoke (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "URL base da app Next (ex.: https://app.exemplo.com)"
+        required: true
+        type: string
+      api_url:
+        description: "URL base da API Nest com sufixo /api (ex.: https://api.exemplo.com/api)"
+        required: true
+        type: string
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Instalar dependências (raiz)
+        run: npm ci
+
+      - name: Executar smoke
+        env:
+          SMOKE_APP_URL: ${{ inputs.app_url }}
+          SMOKE_BACKEND_URL: ${{ inputs.api_url }}
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          SMOKE_API_BEARER: ${{ secrets.SMOKE_API_BEARER }}
+        run: npm run smoke:regression

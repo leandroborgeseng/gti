@@ -1,3 +1,4 @@
+import { MeasurementAttachments } from "@/components/measurements/measurement-attachments";
 import { Card } from "@/components/ui/card";
 import { MeasurementActions } from "@/components/actions/measurement-actions";
 import { getMeasurement } from "@/lib/api";
@@ -37,6 +38,10 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
         <p className="text-sm text-slate-700">Valor medido: {measurement.totalMeasuredValue}</p>
         <p className="text-sm text-slate-700">Valor aprovado: {measurement.totalApprovedValue}</p>
         <p className="text-sm text-slate-700">Valor glosado: {measurement.totalGlosedValue}</p>
+      </Card>
+      <Card>
+        <h4 className="mb-2 font-medium">Anexos</h4>
+        <MeasurementAttachments measurementId={measurement.id} attachments={measurement.attachments ?? []} />
       </Card>
       <Card>
         <h4 className="mb-2 font-medium">Itens da medição</h4>

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
 import { GoalStatus, Prisma } from "@prisma/client";
+import { getAuditActorId } from "../../common/audit-actor";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   CreateGoalActionDto,
@@ -216,7 +217,7 @@ export class GoalsService implements OnModuleInit {
         entity,
         entityId,
         action,
-        userId: "system",
+        userId: getAuditActorId(),
         oldData: oldData ? (oldData as Prisma.InputJsonValue) : undefined,
         newData: newData ? (newData as Prisma.InputJsonValue) : undefined
       }

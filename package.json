@@ -4,6 +4,9 @@
   "description": "Kanban GLPI e gestão contratual em Next.js; worker de sync opcional (código em apps/frontend).",
   "private": true,
   "type": "commonjs",
+  "prisma": {
+    "seed": "cd apps/backend && npm run prisma:seed"
+  },
   "scripts": {
     "postinstall": "prisma generate --schema apps/backend/prisma/schema.prisma",
     "build": "npm ci && cd apps/frontend && npm ci && npm run build",

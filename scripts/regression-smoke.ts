@@ -14,11 +14,16 @@ type Result = {
 };
 
 const appUrl = process.env.SMOKE_APP_URL?.trim() || "http://localhost:3000";
-const backendUrl = process.env.SMOKE_BACKEND_URL?.trim() || "http://localhost:3000/api";
+const backendUrl = process.env.SMOKE_BACKEND_URL?.trim() || "http://localhost:4000/api";
 
-const checks: Check[] = [
+/** Páginas Next e health (sem JWT). */
+const publicChecks: Check[] = [
   { name: "Home/Kanban renderiza", url: `${appUrl}/`, expectedStatus: 200 },
-  { name: "Health do servidor principal", url: `${appUrl}/health`, expectedStatus: 200 },
+  { name: "Health do servidor principal", url: `${appUrl}/health`, expectedStatus: 200 }
+];
+
+/** API Nest (JWT obrigatório). */
+const apiChecks: Check[] = [
   { name: "Resumo dashboard backend", url: `${backendUrl}/dashboard/summary`, expectedStatus: 200 },
   { name: "Alertas dashboard backend", url: `${backendUrl}/dashboard/alerts`, expectedStatus: 200 },
   { name: "Listagem contratos backend", url: `${backendUrl}/contracts`, expectedStatus: 200 },
@@ -28,11 +33,38 @@ const checks: Check[] = [
   { name: "Listagem metas backend", url: `${backendUrl}/goals`, expectedStatus: 200 }
 ];
 
-async function runCheck(check: Check): Promise<Result> {
+async function resolveApiAuthHeaders(): Promise<Record<string, string> | null> {
+  const bearer = process.env.SMOKE_API_BEARER?.trim();
+  if (bearer) {
+    return { Authorization: `Bearer ${bearer}` };
+  }
+  const email = process.env.SMOKE_EMAIL?.trim();
+  const password = process.env.SMOKE_PASSWORD?.trim();
+  if (!email || !password) {
+    return null;
+  }
+  const r = await fetch(`${backendUrl}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+    cache: "no-store"
+  });
+  if (!r.ok) {
+    throw new Error(`Login na API de smoke falhou (HTTP ${r.status}). Verifique SMOKE_EMAIL/SMOKE_PASSWORD e a URL da API.`);
+  }
+  const { access_token } = (await r.json()) as { access_token: string };
+  return { Authorization: `Bearer ${access_token}` };
+}
+
+async function runCheck(check: Check, extraHeaders?: Record<string, string>): Promise<Result> {
   try {
+    const headers: Record<string, string> = { ...(extraHeaders ?? {}) };
+    if (check.body) {
+      headers["Content-Type"] = "application/json";
+    }
     const response = await fetch(check.url, {
       method: check.method ?? "GET",
-      headers: check.body ? { "Content-Type": "application/json" } : undefined,
+      headers: Object.keys(headers).length ? headers : undefined,
       body: check.body,
       cache: "no-store"
     });
@@ -66,10 +98,32 @@ async function main(): Promise<void> {
   console.log("");
 
   const results: Result[] = [];
-  for (const check of checks) {
+
+  for (const check of publicChecks) {
     const result = await runCheck(check);
     results.push(result);
     printResult(result);
+  }
+
+  let apiHeaders: Record<string, string> | null = null;
+  try {
+    apiHeaders = await resolveApiAuthHeaders();
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!apiHeaders) {
+    console.warn(
+      "[AVISO] Sem SMOKE_EMAIL/SMOKE_PASSWORD nem SMOKE_API_BEARER: verificações da API Nest foram ignoradas (JWT obrigatório)."
+    );
+  } else {
+    for (const check of apiChecks) {
+      const result = await runCheck(check, apiHeaders);
+      results.push(result);
+      printResult(result);
+    }
   }
 
   const failed = results.filter((r) => !r.ok);
@@ -82,7 +136,6 @@ async function main(): Promise<void> {
       console.log(`- ${item.check.name}: ${item.detail}`);
     }
     process.exitCode = 1;
-    return;
   }
 }
 

@@ -185,6 +185,18 @@ Com os serviços no ar, execute:
 npm run smoke:regression
 ```
 
+No GitHub Actions existe o workflow **Smoke (manual)** (`.github/workflows/smoke-manual.yml`): em **Actions**, escolha o workflow, **Run workflow** e preencha a URL da app e da API (`/api`). As variáveis `SMOKE_APP_URL` e `SMOKE_BACKEND_URL` são injetadas automaticamente. Para as chamadas à API Nest (JWT), configure no repositório os secrets **`SMOKE_EMAIL`** e **`SMOKE_PASSWORD`** (utilizador existente) ou **`SMOKE_API_BEARER`** (token já emitido).
+
+## Autenticação (gestão contratual)
+
+- **Backend:** utilizadores na tabela `User`, `POST /api/auth/login`, JWT em todas as rotas exceto login; perfis `VIEWER` (só leitura), `EDITOR` e `ADMIN` (escrita). Variáveis `JWT_SECRET` e opcional `JWT_EXPIRES_IN` em `apps/backend/.env.example`.
+- **Primeiro acesso:** após migrações, `npx prisma db seed` na raiz cria o administrador (`BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` por omissão no exemplo).
+- **Frontend:** `/login`, cookie `gti_token`, rotas de contratos/medições/etc. protegidas por middleware; **Chamados GLPI** (`/chamados`) e a página inicial permanecem sem login obrigatório.
+
+## Anexos (medições e glosas)
+
+O backend grava ficheiros no disco sob `UPLOAD_ROOT` (ver `apps/backend/.env.example`: `UPLOAD_ROOT`, `UPLOAD_MAX_MB`). Em produção (ex.: Railway), use **volume persistente** ou caminho montado; sem isso, os anexos perdem-se entre deploys. Na app Next, anexos por medição em `/measurements/[id]` e por glosa em `/glosas/[id]`.
+
 ## Verificação de tipos (local)
 
 Não há workflow automático no GitHub (evita bloquear deploy no Railway quando a opção *Wait for CI* está ligada). Recomenda-se correr antes de fazer push:

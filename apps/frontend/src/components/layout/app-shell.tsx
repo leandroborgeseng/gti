@@ -25,11 +25,13 @@ export function AppShell({ children }: PropsWithChildren): JSX.Element {
       ? "Detalhe do contrato"
       : pathname?.startsWith("/measurements/")
         ? "Detalhe da medição"
-        : pathname?.startsWith("/governance/tickets/")
-          ? "Detalhe do chamado (governança)"
-          : pathname?.startsWith("/goals/")
-            ? "Detalhe da meta"
-            : "Gestão contratual");
+        : pathname?.startsWith("/glosas/")
+          ? "Detalhe da glosa"
+          : pathname?.startsWith("/governance/tickets/")
+            ? "Detalhe do chamado (governança)"
+            : pathname?.startsWith("/goals/")
+              ? "Detalhe da meta"
+              : "Gestão contratual");
 
   return (
     <div className="flex min-h-screen bg-slate-100/60">
@@ -38,7 +40,12 @@ export function AppShell({ children }: PropsWithChildren): JSX.Element {
         <header className="sticky top-0 z-10 border-b border-slate-200/90 bg-white/90 px-6 py-3.5 backdrop-blur-md">
           <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
             <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
-            <p className="text-xs text-slate-500">Área autenticada</p>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span>Área autenticada</span>
+              <a href="/api/auth/logout" className="font-medium text-slate-700 underline hover:text-slate-900">
+                Sair
+              </a>
+            </div>
           </div>
         </header>
         <div className="p-6 md:p-8">{children}</div>

@@ -1,6 +1,23 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  MaxFileSizeValidator,
+  Param,
+  ParseFilePipe,
+  Post,
+  UploadedFile,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { memoryStorage } from "multer";
 import { CreateMeasurementDto } from "./measurements.dto";
 import { MeasurementsService } from "./measurements.service";
+
+function uploadMaxBytes(): number {
+  const n = Number(process.env.UPLOAD_MAX_MB ?? "10");
+  return (Number.isFinite(n) && n > 0 ? n : 10) * 1024 * 1024;
+}
 
 @Controller("measurements")
 export class MeasurementsController {
@@ -32,10 +49,22 @@ export class MeasurementsController {
   }
 
   @Post(":id/attachments")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: uploadMaxBytes() + 1024 }
+    })
+  )
   addAttachment(
     @Param("id") id: string,
-    @Body() payload: { fileName: string; mimeType: string; filePath: string }
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [new MaxFileSizeValidator({ maxSize: uploadMaxBytes() })]
+      })
+    )
+    file: Express.Multer.File
   ): Promise<unknown> {
-    return this.service.addAttachment(id, payload);
+    return this.service.addAttachmentUpload(id, file);
   }
 }

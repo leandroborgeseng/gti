@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { getAuditActorId } from "../../common/audit-actor";
 import { GovernancePriority, GovernanceType, Prisma, TicketEventType, TicketGovernanceStatus, TicketWatcherRole } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
@@ -278,7 +279,7 @@ export class GovernanceTicketsService {
         entity,
         entityId,
         action,
-        userId: "system",
+        userId: getAuditActorId(),
         oldData: oldData ? (oldData as Prisma.InputJsonValue) : undefined,
         newData: newData ? (newData as Prisma.InputJsonValue) : undefined
       }

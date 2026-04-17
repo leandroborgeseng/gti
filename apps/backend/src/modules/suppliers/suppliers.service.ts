@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { getAuditActorId } from "../../common/audit-actor";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateSupplierDto } from "./suppliers.dto";
@@ -26,7 +27,7 @@ export class SuppliersService {
         entity,
         entityId,
         action,
-        userId: "system",
+        userId: getAuditActorId(),
         oldData: oldData ? (oldData as Prisma.InputJsonValue) : undefined,
         newData: newData ? (newData as Prisma.InputJsonValue) : undefined
       }
