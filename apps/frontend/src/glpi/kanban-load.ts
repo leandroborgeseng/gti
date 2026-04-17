@@ -24,6 +24,21 @@ const KANBAN_SYNC_STALE_MS = 24 * 60 * 60 * 1000;
 type DistinctStatusRow = { status: string | null };
 type DistinctGroupRow = { contractGroupName: string | null };
 
+/** Linha do `findMany` do quadro Kanban — o tuple do `Promise.all` inferia `any[]` e quebrava `noImplicitAny` no build. */
+type KanbanTicketListRow = {
+  glpiTicketId: number;
+  title: string | null;
+  status: string | null;
+  contractGroupName: string | null;
+  dateCreation: string | null;
+  dateModification: string | null;
+  waitingParty: string | null;
+  updatedAt: Date;
+  requesterName: string | null;
+  requesterEmail: string | null;
+  requesterUserId: number | null;
+};
+
 function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
@@ -188,7 +203,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     getTicketSyncScope()
   ]);
 
-  const [ageBucketsResult, latestTicketRows, statusRows, groupRows] = await Promise.all([
+  const [ageBucketsResult, latestTicketRowsRaw, statusRows, groupRows] = await Promise.all([
     getOpenTicketAgeBuckets(whereAge),
     prisma.ticket.findMany({
       where,
@@ -221,6 +236,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
       orderBy: { contractGroupName: "asc" }
     })
   ]);
+  const latestTicketRows = latestTicketRowsRaw as KanbanTicketListRow[];
 
   const statuses = (statusRows as DistinctStatusRow[])
     .map((row) => row.status)
