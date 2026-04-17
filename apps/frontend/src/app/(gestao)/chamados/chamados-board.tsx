@@ -637,9 +637,16 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
           <div className="modal-backdrop" role="presentation" onClick={closeModal} />
           <div className="modal-panel modal-panel--glpi">
             <div className="modal-header modal-header--glpi">
-              <h2 id="ticket-modal-title" className="ticket-modal-header-title">
-                {detail?.name?.trim() ? `${detail.name} (#${modalId})` : `Chamado #${modalId}`}
-              </h2>
+              <div className="modal-header--glpi__titles">
+                <h2 id="ticket-modal-title" className="ticket-modal-header-title">
+                  {detail?.name?.trim() ? `${detail.name} (#${modalId})` : `Chamado #${modalId}`}
+                </h2>
+                {process.env.NEXT_PUBLIC_GTI_BUILD ? (
+                  <span className="ticket-modal-build-id" title="Identificador do deploy (NEXT_PUBLIC_GTI_BUILD)">
+                    {process.env.NEXT_PUBLIC_GTI_BUILD}
+                  </span>
+                ) : null}
+              </div>
               <button type="button" className="modal-close" onClick={closeModal} aria-label="Fechar">
                 ✕
               </button>

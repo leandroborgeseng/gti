@@ -628,6 +628,22 @@
 }
 .chamados-glpi-page .modal-header--glpi {
   flex-shrink: 0;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.chamados-glpi-page .modal-header--glpi__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  flex: 1;
+}
+.chamados-glpi-page .ticket-modal-build-id {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.72);
+  word-break: break-all;
 }
 .chamados-glpi-page .ticket-modal-header-title {
   margin: 0;

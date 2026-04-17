@@ -3,6 +3,10 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 
 import "./chamados-glpi.css";
 
+/** Evita HTML estático/cache de rota: o bundle do modal e o CSS devem corresponder ao último deploy. */
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const chamadosFont = Plus_Jakarta_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],

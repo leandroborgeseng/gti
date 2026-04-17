@@ -29,3 +29,21 @@
 
 - `npm run prisma:deploy` na raiz antes de `npm start` em produção.
 - Em Docker: o `CMD` da imagem executa `prisma migrate deploy` antes de `next start`; `DATABASE_URL` aponta para o **Postgres externo** (ex.: Railway), não para um contentor local.
+
+## Persistência do cache GLPI entre deploys
+
+O “sincronismo” (tickets em `Ticket`, atributos, `SyncState`, histórico enriquecido no JSON) **vive na base PostgreSQL** referenciada por `DATABASE_URL`. **Um deploy novo da aplicação não apaga estes dados** desde que:
+
+1. **`DATABASE_URL` aponte sempre para a mesma instância PostgreSQL** (serviço gerido na Railway, RDS, etc.), e não para uma base criada de raiz a cada release dentro do contentor.
+2. **Não se execute** `prisma migrate reset` nem se apague o volume da base em produção.
+3. As migrações usem apenas `prisma migrate deploy` (como no `Dockerfile`), que **não** limpa tabelas de dados.
+
+Se após cada deploy o sistema “volta a zero” e obriga a reimportar tudo do GLPI, em geral a causa é **nova base vazia** (variável de ambiente trocada para um Postgres novo) ou **plugin Postgres efémero** sem persistência. Corrija o serviço de dados, não o código do sync.
+
+## UI do modal Chamados após deploy
+
+A rota `/chamados` está configurada como **dinâmica** (`dynamic = "force-dynamic"`) para o Next não servir HTML antigo em cache de rota. Se o modal ainda parecer a versão antiga:
+
+- Faça **recarregar forçado** no browser (limpar cache da página ou janela anónima).
+- Em **Docker**, se suspeitar de camadas em cache na build: `docker build --no-cache …`.
+- Defina **`NEXT_PUBLIC_GTI_BUILD`** (ex.: hash do commit da Railway) e confirme que esse texto aparece no cabeçalho do modal; se não aparecer, o ambiente ainda está a servir um bundle antigo.

@@ -1,6 +1,9 @@
 import { buildFallbackKanbanBoardPayload, loadKanbanBoardPayload } from "@/glpi/kanban-load";
 import { ChamadosBoard } from "./chamados-board";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type Search = Record<string, string | string[] | undefined>;
 
 function buildSearchParams(raw: Search): URLSearchParams {

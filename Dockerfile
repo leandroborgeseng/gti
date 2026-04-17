@@ -24,6 +24,9 @@ COPY package.json package-lock.json ./
 COPY apps ./apps
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV GLPI_SKIP_BOOTSTRAP=1
+# Opcional na build: `docker build --build-arg NEXT_PUBLIC_GTI_BUILD=$(git rev-parse --short HEAD) …` para o modal Chamados mostrar o commit no cabeçalho.
+ARG NEXT_PUBLIC_GTI_BUILD=
+ENV NEXT_PUBLIC_GTI_BUILD=${NEXT_PUBLIC_GTI_BUILD}
 # O `generator output` do schema deve ser a raiz do monorepo (`node_modules/.prisma/client`); caso contrário o Next falha em «Collecting page data» com «did not initialize yet».
 RUN npx prisma generate --schema apps/backend/prisma/schema.prisma \
   && test -f node_modules/.prisma/client/index.js \
