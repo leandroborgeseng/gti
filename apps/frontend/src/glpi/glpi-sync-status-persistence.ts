@@ -2,6 +2,8 @@ import { prisma } from "./config/prisma";
 import { logger } from "./config/logger";
 import { toErrorLog } from "./errors";
 
+const isBuildStub = process.env.GLPI_SKIP_BOOTSTRAP === "1";
+
 /** Chave em `SyncState` para o último estado da sincronização GLPI (partilhado entre processos). */
 export const GLPI_SYNC_STATUS_STATE_KEY = "glpi_sync_status_v1";
 
@@ -159,7 +161,15 @@ export async function persistGlpiSyncStatusSafe(
   try {
     await writeGlpiSyncStatusToDb(status);
   } catch (error) {
-    logger.warn({ error }, "Não foi possível persistir o estado da sincronização GLPI em SyncState");
+    const details = toErrorLog(error);
+    if (isBuildStub) {
+      logger.warn({ error: details }, "Persistência SyncState ignorada durante build");
+    } else {
+      logger.error(
+        { error: details },
+        "Não foi possível persistir o estado da sincronização GLPI em SyncState — verifique DATABASE_URL e migrações"
+      );
+    }
   }
 }
 

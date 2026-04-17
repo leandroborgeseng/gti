@@ -69,11 +69,16 @@ export async function GET(): Promise<NextResponse> {
         );
       } else if (arranqueGlpiUltimo.phase === "instrumentation_pre_bootstrap") {
         avisos.push(
-          "Checkpoint «instrumentation_pre_bootstrap» sem progressão — o import de `sync-cron` ou o `bootstrapGlpiSyncInNext` pode ter falhado (ver Deploy Logs com stack trace)."
+          "Checkpoint legado «instrumentation_pre_bootstrap» — redeploy com a versão atual do código ou ver Deploy Logs por falhas no import do `sync-cron`."
         );
-      } else if (arranqueGlpiUltimo.phase === "after_run_sync" && !dbRead.linhaComValor) {
+      } else if (
+        arranqueGlpiUltimo.phase === "first_sync_delegated" &&
+        !dbRead.linhaComValor &&
+        !Number.isNaN(Date.parse(arranqueGlpiUltimo.at)) &&
+        Date.now() - Date.parse(arranqueGlpiUltimo.at) > 600_000
+      ) {
         avisos.push(
-          "O arranque chegou a «after_run_sync», mas não há linha de estado da sync — as gravações em `glpi_sync_status_v1` podem estar a falhar (ver logs «Não foi possível persistir o estado da sincronização»)."
+          "A primeira sync foi lançada em segundo plano há mais de 10 minutos e ainda não há estado persistido — falha na sync ou na escrita em SyncState (ver Deploy Logs: «Primeira sincronização GLPI em segundo plano» ou erro Prisma). Pode forçar uma sync com POST /api/glpi/sync e o cabeçalho x-gti-glpi-sync-secret (variável GLPI_SYNC_TRIGGER_SECRET)."
         );
       } else if (
         (arranqueGlpiUltimo.phase === "after_token" ||
@@ -82,7 +87,7 @@ export async function GET(): Promise<NextResponse> {
         Date.now() - Date.parse(arranqueGlpiUltimo.at) > 120_000
       ) {
         avisos.push(
-          `O último checkpoint («${arranqueGlpiUltimo.phase}») tem mais de 2 minutos — a primeira sincronização pode estar bloqueada (GLPI lento, rede ou exceção sem atualizar o checkpoint).`
+          `O último checkpoint («${arranqueGlpiUltimo.phase}») tem mais de 2 minutos — o arranque pode estar preso antes de delegar a sync (ver Deploy Logs).`
         );
       } else if (arranqueGlpiUltimo.phase === "bootstrap_done" && !dbRead.linhaComValor) {
         avisos.push(

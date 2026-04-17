@@ -183,8 +183,22 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
   });
   await recordGlpiBootstrapCheckpoint("after_token");
   await recordGlpiBootstrapCheckpoint("before_run_sync");
-  await runSyncWithGuard();
-  await recordGlpiBootstrapCheckpoint("after_run_sync");
+  /**
+   * No Next.js, aguardar a primeira sync completa bloqueava o fim do bootstrap (muitos tickets / GLPI lento)
+   * e atrasava `bootstrap_done`, cron e gravações em SyncState. No worker (`enableHmrGuard: false`)
+   * mantemos await para o processo CLI refletir erros logo na consola.
+   */
+  if (enableHmrGuard) {
+    void runSyncWithGuard().catch((error) => {
+      logger.error(
+        { error: toErrorLog(error) },
+        "Primeira sincronização GLPI em segundo plano falhou (o cron voltará a tentar)"
+      );
+    });
+    await recordGlpiBootstrapCheckpoint("first_sync_delegated");
+  } else {
+    await runSyncWithGuard();
+  }
   /** Sempre agenda o cron para retentar sync/GLPI após falhas transitórias (Railway, rede, etc.). */
   startGlpiSyncCron();
   await recordGlpiBootstrapCheckpoint("after_cron");
