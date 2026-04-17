@@ -120,7 +120,12 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
     return;
   }
 
-  await ensureSqliteSchema();
+  await ensureSqliteSchema().catch((error) => {
+    logger.error(
+      { error: toErrorLog(error) },
+      "Arranque GLPI: ligação à base de dados falhou; a primeira sync pode falhar até DATABASE_URL estar correta. O cron continua a ser agendado."
+    );
+  });
   await loadOpenApiSpec().catch((error) => {
     logger.warn({ error: toErrorLog(error) }, "Falha no carregamento inicial do doc OpenAPI");
   });
@@ -129,6 +134,7 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
   });
 
   await runSyncWithGuard();
+  /** Sempre agenda o cron para retentar sync/GLPI após falhas transitórias (Railway, rede, etc.). */
   startGlpiSyncCron();
   if (enableHmrGuard) {
     globalCron.__glpiNextCronStarted = true;
