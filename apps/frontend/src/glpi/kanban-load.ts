@@ -222,8 +222,12 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     })
   ]);
 
-  const statuses = statusRows.map((row: DistinctStatusRow) => row.status).filter((s): s is string => Boolean(s));
-  const groups = groupRows.map((row: DistinctGroupRow) => row.contractGroupName).filter((g): g is string => Boolean(g));
+  const statuses = (statusRows as DistinctStatusRow[])
+    .map((row) => row.status)
+    .filter((s: string | null): s is string => Boolean(s));
+  const groups = (groupRows as DistinctGroupRow[])
+    .map((row) => row.contractGroupName)
+    .filter((g: string | null): g is string => Boolean(g));
 
   const requesterIds = latestTicketRows
     .map((t) => t.requesterUserId)
