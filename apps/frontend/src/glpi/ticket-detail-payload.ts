@@ -8,6 +8,8 @@ import { extractGlpiScalarId } from "./utils/glpi-field-parse";
 import { extractObserversFromTicketRaw } from "./utils/ticket-observers";
 import { extractRequesterContact } from "./utils/ticket-requester";
 import { asJsonRecord, extractTicketContext, PRIORITY_OPTIONS, STATUS_OPTIONS } from "./ticket-json";
+import { extractTicketDocumentsFromRaw } from "./utils/ticket-documents";
+import { extractTicketSidebarFields } from "./utils/ticket-sidebar-fields";
 import { toErrorLog } from "./errors";
 
 export async function buildTicketDetailPayload(glpiId: number): Promise<Record<string, unknown> | null> {
@@ -42,15 +44,17 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
   let requesterUserId = ticket.requesterUserId ?? null;
   const preObserverRows = extractObserversFromTicketRaw(workingRaw, requesterUserId ?? null);
   const hasUnnamedObserver = preObserverRows.some((o) => !o.displayName && !o.email);
-  const shouldFetchFreshRaw = !requesterName || requesterUserId == null || preObserverRows.length === 0 || hasUnnamedObserver;
-  if (shouldFetchFreshRaw) {
-    try {
-      const freshUnknown = await fetchGlpiTicketJson(glpiId);
-      const freshRaw = asJsonRecord(freshUnknown);
-      if (Object.keys(freshRaw).length > 0) {
-        workingRaw = { ...workingRaw, ...freshRaw };
-      }
-    } catch (error) {
+  const shouldFetchFreshRaw =
+    !requesterName || requesterUserId == null || preObserverRows.length === 0 || hasUnnamedObserver;
+  /** Sempre que possível, atualiza o JSON do GLPI ao abrir o modal (conteúdo, anexos, imagens inline). */
+  try {
+    const freshUnknown = await fetchGlpiTicketJson(glpiId);
+    const freshRaw = asJsonRecord(freshUnknown);
+    if (Object.keys(freshRaw).length > 0) {
+      workingRaw = { ...workingRaw, ...freshRaw };
+    }
+  } catch (error) {
+    if (shouldFetchFreshRaw) {
       logger.warn({ glpiId, error: toErrorLog(error) }, "Falha no fetch em tempo real para complementar modal");
     }
   }
@@ -93,9 +97,23 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
     displayName: r.displayName,
     email: r.email
   }));
+  const mergedTitle =
+    typeof workingRaw.name === "string" && workingRaw.name.trim()
+      ? workingRaw.name.trim()
+      : (ticket.title ?? "");
+  const mergedContent =
+    typeof workingRaw.content === "string" && workingRaw.content.trim()
+      ? String(workingRaw.content)
+      : (ticket.content ?? "");
+
+  const attachments = extractTicketDocumentsFromRaw(workingRaw);
+  const sidebar = extractTicketSidebarFields(workingRaw);
+
   await prisma.ticket.update({
     where: { glpiTicketId: glpiId },
     data: {
+      title: mergedTitle || ticket.title,
+      content: mergedContent,
       requesterName: requesterName ?? null,
       requesterEmail: requesterEmail ?? null,
       requesterUserId,
@@ -105,8 +123,8 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
 
   return {
     glpiTicketId: ticket.glpiTicketId,
-    name: ticket.title ?? "",
-    content: ticket.content ?? "",
+    name: mergedTitle || ticket.title || "",
+    content: mergedContent,
     statusLabel: ticket.status,
     priorityLabel: ticket.priority,
     statusId: extractGlpiScalarId(workingRaw.status),
@@ -119,6 +137,8 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
     requesterUserId,
     observers: observersResolved,
     context: extractTicketContext(workingRaw),
+    sidebar,
+    attachments,
     statusOptions: STATUS_OPTIONS,
     priorityOptions: PRIORITY_OPTIONS,
     history

@@ -88,5 +88,12 @@ export const env = {
   /** Quantas páginas são pedidas em paralelo (prefetch). 1 = sequencial; mais agentes = mais carga no GLPI. */
   GLPI_TICKETS_FETCH_CONCURRENCY: clampInt(process.env.GLPI_TICKETS_FETCH_CONCURRENCY, 1, 16, 8),
   /** Quantos tickets da mesma página persistem em paralelo no PostgreSQL (upsert + atributos). */
-  GLPI_SYNC_PERSIST_CONCURRENCY: clampInt(process.env.GLPI_SYNC_PERSIST_CONCURRENCY, 1, 32, 12)
+  GLPI_SYNC_PERSIST_CONCURRENCY: clampInt(process.env.GLPI_SYNC_PERSIST_CONCURRENCY, 1, 32, 12),
+  /** Limite de páginas GLPI por execução (evita laço infinito se o total remoto for desconhecido). */
+  GLPI_SYNC_MAX_PAGES: clampInt(process.env.GLPI_SYNC_MAX_PAGES, 50, 50_000, 5000),
+  /**
+   * A cada quantos tickets carregados emitir um log agregado de tempos (GLPI vs preparação vs BD).
+   * 0 = desativar apenas o agregado; o log **por página** mantém-se sempre.
+   */
+  GLPI_SYNC_METRICS_LOG_EVERY: clampInt(process.env.GLPI_SYNC_METRICS_LOG_EVERY, 0, 50_000, 500)
 };

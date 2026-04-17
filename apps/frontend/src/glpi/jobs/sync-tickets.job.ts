@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import { env } from "../config/env";
 import { prisma } from "../config/prisma";
 import { logger } from "../config/logger";
@@ -41,6 +42,10 @@ function parseIsoDate(value: string | null | undefined): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function roundMs(ms: number): number {
+  return Math.round(ms * 10) / 10;
+}
+
 export async function syncTickets(options: SyncTicketsOptions = {}): Promise<SyncTicketsResult> {
   await ensureActiveUsersCacheFresh().catch((error) => {
     logger.warn({ error: String(error) }, "Cache de usuários ativos indisponível; sync segue sem fallback de nome");
@@ -65,6 +70,16 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
   let maxDateCreation = "";
   const cursorState = await prisma.syncState.findUnique({ where: { key: "last_sync_date_mod" } });
   const previousCursor = cursorState?.value || null;
+
+  /** Total de tickets no GLPI (última resposta ou `glpi_ticket_total` na BD) — evita parar na 1.ª página se `limit < pageSize`. */
+  const totalHintRow = await prisma.syncState.findUnique({ where: { key: "glpi_ticket_total" } });
+  let lastRemoteTotal: number | undefined;
+  if (totalHintRow?.value) {
+    const n = Number(String(totalHintRow.value).trim());
+    if (Number.isFinite(n) && n > 0) {
+      lastRemoteTotal = n;
+    }
+  }
 
   const ticketPages = new Map<number, Promise<TicketsPageResult>>();
 
@@ -91,21 +106,47 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     ensurePageScheduled(i);
   }
 
+  let totalFetchMs = 0;
+  let totalPrepMs = 0;
+  let totalDbStateMs = 0;
+  let totalDeleteClosedMs = 0;
+  let totalPersistMs = 0;
+  let pagesDone = 0;
+
+  let winFetchMs = 0;
+  let winPrepMs = 0;
+  let winDbStateMs = 0;
+  let winDeleteClosedMs = 0;
+  let winPersistMs = 0;
+  let winPages = 0;
+  let loadedAtWindowStart = 0;
+  const metricsEvery = env.GLPI_SYNC_METRICS_LOG_EVERY;
+
   while (true) {
+    const tPage0 = performance.now();
+    const tFetch0 = performance.now();
     const { tickets: rawTickets, remoteTotal } = await ticketPages.get(page)!;
+    const fetchMs = performance.now() - tFetch0;
     ticketPages.delete(page);
     loadedCount += rawTickets.length;
     let reachedAlreadySyncedWindow = false;
+
+    const tPrep0 = performance.now();
     const normalizedPage = rawTickets.map((r) => normalizeTicket(r));
     const requesterIds = normalizedPage.map((n) => n.requester_user_id).filter((id): id is number => typeof id === "number" && id > 0);
     const requesterFallbackMap = await getCachedUsersByIds(requesterIds).catch(() => new Map<number, RequesterContact>());
+    const prepMs = performance.now() - tPrep0;
 
-    if (remoteTotal !== undefined) {
+    let dbStateMs = 0;
+    if (remoteTotal !== undefined && Number.isFinite(remoteTotal) && remoteTotal > 0) {
+      lastRemoteTotal = remoteTotal;
+      const tDb0 = performance.now();
       await prisma.syncState.upsert({
         where: { key: "glpi_ticket_total" },
         update: { value: String(remoteTotal) },
         create: { key: "glpi_ticket_total", value: String(remoteTotal) }
       });
+      dbStateMs = performance.now() - tDb0;
     }
 
     const openScopeClosedIds: number[] = [];
@@ -149,17 +190,23 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
       persistQueue.push({ normalized, raw: rawTicket, requesterFallback: fb });
     }
 
+    let deleteClosedMs = 0;
     if (syncScope === "open" && openScopeClosedIds.length > 0) {
       const uniqueClosed = [...new Set(openScopeClosedIds)];
+      const tDel0 = performance.now();
       await prisma.ticket.deleteMany({ where: { glpiTicketId: { in: uniqueClosed } } });
+      deleteClosedMs = performance.now() - tDel0;
     }
 
+    let persistMs = 0;
     const chunk = Math.max(1, persistConcurrency);
     for (let c = 0; c < persistQueue.length; c += chunk) {
       const slice = persistQueue.slice(c, c + chunk);
+      const tPer0 = performance.now();
       const outcomes = await Promise.all(
         slice.map((t) => persistNormalizedTicket(t.normalized, t.raw, t.requesterFallback))
       );
+      persistMs += performance.now() - tPer0;
       for (const o of outcomes) {
         if (o === "saved") {
           savedCount += 1;
@@ -169,6 +216,77 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
       }
     }
 
+    const pageWallMs = performance.now() - tPage0;
+    totalFetchMs += fetchMs;
+    totalPrepMs += prepMs;
+    totalDbStateMs += dbStateMs;
+    totalDeleteClosedMs += deleteClosedMs;
+    totalPersistMs += persistMs;
+    pagesDone += 1;
+
+    winFetchMs += fetchMs;
+    winPrepMs += prepMs;
+    winDbStateMs += dbStateMs;
+    winDeleteClosedMs += deleteClosedMs;
+    winPersistMs += persistMs;
+    winPages += 1;
+
+    logger.info(
+      {
+        etapa: "sync_tickets_pagina",
+        page,
+        ticketsNaPagina: rawTickets.length,
+        remoteTotal: lastRemoteTotal,
+        /** Espera pela Promise da página (HTTP GLPI já disparada pelo prefetch). */
+        fetchMs: roundMs(fetchMs),
+        /** Normalização + cache de requerentes. */
+        prepMs: roundMs(prepMs),
+        /** Upsert do total de tickets em `SyncState`. */
+        dbStateMs: roundMs(dbStateMs),
+        /** `deleteMany` de fechados no escopo `open`. */
+        deleteClosedMs: roundMs(deleteClosedMs),
+        /** Upserts Prisma por fatias (`persistNormalizedTicket`). */
+        persistMs: roundMs(persistMs),
+        pageWallMs: roundMs(pageWallMs),
+        acumulado: {
+          loaded: loadedCount,
+          pages: pagesDone,
+          mediaFetchPorPagina: pagesDone ? roundMs(totalFetchMs / pagesDone) : 0,
+          mediaPersistPorPagina: pagesDone ? roundMs(totalPersistMs / pagesDone) : 0
+        }
+      },
+      "Sync tickets: metricas da pagina (fetch=GLPI/rede; persist=Prisma)"
+    );
+
+    if (metricsEvery > 0 && loadedCount - loadedAtWindowStart >= metricsEvery) {
+      const ticketsNoBloco = loadedCount - loadedAtWindowStart;
+      logger.info(
+        {
+          etapa: "sync_tickets_janela",
+          ticketsNoBloco,
+          desdeLoaded: loadedAtWindowStart,
+          ateLoaded: loadedCount,
+          paginasNoBloco: winPages,
+          fetchMs: roundMs(winFetchMs),
+          prepMs: roundMs(winPrepMs),
+          dbStateMs: roundMs(winDbStateMs),
+          deleteClosedMs: roundMs(winDeleteClosedMs),
+          persistMs: roundMs(winPersistMs),
+          msPorTicketCarregado: ticketsNoBloco > 0 ? roundMs((winFetchMs + winPrepMs + winDbStateMs + winDeleteClosedMs + winPersistMs) / ticketsNoBloco) : 0,
+          parteFetch: ticketsNoBloco > 0 ? roundMs(winFetchMs / ticketsNoBloco) : 0,
+          partePersist: ticketsNoBloco > 0 ? roundMs(winPersistMs / ticketsNoBloco) : 0
+        },
+        "Sync tickets: janela agregada (diagnostico de gargalo)"
+      );
+      loadedAtWindowStart = loadedCount;
+      winFetchMs = 0;
+      winPrepMs = 0;
+      winDbStateMs = 0;
+      winDeleteClosedMs = 0;
+      winPersistMs = 0;
+      winPages = 0;
+    }
+
     onProgress?.({
       page,
       loaded: loadedCount,
@@ -176,9 +294,26 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
       failed: failedCount
     });
 
-    if (rawTickets.length < pageSize) {
+    if (page >= env.GLPI_SYNC_MAX_PAGES) {
+      logger.warn(
+        { page, maxPages: env.GLPI_SYNC_MAX_PAGES, loadedCount, lastRemoteTotal },
+        "Sync tickets: limite GLPI_SYNC_MAX_PAGES atingido (aumente a env se necessário)"
+      );
       break;
     }
+
+    if (rawTickets.length === 0) {
+      break;
+    }
+
+    if (lastRemoteTotal !== undefined && loadedCount >= lastRemoteTotal) {
+      break;
+    }
+
+    if (rawTickets.length < pageSize && lastRemoteTotal !== undefined) {
+      break;
+    }
+
     void reachedAlreadySyncedWindow;
 
     page += 1;
@@ -197,6 +332,23 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     saved: savedCount,
     failed: failedCount
   };
-  logger.info(result, "Sincronizacao de tickets concluida");
+  logger.info(
+    {
+      ...result,
+      etapa: "sync_tickets_resumo_metricas",
+      paginas: pagesDone,
+      totalFetchMs: roundMs(totalFetchMs),
+      totalPrepMs: roundMs(totalPrepMs),
+      totalDbStateMs: roundMs(totalDbStateMs),
+      totalDeleteClosedMs: roundMs(totalDeleteClosedMs),
+      totalPersistMs: roundMs(totalPersistMs),
+      totalWallEstimadoMs: roundMs(totalFetchMs + totalPrepMs + totalDbStateMs + totalDeleteClosedMs + totalPersistMs),
+      mediaMsPorTicket:
+        loadedCount > 0
+          ? roundMs((totalFetchMs + totalPrepMs + totalDbStateMs + totalDeleteClosedMs + totalPersistMs) / loadedCount)
+          : 0
+    },
+    "Sincronizacao de tickets concluida (metricas: fetch=GLPI/rede; persist e demais=BD)"
+  );
   return result;
 }

@@ -63,6 +63,53 @@ function parseContentRangeTotal(contentRange: string | undefined): number | unde
   return Number.isFinite(total) ? total : undefined;
 }
 
+function readHeaderLoose(headers: Record<string, unknown>, ...names: string[]): string | undefined {
+  const entries = Object.entries(headers);
+  for (const name of names) {
+    const want = name.toLowerCase();
+    for (const [k, v] of entries) {
+      if (k.toLowerCase() !== want) continue;
+      if (typeof v === "string" && v.length) return v;
+      if (Array.isArray(v) && typeof v[0] === "string" && v[0].length) return v[0];
+    }
+  }
+  return undefined;
+}
+
+function extractTotalFromPayload(payload: unknown): number | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const o = payload as Record<string, unknown>;
+  const tryNum = (v: unknown): number | undefined => {
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0) return v;
+    if (typeof v === "string" && /^\d+$/.test(v.trim())) return Number(v.trim());
+    return undefined;
+  };
+  for (const k of ["total", "totalCount", "totalcount", "rowCount", "count"]) {
+    const n = tryNum(o[k]);
+    if (n !== undefined) return n;
+  }
+  const meta = o.meta;
+  if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+    for (const k of ["total", "totalCount", "count"]) {
+      const n = tryNum((meta as Record<string, unknown>)[k]);
+      if (n !== undefined) return n;
+    }
+  }
+  return undefined;
+}
+
+function resolveRemoteTotal(headers: Record<string, unknown>, payload: unknown): number | undefined {
+  const cr = readHeaderLoose(headers, "content-range", "Content-Range");
+  const fromCr = parseContentRangeTotal(cr);
+  if (fromCr !== undefined) return fromCr;
+  const xc = readHeaderLoose(headers, "x-total-count", "X-Total-Count");
+  if (xc && /^\d+$/.test(xc.trim())) {
+    const n = Number(xc.trim());
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return extractTotalFromPayload(payload);
+}
+
 export async function getTicketsPage(page: number, pageSize = 100, options: GetTicketsPageOptions = {}): Promise<TicketsPageResult> {
   const ticketsPath = resolveTicketsPath(getDiscoveredTicketsPath());
   const start = Math.max(0, (page - 1) * pageSize);
@@ -130,7 +177,8 @@ export async function getTicketsPage(page: number, pageSize = 100, options: GetT
         continue;
       }
       const tickets = pickTicketArray(response.data);
-      const remoteTotal = parseContentRangeTotal(response.headers?.["content-range"] as string | undefined);
+      const hdr = response.headers as Record<string, unknown>;
+      const remoteTotal = resolveRemoteTotal(hdr, response.data);
       // Uma linha por página de API; em produção isso polui muito o painel de logs.
       logger.debug({ page, count: tickets.length, path: ticketsPath, remoteTotal }, "Pagina de tickets carregada");
       return { tickets, remoteTotal };
@@ -145,12 +193,32 @@ export async function getTicketsPage(page: number, pageSize = 100, options: GetT
 export async function getAllTickets(pageSize = env.GLPI_TICKETS_PAGE_SIZE): Promise<unknown[]> {
   const allTickets: unknown[] = [];
   let page = 1;
+  let lastRemoteTotal: number | undefined;
 
   while (true) {
-    const { tickets: pageTickets } = await getTicketsPage(page, pageSize);
+    const { tickets: pageTickets, remoteTotal } = await getTicketsPage(page, pageSize);
+    if (remoteTotal !== undefined && Number.isFinite(remoteTotal) && remoteTotal > 0) {
+      lastRemoteTotal = remoteTotal;
+    }
     allTickets.push(...pageTickets);
 
-    if (pageTickets.length < pageSize) {
+    if (page >= env.GLPI_SYNC_MAX_PAGES) {
+      logger.warn(
+        { page, maxPages: env.GLPI_SYNC_MAX_PAGES, loaded: allTickets.length },
+        "getAllTickets: limite GLPI_SYNC_MAX_PAGES atingido"
+      );
+      break;
+    }
+
+    if (pageTickets.length === 0) {
+      break;
+    }
+
+    if (lastRemoteTotal !== undefined && allTickets.length >= lastRemoteTotal) {
+      break;
+    }
+
+    if (pageTickets.length < pageSize && lastRemoteTotal !== undefined) {
       break;
     }
 

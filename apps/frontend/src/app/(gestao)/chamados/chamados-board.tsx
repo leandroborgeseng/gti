@@ -6,7 +6,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KanbanBoardPayload, KanbanCardDto } from "@/glpi/kanban-load";
 import { pendenciaLabelForSummary } from "@/glpi/utils/kanban-filters";
 import type { HistoryTimelineItemDto, TicketHistoryBundleDto } from "@/glpi/services/glpi-ticket-history.service";
+import { sanitizeAndProxyTicketHtml } from "@/lib/glpi-ticket-html";
+import { TicketHtmlPreview } from "@/components/chamados/ticket-html-preview";
+import { TicketRichEditor } from "@/components/chamados/ticket-rich-editor";
 import { AgingOpenDashboard } from "./aging-open-dashboard";
+
+type TicketSidebarDto = {
+  typeLabel: string | null;
+  requestOriginLabel: string | null;
+  urgencyLabel: string | null;
+  impactLabel: string | null;
+  locationLabel: string | null;
+  tagsLabel: string | null;
+};
+
+type TicketAttachmentDto = {
+  id: string;
+  filename: string;
+  glpiUrl: string;
+};
 
 type TicketDetail = {
   glpiTicketId: number;
@@ -21,12 +39,19 @@ type TicketDetail = {
   contractGroupName: string | null;
   requesterName: string;
   requesterEmail: string;
+  requesterUserId?: number | null;
   observers: Array<{ userId: number | null; displayName: string | null; email: string | null }>;
   context: { groups: string[]; assignees: string[]; category: string | null; entity: string | null };
+  sidebar?: TicketSidebarDto;
+  attachments?: TicketAttachmentDto[];
   statusOptions: Array<{ id: number; label: string }>;
   priorityOptions: Array<{ id: number; label: string }>;
   history?: TicketHistoryBundleDto | null;
 };
+
+function glpiAssetProxyHref(glpiUrl: string): string {
+  return `/api/glpi-asset?url=${encodeURIComponent(glpiUrl)}`;
+}
 
 function moveBefore(order: string[], dragged: string, target: string): string[] {
   if (dragged === target) return order;
@@ -54,28 +79,22 @@ function KanbanSyncIcon({ syncStale }: { syncStale: boolean }): JSX.Element {
   );
 }
 
-function proxyGlpiAssetsInHtml(html: string): string {
-  if (typeof window === "undefined") return html;
-  try {
-    const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
-    const root = doc.body.firstElementChild;
-    if (!root) return html;
-    root.querySelectorAll("img[src], a[href]").forEach((el) => {
-      const tag = el.tagName.toLowerCase();
-      const attr = tag === "img" ? "src" : "href";
-      const raw = el.getAttribute(attr);
-      if (!raw) return;
-      if (raw.startsWith("data:") || raw.startsWith("blob:") || raw.startsWith("#")) return;
-      el.setAttribute(attr, `/api/glpi-asset?url=${encodeURIComponent(raw)}`);
-      if (tag === "a") {
-        el.setAttribute("target", "_blank");
-        el.setAttribute("rel", "noopener noreferrer");
-      }
-    });
-    return root.innerHTML;
-  } catch {
-    return html;
+function formatDateTimePtBr(iso: string | null): string {
+  if (!iso?.trim()) {
+    return "—";
   }
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) {
+    return iso;
+  }
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(ms);
+}
+
+function plainTextFromHtml(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function pendBadgeClass(pend: string): string {
@@ -130,6 +149,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
   const [editPriorityId, setEditPriorityId] = useState<string>("");
   const [followupText, setFollowupText] = useState("");
   const [followupPrivate, setFollowupPrivate] = useState(false);
+  const [modalSection, setModalSection] = useState<"chamado" | "historico">("chamado");
   const [syncScopeDraft, setSyncScopeDraft] = useState<"open" | "all">(initial.ticketSyncScope);
 
   const colByKey = useMemo(() => new Map(initial.columns.map((c) => [c.statusKey, c])), [initial.columns]);
@@ -171,6 +191,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
 
   const openModal = useCallback(async (glpiId: number) => {
     setModalId(glpiId);
+    setModalSection("chamado");
     setDetail(null);
     setDetailErr(null);
     setFollowupText("");
@@ -236,7 +257,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
 
   const sendFollowup = useCallback(async () => {
     if (!modalId) return;
-    const msg = followupText.trim();
+    const msg = plainTextFromHtml(followupText);
     if (!msg) {
       setDetailErr("Escreva uma mensagem para publicar no histórico.");
       return;
@@ -247,7 +268,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       const res = await fetch(`/api/tickets/glpi/${modalId}/followup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: msg, isPrivate: followupPrivate })
+        body: JSON.stringify({ content: followupText.trim(), isPrivate: followupPrivate })
       });
       const data = (await res.json().catch(() => null)) as { error?: string; detail?: string } | null;
       if (!res.ok) {
@@ -355,7 +376,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     if (!items?.length) return new Map<number, string>();
     const m = new Map<number, string>();
     items.forEach((item: HistoryTimelineItemDto, i: number) => {
-      m.set(i, proxyGlpiAssetsInHtml(item.contentHtml || ""));
+      m.set(i, sanitizeAndProxyTicketHtml(item.contentHtml || ""));
     });
     return m;
   }, [detail?.history?.items]);
@@ -614,9 +635,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
         {modalId ? (
         <div className="modal open" role="dialog" aria-modal aria-labelledby="ticket-modal-title">
           <div className="modal-backdrop" role="presentation" onClick={closeModal} />
-          <div className="modal-panel">
-            <div className="modal-header">
-              <h2 id="ticket-modal-title">Editar chamado #{modalId}</h2>
+          <div className="modal-panel modal-panel--glpi">
+            <div className="modal-header modal-header--glpi">
+              <h2 id="ticket-modal-title" className="ticket-modal-header-title">
+                {detail?.name?.trim() ? `${detail.name} (#${modalId})` : `Chamado #${modalId}`}
+              </h2>
               <button type="button" className="modal-close" onClick={closeModal} aria-label="Fechar">
                 ✕
               </button>
@@ -630,113 +653,323 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
             {detail ? (
               <form
                 id="ticket-edit-form"
+                className="ticket-glpi-form"
                 onSubmit={(e) => {
                   e.preventDefault();
                   void saveTicket();
                 }}
               >
-                <label className="modal-field">
-                  Título
-                  <input value={editName} onChange={(e) => setEditName(e.target.value)} />
-                </label>
-                <div className="modal-grid">
-                  <label className="modal-field">
-                    Estado (GLPI)
-                    <select value={editStatusId} onChange={(e) => setEditStatusId(e.target.value)}>
-                      <option value="">(sem alteração)</option>
-                      {detail.statusOptions.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="modal-field">
-                    Prioridade
-                    <select value={editPriorityId} onChange={(e) => setEditPriorityId(e.target.value)}>
-                      <option value="">(sem alteração)</option>
-                      {detail.priorityOptions.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="modal-field">
-                  Descrição (HTML do GLPI — edite com cuidado)
-                  <textarea rows={10} value={editContent} onChange={(e) => setEditContent(e.target.value)} />
-                </label>
-                <p className="modal-hint">
-                  <strong>Solicitante:</strong> {detail.requesterName}{" "}
-                  {detail.requesterEmail ? `· ${detail.requesterEmail}` : ""}
-                </p>
-                <p className="modal-hint">
-                  <strong>Grupo / entidade:</strong> {(detail.context.groups || []).join(", ") || "—"} ·{" "}
-                  {detail.context.entity || "—"}
-                </p>
-                <div className="modal-actions">
-                  <button type="button" className="btn-secondary" onClick={closeModal}>
-                    Cancelar
-                  </button>
-                  <button type="submit" id="ticket-edit-submit" disabled={Boolean(busy)}>
-                    Guardar alterações no GLPI
-                  </button>
-                </div>
-
-                {detail.history ? (
-                  <div id="ticket-history-section">
-                    {detail.history.historyError ? (
-                      <p id="ticket-history-api-error">Aviso ao carregar historico GLPI: {detail.history.historyError}</p>
-                    ) : null}
-                    <div className={`waiting-banner waiting-${detail.history.waitingOn}`}>
-                      {detail.history.waitingLabel ? <strong>{detail.history.waitingLabel}</strong> : null}
-                      {detail.history.waitingDetail ? (
-                        <span className="small" style={{ display: "block", marginTop: "0.35rem" }}>
-                          {detail.history.waitingDetail}
-                        </span>
-                      ) : null}
-                    </div>
-                    <h3 className="history-heading">Histórico</h3>
-                    <p className="history-help">Linha do tempo carregada do GLPI (imagens passam pelo proxy local).</p>
-                    <div className="history-list" id="ticket-history-list">
-                      {(detail.history.items || []).map((item: HistoryTimelineItemDto, i: number) => {
-                        const metaLine = `${item.title || item.kind || ""} · ${item.date || "—"} · ${
-                          item.authorLabel || (item.usersId ? `User #${item.usersId}` : "Autor nao identificado")
-                        }${item.isPrivate ? " [Privado]" : ""}`;
-                        const html = historyHtmlByItem.get(i) ?? "";
-                        return (
-                          <article key={`${item.date}-${i}`} className="history-item">
-                            <div className="history-meta">{metaLine}</div>
-                            <div className="history-body ql-snow">
-                              <div className="ql-editor" dangerouslySetInnerHTML={{ __html: html }} />
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="ticket-followup-composer">
-                  <label className="modal-field">
-                    Novo acompanhamento
-                    <textarea
-                      rows={4}
-                      placeholder="Mensagem a publicar no histórico do GLPI"
-                      value={followupText}
-                      onChange={(e) => setFollowupText(e.target.value)}
-                    />
-                  </label>
-                  <label className="ticket-followup-private">
-                    <input type="checkbox" checked={followupPrivate} onChange={(e) => setFollowupPrivate(e.target.checked)} />
-                    Privado (equipe)
-                  </label>
-                  <div className="ticket-followup-actions">
-                    <button type="button" className="btn-secondary" disabled={Boolean(busy)} onClick={() => void sendFollowup()}>
-                      Publicar acompanhamento
+                <div className="ticket-glpi-shell">
+                  <nav className="ticket-glpi-nav" aria-label="Secções do chamado">
+                    <button
+                      type="button"
+                      className={`ticket-glpi-nav__btn${modalSection === "chamado" ? " is-active" : ""}`}
+                      onClick={() => setModalSection("chamado")}
+                    >
+                      Chamado
                     </button>
+                    <button
+                      type="button"
+                      className={`ticket-glpi-nav__btn${modalSection === "historico" ? " is-active" : ""}`}
+                      onClick={() => setModalSection("historico")}
+                    >
+                      Histórico
+                    </button>
+                  </nav>
+
+                  <div className="ticket-glpi-main">
+                    {modalSection === "chamado" ? (
+                      <>
+                        <div className="glpi-ticket-title-row">
+                          <label className="glpi-ticket-title-field">
+                            <span className="modal-field-label">Título</span>
+                            <input
+                              className="glpi-ticket-title-input"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="glpi-message-card">
+                          <div className="glpi-message-card__head">
+                            <div className="glpi-message-card__dates">
+                              <span>
+                                <strong>Abertura:</strong> {formatDateTimePtBr(detail.dateCreation)}
+                              </span>
+                              <span>
+                                <strong>Última modificação:</strong> {formatDateTimePtBr(detail.dateModification)}
+                              </span>
+                            </div>
+                            <div className="glpi-message-card__actors-line">
+                              <strong>Solicitante:</strong>{" "}
+                              <span className="glpi-chip glpi-chip--requester">{detail.requesterName || "—"}</span>
+                              {detail.requesterEmail ? (
+                                <span className="glpi-message-card__email">{detail.requesterEmail}</span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="glpi-message-card__body">
+                            <TicketHtmlPreview
+                              html={editContent}
+                              emptyLabel="(sem descrição)"
+                              className="ticket-html-preview--glpi-body"
+                            />
+                          </div>
+                        </div>
+
+                        {detail.attachments && detail.attachments.length > 0 ? (
+                          <div className="glpi-ticket-attachments">
+                            <h4 className="glpi-ticket-attachments__title">Anexos ({detail.attachments.length})</h4>
+                            <ul className="glpi-ticket-attachments__list">
+                              {detail.attachments.map((doc) => (
+                                <li key={`${doc.id}-${doc.glpiUrl}`}>
+                                  <a
+                                    href={glpiAssetProxyHref(doc.glpiUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="glpi-ticket-attachments__link"
+                                  >
+                                    {doc.filename}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+
+                        <details className="glpi-editor-details">
+                          <summary>Editar descrição (editor rich text)</summary>
+                          <p className="modal-hint modal-hint--tight">
+                            O cartão acima mostra o HTML como no GLPI (imagens inline e ligações via proxy). Aqui altera o
+                            texto a gravar no GLPI.
+                          </p>
+                          <TicketRichEditor
+                            value={editContent}
+                            onChange={setEditContent}
+                            variant="description"
+                            aria-label="Descrição do chamado"
+                          />
+                        </details>
+
+                        <div className="ticket-followup-composer glpi-followup-card">
+                          <div className="modal-field modal-field-rich">
+                            <span className="modal-field-label">Novo acompanhamento</span>
+                            <p className="modal-hint modal-hint--tight">
+                              Publicado no histórico do GLPI (formatação e imagens quando suportadas).
+                            </p>
+                            <TicketRichEditor
+                              value={followupText}
+                              onChange={setFollowupText}
+                              variant="followup"
+                              aria-label="Texto do novo acompanhamento"
+                            />
+                          </div>
+                          <label className="ticket-followup-private">
+                            <input
+                              type="checkbox"
+                              checked={followupPrivate}
+                              onChange={(e) => setFollowupPrivate(e.target.checked)}
+                            />
+                            Privado (equipe)
+                          </label>
+                          <div className="ticket-followup-actions">
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={Boolean(busy)}
+                              onClick={() => void sendFollowup()}
+                            >
+                              Publicar acompanhamento
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="modal-actions modal-actions--glpi">
+                          <button type="button" className="btn-secondary" onClick={closeModal}>
+                            Cancelar
+                          </button>
+                          <button type="submit" id="ticket-edit-submit" disabled={Boolean(busy)}>
+                            Guardar alterações no GLPI
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div id="ticket-history-section" className="ticket-glpi-history-panel">
+                        {detail.history?.historyError ? (
+                          <p id="ticket-history-api-error">Aviso ao carregar historico GLPI: {detail.history.historyError}</p>
+                        ) : null}
+                        {detail.history ? (
+                          <>
+                            <div className={`waiting-banner waiting-${detail.history.waitingOn}`}>
+                              {detail.history.waitingLabel ? <strong>{detail.history.waitingLabel}</strong> : null}
+                              {detail.history.waitingDetail ? (
+                                <span className="small" style={{ display: "block", marginTop: "0.35rem" }}>
+                                  {detail.history.waitingDetail}
+                                </span>
+                              ) : null}
+                            </div>
+                            <h3 className="history-heading">Histórico</h3>
+                            <p className="history-help">
+                              Linha do tempo carregada do GLPI (imagens e anexos inline passam pelo proxy local).
+                            </p>
+                            <div className="history-list" id="ticket-history-list">
+                              {(detail.history.items || []).map((item: HistoryTimelineItemDto, i: number) => {
+                                const metaLine = `${item.title || item.kind || ""} · ${item.date || "—"} · ${
+                                  item.authorLabel || (item.usersId ? `User #${item.usersId}` : "Autor nao identificado")
+                                }${item.isPrivate ? " [Privado]" : ""}`;
+                                const html = historyHtmlByItem.get(i) ?? "";
+                                return (
+                                  <article key={`${item.date}-${i}`} className="history-item">
+                                    <div className="history-meta">{metaLine}</div>
+                                    <div className="history-body ql-snow">
+                                      <div className="ql-editor" dangerouslySetInnerHTML={{ __html: html }} />
+                                    </div>
+                                  </article>
+                                );
+                              })}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="modal-hint">Sem dados de histórico para este chamado.</p>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  <aside className="ticket-glpi-aside" aria-label="Atributos e atores">
+                    <h3 className="ticket-glpi-aside__title">Atributos</h3>
+                    <p className="ticket-glpi-aside__id">GLPI #{detail.glpiTicketId}</p>
+
+                    <label className="modal-field glpi-aside-field">
+                      Estado
+                      <select value={editStatusId} onChange={(e) => setEditStatusId(e.target.value)}>
+                        <option value="">(sem alteração)</option>
+                        {detail.statusOptions.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="glpi-aside-current">Atual: {detail.statusLabel || "—"}</p>
+
+                    <label className="modal-field glpi-aside-field">
+                      Prioridade
+                      <select value={editPriorityId} onChange={(e) => setEditPriorityId(e.target.value)}>
+                        <option value="">(sem alteração)</option>
+                        {detail.priorityOptions.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="glpi-aside-current">Atual: {detail.priorityLabel || "—"}</p>
+
+                    {detail.sidebar?.typeLabel ? (
+                      <div className="glpi-aside-kv">
+                        <span className="glpi-aside-kv__k">Tipo</span>
+                        <span className="glpi-aside-kv__v">{detail.sidebar.typeLabel}</span>
+                      </div>
+                    ) : null}
+                    {detail.sidebar?.requestOriginLabel ? (
+                      <div className="glpi-aside-kv">
+                        <span className="glpi-aside-kv__k">Origem</span>
+                        <span className="glpi-aside-kv__v">{detail.sidebar.requestOriginLabel}</span>
+                      </div>
+                    ) : null}
+                    {detail.sidebar?.urgencyLabel ? (
+                      <div className="glpi-aside-kv">
+                        <span className="glpi-aside-kv__k">Urgência</span>
+                        <span className="glpi-aside-kv__v">{detail.sidebar.urgencyLabel}</span>
+                      </div>
+                    ) : null}
+                    {detail.sidebar?.impactLabel ? (
+                      <div className="glpi-aside-kv">
+                        <span className="glpi-aside-kv__k">Impacto</span>
+                        <span className="glpi-aside-kv__v">{detail.sidebar.impactLabel}</span>
+                      </div>
+                    ) : null}
+                    {detail.sidebar?.locationLabel ? (
+                      <div className="glpi-aside-kv">
+                        <span className="glpi-aside-kv__k">Localização</span>
+                        <span className="glpi-aside-kv__v">{detail.sidebar.locationLabel}</span>
+                      </div>
+                    ) : null}
+                    {detail.sidebar?.tagsLabel ? (
+                      <div className="glpi-aside-kv">
+                        <span className="glpi-aside-kv__k">Etiquetas</span>
+                        <span className="glpi-aside-kv__v">{detail.sidebar.tagsLabel}</span>
+                      </div>
+                    ) : null}
+
+                    <div className="glpi-aside-kv">
+                      <span className="glpi-aside-kv__k">Entidade</span>
+                      <span className="glpi-aside-kv__v">{detail.context.entity || "—"}</span>
+                    </div>
+                    <div className="glpi-aside-kv">
+                      <span className="glpi-aside-kv__k">Categoria</span>
+                      <span className="glpi-aside-kv__v">{detail.context.category || "—"}</span>
+                    </div>
+                    <div className="glpi-aside-kv">
+                      <span className="glpi-aside-kv__k">Grupo (cache)</span>
+                      <span className="glpi-aside-kv__v">{detail.contractGroupName || "—"}</span>
+                    </div>
+
+                    <h4 className="ticket-glpi-aside__subtitle">Atores</h4>
+                    <div className="glpi-aside-actors">
+                      <div className="glpi-aside-actors__row">
+                        <span className="glpi-aside-actors__label">Requerente</span>
+                        <span className="glpi-chip glpi-chip--requester">{detail.requesterName || "—"}</span>
+                      </div>
+                      {detail.requesterUserId != null && detail.requesterUserId > 0 ? (
+                        <p className="glpi-aside-actors__hint">Utilizador #{detail.requesterUserId}</p>
+                      ) : null}
+                      <div className="glpi-aside-actors__row">
+                        <span className="glpi-aside-actors__label">Observadores</span>
+                        <div className="glpi-chip-list">
+                          {detail.observers?.length ? (
+                            detail.observers.map((o, idx) => (
+                              <span key={`${o.userId ?? "o"}-${idx}`} className="glpi-chip">
+                                {o.displayName || "—"}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="glpi-aside-muted">—</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="glpi-aside-actors__row">
+                        <span className="glpi-aside-actors__label">Grupos atribuídos</span>
+                        <div className="glpi-chip-list">
+                          {(detail.context.groups || []).length ? (
+                            detail.context.groups.map((g) => (
+                              <span key={g} className="glpi-chip glpi-chip--group">
+                                {g}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="glpi-aside-muted">—</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="glpi-aside-actors__row">
+                        <span className="glpi-aside-actors__label">Técnicos</span>
+                        <div className="glpi-chip-list">
+                          {(detail.context.assignees || []).length ? (
+                            detail.context.assignees.map((a) => (
+                              <span key={a} className="glpi-chip glpi-chip--tech">
+                                {a}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="glpi-aside-muted">—</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </aside>
                 </div>
               </form>
             ) : null}

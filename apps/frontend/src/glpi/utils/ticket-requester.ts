@@ -43,6 +43,66 @@ function parsePositiveInt(value: unknown): number | null {
   return null;
 }
 
+/** Atores `team` / `actors` da API GLPI: grupo técnico costuma vir explícito; o requerente também pode vir só aqui. */
+function isGroupLikeActorRow(o: Record<string, unknown>): boolean {
+  const t = String(o.type ?? o.itemtype ?? o.item_type ?? o.actor_type ?? "").toLowerCase();
+  if (t.includes("group")) {
+    return true;
+  }
+  if (t.includes("supplier") || t.includes("fornecedor")) {
+    return true;
+  }
+  const href = String(o.href ?? o.link ?? "").toLowerCase();
+  return href.includes("group.form") || href.includes("/group/");
+}
+
+/** Papel de requerente (strings ou constante numérica 1 em CommonITILActor::REQUESTER). */
+function isStrictRequesterRole(o: Record<string, unknown>): boolean {
+  const r = String(o.role ?? o.actor_role ?? o.relation ?? "").toLowerCase();
+  if (r.includes("request") || r.includes("requerente") || r.includes("solicit")) {
+    return true;
+  }
+  if (r.includes("demandeur") || r.includes("petic")) {
+    return true;
+  }
+  const rn = Number(o.role);
+  return rn === 1;
+}
+
+function isRecipientLikeRole(o: Record<string, unknown>): boolean {
+  const r = String(o.role ?? o.actor_role ?? o.relation ?? "").toLowerCase();
+  return r.includes("recipient") || r.includes("destinat");
+}
+
+/** Evita confundir técnico/agente atribuído com o requerente na lista `team`. */
+function isAssignedOrTechActorRow(o: Record<string, unknown>): boolean {
+  const r = String(o.role ?? o.actor_role ?? o.relation ?? "").toLowerCase();
+  return (
+    r.includes("assign") ||
+    r.includes("tech") ||
+    r.includes("atribu") ||
+    r.includes("observer") ||
+    r.includes("observador") ||
+    r.includes("supplier") ||
+    r.includes("fornecedor")
+  );
+}
+
+function userIdFromActorRow(o: Record<string, unknown>): number | null {
+  const it = String(o.itemtype ?? o.item_type ?? "").toLowerCase();
+  if (it.includes("user")) {
+    return (
+      parsePositiveInt(o.items_id ?? o.itemsId ?? o.actors_id ?? o.users_id ?? o.user_id ?? o.id) ?? null
+    );
+  }
+  if (!isGroupLikeActorRow(o)) {
+    return (
+      parsePositiveInt(o.actors_id ?? o.items_id ?? o.itemsId ?? o.users_id ?? o.user_id ?? o.id) ?? null
+    );
+  }
+  return null;
+}
+
 export type RequesterContact = {
   displayName: string | null;
   email: string | null;
@@ -88,6 +148,13 @@ export function extractRequesterContact(rawJson: unknown): RequesterContact {
     }
   }
 
+  const uidRecipientObj = ticket.users_id_recipient;
+  if (uidRecipientObj && typeof uidRecipientObj === "object" && !Array.isArray(uidRecipientObj)) {
+    fillRequesterFromUserObject(uidRecipientObj);
+  } else if (uidRecipientObj !== undefined && uidRecipientObj !== null && !userId) {
+    userId = parsePositiveInt(uidRecipientObj) ?? userId;
+  }
+
   fillRequesterFromUserObject(ticket.user ?? ticket.requester);
   if (typeof ticket.requester === "number" || typeof ticket.requester === "string") {
     if (!userId) {
@@ -98,6 +165,8 @@ export function extractRequesterContact(rawJson: unknown): RequesterContact {
   const reqArr = ticket._users_id_requester;
   if (Array.isArray(reqArr) && reqArr.length > 0) {
     fillRequesterFromUserObject(reqArr[0]);
+  } else if (reqArr && typeof reqArr === "object" && !Array.isArray(reqArr)) {
+    fillRequesterFromUserObject(reqArr);
   }
 
   if (!userId) {
@@ -106,7 +175,95 @@ export function extractRequesterContact(rawJson: unknown): RequesterContact {
 
   const recipient = ticket._users_id_recipient;
   if (Array.isArray(recipient) && recipient.length > 0) {
-    fillNameEmail(recipient[0]);
+    fillRequesterFromUserObject(recipient[0]);
+  } else if (recipient && typeof recipient === "object" && !Array.isArray(recipient)) {
+    fillRequesterFromUserObject(recipient);
+  }
+
+  /**
+   * Lista `team` / `actors` (GLPI v2): entrada com papel de requerente e tipo utilizador,
+   * mesmo quando `users_id_requester` não vem no JSON da listagem.
+   */
+  const tryFillFromTeamOrActors = (strictRequesterOnly: boolean): void => {
+    const lists = [ticket.team, ticket._team, ticket.actors, ticket._actors];
+    for (const list of lists) {
+      if (!Array.isArray(list)) {
+        continue;
+      }
+      for (const row of list) {
+        const o = asRecord(row);
+        if (isGroupLikeActorRow(o)) {
+          continue;
+        }
+        if (strictRequesterOnly && isAssignedOrTechActorRow(o)) {
+          continue;
+        }
+        const roleOk = strictRequesterOnly ? isStrictRequesterRole(o) : isRecipientLikeRole(o);
+        if (!roleOk) {
+          continue;
+        }
+        fillRequesterFromUserObject(o.user ?? o.User ?? o.user_link ?? o.user_link_item);
+        if (!displayName) {
+          const n =
+            o.display_name ??
+            o.displayName ??
+            o.completename ??
+            o.name ??
+            o.username ??
+            o.login ??
+            o.friendlyname;
+          if (typeof n === "string" && n.trim()) {
+            displayName = n.trim();
+          }
+        }
+        if (!email) {
+          const em = o.email ?? o.user_email ?? o.default_email ?? o.alternative_email;
+          if (typeof em === "string" && em.includes("@")) {
+            email = em.trim().toLowerCase();
+          }
+        }
+        if (!userId) {
+          const fromRow = userIdFromActorRow(o);
+          if (fromRow !== null) {
+            userId = fromRow;
+          }
+        }
+        return;
+      }
+    }
+    const singleActor = ticket.actor;
+    if (singleActor && typeof singleActor === "object" && !Array.isArray(singleActor)) {
+      const o = asRecord(singleActor);
+      if (!isGroupLikeActorRow(o) && !(strictRequesterOnly && isAssignedOrTechActorRow(o))) {
+        const roleOk = strictRequesterOnly ? isStrictRequesterRole(o) : isRecipientLikeRole(o);
+        if (roleOk) {
+          fillRequesterFromUserObject(o.user ?? o.User ?? o.user_link ?? o.user_link_item);
+          if (!displayName) {
+            const n = o.display_name ?? o.displayName ?? o.completename ?? o.name ?? o.login;
+            if (typeof n === "string" && n.trim()) {
+              displayName = n.trim();
+            }
+          }
+          if (!email) {
+            const em = o.email ?? o.user_email ?? o.default_email;
+            if (typeof em === "string" && em.includes("@")) {
+              email = em.trim().toLowerCase();
+            }
+          }
+          if (!userId) {
+            const fromRow = userIdFromActorRow(o);
+            if (fromRow !== null) {
+              userId = fromRow;
+            }
+          }
+        }
+      }
+    }
+  };
+
+  tryFillFromTeamOrActors(true);
+  if (!displayName && !userId) {
+    tryFillFromTeamOrActors(false);
   }
 
   if (!displayName) {
