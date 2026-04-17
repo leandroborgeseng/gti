@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./config/prisma";
 import { getCachedUsersByIds } from "./services/glpi-users-cache.service";
 import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
@@ -19,6 +20,9 @@ import { getTicketSyncScope } from "./utils/ticket-sync-scope";
 import { mergeColumnOrder, readKanbanSettings, type KanbanSettings } from "./kanban-settings";
 
 const KANBAN_SYNC_STALE_MS = 24 * 60 * 60 * 1000;
+
+type DistinctStatusRow = Prisma.TicketGetPayload<{ select: { status: true } }>;
+type DistinctGroupRow = Prisma.TicketGetPayload<{ select: { contractGroupName: true } }>;
 
 function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "-";
@@ -218,8 +222,8 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     })
   ]);
 
-  const statuses = statusRows.map((row) => row.status).filter((s): s is string => Boolean(s));
-  const groups = groupRows.map((row) => row.contractGroupName).filter((g): g is string => Boolean(g));
+  const statuses = statusRows.map((row: DistinctStatusRow) => row.status).filter((s): s is string => Boolean(s));
+  const groups = groupRows.map((row: DistinctGroupRow) => row.contractGroupName).filter((g): g is string => Boolean(g));
 
   const requesterIds = latestTicketRows
     .map((t) => t.requesterUserId)
