@@ -1,7 +1,8 @@
 generator client {
   provider = "prisma-client-js"
-  /// Client em `apps/backend/node_modules` (Nest e `prisma generate --schema apps/backend/prisma/...` na raiz ou no frontend).
-  output   = "../node_modules/.prisma/client"
+  /// Relativo a este ficheiro (`apps/backend/prisma/`): raiz do monorepo → `node_modules/.prisma/client`.
+  /// O `@prisma/client` hoisted na raiz (Docker / Railway) só funciona se o generate escrever aqui; caso contrário o Next falha em «Collecting page data».
+  output   = "../../../node_modules/.prisma/client"
 }
 
 datasource db {
