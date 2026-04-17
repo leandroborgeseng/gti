@@ -130,17 +130,32 @@ export async function GET(): Promise<NextResponse> {
       }
     }
 
+    const tCheckpointArranque = arranqueGlpiUltimo ? Date.parse(arranqueGlpiUltimo.at) : NaN;
+    const tInicioSync = sync.lastStartedAt ? Date.parse(sync.lastStartedAt) : NaN;
+    const tBootstrapConcluido = arranqueGlpiBootstrapConcluidoEm
+      ? Date.parse(arranqueGlpiBootstrapConcluidoEm)
+      : NaN;
+
     if (
       arranqueGlpiUltimo &&
       sync.lastStartedAt &&
       FASES_ARRANQUE_PARCIAIS.has(arranqueGlpiUltimo.phase) &&
-      !Number.isNaN(Date.parse(arranqueGlpiUltimo.at)) &&
-      !Number.isNaN(Date.parse(sync.lastStartedAt)) &&
-      Date.parse(arranqueGlpiUltimo.at) > Date.parse(sync.lastStartedAt)
+      !Number.isNaN(tCheckpointArranque) &&
+      !Number.isNaN(tInicioSync) &&
+      tCheckpointArranque > tInicioSync
     ) {
-      avisos.push(
-        "O checkpoint de arranque na BD é mais recente que o início da sync atual — é provável haver mais do que uma réplica a escrever na mesma base. Use 1 réplica para o serviço Next ou defina GLPI_CRON_DISABLED=1 nas réplicas só HTTP e um único worker de sync."
-      );
+      const bootstrapConcluidoValido =
+        Boolean(arranqueGlpiBootstrapConcluidoEm) && !Number.isNaN(tBootstrapConcluido) && tBootstrapConcluido > 0;
+
+      if (bootstrapConcluidoValido && tCheckpointArranque > tBootstrapConcluido) {
+        avisos.push(
+          `O checkpoint «${arranqueGlpiUltimo.phase}» (${arranqueGlpiUltimo.at}) é posterior ao último bootstrap concluído (${arranqueGlpiBootstrapConcluidoEm}) — típico de novo processo/redeploy ou de um novo arranque a disputar a mesma BD enquanto o estado da sync ainda reflete uma execução anterior (ex.: sync longa). Isto não indica, por si, várias réplicas do Next.`
+        );
+      } else if (!bootstrapConcluidoValido) {
+        avisos.push(
+          "O checkpoint de arranque na BD é mais recente que o início da sync atual e ainda não há marcador de bootstrap concluído nesta base — pode haver mais do que uma réplica do Next a escrever na mesma base. Use 1 réplica ou GLPI_CRON_DISABLED=1 nas réplicas só HTTP e um worker de sync único."
+        );
+      }
     }
 
     return jsonUtf8({
