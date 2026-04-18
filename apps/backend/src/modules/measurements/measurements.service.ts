@@ -135,6 +135,30 @@ export class MeasurementsService {
     return this.findOne(measurementId);
   }
 
+  /** Atualiza a quantidade de uma linha; só com medição «Aberta» (voltar a calcular depois). */
+  async patchItem(measurementId: string, itemId: string, quantity: number): Promise<unknown> {
+    const m = await this.prisma.measurement.findFirst({
+      where: { id: measurementId, deletedAt: null },
+      include: { items: true }
+    });
+    if (!m) throw new NotFoundException("Medição não encontrada");
+    if (m.status !== MeasurementStatus.OPEN) {
+      throw new BadRequestException("Só é possível alterar linhas com a medição em estado «Aberta».");
+    }
+    const item = m.items.find((i) => i.id === itemId);
+    if (!item) {
+      throw new NotFoundException("Linha não encontrada nesta medição");
+    }
+    await this.prisma.measurementItem.update({
+      where: { id: itemId },
+      data: {
+        quantity: new Prisma.Decimal(quantity),
+        calculatedValue: new Prisma.Decimal(0)
+      }
+    });
+    return this.findOne(measurementId);
+  }
+
   async calculate(id: string): Promise<unknown> {
     const measurement = await this.prisma.measurement.findFirst({
       where: { id, deletedAt: null },

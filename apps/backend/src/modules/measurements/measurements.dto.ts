@@ -44,3 +44,10 @@ export class AddMeasurementItemsDto {
   @Type(() => MeasurementItemDto)
   items!: MeasurementItemDto[];
 }
+
+export class PatchMeasurementItemDto {
+  @Type(() => Number)
+  @IsNumber({}, { message: "Quantidade inválida" })
+  @Min(0.0001, { message: "A quantidade deve ser maior que zero" })
+  quantity!: number;
+}

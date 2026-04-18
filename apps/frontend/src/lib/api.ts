@@ -347,6 +347,17 @@ export async function deleteMeasurementItem(measurementId: string, itemId: strin
   return request(`/measurements/${measurementId}/items/${itemId}`, { method: "DELETE" });
 }
 
+export async function patchMeasurementItemQuantity(
+  measurementId: string,
+  itemId: string,
+  quantity: number
+): Promise<Measurement> {
+  return request(`/measurements/${measurementId}/items/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ quantity })
+  });
+}
+
 export async function getMeasurement(id: string): Promise<Measurement> {
   return request(`/measurements/${id}`);
 }

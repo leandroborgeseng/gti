@@ -1,8 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import type { FormEvent } from "react";
 import { useState } from "react";
-import { deleteMeasurementItem } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { deleteMeasurementItem, patchMeasurementItemQuantity } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
 
 type ItemRow = { id: string; type: string; referenceId: string; quantity: string; calculatedValue: string };
@@ -13,14 +14,19 @@ type Props = {
   items: ItemRow[];
 };
 
+function parseQty(s: string): number {
+  const n = Number(String(s).replace(",", "."));
+  return n;
+}
+
 export function MeasurementItemsList(props: Props): JSX.Element | null {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const canRemove = props.measurementStatus === "OPEN";
+  const canEdit = props.measurementStatus === "OPEN";
 
   async function remove(itemId: string): Promise<void> {
-    if (!canRemove) return;
+    if (!canEdit) return;
     if (!window.confirm("Remover esta linha da medição?")) {
       return;
     }
@@ -36,6 +42,27 @@ export function MeasurementItemsList(props: Props): JSX.Element | null {
     }
   }
 
+  async function saveQuantity(itemId: string, event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!canEdit) return;
+    const fd = new FormData(event.currentTarget);
+    const q = parseQty(String(fd.get("quantity") ?? ""));
+    if (!Number.isFinite(q) || q <= 0) {
+      setMsg("Indique uma quantidade maior que zero.");
+      return;
+    }
+    setBusyId(itemId);
+    setMsg(null);
+    try {
+      await patchMeasurementItemQuantity(props.measurementId, itemId, q);
+      router.refresh();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Falha ao atualizar");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (props.items.length === 0) {
     return null;
   }
@@ -44,21 +71,53 @@ export function MeasurementItemsList(props: Props): JSX.Element | null {
     <div className="space-y-2">
       <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
         {props.items.map((item) => (
-          <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm text-slate-700">
-            <span>
-              {item.type} · ref. <span className="font-mono text-xs">{item.referenceId}</span> · qtd. {item.quantity} ·{" "}
-              {formatBrl(item.calculatedValue)}
-            </span>
-            {canRemove ? (
-              <button
-                type="button"
-                disabled={busyId === item.id}
-                className="text-xs font-medium text-red-700 underline decoration-red-200 hover:decoration-red-700 disabled:opacity-50"
-                onClick={() => void remove(item.id)}
-              >
-                {busyId === item.id ? "A remover…" : "Remover"}
-              </button>
-            ) : null}
+          <li key={item.id} className="flex flex-col gap-2 px-3 py-3 text-sm text-slate-700 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div>
+              <span className="font-medium text-slate-900">{item.type}</span> · ref.{" "}
+              <span className="font-mono text-xs">{item.referenceId}</span>
+              <div className="mt-0.5 text-xs text-slate-500">
+                Valor calculado (último cálculo): <span className="tabular-nums">{formatBrl(item.calculatedValue)}</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canEdit ? (
+                <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => void saveQuantity(item.id, e)}>
+                  <label className="sr-only" htmlFor={`qty-${item.id}`}>
+                    Quantidade
+                  </label>
+                  <input
+                    id={`qty-${item.id}`}
+                    name="quantity"
+                    type="number"
+                    min="0.0001"
+                    step="any"
+                    required
+                    defaultValue={parseQty(item.quantity) || ""}
+                    disabled={busyId === item.id}
+                    className="w-28 rounded-md border border-slate-200 px-2 py-1 text-sm tabular-nums"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busyId === item.id}
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {busyId === item.id ? "A guardar…" : "Guardar quantidade"}
+                  </button>
+                </form>
+              ) : (
+                <span className="tabular-nums text-slate-600">Qtd. {item.quantity}</span>
+              )}
+              {canEdit ? (
+                <button
+                  type="button"
+                  disabled={busyId === item.id}
+                  className="text-xs font-medium text-red-700 underline decoration-red-200 hover:decoration-red-700 disabled:opacity-50"
+                  onClick={() => void remove(item.id)}
+                >
+                  Remover
+                </button>
+              ) : null}
+            </div>
           </li>
         ))}
       </ul>

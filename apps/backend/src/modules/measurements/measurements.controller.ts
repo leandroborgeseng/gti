@@ -6,13 +6,14 @@ import {
   MaxFileSizeValidator,
   Param,
   ParseFilePipe,
+  Patch,
   Post,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
-import { AddMeasurementItemsDto, CreateMeasurementDto } from "./measurements.dto";
+import { AddMeasurementItemsDto, CreateMeasurementDto, PatchMeasurementItemDto } from "./measurements.dto";
 import { MeasurementsService } from "./measurements.service";
 
 function uploadMaxBytes(): number {
@@ -42,6 +43,11 @@ export class MeasurementsController {
   @Delete(":id/items/:itemId")
   removeItem(@Param("id") id: string, @Param("itemId") itemId: string): Promise<unknown> {
     return this.service.removeItem(id, itemId);
+  }
+
+  @Patch(":id/items/:itemId")
+  patchItem(@Param("id") id: string, @Param("itemId") itemId: string, @Body() dto: PatchMeasurementItemDto): Promise<unknown> {
+    return this.service.patchItem(id, itemId, dto.quantity);
   }
 
   @Post(":id/calculate")
