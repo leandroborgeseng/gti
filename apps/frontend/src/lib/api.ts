@@ -97,6 +97,8 @@ export type Measurement = {
   referenceMonth: number;
   referenceYear: number;
   status: string;
+  /** ISO; útil para alinhar estado cliente após revalidação do servidor. */
+  updatedAt?: string;
   totalMeasuredValue: string;
   totalApprovedValue: string;
   totalGlosedValue: string;

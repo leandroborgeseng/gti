@@ -3,6 +3,7 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Measurement } from "@/lib/api";
 import { deleteMeasurementItem, patchMeasurementItemQuantity } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
 
@@ -12,6 +13,11 @@ type Props = {
   measurementId: string;
   measurementStatus: string;
   items: ItemRow[];
+  /**
+   * Quando definido, sucesso em PATCH/DELETE chama este callback com a medição devolvida pela API
+   * e não executa `router.refresh()` (evita recarregar toda a página).
+   */
+  onMeasurementUpdate?: (measurement: Measurement) => void;
 };
 
 function parseQty(s: string): number {
@@ -23,6 +29,7 @@ export function MeasurementItemsList(props: Props): JSX.Element | null {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const canEdit = props.measurementStatus === "OPEN";
 
   async function remove(itemId: string): Promise<void> {
@@ -33,8 +40,12 @@ export function MeasurementItemsList(props: Props): JSX.Element | null {
     setBusyId(itemId);
     setMsg(null);
     try {
-      await deleteMeasurementItem(props.measurementId, itemId);
-      router.refresh();
+      const updated = await deleteMeasurementItem(props.measurementId, itemId);
+      if (props.onMeasurementUpdate) {
+        props.onMeasurementUpdate(updated);
+      } else {
+        router.refresh();
+      }
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Falha ao remover");
     } finally {
@@ -53,9 +64,15 @@ export function MeasurementItemsList(props: Props): JSX.Element | null {
     }
     setBusyId(itemId);
     setMsg(null);
+    setSyncMsg(null);
     try {
-      await patchMeasurementItemQuantity(props.measurementId, itemId, q);
-      router.refresh();
+      const updated = await patchMeasurementItemQuantity(props.measurementId, itemId, q);
+      if (props.onMeasurementUpdate) {
+        props.onMeasurementUpdate(updated);
+        setSyncMsg("Quantidade guardada. Utilize Calcular para atualizar o valor medido no resumo.");
+      } else {
+        router.refresh();
+      }
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Falha ao atualizar");
     } finally {
@@ -121,6 +138,7 @@ export function MeasurementItemsList(props: Props): JSX.Element | null {
           </li>
         ))}
       </ul>
+      {syncMsg ? <p className="text-sm text-slate-600">{syncMsg}</p> : null}
       {msg ? <p className="text-sm text-red-600">{msg}</p> : null}
     </div>
   );

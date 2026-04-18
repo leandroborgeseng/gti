@@ -1,5 +1,5 @@
 import { MeasurementAddServiceLines } from "@/components/measurements/measurement-add-service-lines";
-import { MeasurementItemsList } from "@/components/measurements/measurement-items-list";
+import { MeasurementItemsStateful } from "@/components/measurements/measurement-items-stateful";
 import { MeasurementAttachments } from "@/components/measurements/measurement-attachments";
 import { Card } from "@/components/ui/card";
 import { MeasurementActions } from "@/components/actions/measurement-actions";
@@ -19,6 +19,25 @@ const contractTypeLabel: Record<string, string> = {
   INFRA: "Infraestrutura",
   SERVICO: "Serviço"
 };
+
+function measurementItemsSnapshotKey(measurement: {
+  id: string;
+  updatedAt?: string;
+  status: string;
+  totalMeasuredValue: string;
+  totalApprovedValue: string;
+  items?: Array<{ id: string; quantity: string; calculatedValue: string }>;
+}): string {
+  const lines = (measurement.items ?? []).map((i) => `${i.id}:${i.quantity}:${i.calculatedValue}`).join("|");
+  return [
+    measurement.id,
+    measurement.updatedAt ?? "",
+    measurement.status,
+    measurement.totalMeasuredValue,
+    measurement.totalApprovedValue,
+    lines
+  ].join("¦");
+}
 
 function calcRuleDescription(contractType: string | undefined): string {
   if (contractType === "DATACENTER" || contractType === "INFRA") {
@@ -102,9 +121,10 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
               : "Nenhum item cadastrado. Para software/serviço, o valor vem das funcionalidades validadas na estrutura do contrato."}
           </p>
         ) : null}
-        <MeasurementItemsList
+        <MeasurementItemsStateful
           measurementId={measurement.id}
           measurementStatus={measurement.status}
+          serverSnapshotKey={measurementItemsSnapshotKey(measurement)}
           items={measurement.items ?? []}
         />
       </Card>
