@@ -61,6 +61,7 @@ export function ContractsView({ contracts }: Props): JSX.Element {
                 <th className="px-5 py-3 text-right">Valor mensal</th>
                 <th className="px-5 py-3">Vigência (fim)</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3 text-center tabular-nums">Aditivos</th>
                 <th className="px-5 py-3 text-right">Ações</th>
               </tr>
             </thead>
@@ -95,7 +96,7 @@ export function ContractsView({ contracts }: Props): JSX.Element {
               ))}
               {contracts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-14 text-center">
+                  <td colSpan={8} className="px-5 py-14 text-center">
                     <p className="text-sm text-slate-500">Nenhum contrato ainda. Clique em &quot;Novo contrato&quot; para cadastrar.</p>
                   </td>
                 </tr>

@@ -41,7 +41,12 @@ export class ContractsService {
   async findAll(): Promise<unknown> {
     return this.prisma.contract.findMany({
       where: { deletedAt: null },
-      include: { fiscal: true, manager: true, supplier: true },
+      include: {
+        fiscal: true,
+        manager: true,
+        supplier: true,
+        _count: { select: { amendments: true } }
+      },
       orderBy: { createdAt: "desc" }
     });
   }

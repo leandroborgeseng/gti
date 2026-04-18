@@ -98,6 +98,8 @@ export type Contract = {
   modules?: Array<{ id: string; name: string; weight: string; features: Array<{ id: string; name: string; status: string; weight: string }> }>;
   services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
   amendments?: ContractAmendment[];
+  /** Presente na listagem (`GET /contracts`) para indicar quantos aditivos existem. */
+  _count?: { amendments: number };
 };
 
 export type AttachmentRecord = {

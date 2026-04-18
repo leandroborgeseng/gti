@@ -18,6 +18,15 @@ function formatDatePt(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("pt-BR");
 }
 
+/** Data local no formato YYYY-MM-DD (para input type="date"). */
+function todayDateInputValue(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Element {
   const router = useRouter();
   const [role, setRole] = useState<string | null | undefined>(undefined);
@@ -112,7 +121,13 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
           </label>
           <label className="grid gap-1 text-sm">
             <span className="font-medium text-slate-700">Data de vigência do aditivo</span>
-            <input name="effectiveDate" type="date" required className="rounded-md border border-slate-200 px-3 py-2 text-sm" />
+            <input
+              name="effectiveDate"
+              type="date"
+              required
+              defaultValue={todayDateInputValue()}
+              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+            />
           </label>
           <label className="grid gap-1 text-sm">
             <span className="font-medium text-slate-700">Novo término do contrato</span>
