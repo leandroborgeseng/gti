@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import {
+  fetchContractAmendmentsCsvBlob,
   fetchContractsCsvBlob,
   fetchGlosasCsvBlob,
   fetchMeasurementsCsvBlob,
   getAuthMe
 } from "@/lib/api";
 
-type ExportKind = "contracts" | "measurements" | "glosas";
+type ExportKind = "contracts" | "measurements" | "glosas" | "amendments";
 
 export default function ExportsPage(): JSX.Element {
   const [role, setRole] = useState<string | null | undefined>(undefined);
@@ -82,6 +83,21 @@ export default function ExportsPage(): JSX.Element {
           onClick={() => void download("contracts", fetchContractsCsvBlob, "contratos.csv")}
         >
           {busy === "contracts" ? "A gerar…" : "Descarregar contratos.csv"}
+        </button>
+      </Card>
+
+      <Card className="p-5">
+        <h2 className="text-base font-semibold text-slate-900">Aditivos de contratos</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Histórico de aditivos e reajustes (valores e vigência), com ligação ao contrato.
+        </p>
+        <button
+          type="button"
+          disabled={busy !== null}
+          className={btnClass}
+          onClick={() => void download("amendments", fetchContractAmendmentsCsvBlob, "aditivos-contratos.csv")}
+        >
+          {busy === "amendments" ? "A gerar…" : "Descarregar aditivos-contratos.csv"}
         </button>
       </Card>
 

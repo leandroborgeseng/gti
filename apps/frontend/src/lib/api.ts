@@ -501,6 +501,10 @@ export async function fetchGlosasCsvBlob(): Promise<Blob> {
   return fetchExportCsvBlob("/exports/glosas.csv", "glosas");
 }
 
+export async function fetchContractAmendmentsCsvBlob(): Promise<Blob> {
+  return fetchExportCsvBlob("/exports/contract-amendments.csv", "aditivos de contratos");
+}
+
 export async function getGovernanceTickets(): Promise<GovernanceTicket[]> {
   return request("/governance/tickets");
 }

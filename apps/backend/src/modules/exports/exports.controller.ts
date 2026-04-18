@@ -25,6 +25,15 @@ export class ExportsController {
     return `\ufeff${body}`;
   }
 
+  @Get("contract-amendments.csv")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", 'attachment; filename="aditivos-contratos.csv"')
+  async contractAmendmentsCsv(): Promise<string> {
+    const body = await this.service.contractAmendmentsCsv();
+    return `\ufeff${body}`;
+  }
+
   @Get("glosas.csv")
   @Roles(UserRole.ADMIN, UserRole.EDITOR)
   @Header("Content-Type", "text/csv; charset=utf-8")

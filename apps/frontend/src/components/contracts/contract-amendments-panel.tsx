@@ -32,6 +32,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
   }, []);
 
   const canEdit = role === "ADMIN" || role === "EDITOR";
+  const contractActive = props.contract.status === "ACTIVE";
   const list = props.contract.amendments ?? [];
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -89,6 +90,11 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
 
       {role === undefined ? (
         <p className="mt-4 text-sm text-slate-500">A carregar permissões…</p>
+      ) : canEdit && !contractActive ? (
+        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          Só é possível registar novos aditivos com o contrato em estado <strong className="font-medium">Ativo</strong>. Altere o
+          estado do contrato antes de continuar, se aplicável.
+        </p>
       ) : canEdit ? (
         <form
           key={`${props.contract.id}-${props.contract.totalValue}-${props.contract.endDate}-${list.length}`}

@@ -71,6 +71,9 @@ export class ContractsService {
       include: { modules: { include: { features: true } }, services: true, fiscal: true, manager: true, supplier: true }
     });
     if (!prev) throw new NotFoundException("Contrato não encontrado");
+    if (prev.status !== ContractStatus.ACTIVE) {
+      throw new BadRequestException("Só é possível registar aditivos para contratos em estado «Ativo».");
+    }
 
     const newEnd = new Date(dto.newEndDate);
     const effectiveDate = new Date(dto.effectiveDate);

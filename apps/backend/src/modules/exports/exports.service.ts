@@ -107,6 +107,64 @@ export class ExportsService {
     return [header, ...lines].join("\n");
   }
 
+  async contractAmendmentsCsv(): Promise<string> {
+    const rows = await this.prisma.contractAmendment.findMany({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        contractId: true,
+        referenceCode: true,
+        effectiveDate: true,
+        description: true,
+        previousTotalValue: true,
+        previousMonthlyValue: true,
+        previousEndDate: true,
+        newTotalValue: true,
+        newMonthlyValue: true,
+        newEndDate: true,
+        createdAt: true,
+        contract: { select: { number: true, name: true, status: true } }
+      }
+    });
+    const header = [
+      "id",
+      "contract_id",
+      "contrato_numero",
+      "contrato_nome",
+      "contrato_status",
+      "referencia_instrumento",
+      "vigencia_aditivo",
+      "descricao",
+      "valor_mensal_anterior",
+      "valor_mensal_novo",
+      "valor_total_anterior",
+      "valor_total_novo",
+      "termino_anterior",
+      "termino_novo",
+      "registado_em"
+    ].join(",");
+    const lines = rows.map((r) =>
+      [
+        csvCell(r.id),
+        csvCell(r.contractId),
+        csvCell(r.contract.number),
+        csvCell(r.contract.name),
+        csvCell(r.contract.status),
+        csvCell(r.referenceCode ?? ""),
+        csvCell(r.effectiveDate.toISOString().slice(0, 10)),
+        csvCell(r.description),
+        csvCell(r.previousMonthlyValue.toString()),
+        csvCell(r.newMonthlyValue.toString()),
+        csvCell(r.previousTotalValue.toString()),
+        csvCell(r.newTotalValue.toString()),
+        csvCell(r.previousEndDate.toISOString().slice(0, 10)),
+        csvCell(r.newEndDate.toISOString().slice(0, 10)),
+        csvCell(r.createdAt.toISOString())
+      ].join(",")
+    );
+    return [header, ...lines].join("\n");
+  }
+
   async glosasCsv(): Promise<string> {
     const rows = await this.prisma.glosa.findMany({
       orderBy: { createdAt: "desc" },

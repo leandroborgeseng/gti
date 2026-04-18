@@ -24,8 +24,8 @@ const publicChecks: Check[] = [
 
 /**
  * API Nest (JWT obrigatório).
- * Nota: exportações CSV e mutações (ex.: PATCH de linha de medição) exigem papel EDITOR ou ADMIN;
- * utilizador só VIEWER fará falhar esses checks.
+ * Nota: exportações CSV (contratos, medições, glosas, aditivos) e mutações (ex.: PATCH de linha de medição)
+ * exigem papel EDITOR ou ADMIN; utilizador só VIEWER fará falhar esses checks.
  */
 const apiChecks: Check[] = [
   { name: "Sessão JWT (auth/me)", url: `${backendUrl}/auth/me`, expectedStatus: 200 },
@@ -38,7 +38,8 @@ const apiChecks: Check[] = [
   { name: "Listagem metas backend", url: `${backendUrl}/goals`, expectedStatus: 200 },
   { name: "Export CSV contratos", url: `${backendUrl}/exports/contracts.csv`, expectedStatus: 200 },
   { name: "Export CSV medições", url: `${backendUrl}/exports/measurements.csv`, expectedStatus: 200 },
-  { name: "Export CSV glosas", url: `${backendUrl}/exports/glosas.csv`, expectedStatus: 200 }
+  { name: "Export CSV glosas", url: `${backendUrl}/exports/glosas.csv`, expectedStatus: 200 },
+  { name: "Export CSV aditivos de contratos", url: `${backendUrl}/exports/contract-amendments.csv`, expectedStatus: 200 }
 ];
 
 async function resolveApiAuthHeaders(): Promise<Record<string, string> | null> {
