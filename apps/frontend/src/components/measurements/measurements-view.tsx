@@ -18,15 +18,19 @@ const statusLabel: Record<string, string> = {
 const btnPrimary =
   "inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2";
 
+type ContractOption = { id: string; number: string; name: string };
+
 type Props = {
   measurements: Measurement[];
+  /** Lista para o formulário «Nova medição» (evita colar UUID). */
+  contractOptions?: ContractOption[];
   /** Quando definido, mostra apenas medições deste contrato (filtro por URL). */
   filterContractId?: string;
   /** Título legível do contrato (número — nome); se omitido, usa só o ID. */
   filterContractTitle?: string;
 };
 
-export function MeasurementsView({ measurements, filterContractId, filterContractTitle }: Props): JSX.Element {
+export function MeasurementsView({ measurements, contractOptions, filterContractId, filterContractTitle }: Props): JSX.Element {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const rows = filterContractId ? measurements.filter((m) => m.contractId === filterContractId) : measurements;
@@ -130,6 +134,7 @@ export function MeasurementsView({ measurements, filterContractId, filterContrac
         description="Informe o contrato e a competência (mês/ano). Depois pode calcular e aprovar na página da medição."
       >
         <MeasurementForm
+          contractOptions={contractOptions}
           defaultContractId={filterContractId}
           onSuccess={() => {
             setModalOpen(false);

@@ -64,7 +64,7 @@ export class DashboardService {
         }
       }),
       this.prisma.contract.findMany({
-        where: { deletedAt: null, contractType: "SOFTWARE" },
+        where: { deletedAt: null, contractType: { in: ["SOFTWARE", "SERVICO"] } },
         include: { modules: { include: { features: true } } }
       }),
       this.prisma.ticketGovernance.findMany({

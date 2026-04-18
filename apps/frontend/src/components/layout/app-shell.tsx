@@ -14,7 +14,7 @@ const titles: Record<string, string> = {
   "/goals": "Metas estratégicas",
   "/suppliers": "Fornecedores",
   "/fiscais": "Fiscais",
-  "/reports": "Relatórios",
+  "/reports": "Relatórios e exportações",
   "/users": "Utilizadores",
   "/exports": "Exportações"
 };

@@ -51,7 +51,7 @@ export function MeasurementActions({ measurementId, measurementStatus }: Props):
           disabled={busy != null || !canCalculate}
           className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy === "calculate" ? "Calculando..." : "Calcular"}
+          {busy === "calculate" ? "A calcular…" : "Calcular"}
         </button>
         <button
           type="button"
@@ -59,11 +59,13 @@ export function MeasurementActions({ measurementId, measurementStatus }: Props):
           disabled={busy != null || !canApprove}
           className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy === "approve" ? "Aprovando..." : "Aprovar"}
+          {busy === "approve" ? "A aprovar…" : "Aprovar"}
         </button>
       </div>
       {!canCalculate ? <p className="text-xs text-amber-700">Medição aprovada não permite recálculo.</p> : null}
-      {!canApprove ? <p className="text-xs text-amber-700">Para aprovar, calcule a medição primeiro.</p> : null}
+      {measurementStatus === "OPEN" ? (
+        <p className="text-xs text-amber-700">Para aprovar, calcule a medição primeiro.</p>
+      ) : null}
       {status ? <p className="text-sm text-slate-600">{status}</p> : null}
     </div>
   );

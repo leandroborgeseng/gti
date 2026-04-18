@@ -100,7 +100,7 @@ export type Measurement = {
   totalMeasuredValue: string;
   totalApprovedValue: string;
   totalGlosedValue: string;
-  contract?: { id: string; number?: string; name: string };
+  contract?: { id: string; number?: string; name: string; contractType?: string };
   items?: Array<{ id: string; type: string; referenceId: string; quantity: string; calculatedValue: string }>;
   glosas?: Array<{ id: string; type: string; value: string; justification: string; createdBy: string; createdAt: string }>;
   attachments?: Array<AttachmentRecord>;
@@ -410,10 +410,10 @@ export async function updateUser(
 }
 
 /** Descarrega CSV de contratos (UTF-8 com BOM); requer papel ADMIN ou EDITOR. */
-export async function fetchContractsCsvBlob(): Promise<Blob> {
+async function fetchExportCsvBlob(path: string, label: string): Promise<Blob> {
   const apiBase = await resolveRequestApiBase();
   const auth = await authHeadersForApi();
-  const res = await fetch(`${apiBase}/exports/contracts.csv`, { headers: { ...auth }, cache: "no-store" });
+  const res = await fetch(`${apiBase}${path}`, { headers: { ...auth }, cache: "no-store" });
   if (!res.ok) {
     let detail = "";
     try {
@@ -423,9 +423,21 @@ export async function fetchContractsCsvBlob(): Promise<Blob> {
     } catch {
       detail = "";
     }
-    throw new Error(detail || `Falha ao exportar contratos (${res.status})`);
+    throw new Error(detail || `Falha ao exportar ${label} (${res.status})`);
   }
   return res.blob();
+}
+
+export async function fetchContractsCsvBlob(): Promise<Blob> {
+  return fetchExportCsvBlob("/exports/contracts.csv", "contratos");
+}
+
+export async function fetchMeasurementsCsvBlob(): Promise<Blob> {
+  return fetchExportCsvBlob("/exports/measurements.csv", "medições");
+}
+
+export async function fetchGlosasCsvBlob(): Promise<Blob> {
+  return fetchExportCsvBlob("/exports/glosas.csv", "glosas");
 }
 
 export async function getGovernanceTickets(): Promise<GovernanceTicket[]> {

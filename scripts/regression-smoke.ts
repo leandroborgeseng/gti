@@ -22,15 +22,22 @@ const publicChecks: Check[] = [
   { name: "Health do servidor principal", url: `${appUrl}/health`, expectedStatus: 200 }
 ];
 
-/** API Nest (JWT obrigatório). */
+/**
+ * API Nest (JWT obrigatório).
+ * Nota: exportações CSV exigem papel EDITOR ou ADMIN; utilizador só VIEWER fará falhar estes três checks.
+ */
 const apiChecks: Check[] = [
+  { name: "Sessão JWT (auth/me)", url: `${backendUrl}/auth/me`, expectedStatus: 200 },
   { name: "Resumo dashboard backend", url: `${backendUrl}/dashboard/summary`, expectedStatus: 200 },
   { name: "Alertas dashboard backend", url: `${backendUrl}/dashboard/alerts`, expectedStatus: 200 },
   { name: "Listagem contratos backend", url: `${backendUrl}/contracts`, expectedStatus: 200 },
   { name: "Listagem medições backend", url: `${backendUrl}/measurements`, expectedStatus: 200 },
   { name: "Listagem glosas backend", url: `${backendUrl}/glosas`, expectedStatus: 200 },
   { name: "Listagem governança backend", url: `${backendUrl}/governance/tickets`, expectedStatus: 200 },
-  { name: "Listagem metas backend", url: `${backendUrl}/goals`, expectedStatus: 200 }
+  { name: "Listagem metas backend", url: `${backendUrl}/goals`, expectedStatus: 200 },
+  { name: "Export CSV contratos", url: `${backendUrl}/exports/contracts.csv`, expectedStatus: 200 },
+  { name: "Export CSV medições", url: `${backendUrl}/exports/measurements.csv`, expectedStatus: 200 },
+  { name: "Export CSV glosas", url: `${backendUrl}/exports/glosas.csv`, expectedStatus: 200 }
 ];
 
 async function resolveApiAuthHeaders(): Promise<Record<string, string> | null> {

@@ -202,7 +202,7 @@ export function DashboardHome(props: { summary: Record<string, unknown>; alerts:
 
           <Card className="p-4">
             <h4 className="text-sm font-semibold text-amber-900">Contratos com baixa entrega (&lt; 40% validado)</h4>
-            <p className="mt-1 text-xs text-slate-500">Software: funcionalidades validadas sobre o total.</p>
+            <p className="mt-1 text-xs text-slate-500">Contratos tipo Software ou Serviço: funcionalidades validadas sobre o total.</p>
             {a.baixaEntrega.length === 0 ? (
               <p className="mt-3 text-sm text-slate-500">Nenhum contrato abaixo do limiar.</p>
             ) : (

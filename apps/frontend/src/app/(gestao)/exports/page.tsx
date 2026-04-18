@@ -2,11 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { fetchContractsCsvBlob, getAuthMe } from "@/lib/api";
+import {
+  fetchContractsCsvBlob,
+  fetchGlosasCsvBlob,
+  fetchMeasurementsCsvBlob,
+  getAuthMe
+} from "@/lib/api";
+
+type ExportKind = "contracts" | "measurements" | "glosas";
 
 export default function ExportsPage(): JSX.Element {
   const [role, setRole] = useState<string | null | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<ExportKind | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -15,22 +22,22 @@ export default function ExportsPage(): JSX.Element {
       .catch(() => setRole(null));
   }, []);
 
-  const downloadContracts = useCallback(async () => {
-    setBusy(true);
+  const download = useCallback(async (kind: ExportKind, fetcher: () => Promise<Blob>, filename: string) => {
+    setBusy(kind);
     setMsg(null);
     try {
-      const blob = await fetchContractsCsvBlob();
+      const blob = await fetcher();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "contratos.csv";
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      setMsg("Ficheiro transferido.");
+      setMsg(`Ficheiro «${filename}» transferido.`);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Falha na exportação");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }, []);
 
@@ -51,6 +58,9 @@ export default function ExportsPage(): JSX.Element {
     );
   }
 
+  const btnClass =
+    "mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 disabled:opacity-60";
+
   return (
     <div className="space-y-6">
       <div>
@@ -67,14 +77,43 @@ export default function ExportsPage(): JSX.Element {
         </p>
         <button
           type="button"
-          disabled={busy}
-          className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 disabled:opacity-60"
-          onClick={() => void downloadContracts()}
+          disabled={busy !== null}
+          className={btnClass}
+          onClick={() => void download("contracts", fetchContractsCsvBlob, "contratos.csv")}
         >
-          {busy ? "A gerar…" : "Descarregar contratos.csv"}
+          {busy === "contracts" ? "A gerar…" : "Descarregar contratos.csv"}
         </button>
-        {msg ? <p className="mt-3 text-sm text-slate-600">{msg}</p> : null}
       </Card>
+
+      <Card className="p-5">
+        <h2 className="text-base font-semibold text-slate-900">Medições</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Todas as medições não eliminadas, com referência, estado e valores agregados.
+        </p>
+        <button
+          type="button"
+          disabled={busy !== null}
+          className={btnClass}
+          onClick={() => void download("measurements", fetchMeasurementsCsvBlob, "medicoes.csv")}
+        >
+          {busy === "measurements" ? "A gerar…" : "Descarregar medicoes.csv"}
+        </button>
+      </Card>
+
+      <Card className="p-5">
+        <h2 className="text-base font-semibold text-slate-900">Glosas</h2>
+        <p className="mt-1 text-sm text-slate-600">Registos de glosa com ligação à competência e ao contrato (via medição).</p>
+        <button
+          type="button"
+          disabled={busy !== null}
+          className={btnClass}
+          onClick={() => void download("glosas", fetchGlosasCsvBlob, "glosas.csv")}
+        >
+          {busy === "glosas" ? "A gerar…" : "Descarregar glosas.csv"}
+        </button>
+      </Card>
+
+      {msg ? <p className="text-sm text-slate-600">{msg}</p> : null}
     </div>
   );
 }

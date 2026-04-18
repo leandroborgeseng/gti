@@ -76,14 +76,19 @@ export class MeasurementsService {
       throw new BadRequestException("Medição aprovada não pode ser recalculada");
     }
 
+    const contractType = measurement.contract.contractType;
+    /**
+     * SOFTWARE e SERVICO: valor mensal × proporção de funcionalidades em estado VALIDATED (entregas).
+     * DATACENTER e INFRA: soma de (quantidade × valor unitário) por linha de serviço contratada (`MeasurementItem` tipo SERVICE).
+     */
     let measured = new Prisma.Decimal(0);
-    if (measurement.contract.contractType === "SOFTWARE") {
+    if (contractType === "SOFTWARE" || contractType === "SERVICO") {
       const features = measurement.contract.modules.flatMap((m) => m.features);
       const total = features.length;
       const validated = features.filter((f) => f.status === "VALIDATED").length;
       const percentual = total > 0 ? new Prisma.Decimal(validated).div(total) : new Prisma.Decimal(0);
       measured = measurement.contract.monthlyValue.mul(percentual);
-    } else if (measurement.contract.contractType === "DATACENTER") {
+    } else if (contractType === "DATACENTER" || contractType === "INFRA") {
       const serviceMap = new Map(measurement.contract.services.map((s) => [s.id, s]));
       for (const item of measurement.items) {
         if (item.type !== MeasurementItemType.SERVICE) continue;
