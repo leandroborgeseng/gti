@@ -1,6 +1,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
+import { ContractStatusControl } from "@/components/contracts/contract-status-control";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
 import { Card } from "@/components/ui/card";
 import { formatBrl } from "@/lib/format-brl";
@@ -82,9 +83,12 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           <p>
             <strong className="text-slate-900">CNPJ:</strong> {cnpj}
           </p>
-          <p>
-            <strong className="text-slate-900">Status:</strong> {statusLabel[contract.status] ?? contract.status}
-          </p>
+          <div className="flex flex-col gap-1 md:flex-row md:flex-wrap md:items-start md:gap-x-3 md:gap-y-1">
+            <p>
+              <strong className="text-slate-900">Status:</strong> {statusLabel[contract.status] ?? contract.status}
+            </p>
+            <ContractStatusControl contractId={contract.id} status={contract.status} />
+          </div>
           <p>
             <strong className="text-slate-900">Tipo:</strong> {tipo}
           </p>

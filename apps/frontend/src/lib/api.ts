@@ -221,6 +221,29 @@ export async function createContractAmendment(
   return request(`/contracts/${contractId}/amendments`, { method: "POST", body: JSON.stringify(payload) });
 }
 
+export async function updateContract(
+  contractId: string,
+  payload: {
+    status?: "ACTIVE" | "EXPIRED" | "SUSPENDED";
+    name?: string;
+    description?: string | null;
+    companyName?: string;
+    cnpj?: string;
+    contractType?: "SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO";
+    lawType?: "LEI_8666" | "LEI_14133";
+    startDate?: string;
+    endDate?: string;
+    totalValue?: number;
+    monthlyValue?: number;
+    slaTarget?: number | null;
+    fiscalId?: string;
+    managerId?: string;
+    supplierId?: string | null;
+  }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
 export async function createContract(payload: {
   number: string;
   name: string;
