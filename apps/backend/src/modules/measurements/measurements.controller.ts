@@ -33,11 +33,6 @@ export class MeasurementsController {
     return this.service.findAll();
   }
 
-  @Get(":id")
-  findOne(@Param("id") id: string): Promise<unknown> {
-    return this.service.findOne(id);
-  }
-
   @Post(":id/items")
   addItems(@Param("id") id: string, @Body() dto: AddMeasurementItemsDto): Promise<unknown> {
     return this.service.addItems(id, dto.items);
@@ -71,5 +66,10 @@ export class MeasurementsController {
     file: Express.Multer.File
   ): Promise<unknown> {
     return this.service.addAttachmentUpload(id, file);
+  }
+
+  @Get(":id")
+  findOne(@Param("id") id: string): Promise<unknown> {
+    return this.service.findOne(id);
   }
 }
