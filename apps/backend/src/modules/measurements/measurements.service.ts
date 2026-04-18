@@ -110,6 +110,31 @@ export class MeasurementsService {
     return this.findOne(measurementId);
   }
 
+  /** Remove uma linha da medição; só com estado «Aberta». */
+  async removeItem(measurementId: string, itemId: string): Promise<unknown> {
+    const m = await this.prisma.measurement.findFirst({
+      where: { id: measurementId, deletedAt: null },
+      include: { items: true }
+    });
+    if (!m) throw new NotFoundException("Medição não encontrada");
+    if (m.status !== MeasurementStatus.OPEN) {
+      throw new BadRequestException("Só é possível remover linhas com a medição em estado «Aberta».");
+    }
+    const item = m.items.find((i) => i.id === itemId);
+    if (!item) {
+      throw new NotFoundException("Linha não encontrada nesta medição");
+    }
+    try {
+      await this.prisma.measurementItem.delete({ where: { id: itemId } });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+        throw new BadRequestException("Não é possível remover a linha: existem referências associadas.");
+      }
+      throw e;
+    }
+    return this.findOne(measurementId);
+  }
+
   async calculate(id: string): Promise<unknown> {
     const measurement = await this.prisma.measurement.findFirst({
       where: { id, deletedAt: null },

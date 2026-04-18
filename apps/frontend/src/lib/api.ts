@@ -343,6 +343,10 @@ export async function addMeasurementServiceLines(
   return request(`/measurements/${measurementId}/items`, { method: "POST", body: JSON.stringify({ items }) });
 }
 
+export async function deleteMeasurementItem(measurementId: string, itemId: string): Promise<Measurement> {
+  return request(`/measurements/${measurementId}/items/${itemId}`, { method: "DELETE" });
+}
+
 export async function getMeasurement(id: string): Promise<Measurement> {
   return request(`/measurements/${id}`);
 }

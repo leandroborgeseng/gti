@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   MaxFileSizeValidator,
   Param,
@@ -36,6 +37,11 @@ export class MeasurementsController {
   @Post(":id/items")
   addItems(@Param("id") id: string, @Body() dto: AddMeasurementItemsDto): Promise<unknown> {
     return this.service.addItems(id, dto.items);
+  }
+
+  @Delete(":id/items/:itemId")
+  removeItem(@Param("id") id: string, @Param("itemId") itemId: string): Promise<unknown> {
+    return this.service.removeItem(id, itemId);
   }
 
   @Post(":id/calculate")

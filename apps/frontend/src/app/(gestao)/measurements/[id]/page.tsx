@@ -1,4 +1,5 @@
 import { MeasurementAddServiceLines } from "@/components/measurements/measurement-add-service-lines";
+import { MeasurementItemsList } from "@/components/measurements/measurement-items-list";
 import { MeasurementAttachments } from "@/components/measurements/measurement-attachments";
 import { Card } from "@/components/ui/card";
 import { MeasurementActions } from "@/components/actions/measurement-actions";
@@ -94,21 +95,18 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
       </Card>
       <Card className="p-5">
         <h4 className="mb-2 font-medium text-slate-900">Itens da medição</h4>
-        {measurement.items && measurement.items.length > 0 ? (
-          <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
-            {measurement.items.map((item) => (
-              <li key={item.id}>
-                {item.type} | ref: {item.referenceId} | quantidade: {item.quantity} | valor: {formatBrl(item.calculatedValue)}
-              </li>
-            ))}
-          </ul>
-        ) : (
+        {!(measurement.items && measurement.items.length > 0) ? (
           <p className="text-sm text-slate-500">
             {tipo === "DATACENTER" || tipo === "INFRA"
               ? "Nenhum item cadastrado. Para datacenter/infra, inclua linhas de serviço (quantidades) antes de calcular."
               : "Nenhum item cadastrado. Para software/serviço, o valor vem das funcionalidades validadas na estrutura do contrato."}
           </p>
-        )}
+        ) : null}
+        <MeasurementItemsList
+          measurementId={measurement.id}
+          measurementStatus={measurement.status}
+          items={measurement.items ?? []}
+        />
       </Card>
     </div>
   );
