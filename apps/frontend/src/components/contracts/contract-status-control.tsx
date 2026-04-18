@@ -13,6 +13,31 @@ const options: Array<{ value: ContractStatus; label: string }> = [
   { value: "EXPIRED", label: "Encerrado" }
 ];
 
+function statusLabelFor(value: string): string {
+  return options.find((o) => o.value === value)?.label ?? value;
+}
+
+/** Confirmação antes de gravar (evita cliques por engano). */
+function confirmStatusChange(previous: string, next: ContractStatus): boolean {
+  const prevLeg = statusLabelFor(previous);
+  if (next === "EXPIRED") {
+    return window.confirm(
+      `Marcar o contrato como «Encerrado»?\n\nIsto indica encerramento administrativo ou fim de vigência tratado como concluído.\nEstado atual: ${prevLeg}.`
+    );
+  }
+  if (next === "SUSPENDED") {
+    return window.confirm(
+      `Suspender o contrato?\n\nEnquanto estiver suspenso, não será possível registar novos aditivos neste fluxo.\nEstado atual: ${prevLeg}.`
+    );
+  }
+  if (next === "ACTIVE") {
+    return window.confirm(
+      `Reativar o contrato para «Ativo»?\n\nVolta a permitir aditivos e demais operações conforme as regras do sistema.\nEstado atual: ${prevLeg}.`
+    );
+  }
+  return true;
+}
+
 type Props = {
   contractId: string;
   status: string;
@@ -41,6 +66,10 @@ export function ContractStatusControl(props: Props): JSX.Element | null {
     if (value === props.status) return;
     const next = value as ContractStatus;
     if (!options.some((o) => o.value === next)) return;
+    if (!confirmStatusChange(props.status, next)) {
+      setValue(props.status);
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
