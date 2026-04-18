@@ -1,7 +1,7 @@
 type Check = {
   name: string;
   url: string;
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH";
   body?: string;
   expectedStatus: number;
 };
@@ -24,7 +24,8 @@ const publicChecks: Check[] = [
 
 /**
  * API Nest (JWT obrigatório).
- * Nota: exportações CSV exigem papel EDITOR ou ADMIN; utilizador só VIEWER fará falhar estes três checks.
+ * Nota: exportações CSV e mutações (ex.: PATCH de linha de medição) exigem papel EDITOR ou ADMIN;
+ * utilizador só VIEWER fará falhar esses checks.
  */
 const apiChecks: Check[] = [
   { name: "Sessão JWT (auth/me)", url: `${backendUrl}/auth/me`, expectedStatus: 200 },
@@ -61,6 +62,123 @@ async function resolveApiAuthHeaders(): Promise<Record<string, string> | null> {
   }
   const { access_token } = (await r.json()) as { access_token: string };
   return { Authorization: `Bearer ${access_token}` };
+}
+
+function parseMeasurementItemQuantity(raw: unknown): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw;
+  }
+  if (typeof raw === "string") {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  return NaN;
+}
+
+/** Quantidade válida para o DTO de PATCH (mínimo 0,0001). */
+function quantityForPatch(current: number): number {
+  if (Number.isFinite(current) && current >= 0.0001) {
+    return current;
+  }
+  return 1;
+}
+
+/**
+ * Confirma `PATCH /measurements/:id/items/:itemId` (mutação; requer EDITOR|ADMIN).
+ * - Com `SMOKE_MEASUREMENT_ID` e `SMOKE_MEASUREMENT_ITEM_ID`: usa esses IDs.
+ * - Caso contrário: primeira medição «OPEN» com pelo menos uma linha (descoberta via GET).
+ * - Se não houver candidato: ignora (aviso), para não falhar em bases vazias.
+ */
+async function runPatchMeasurementItemSmoke(apiHeaders: Record<string, string>): Promise<Result | "skipped"> {
+  const name = "PATCH quantidade linha de medição";
+  const envM = process.env.SMOKE_MEASUREMENT_ID?.trim();
+  const envI = process.env.SMOKE_MEASUREMENT_ITEM_ID?.trim();
+
+  let measurementId: string | undefined;
+  let itemId: string | undefined;
+
+  if (envM && envI) {
+    measurementId = envM;
+    itemId = envI;
+  } else {
+    const listRes = await fetch(`${backendUrl}/measurements`, { headers: apiHeaders, cache: "no-store" });
+    if (!listRes.ok) {
+      return {
+        check: { name, url: `${backendUrl}/measurements`, expectedStatus: 200 },
+        ok: false,
+        status: listRes.status,
+        detail: `listagem de medições falhou (HTTP ${listRes.status})`
+      };
+    }
+    const list = (await listRes.json()) as Array<{ id: string; status: string }>;
+    const openIds = list.filter((m) => m.status === "OPEN").map((m) => m.id);
+    for (const id of openIds) {
+      const oneRes = await fetch(`${backendUrl}/measurements/${id}`, { headers: apiHeaders, cache: "no-store" });
+      if (!oneRes.ok) {
+        continue;
+      }
+      const body = (await oneRes.json()) as { status?: string; items?: Array<{ id: string; quantity?: unknown }> };
+      if (body.status !== "OPEN") {
+        continue;
+      }
+      const first = body.items?.find((it) => it.id);
+      if (first) {
+        measurementId = id;
+        itemId = first.id;
+        break;
+      }
+    }
+    if (!measurementId || !itemId) {
+      return "skipped";
+    }
+  }
+
+  const detailUrl = `${backendUrl}/measurements/${measurementId}`;
+  const detailRes = await fetch(detailUrl, { headers: apiHeaders, cache: "no-store" });
+  if (!detailRes.ok) {
+    return {
+      check: { name, url: detailUrl, expectedStatus: 200 },
+      ok: false,
+      status: detailRes.status,
+      detail: `GET medição falhou (HTTP ${detailRes.status})`
+    };
+  }
+  const detail = (await detailRes.json()) as { status?: string; items?: Array<{ id: string; quantity?: unknown }> };
+  if (detail.status !== "OPEN") {
+    return {
+      check: { name, url: detailUrl, expectedStatus: 200 },
+      ok: false,
+      status: detailRes.status,
+      detail: "medição não está em estado «Aberta» (OPEN)"
+    };
+  }
+  const item = detail.items?.find((it) => it.id === itemId);
+  if (!item) {
+    return {
+      check: { name, url: detailUrl, expectedStatus: 200 },
+      ok: false,
+      status: detailRes.status,
+      detail: "linha de medição não encontrada no corpo da medição"
+    };
+  }
+
+  const qRaw = parseMeasurementItemQuantity(item.quantity);
+  const quantity = quantityForPatch(qRaw);
+  const patchUrl = `${backendUrl}/measurements/${measurementId}/items/${itemId}`;
+  const patchBody = JSON.stringify({ quantity });
+  const patchRes = await fetch(patchUrl, {
+    method: "PATCH",
+    headers: { ...apiHeaders, "Content-Type": "application/json" },
+    body: patchBody,
+    cache: "no-store"
+  });
+  const ok = patchRes.status === 200;
+  return {
+    check: { name, url: patchUrl, method: "PATCH", body: patchBody, expectedStatus: 200 },
+    ok,
+    status: patchRes.status,
+    detail: ok ? "OK" : `esperado 200, recebido ${patchRes.status}`
+  };
 }
 
 async function runCheck(check: Check, extraHeaders?: Record<string, string>): Promise<Result> {
@@ -130,6 +248,16 @@ async function main(): Promise<void> {
       const result = await runCheck(check, apiHeaders);
       results.push(result);
       printResult(result);
+    }
+
+    const patchOutcome = await runPatchMeasurementItemSmoke(apiHeaders);
+    if (patchOutcome === "skipped") {
+      console.log(
+        "[IGNORADO] PATCH quantidade linha de medição -> sem candidato (defina SMOKE_MEASUREMENT_ID + SMOKE_MEASUREMENT_ITEM_ID ou crie uma medição «Aberta» com linhas)."
+      );
+    } else {
+      results.push(patchOutcome);
+      printResult(patchOutcome);
     }
   }
 
