@@ -168,9 +168,30 @@ model Contract {
   services         ContractService[]
   measurements     Measurement[]
   governanceTickets TicketGovernance[]
+  amendments        ContractAmendment[]
 
   @@index([status, endDate])
   @@index([deletedAt])
+}
+
+/// Registo de aditivo ou reajuste formal (valores e vigência); aplica alterações ao contrato na criação.
+model ContractAmendment {
+  id                   String   @id @default(uuid())
+  contractId           String
+  referenceCode        String?
+  effectiveDate        DateTime
+  description          String
+  previousTotalValue   Decimal  @db.Decimal(18, 2)
+  previousMonthlyValue Decimal  @db.Decimal(18, 2)
+  previousEndDate      DateTime
+  newTotalValue        Decimal  @db.Decimal(18, 2)
+  newMonthlyValue      Decimal  @db.Decimal(18, 2)
+  newEndDate           DateTime
+  createdAt            DateTime @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+
+  @@index([contractId, createdAt])
 }
 
 model ContractModule {

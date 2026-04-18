@@ -225,3 +225,30 @@ export class UpdateContractDto {
   @IsString()
   supplierId?: string;
 }
+
+/** Aditivo ou reajuste que altera valores e/ou fim de vigência do contrato (gravado e aplicado na BD). */
+export class CreateContractAmendmentDto {
+  @IsOptional()
+  @IsString()
+  referenceCode?: string;
+
+  @IsDateString()
+  effectiveDate!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  description!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  newTotalValue!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  newMonthlyValue!: number;
+
+  @IsDateString()
+  newEndDate!: string;
+}

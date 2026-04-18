@@ -61,6 +61,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export type ContractAmendment = {
+  id: string;
+  contractId: string;
+  referenceCode?: string | null;
+  effectiveDate: string;
+  description: string;
+  previousTotalValue: string;
+  previousMonthlyValue: string;
+  previousEndDate: string;
+  newTotalValue: string;
+  newMonthlyValue: string;
+  newEndDate: string;
+  createdAt: string;
+};
+
 export type Contract = {
   id: string;
   number: string;
@@ -76,11 +91,13 @@ export type Contract = {
   startDate: string;
   endDate: string;
   slaTarget?: string | null;
+  updatedAt?: string;
   supplier?: { id: string; name: string; cnpj: string } | null;
   fiscal?: { id: string; name: string; email: string } | null;
   manager?: { id: string; name: string; email: string } | null;
   modules?: Array<{ id: string; name: string; weight: string; features: Array<{ id: string; name: string; status: string; weight: string }> }>;
   services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
+  amendments?: ContractAmendment[];
 };
 
 export type AttachmentRecord = {
@@ -188,6 +205,20 @@ export async function getContracts(): Promise<Contract[]> {
 
 export async function getContract(id: string): Promise<Contract> {
   return request(`/contracts/${id}`);
+}
+
+export async function createContractAmendment(
+  contractId: string,
+  payload: {
+    referenceCode?: string;
+    effectiveDate: string;
+    description: string;
+    newTotalValue: number;
+    newMonthlyValue: number;
+    newEndDate: string;
+  }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/amendments`, { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function createContract(payload: {

@@ -3,6 +3,7 @@ import { getAuditActorId } from "../../common/audit-actor";
 import { ContractStatus, LawType, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
+  CreateContractAmendmentDto,
   CreateContractDto,
   CreateContractFeatureDto,
   CreateContractModuleDto,
@@ -48,10 +49,75 @@ export class ContractsService {
   async findOne(id: string): Promise<unknown> {
     const contract = await this.prisma.contract.findFirst({
       where: { id, deletedAt: null },
-      include: { modules: { include: { features: true } }, services: true, fiscal: true, manager: true, supplier: true }
+      include: {
+        modules: { include: { features: true } },
+        services: true,
+        fiscal: true,
+        manager: true,
+        supplier: true,
+        amendments: { orderBy: { createdAt: "desc" } }
+      }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");
     return contract;
+  }
+
+  /**
+   * Regista um aditivo/reajuste (histórico) e aplica imediatamente valor total, valor mensal e data de término no contrato.
+   */
+  async createAmendment(contractId: string, dto: CreateContractAmendmentDto): Promise<unknown> {
+    const prev = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      include: { modules: { include: { features: true } }, services: true, fiscal: true, manager: true, supplier: true }
+    });
+    if (!prev) throw new NotFoundException("Contrato não encontrado");
+
+    const newEnd = new Date(dto.newEndDate);
+    const effectiveDate = new Date(dto.effectiveDate);
+    if (Number.isNaN(newEnd.getTime()) || Number.isNaN(effectiveDate.getTime())) {
+      throw new BadRequestException("Datas inválidas.");
+    }
+    if (newEnd < prev.startDate) {
+      throw new BadRequestException("A nova data de término não pode ser anterior à data de início do contrato.");
+    }
+
+    const newTotal = new Prisma.Decimal(dto.newTotalValue);
+    const newMonthly = new Prisma.Decimal(dto.newMonthlyValue);
+    if (newTotal.lt(0) || newMonthly.lt(0)) {
+      throw new BadRequestException("Valores não podem ser negativos.");
+    }
+
+    const { created, updatedContract } = await this.prisma.$transaction(async (tx) => {
+      const ref = dto.referenceCode?.trim();
+      const createdAmendment = await tx.contractAmendment.create({
+        data: {
+          contractId,
+          referenceCode: ref ? ref : null,
+          effectiveDate,
+          description: dto.description.trim(),
+          previousTotalValue: prev.totalValue,
+          previousMonthlyValue: prev.monthlyValue,
+          previousEndDate: prev.endDate,
+          newTotalValue: newTotal,
+          newMonthlyValue: newMonthly,
+          newEndDate: newEnd
+        }
+      });
+      const updated = await tx.contract.update({
+        where: { id: contractId },
+        data: {
+          totalValue: newTotal,
+          monthlyValue: newMonthly,
+          endDate: newEnd
+        },
+        include: { modules: { include: { features: true } }, services: true, fiscal: true, manager: true, supplier: true }
+      });
+      return { created: createdAmendment, updatedContract: updated };
+    });
+
+    await this.createAudit("ContractAmendment", created.id, "CREATE", null, created);
+    await this.createAudit("Contract", contractId, "AMEND", prev, updatedContract);
+    return this.findOne(contractId);
   }
 
   async update(id: string, dto: UpdateContractDto): Promise<unknown> {

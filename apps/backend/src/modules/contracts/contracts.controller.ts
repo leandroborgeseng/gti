@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from "@nestjs/common";
 import { ContractsService } from "./contracts.service";
 import {
+  CreateContractAmendmentDto,
   CreateContractDto,
   CreateContractFeatureDto,
   CreateContractModuleDto,
@@ -90,6 +91,11 @@ export class ContractsController {
   @Delete(":id/services/:serviceId")
   deleteService(@Param("id") contractId: string, @Param("serviceId") serviceId: string): Promise<unknown> {
     return this.service.deleteService(contractId, serviceId);
+  }
+
+  @Post(":id/amendments")
+  createAmendment(@Param("id") contractId: string, @Body() dto: CreateContractAmendmentDto): Promise<unknown> {
+    return this.service.createAmendment(contractId, dto);
   }
 
   @Get(":id")

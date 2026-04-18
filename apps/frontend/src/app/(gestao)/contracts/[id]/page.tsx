@@ -1,5 +1,6 @@
 import type { Route } from "next";
 import Link from "next/link";
+import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
 import { Card } from "@/components/ui/card";
 import { formatBrl } from "@/lib/format-brl";
@@ -132,6 +133,8 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           </div>
         </div>
       </Card>
+
+      <ContractAmendmentsPanel contract={contract} />
 
       <ContractStructureEditor contract={contract} />
     </div>
