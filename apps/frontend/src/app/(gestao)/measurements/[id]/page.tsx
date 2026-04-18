@@ -1,3 +1,4 @@
+import { MeasurementAddServiceLines } from "@/components/measurements/measurement-add-service-lines";
 import { MeasurementAttachments } from "@/components/measurements/measurement-attachments";
 import { Card } from "@/components/ui/card";
 import { MeasurementActions } from "@/components/actions/measurement-actions";
@@ -39,6 +40,10 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
   }
   const tipo = measurement.contract?.contractType;
   const tipoLeg = tipo ? contractTypeLabel[tipo] ?? tipo : "—";
+  const usedServiceIds =
+    measurement.items?.filter((i) => i.type === "SERVICE").map((i) => i.referenceId) ?? [];
+  const showAddLines =
+    measurement.status === "OPEN" && (tipo === "DATACENTER" || tipo === "INFRA");
 
   return (
     <div className="space-y-4">
@@ -64,6 +69,19 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
       <Card className="p-5">
         <MeasurementActions measurementId={measurement.id} measurementStatus={measurement.status} />
       </Card>
+      {showAddLines ? (
+        <Card className="p-5">
+          <h4 className="mb-1 font-medium text-slate-900">Linhas de consumo (serviços)</h4>
+          <p className="text-sm text-slate-600">
+            Adicione uma linha por serviço do contrato e quantidade consumida nesta competência. Depois use <strong className="font-medium text-slate-800">Calcular</strong>.
+          </p>
+          <MeasurementAddServiceLines
+            measurementId={measurement.id}
+            services={measurement.contract?.services ?? []}
+            usedServiceIds={usedServiceIds}
+          />
+        </Card>
+      ) : null}
       <Card className="p-5">
         <h4 className="mb-2 font-medium text-slate-900">Resumo financeiro</h4>
         <p className="text-sm text-slate-700">Valor medido: {formatBrl(measurement.totalMeasuredValue)}</p>

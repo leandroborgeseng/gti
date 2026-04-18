@@ -11,7 +11,7 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
-import { CreateMeasurementDto } from "./measurements.dto";
+import { AddMeasurementItemsDto, CreateMeasurementDto } from "./measurements.dto";
 import { MeasurementsService } from "./measurements.service";
 
 function uploadMaxBytes(): number {
@@ -36,6 +36,11 @@ export class MeasurementsController {
   @Get(":id")
   findOne(@Param("id") id: string): Promise<unknown> {
     return this.service.findOne(id);
+  }
+
+  @Post(":id/items")
+  addItems(@Param("id") id: string, @Body() dto: AddMeasurementItemsDto): Promise<unknown> {
+    return this.service.addItems(id, dto.items);
   }
 
   @Post(":id/calculate")

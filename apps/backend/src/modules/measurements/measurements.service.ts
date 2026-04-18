@@ -56,10 +56,58 @@ export class MeasurementsService {
   async findOne(id: string): Promise<unknown> {
     const m = await this.prisma.measurement.findFirst({
       where: { id, deletedAt: null },
-      include: { contract: true, items: true, glosas: true, attachments: true }
+      include: {
+        contract: { include: { services: true } },
+        items: true,
+        glosas: true,
+        attachments: true
+      }
     });
     if (!m) throw new NotFoundException("Medição não encontrada");
     return m;
+  }
+
+  /** Linhas de consumo (serviços) para contratos tipo datacenter ou infra; só com medição «Aberta». */
+  async addItems(measurementId: string, items: { type: MeasurementItemType; referenceId: string; quantity: number }[]): Promise<unknown> {
+    const m = await this.prisma.measurement.findFirst({
+      where: { id: measurementId, deletedAt: null },
+      include: {
+        items: true,
+        contract: { include: { services: true } }
+      }
+    });
+    if (!m) throw new NotFoundException("Medição não encontrada");
+    if (m.status !== MeasurementStatus.OPEN) {
+      throw new BadRequestException("Só é possível adicionar linhas com a medição em estado «Aberta».");
+    }
+    const ct = m.contract.contractType;
+    if (ct !== "DATACENTER" && ct !== "INFRA") {
+      throw new BadRequestException("Linhas por serviço só se aplicam a contratos datacenter ou infraestrutura.");
+    }
+    const serviceIds = new Set(m.contract.services.map((s) => s.id));
+    const existingRefs = new Set(m.items.map((i) => i.referenceId));
+    for (const row of items) {
+      if (row.type !== MeasurementItemType.SERVICE) {
+        throw new BadRequestException("Cada linha deve ser do tipo SERVIÇO.");
+      }
+      if (!serviceIds.has(row.referenceId)) {
+        throw new BadRequestException(`Serviço inválido ou fora do contrato: ${row.referenceId}`);
+      }
+      if (existingRefs.has(row.referenceId)) {
+        throw new BadRequestException(`Já existe linha para o serviço indicado (${row.referenceId}).`);
+      }
+      existingRefs.add(row.referenceId);
+    }
+    await this.prisma.measurementItem.createMany({
+      data: items.map((row) => ({
+        measurementId,
+        type: MeasurementItemType.SERVICE,
+        referenceId: row.referenceId,
+        quantity: new Prisma.Decimal(row.quantity),
+        calculatedValue: new Prisma.Decimal(0)
+      }))
+    });
+    return this.findOne(measurementId);
   }
 
   async calculate(id: string): Promise<unknown> {

@@ -1,5 +1,5 @@
 import { MeasurementItemType } from "@prisma/client";
-import { IsArray, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from "class-validator";
+import { ArrayMinSize, IsArray, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 
 export class MeasurementItemDto {
@@ -35,4 +35,12 @@ export class CreateMeasurementDto {
   @ValidateNested({ each: true })
   @Type(() => MeasurementItemDto)
   items?: MeasurementItemDto[];
+}
+
+export class AddMeasurementItemsDto {
+  @IsArray()
+  @ArrayMinSize(1, { message: "Informe pelo menos uma linha" })
+  @ValidateNested({ each: true })
+  @Type(() => MeasurementItemDto)
+  items!: MeasurementItemDto[];
 }

@@ -100,7 +100,13 @@ export type Measurement = {
   totalMeasuredValue: string;
   totalApprovedValue: string;
   totalGlosedValue: string;
-  contract?: { id: string; number?: string; name: string; contractType?: string };
+  contract?: {
+    id: string;
+    number?: string;
+    name: string;
+    contractType?: string;
+    services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
+  };
   items?: Array<{ id: string; type: string; referenceId: string; quantity: string; calculatedValue: string }>;
   glosas?: Array<{ id: string; type: string; value: string; justification: string; createdBy: string; createdAt: string }>;
   attachments?: Array<AttachmentRecord>;
@@ -328,6 +334,13 @@ export async function createMeasurement(payload: {
   referenceYear: number;
 }): Promise<Measurement> {
   return request("/measurements", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function addMeasurementServiceLines(
+  measurementId: string,
+  items: Array<{ type: "SERVICE"; referenceId: string; quantity: number }>
+): Promise<Measurement> {
+  return request(`/measurements/${measurementId}/items`, { method: "POST", body: JSON.stringify({ items }) });
 }
 
 export async function getMeasurement(id: string): Promise<Measurement> {
