@@ -1,6 +1,30 @@
 import DOMPurify from "isomorphic-dompurify";
 import type { Config } from "dompurify";
-import { env } from "@/glpi/config/env";
+
+/**
+ * Base da API GLPI exposta ao browser (sem segredos).
+ * O módulo `@/glpi/config/env` usa `node:fs` e não pode ser importado em bundles cliente (`next build`).
+ * Na Railway, defina o mesmo host que `GLPI_BASE_URL` (ex.: `https://suporte.org/api.php`).
+ */
+function normalizeGlpiApiBase(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "https://build.invalid/api.php";
+  }
+  if (/api\.php$/i.test(trimmed) || /apirest\.php$/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `${trimmed}/api.php`;
+}
+
+function browserGlpiBaseUrl(): string {
+  const pub = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_GLPI_BASE_URL : undefined;
+  const v = pub?.trim();
+  if (v) {
+    return normalizeGlpiApiBase(v);
+  }
+  return normalizeGlpiApiBase("https://build.invalid/api.php");
+}
 
 const SANITIZE: Config = {
   ALLOWED_TAGS: [
@@ -80,9 +104,10 @@ export function normalizeMediaUrlForProxy(raw: string): string {
   if (!u || u.startsWith("data:") || u.startsWith("blob:") || u.startsWith("#")) {
     return u;
   }
+  const glpiBase = browserGlpiBaseUrl();
   if (u.startsWith("//")) {
     try {
-      const api = new URL(env.GLPI_BASE_URL);
+      const api = new URL(glpiBase);
       u = `${api.protocol}${u}`;
     } catch {
       u = `https:${u}`;
@@ -90,7 +115,7 @@ export function normalizeMediaUrlForProxy(raw: string): string {
   }
   if (u.startsWith("/")) {
     try {
-      return new URL(u, env.GLPI_BASE_URL).toString();
+      return new URL(u, glpiBase).toString();
     } catch {
       return u;
     }

@@ -65,12 +65,17 @@ export type Contract = {
   id: string;
   number: string;
   name: string;
+  description?: string | null;
   companyName: string;
+  cnpj?: string;
   contractType: string;
+  lawType?: string;
   status: string;
   totalValue: string;
   monthlyValue: string;
+  startDate: string;
   endDate: string;
+  slaTarget?: string | null;
   supplier?: { id: string; name: string; cnpj: string } | null;
   fiscal?: { id: string; name: string; email: string } | null;
   manager?: { id: string; name: string; email: string } | null;
@@ -369,6 +374,58 @@ export async function getFiscais(): Promise<Fiscal[]> {
 
 export async function createFiscal(payload: { name: string; email: string; phone: string }): Promise<Fiscal> {
   return request("/fiscais", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export type AuthMe = { id: string; email: string; role: string };
+
+export async function getAuthMe(): Promise<AuthMe> {
+  return request("/auth/me");
+}
+
+export type UserRecord = {
+  id: string;
+  email: string;
+  role: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function getUsers(): Promise<UserRecord[]> {
+  return request("/users");
+}
+
+export async function createUser(payload: {
+  email: string;
+  password: string;
+  role?: "ADMIN" | "EDITOR" | "VIEWER";
+}): Promise<UserRecord> {
+  return request("/users", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateUser(
+  id: string,
+  payload: { role?: "ADMIN" | "EDITOR" | "VIEWER"; password?: string }
+): Promise<UserRecord> {
+  return request(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+/** Descarrega CSV de contratos (UTF-8 com BOM); requer papel ADMIN ou EDITOR. */
+export async function fetchContractsCsvBlob(): Promise<Blob> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/exports/contracts.csv`, { headers: { ...auth }, cache: "no-store" });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const payload = (await res.json()) as { message?: string | string[]; error?: string };
+      const m = payload.message;
+      detail = (Array.isArray(m) ? m.join("; ") : m) || payload.error || "";
+    } catch {
+      detail = "";
+    }
+    throw new Error(detail || `Falha ao exportar contratos (${res.status})`);
+  }
+  return res.blob();
 }
 
 export async function getGovernanceTickets(): Promise<GovernanceTicket[]> {

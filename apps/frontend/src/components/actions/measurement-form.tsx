@@ -5,9 +5,11 @@ import { createMeasurement } from "@/lib/api";
 
 type Props = {
   onSuccess?: () => void;
+  /** Pré-preenche o ID do contrato (ex.: página de medições com `?contractId=`). */
+  defaultContractId?: string;
 };
 
-export function MeasurementForm({ onSuccess }: Props): JSX.Element {
+export function MeasurementForm({ onSuccess, defaultContractId }: Props): JSX.Element {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const now = new Date();
@@ -36,7 +38,13 @@ export function MeasurementForm({ onSuccess }: Props): JSX.Element {
 
   return (
     <form className="grid gap-2 md:grid-cols-4" onSubmit={(event) => void onSubmit(event)}>
-      <input required name="contractId" className="rounded-lg border border-border px-3 py-2 text-sm md:col-span-2" placeholder="ID do contrato" />
+      <input
+        required
+        name="contractId"
+        defaultValue={defaultContractId ?? ""}
+        className="rounded-lg border border-border px-3 py-2 text-sm md:col-span-2"
+        placeholder="ID do contrato"
+      />
       <input required type="number" min={1} max={12} name="referenceMonth" defaultValue={defaultMonth} className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Mês" />
       <input required type="number" min={2000} max={2100} name="referenceYear" defaultValue={defaultYear} className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Ano" />
       <p className="text-xs text-slate-500 md:col-span-4">Dica: use a competência atual para facilitar o fluxo de cálculo e aprovação.</p>

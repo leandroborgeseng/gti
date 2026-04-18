@@ -20,11 +20,16 @@ const btnPrimary =
 
 type Props = {
   measurements: Measurement[];
+  /** Quando definido, mostra apenas medições deste contrato (filtro por URL). */
+  filterContractId?: string;
+  /** Título legível do contrato (número — nome); se omitido, usa só o ID. */
+  filterContractTitle?: string;
 };
 
-export function MeasurementsView({ measurements }: Props): JSX.Element {
+export function MeasurementsView({ measurements, filterContractId, filterContractTitle }: Props): JSX.Element {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
+  const rows = filterContractId ? measurements.filter((m) => m.contractId === filterContractId) : measurements;
 
   return (
     <div className="space-y-6">
@@ -35,6 +40,20 @@ export function MeasurementsView({ measurements }: Props): JSX.Element {
             Lista das medições por contrato e competência. Use <strong className="font-medium text-slate-700">Nova medição</strong> para
             cadastrar sem sair desta página.
           </p>
+          {filterContractId ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <span>
+                Filtrando por contrato: <strong className="font-medium text-slate-900">{filterContractTitle ?? filterContractId}</strong>{" "}
+                ({rows.length} {rows.length === 1 ? "registro" : "registros"}).
+              </span>
+              <Link
+                href={"/measurements" as Route}
+                className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900"
+              >
+                Limpar filtro
+              </Link>
+            </div>
+          ) : null}
         </div>
         <button type="button" onClick={() => setModalOpen(true)} className={btnPrimary}>
           <span className="text-lg leading-none" aria-hidden>
@@ -48,7 +67,10 @@ export function MeasurementsView({ measurements }: Props): JSX.Element {
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
           <span className="text-sm font-medium text-slate-700">Cadastradas</span>
           <span className="tabular-nums text-xs font-medium uppercase tracking-wide text-slate-400">
-            {measurements.length} {measurements.length === 1 ? "registro" : "registros"}
+            {rows.length} {rows.length === 1 ? "registro" : "registros"}
+            {filterContractId && rows.length !== measurements.length ? (
+              <span className="ml-1 font-normal normal-case text-slate-400">de {measurements.length} no total</span>
+            ) : null}
           </span>
         </div>
         <div className="overflow-x-auto">
@@ -63,7 +85,7 @@ export function MeasurementsView({ measurements }: Props): JSX.Element {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {measurements.map((r) => (
+              {rows.map((r) => (
                 <tr key={r.id} className="transition hover:bg-slate-50/60">
                   <td className="px-5 py-3 text-slate-800">{r.contract?.name ?? r.contractId}</td>
                   <td className="whitespace-nowrap px-5 py-3 tabular-nums text-slate-600">
@@ -87,10 +109,12 @@ export function MeasurementsView({ measurements }: Props): JSX.Element {
                   </td>
                 </tr>
               ))}
-              {measurements.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-14 text-center text-sm text-slate-500">
-                    Nenhuma medição ainda. Clique em &quot;Nova medição&quot; para cadastrar.
+                    {filterContractId
+                      ? "Nenhuma medição para este contrato (ou o contrato não existe)."
+                      : "Nenhuma medição ainda. Clique em \"Nova medição\" para cadastrar."}
                   </td>
                 </tr>
               ) : null}
@@ -106,6 +130,7 @@ export function MeasurementsView({ measurements }: Props): JSX.Element {
         description="Informe o contrato e a competência (mês/ano). Depois pode calcular e aprovar na página da medição."
       >
         <MeasurementForm
+          defaultContractId={filterContractId}
           onSuccess={() => {
             setModalOpen(false);
             router.refresh();

@@ -15,11 +15,15 @@ import { GoalsModule } from "./modules/goals/goals.module";
 import { SuppliersModule } from "./modules/suppliers/suppliers.module";
 import { FiscaisModule } from "./modules/fiscais/fiscais.module";
 import { AttachmentsModule } from "./modules/attachments/attachments.module";
+import { UsersModule } from "./modules/users/users.module";
+import { ExportsModule } from "./modules/exports/exports.module";
 
 @Module({
   imports: [
     AuthModule,
     StorageModule,
+    UsersModule,
+    ExportsModule,
     ContractsModule,
     MeasurementsModule,
     GlosasModule,

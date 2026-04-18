@@ -2,8 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { getAuthMe } from "@/lib/api";
 
-const navItems: Array<{ href: string; label: string }> = [
+type NavItem = { href: string; label: string; adminOnly?: true; hideForViewer?: true };
+
+const navItems: NavItem[] = [
   { href: "/dashboard", label: "Painel executivo" },
   { href: "/chamados", label: "Chamados (GLPI)" },
   { href: "/contracts", label: "Contratos" },
@@ -13,11 +17,34 @@ const navItems: Array<{ href: string; label: string }> = [
   { href: "/goals", label: "Metas" },
   { href: "/suppliers", label: "Fornecedores" },
   { href: "/fiscais", label: "Fiscais" },
-  { href: "/reports", label: "Relatórios" }
+  { href: "/exports", label: "Exportações", hideForViewer: true },
+  { href: "/reports", label: "Relatórios" },
+  { href: "/users", label: "Utilizadores", adminOnly: true }
 ];
 
 export function Sidebar(): JSX.Element {
   const pathname = usePathname();
+  const [role, setRole] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    void getAuthMe()
+      .then((m) => setRole(m.role))
+      .catch(() => setRole(null));
+  }, []);
+
+  const visible =
+    role === undefined
+      ? navItems.filter((i) => !i.adminOnly)
+      : navItems.filter((item) => {
+          if (item.adminOnly && role !== "ADMIN") {
+            return false;
+          }
+          if (item.hideForViewer && role === "VIEWER") {
+            return false;
+          }
+          return true;
+        });
+
   return (
     <aside className="flex w-[15.5rem] shrink-0 flex-col border-r border-slate-200/90 bg-slate-50/95">
       <div className="border-b border-slate-200/80 px-4 py-5">
@@ -25,7 +52,7 @@ export function Sidebar(): JSX.Element {
         <h1 className="mt-0.5 text-[15px] font-semibold leading-tight tracking-tight text-slate-900">Gestão contratual</h1>
       </div>
       <nav className="flex-1 space-y-0.5 px-2 py-3" aria-label="Navegação principal">
-        {navItems.map((item) => {
+        {visible.map((item) => {
           const hrefStr = String(item.href);
           const active = pathname === item.href || Boolean(pathname?.startsWith(`${item.href}/`));
           return (

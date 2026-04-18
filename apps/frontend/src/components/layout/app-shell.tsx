@@ -14,7 +14,9 @@ const titles: Record<string, string> = {
   "/goals": "Metas estratégicas",
   "/suppliers": "Fornecedores",
   "/fiscais": "Fiscais",
-  "/reports": "Relatórios"
+  "/reports": "Relatórios",
+  "/users": "Utilizadores",
+  "/exports": "Exportações"
 };
 
 export function AppShell({ children }: PropsWithChildren): JSX.Element {

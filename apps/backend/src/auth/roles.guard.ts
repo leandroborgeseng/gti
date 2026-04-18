@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@
 import { Reflector } from "@nestjs/core";
 import { UserRole } from "@prisma/client";
 import { IS_PUBLIC_KEY } from "./public.decorator";
+import { ROLES_KEY } from "./roles-required.decorator";
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -16,6 +17,13 @@ export class RolesGuard implements CanActivate {
     const user = req.user as { role: UserRole } | undefined;
     if (!user) {
       return false;
+    }
+    const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [context.getHandler(), context.getClass()]);
+    if (requiredRoles && requiredRoles.length > 0) {
+      if (!requiredRoles.includes(user.role)) {
+        throw new ForbiddenException("Sem permissão para esta operação");
+      }
+      return true;
     }
     const method = (req.method ?? "GET").toUpperCase();
     if (method === "GET" || method === "HEAD" || method === "OPTIONS") {

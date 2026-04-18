@@ -1,7 +1,34 @@
 import { MeasurementsView } from "@/components/measurements/measurements-view";
-import { getMeasurements } from "@/lib/api";
+import { getContract, getMeasurements } from "@/lib/api";
 
-export default async function MeasurementsPage(): Promise<JSX.Element> {
-  const measurements = await getMeasurements().catch(() => []);
-  return <MeasurementsView measurements={measurements} />;
+function pickContractId(raw: string | string[] | undefined): string | undefined {
+  if (typeof raw === "string" && raw.trim()) {
+    return raw.trim();
+  }
+  if (Array.isArray(raw) && raw[0]) {
+    return String(raw[0]).trim();
+  }
+  return undefined;
+}
+
+export default async function MeasurementsPage({
+  searchParams
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}): Promise<JSX.Element> {
+  const contractId = pickContractId(searchParams?.contractId);
+  const [measurements, filterLabel] = await Promise.all([
+    getMeasurements().catch(() => []),
+    contractId ? getContract(contractId).catch(() => null) : Promise.resolve(null)
+  ]);
+
+  const filterTitle = filterLabel ? `${filterLabel.number} — ${filterLabel.name}` : contractId ?? undefined;
+
+  return (
+    <MeasurementsView
+      measurements={measurements}
+      filterContractId={contractId}
+      filterContractTitle={filterTitle}
+    />
+  );
 }

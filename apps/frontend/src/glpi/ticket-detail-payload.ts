@@ -121,6 +121,39 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
     }
   });
 
+  /** Registo de governança no GTI (opcional): `ticketId` no cadastro costuma ser o ID numérico GLPI. */
+  let governance: Record<string, unknown> | null = null;
+  try {
+    const gov = await prisma.ticketGovernance.findFirst({
+      where: {
+        OR: [{ ticketId: String(glpiId) }, { ticketId: `#${glpiId}` }]
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        slaDeadline: true,
+        priority: true,
+        type: true,
+        contract: { select: { id: true, number: true, name: true } }
+      }
+    });
+    if (gov) {
+      governance = {
+        id: gov.id,
+        status: gov.status,
+        slaDeadline: gov.slaDeadline ? gov.slaDeadline.toISOString() : null,
+        priority: gov.priority,
+        type: gov.type,
+        contractId: gov.contract.id,
+        contractNumber: gov.contract.number,
+        contractName: gov.contract.name
+      };
+    }
+  } catch (error) {
+    logger.warn({ glpiId, error: toErrorLog(error) }, "Não foi possível carregar governança GTI para o modal (ignorado)");
+  }
+
   return {
     glpiTicketId: ticket.glpiTicketId,
     name: mergedTitle || ticket.title || "",
@@ -141,6 +174,7 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
     attachments,
     statusOptions: STATUS_OPTIONS,
     priorityOptions: PRIORITY_OPTIONS,
-    history
+    history,
+    governance
   };
 }

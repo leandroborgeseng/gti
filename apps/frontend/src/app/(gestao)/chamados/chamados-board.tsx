@@ -1,6 +1,8 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import type { Route } from "next";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KanbanBoardPayload, KanbanCardDto } from "@/glpi/kanban-load";
@@ -26,6 +28,17 @@ type TicketAttachmentDto = {
   glpiUrl: string;
 };
 
+type GovernanceInTicketModal = {
+  id: string;
+  status: string;
+  slaDeadline: string | null;
+  priority: string | null;
+  type: string | null;
+  contractId: string;
+  contractNumber: string;
+  contractName: string;
+};
+
 type TicketDetail = {
   glpiTicketId: number;
   name: string;
@@ -47,6 +60,17 @@ type TicketDetail = {
   statusOptions: Array<{ id: number; label: string }>;
   priorityOptions: Array<{ id: number; label: string }>;
   history?: TicketHistoryBundleDto | null;
+  governance?: GovernanceInTicketModal | null;
+};
+
+const governanceStatusLabel: Record<string, string> = {
+  OPEN: "Aberto",
+  ACKNOWLEDGED: "Reconhecido",
+  IN_PROGRESS: "Em tratamento",
+  SLA_VIOLATED: "SLA violado",
+  EXTENDED_DEADLINE: "Prazo prorrogado",
+  ESCALATED: "Escalado",
+  SENT_TO_CONTROLADORIA: "Na controladoria"
 };
 
 function glpiAssetProxyHref(glpiUrl: string): string {
@@ -922,6 +946,44 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                     <div className="glpi-aside-kv">
                       <span className="glpi-aside-kv__k">Grupo (cache)</span>
                       <span className="glpi-aside-kv__v">{detail.contractGroupName || "—"}</span>
+                    </div>
+
+                    <div className="glpi-governance-card" aria-label="Governança no módulo GTI">
+                      <h4 className="ticket-glpi-aside__subtitle">Governança (GTI)</h4>
+                      {detail.governance ? (
+                        <>
+                          <p className="glpi-governance-card__status">
+                            <strong>{governanceStatusLabel[detail.governance.status] ?? detail.governance.status}</strong>
+                            {detail.governance.slaDeadline ? (
+                              <span className="glpi-governance-card__sla">
+                                {" "}
+                                · Prazo SLA: {formatDateTimePtBr(detail.governance.slaDeadline)}
+                              </span>
+                            ) : null}
+                          </p>
+                          <p className="glpi-governance-card__contract">
+                            Contrato:{" "}
+                            <Link
+                              href={`/contracts/${detail.governance.contractId}` as Route}
+                              className="glpi-governance-card__link"
+                            >
+                              {detail.governance.contractNumber} — {detail.governance.contractName}
+                            </Link>
+                          </p>
+                          <Link
+                            href={`/governance/tickets/${detail.governance.id}` as Route}
+                            className="glpi-governance-card__cta"
+                          >
+                            Abrir registo de governança
+                          </Link>
+                        </>
+                      ) : (
+                        <p className="glpi-aside-muted glpi-governance-card__empty">
+                          Sem registo com <span className="font-mono">ticketId</span> igual a{" "}
+                          <span className="font-mono">{detail.glpiTicketId}</span> ou{" "}
+                          <span className="font-mono">#{detail.glpiTicketId}</span>. Cadastre em Governança se aplicável.
+                        </p>
+                      )}
                     </div>
 
                     <h4 className="ticket-glpi-aside__subtitle">Atores</h4>

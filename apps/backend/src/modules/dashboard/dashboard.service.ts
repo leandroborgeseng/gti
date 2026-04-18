@@ -56,7 +56,12 @@ export class DashboardService {
       }),
       this.prisma.measurement.findMany({
         where: { deletedAt: null, status: { in: ["OPEN", "UNDER_REVIEW"] } },
-        select: { id: true, referenceMonth: true, referenceYear: true, contract: { select: { name: true } } }
+        select: {
+          id: true,
+          referenceMonth: true,
+          referenceYear: true,
+          contract: { select: { id: true, number: true, name: true } }
+        }
       }),
       this.prisma.contract.findMany({
         where: { deletedAt: null, contractType: "SOFTWARE" },
