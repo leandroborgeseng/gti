@@ -17,6 +17,7 @@ import { FiscaisModule } from "./modules/fiscais/fiscais.module";
 import { AttachmentsModule } from "./modules/attachments/attachments.module";
 import { UsersModule } from "./modules/users/users.module";
 import { ExportsModule } from "./modules/exports/exports.module";
+import { ProjectsModule } from "./modules/projects/projects.module";
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ExportsModule } from "./modules/exports/exports.module";
     StorageModule,
     UsersModule,
     ExportsModule,
+    ProjectsModule,
     ContractsModule,
     MeasurementsModule,
     GlosasModule,

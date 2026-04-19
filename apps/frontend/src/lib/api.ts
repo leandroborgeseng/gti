@@ -1,4 +1,8 @@
 import { authHeadersForApi, readBrowserAuthToken } from "@/lib/auth-token";
+import { normalizeBackendApiBaseUrl } from "@/lib/normalize-backend-api-url";
+import type { MondayImportPayload } from "@/lib/monday-xlsx-import";
+
+export type { MondayImportPayload };
 
 /**
  * Base da API de gestão (`.../api`), sem obrigar `NEXT_PUBLIC_BACKEND_URL`.
@@ -9,26 +13,26 @@ import { authHeadersForApi, readBrowserAuthToken } from "@/lib/auth-token";
 export function getBackendApiBaseUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
   if (fromEnv) {
-    return fromEnv.replace(/\/+$/, "");
+    return normalizeBackendApiBaseUrl(fromEnv);
   }
   if (typeof window !== "undefined") {
     return `${window.location.origin}/api`;
   }
   const internal = process.env.BACKEND_API_BASE_URL?.trim();
-  if (internal) return internal.replace(/\/+$/, "");
+  if (internal) return normalizeBackendApiBaseUrl(internal);
   return "";
 }
 
 async function resolveRequestApiBase(): Promise<string> {
   if (typeof window !== "undefined") {
     const pub = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
-    if (pub) return pub.replace(/\/+$/, "");
+    if (pub) return normalizeBackendApiBaseUrl(pub);
     return `${window.location.origin}/api`;
   }
   const internal = process.env.BACKEND_API_BASE_URL?.trim();
-  if (internal) return internal.replace(/\/+$/, "");
+  if (internal) return normalizeBackendApiBaseUrl(internal);
   const pub = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
-  if (pub) return pub.replace(/\/+$/, "");
+  if (pub) return normalizeBackendApiBaseUrl(pub);
   const { headers } = await import("next/headers");
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
@@ -640,4 +644,58 @@ export async function addGoalLink(id: string, payload: { type: "CONTRACT" | "TIC
 
 export async function setManualGoalProgress(id: string, progress: number): Promise<Record<string, unknown>> {
   return request(`/goals/${id}/manual-progress`, { method: "POST", body: JSON.stringify({ progress }) });
+}
+
+// --- Projetos (importação Monday.com / Excel) ---
+
+export type ProjectListItem = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { groups: number; tasks: number };
+};
+
+export type ProjectTaskTree = {
+  id: string;
+  projectId: string;
+  groupId: string;
+  parentTaskId: string | null;
+  title: string;
+  status: string;
+  assigneeExternal: string | null;
+  dueDate: string | null;
+  description: string | null;
+  effort: string | null;
+  internalResponsible: string | null;
+  sortOrder: number;
+  children: ProjectTaskTree[];
+};
+
+export type ProjectGroupWithTasks = {
+  id: string;
+  projectId: string;
+  name: string;
+  sortOrder: number;
+  tasks: ProjectTaskTree[];
+};
+
+export type ProjectDetail = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  groups: ProjectGroupWithTasks[];
+};
+
+export async function getProjects(): Promise<ProjectListItem[]> {
+  return request("/projects");
+}
+
+export async function getProject(id: string): Promise<ProjectDetail> {
+  return request(`/projects/${id}`);
+}
+
+export async function importProjectMonday(payload: MondayImportPayload): Promise<ProjectDetail> {
+  return request("/projects/monday-import", { method: "POST", body: JSON.stringify(payload) });
 }

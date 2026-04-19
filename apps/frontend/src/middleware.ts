@@ -13,7 +13,8 @@ const gestaoPrefixes = [
   "/fiscais",
   "/reports",
   "/users",
-  "/exports"
+  "/exports",
+  "/projetos"
 ];
 
 function needsAuth(pathname: string): boolean {
@@ -73,6 +74,8 @@ export const config = {
     "/users/:path*",
     "/exports",
     "/exports/:path*",
+    "/projetos",
+    "/projetos/:path*",
     "/operacao/glpi",
     "/operacao/glpi/:path*"
   ]

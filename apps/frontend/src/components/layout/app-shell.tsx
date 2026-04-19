@@ -12,6 +12,7 @@ const titles: Record<string, string> = {
   "/glosas": "Glosas",
   "/governance/tickets": "Governança de chamados",
   "/goals": "Metas estratégicas",
+  "/projetos": "Projetos",
   "/suppliers": "Fornecedores",
   "/fiscais": "Fiscais",
   "/reports": "Relatórios e exportações",
@@ -31,8 +32,10 @@ export function AppShell({ children }: PropsWithChildren): JSX.Element {
           ? "Detalhe da glosa"
           : pathname?.startsWith("/governance/tickets/")
             ? "Detalhe do chamado (governança)"
-            : pathname?.startsWith("/goals/")
-              ? "Detalhe da meta"
+            : pathname?.startsWith("/projetos/")
+              ? "Detalhe do projeto"
+              : pathname?.startsWith("/goals/")
+                ? "Detalhe da meta"
               : "Gestão contratual");
 
   return (

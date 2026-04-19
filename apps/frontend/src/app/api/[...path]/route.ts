@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeBackendApiBaseUrl } from "@/lib/normalize-backend-api-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,9 +11,9 @@ export const dynamic = "force-dynamic";
  */
 function backendApiBase(): string {
   const fromServer = process.env.BACKEND_API_BASE_URL?.trim();
-  if (fromServer) return fromServer.replace(/\/+$/, "");
+  if (fromServer) return normalizeBackendApiBaseUrl(fromServer);
   const fromPublic = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
-  if (fromPublic) return fromPublic.replace(/\/+$/, "");
+  if (fromPublic) return normalizeBackendApiBaseUrl(fromPublic);
   return "http://127.0.0.1:4000/api";
 }
 

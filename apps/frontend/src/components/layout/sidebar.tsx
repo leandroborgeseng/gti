@@ -15,6 +15,7 @@ const navItems: NavItem[] = [
   { href: "/glosas", label: "Glosas" },
   { href: "/governance/tickets", label: "Governança SLA" },
   { href: "/goals", label: "Metas" },
+  { href: "/projetos", label: "Projetos" },
   { href: "/suppliers", label: "Fornecedores" },
   { href: "/fiscais", label: "Fiscais" },
   { href: "/exports", label: "Exportações", hideForViewer: true },

@@ -380,6 +380,52 @@ model Attachment {
 }
 
 // ---------------------------------------------------------------------------
+// Projetos (importação Excel / Monday.com) — independente do Kanban GLPI
+// ---------------------------------------------------------------------------
+
+model Project {
+  id        String         @id @default(uuid())
+  name      String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  groups    ProjectGroup[]
+  tasks     ProjectTask[]
+}
+
+model ProjectGroup {
+  id        String        @id @default(uuid())
+  projectId String
+  name      String
+  sortOrder Int           @default(0)
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks     ProjectTask[]
+
+  @@index([projectId, sortOrder])
+}
+
+model ProjectTask {
+  id                  String    @id @default(uuid())
+  projectId           String
+  groupId             String
+  parentTaskId        String?
+  title               String
+  status              String    @default("")
+  assigneeExternal    String?
+  dueDate             DateTime?
+  description         String?   @db.Text
+  effort              Decimal?  @db.Decimal(18, 4)
+  internalResponsible String?
+  sortOrder           Int       @default(0)
+  project             Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  group               ProjectGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  parent              ProjectTask?  @relation("ProjectTaskHierarchy", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  children            ProjectTask[] @relation("ProjectTaskHierarchy")
+
+  @@index([projectId, groupId])
+  @@index([parentTaskId])
+}
+
+// ---------------------------------------------------------------------------
 // Cache de sincronização GLPI (Kanban / worker) — mesmo PostgreSQL que o Nest
 // ---------------------------------------------------------------------------
 
