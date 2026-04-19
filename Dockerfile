@@ -51,6 +51,9 @@ COPY --from=builder /app/apps/frontend/.next ./apps/frontend/.next
 COPY --from=builder /app/apps/frontend/public ./apps/frontend/public
 COPY --from=builder /app/apps/frontend/node_modules ./apps/frontend/node_modules
 
+COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+RUN chmod +x ./scripts/docker-entrypoint.sh
+
 EXPOSE 3000
 USER node
-CMD ["sh", "-c", "npx prisma migrate deploy --schema apps/backend/prisma/schema.prisma && cd apps/frontend && exec npm run start"]
+CMD ["./scripts/docker-entrypoint.sh"]
