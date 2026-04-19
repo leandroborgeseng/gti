@@ -5,6 +5,46 @@ import type { MondayImportPayload } from "@/lib/monday-xlsx-import";
 
 export type { MondayImportPayload };
 
+function hostnameFromHostHeader(hostHeader: string | null): string | null {
+  if (!hostHeader) return null;
+  const first = hostHeader.split(",")[0]?.trim();
+  if (!first) return null;
+  try {
+    return new URL(`http://${first}`).hostname.toLowerCase();
+  } catch {
+    return first.split(":")[0]?.toLowerCase() ?? null;
+  }
+}
+
+function envBackendHostname(normalizedBase: string): string | null {
+  const raw = normalizedBase.trim();
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    return new URL(withScheme).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Em SSR, `fetch` para o domínio público da própria app (Railway) pode bloquear ou estourar timeout
+ * (pedido aninhado ao mesmo serviço). A API de gestão vive no mesmo processo Next → loopback.
+ */
+function loopbackGestaoApiBase(incoming: Headers): string {
+  const hostHeader = incoming.get("x-forwarded-host") ?? incoming.get("host") ?? "";
+  const firstHost = hostHeader.split(",")[0]?.trim() ?? "";
+  let portFromHeader = "";
+  if (firstHost && !firstHost.startsWith("[")) {
+    const parts = firstHost.split(":");
+    if (parts.length > 1) {
+      const last = parts[parts.length - 1] ?? "";
+      if (/^\d+$/.test(last)) portFromHeader = last;
+    }
+  }
+  const port = process.env.PORT?.trim() || portFromHeader || "3000";
+  return normalizeBackendApiBaseUrl(`http://127.0.0.1:${port}/api`);
+}
+
 /**
  * Base da API de gestão (`.../api`). A lógica de negócio corre nas Route Handlers do Next
  * (`app/api/[...path]`). Opcional: `NEXT_PUBLIC_BACKEND_URL` se a API estiver noutro domínio.
@@ -26,17 +66,29 @@ async function resolveRequestApiBase(): Promise<string> {
     if (pub) return normalizeBackendApiBaseUrl(pub);
     return `${window.location.origin}/api`;
   }
-  const pub = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
-  if (pub) return normalizeBackendApiBaseUrl(pub);
+
+  const explicit =
+    process.env.BACKEND_API_BASE_URL?.trim() ||
+    process.env.SERVER_API_BASE_URL?.trim();
+  if (explicit) {
+    return normalizeBackendApiBaseUrl(explicit);
+  }
+
   const { headers } = await import("next/headers");
   const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = (h.get("x-forwarded-proto") ?? "http").split(",")[0]?.trim() || "http";
-  if (host) {
-    return `${proto}://${host}/api`.replace(/\/+$/, "");
+  const requestHost = hostnameFromHostHeader(h.get("x-forwarded-host") ?? h.get("host"));
+
+  const pub = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
+  if (pub) {
+    const normalized = normalizeBackendApiBaseUrl(pub);
+    const envHost = envBackendHostname(normalized);
+    if (envHost && requestHost && envHost === requestHost) {
+      return loopbackGestaoApiBase(h);
+    }
+    return normalized;
   }
-  const port = process.env.PORT?.trim() || "3001";
-  return `http://127.0.0.1:${port}/api`;
+
+  return loopbackGestaoApiBase(h);
 }
 
 function formatFetchError(e: unknown): string {

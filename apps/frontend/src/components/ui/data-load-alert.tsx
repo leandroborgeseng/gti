@@ -31,7 +31,7 @@ export function DataLoadAlert({ messages, title = "Não foi possível carregar d
       <p className="mt-3 text-xs leading-relaxed text-amber-900/80">
         A API de gestão corre no <strong className="font-medium text-amber-950">mesmo Next</strong> (<span className="font-mono text-[11px]">/api/…</span>).
         Confirme <span className="font-mono text-[11px]">DATABASE_URL</span>, <span className="font-mono text-[11px]">JWT_SECRET</span> e
-        sessão (saia e entre de novo). Se definiu <span className="font-mono text-[11px]">NEXT_PUBLIC_BACKEND_URL</span> para outro host,
+        sessão (saia e entre de novo). Se definiu <span className="font-mono text-[11px]">NEXT_PUBLIC_BACKEND_URL</span> para outro host (não o mesmo da app),
         esse host tem de estar acessível. Opcional: <span className="font-mono text-[11px]">BACKEND_FETCH_TIMEOUT_MS</span>.
       </p>
     </div>
