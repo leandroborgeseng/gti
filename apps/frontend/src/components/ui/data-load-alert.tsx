@@ -29,10 +29,12 @@ export function DataLoadAlert({ messages, title = "Não foi possível carregar d
         </ul>
       )}
       <p className="mt-3 text-xs leading-relaxed text-amber-900/80">
-        Confirme que o backend Nest está em execução (ex.: porta 4000), que o Next consegue alcançá-lo (variáveis{" "}
-        <span className="font-mono text-[11px]">BACKEND_API_BASE_URL</span> ou{" "}
-        <span className="font-mono text-[11px]">NEXT_PUBLIC_BACKEND_URL</span>) e que a sessão está válida (volte a iniciar sessão se
-        necessário).
+        Na <strong className="font-medium text-amber-950">Railway</strong>, no serviço <strong className="font-medium">Next</strong>, use{" "}
+        <span className="font-mono text-[11px]">BACKEND_API_BASE_URL</span> com o URL <strong className="font-medium">interno</strong> do
+        Nest (termina em <span className="font-mono text-[11px]">/api</span>) ou{" "}
+        <span className="font-mono text-[11px]">NEXT_PUBLIC_BACKEND_URL</span> com um URL que o Next consiga alcançar (Nest público ou
+        rede privada). «fetch failed» costuma ser URL errado, Nest parado ou TLS/porta incorretos. Confirme também a sessão (inicie sessão
+        de novo se preciso).
       </p>
     </div>
   );

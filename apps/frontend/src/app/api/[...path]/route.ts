@@ -58,12 +58,14 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }): Promise
   try {
     res = await fetch(target, { method, headers, body, cache: "no-store" });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const err = e instanceof Error ? e : new Error(String(e));
+    const cause = err.cause != null ? (err.cause instanceof Error ? err.cause.message : String(err.cause)) : "";
+    const msg = [err.message, cause].filter(Boolean).join(" — ");
     return NextResponse.json(
       {
         error: "API de gestão indisponível",
         message:
-          "Não foi possível contactar o backend Nest (contratos, fiscais, fornecedores, etc.). Em local, inicie o backend (porta 4000) ou defina BACKEND_API_BASE_URL / NEXT_PUBLIC_BACKEND_URL.",
+          "Não foi possível contactar o backend Nest. Em produção defina BACKEND_API_BASE_URL com o URL interno do Nest (evita o Next chamar o próprio domínio). Em local use Nest na porta 4000 ou NEXT_PUBLIC_BACKEND_URL.",
         detail: msg
       },
       { status: 502 }

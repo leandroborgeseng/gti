@@ -2,8 +2,9 @@ import { authHeadersForApi, readBrowserAuthToken } from "@/lib/auth-token";
 
 /**
  * Base da API de gestão (`.../api`), sem obrigar `NEXT_PUBLIC_BACKEND_URL`.
- * Por omissão: mesmo host que a app Next (`/api/...` no browser; no servidor, `Host` do pedido).
- * Rotas Nest sem ficheiro dedicado em `app/api/*` são encaminhadas pelo proxy em `app/api/[...path]/route.ts`.
+ * No browser: `NEXT_PUBLIC_BACKEND_URL` ou o mesmo site (`/api/...` → proxy).
+ * No servidor (RSC): prioriza `BACKEND_API_BASE_URL` para falar direto com o Nest — evita o Next pedir ao próprio
+ * URL público (comum falhar na Railway com «fetch failed»).
  */
 export function getBackendApiBaseUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
@@ -13,17 +14,21 @@ export function getBackendApiBaseUrl(): string {
   if (typeof window !== "undefined") {
     return `${window.location.origin}/api`;
   }
+  const internal = process.env.BACKEND_API_BASE_URL?.trim();
+  if (internal) return internal.replace(/\/+$/, "");
   return "";
 }
 
 async function resolveRequestApiBase(): Promise<string> {
-  const fromEnv = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
-  if (fromEnv) {
-    return fromEnv.replace(/\/+$/, "");
-  }
   if (typeof window !== "undefined") {
+    const pub = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
+    if (pub) return pub.replace(/\/+$/, "");
     return `${window.location.origin}/api`;
   }
+  const internal = process.env.BACKEND_API_BASE_URL?.trim();
+  if (internal) return internal.replace(/\/+$/, "");
+  const pub = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
+  if (pub) return pub.replace(/\/+$/, "");
   const { headers } = await import("next/headers");
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
@@ -32,6 +37,16 @@ async function resolveRequestApiBase(): Promise<string> {
     return `${proto}://${host}/api`.replace(/\/+$/, "");
   }
   return "http://127.0.0.1:4000/api";
+}
+
+function formatFetchError(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const parts = [e.message];
+  const c = e.cause;
+  if (c !== undefined && c !== null) {
+    parts.push(c instanceof Error ? c.message : String(c));
+  }
+  return parts.filter(Boolean).join(" — ");
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -44,11 +59,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers["Content-Type"] = "application/json";
   }
   const pathPart = path.startsWith("/") ? path : `/${path}`;
-  const response = await fetch(`${apiBase}${pathPart}`, {
-    ...init,
-    headers,
-    cache: "no-store"
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase}${pathPart}`, {
+      ...init,
+      headers,
+      cache: "no-store"
+    });
+  } catch (e) {
+    throw new Error(formatFetchError(e));
+  }
   if (!response.ok) {
     let detail = "";
     try {
