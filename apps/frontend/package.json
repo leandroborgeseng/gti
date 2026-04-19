@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "npx next dev -p 3001",
     "typecheck": "tsc --noEmit",
-    "build": "prisma generate --schema ../backend/prisma/schema.prisma && GLPI_SKIP_BOOTSTRAP=1 npx next build",
+    "build": "cd ../.. && npm run prisma:generate && cd apps/frontend && GLPI_SKIP_BOOTSTRAP=1 npx next build",
     "start": "npx next start -H 0.0.0.0 -p ${PORT:-3000}",
-    "prisma:generate": "prisma generate --schema ../backend/prisma/schema.prisma"
+    "prisma:generate": "cd ../.. && npm run prisma:generate"
   },
   "dependencies": {
+    "@nestjs/common": "^10.4.2",
     "axios": "^1.9.0",
     "bcrypt": "^5.1.1",
     "dotenv": "^16.4.5",
@@ -25,6 +26,8 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/multer": "^1.4.12",
     "@types/bcrypt": "^5.0.2",
     "@types/dompurify": "^3.0.5",
     "@types/node": "^22.10.2",

@@ -1,6 +1,6 @@
 # GTI — Quadro e sincronização GLPI
 
-Serviço em **Node.js + TypeScript** que sincroniza chamados do **GLPI** para **PostgreSQL** (Prisma, mesma base que o backend Nest em `apps/backend`). O **quadro Kanban** e as APIs HTTP vivem na app **Next** (`apps/frontend`, rota `/chamados`). Na raiz, **`npm start`** aplica migrações Prisma, sobe o **Nest** (API `/api` na porta 4000) e o **Next** na `PORT`; **`npm run start:worker`** é opcional (só cron + sync GLPI).
+Serviço em **Node.js + TypeScript** que sincroniza chamados do **GLPI** para **PostgreSQL** (Prisma, mesma base que o backend Nest em `apps/backend`). O **quadro Kanban** e as APIs HTTP vivem na app **Next** (`apps/frontend`, rota `/chamados`). Na raiz, **`npm start`** aplica migrações Prisma e sobe o **Next** na `PORT` (API de gestão contratual nas Route Handlers `app/api/[...path]`). **`npm run start:worker`** é opcional (só cron + sync GLPI).
 
 ## Requisitos
 
@@ -30,15 +30,12 @@ npm run dev
 npm run dev:worker
 ```
 
-### Gestão contratual (Nest + Next)
+### Gestão contratual (Next + serviços em `apps/backend/src`)
 
-O **Kanban** e o login vivem no Next; **contratos, medições, glosas, fiscais, fornecedores, utilizadores (API Nest)** correm no backend `apps/backend` (porta **4000** por omissão, prefixo **`/api`**).
+O **Kanban**, o login e a **API de gestão** (`/api/contracts`, `/api/measurements`, …) vivem no **Next**. O código de negócio continua em `apps/backend/src/modules/*` e é importado pelo Next com o alias `@gestao/*` (ver `apps/frontend/tsconfig.json`).
 
-1. Na raiz: `npm install`, `DATABASE_URL` e `JWT_SECRET` **iguais** (ou por omissão de desenvolvimento) no `.env` / `apps/frontend/.env.local` / `apps/backend/.env`, conforme o seu fluxo.
-2. Terminal A: `cd apps/backend && npm run start:dev` (Nest em `http://127.0.0.1:4000/api`).
-3. Terminal B: na raiz `npm run dev` (Next em `http://localhost:3001`).
-
-Sem o Nest, as páginas de gestão mostram **avisos explícitos** (em vez de listas vazias). O Next encaminha pedidos `GET/POST/...` de `/api/*` não tratados localmente para o Nest (`apps/frontend/src/app/api/[...path]/route.ts`), por omissão para `http://127.0.0.1:4000/api`. Em Docker ou na cloud, defina **`BACKEND_API_BASE_URL`** (URL interna do serviço Nest) ou **`NEXT_PUBLIC_BACKEND_URL`** (URL pública da API).
+1. Na raiz: `npm install`, `DATABASE_URL` e `JWT_SECRET` no `.env` / `apps/frontend/.env.local` (o mesmo segredo que o Nest usava).
+2. `npm run dev` na raiz (Next em `http://localhost:3001`). **Não** precisa de `npm run start:dev` no backend para a gestão contratual.
 
 Validação de tipos na raiz: `npm run typecheck` (requer dependências instaladas em `apps/frontend` e `apps/backend`, por exemplo `npm install` na raiz e `npm ci` em `apps/frontend` se o `tsc` reclamar de tipos React).
 
@@ -64,7 +61,7 @@ docker compose up
 
 O `docker-compose.yml` usa `env_file: .env` na raiz (não inclui Postgres). O serviço `app` corre `prisma migrate deploy` no arranque e inicia o Next (porta `3000` por defeito). Ver `Dockerfile`.
 
-**Gestão contratual na mesma imagem / um só serviço Railway:** o comando `npm start` (e o `docker-entrypoint.sh`) arranca o **Nest na porta 4000** e o **Next na `PORT`**, definindo `BACKEND_API_BASE_URL=http://127.0.0.1:4000/api` para o proxy. Não defina `BACKEND_API_BASE_URL` nesse cenário. O arranque espera até **90 s** por TCP+HTTP no Nest (`NEST_WAIT_MAX_MS` para alterar). Para desligar o Nest embutido e usar um serviço Nest à parte, defina **`GTI_SKIP_NEST=1`** e **`BACKEND_API_BASE_URL`** com o URL desse Nest (termina em `/api`).
+**Gestão contratual:** a API REST de contratos, medições, etc. corre **no mesmo processo Next** (`app/api/[...path]`), reutilizando os serviços em `apps/backend/src/modules/*` via alias TypeScript (`@gestao/*`). Não é necessário serviço Nest separado nem `BACKEND_API_BASE_URL`.
 
 Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`npm start`** (sobe o Next) e, se quiser o cron GLPI noutro processo, crie um **segundo** serviço com **`npm run start:worker`**. O build deve incluir **`npm run build`** na raiz (ou defina o comando de build assim no painel).
 
@@ -76,7 +73,7 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 4. **Start:** `npm start` — corre `prisma migrate deploy` e inicia o Next.
 5. **Opcional:** segundo serviço com `npm run start:worker` e as mesmas variáveis (só sync GLPI).
 6. **Teste:** `GET /health` no domínio publicado.
-7. **Gestão contratual:** com **`npm start`** na raiz, o **Nest embutido** arranca na porta **4000**; use o mesmo **`JWT_SECRET`** no painel que o login Next espera. Para Nest noutro serviço, **`GTI_SKIP_NEST=1`** e **`BACKEND_API_BASE_URL`** (termina em `/api`).
+7. **Gestão contratual:** use o mesmo **`JWT_SECRET`** que o login Next (`/api/auth/login`). Opcional: `NEXT_PUBLIC_BACKEND_URL` só se a API estiver noutro domínio.
 
 ## Scripts úteis (`npm run`)
 

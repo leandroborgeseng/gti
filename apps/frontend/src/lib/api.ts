@@ -6,10 +6,8 @@ import type { MondayImportPayload } from "@/lib/monday-xlsx-import";
 export type { MondayImportPayload };
 
 /**
- * Base da API de gestão (`.../api`), sem obrigar `NEXT_PUBLIC_BACKEND_URL`.
- * No browser: `NEXT_PUBLIC_BACKEND_URL` ou o mesmo site (`/api/...` → proxy).
- * No servidor (RSC): prioriza `BACKEND_API_BASE_URL` para falar direto com o Nest — evita o Next pedir ao próprio
- * URL público (comum falhar na Railway com «fetch failed»).
+ * Base da API de gestão (`.../api`). A lógica de negócio corre nas Route Handlers do Next
+ * (`app/api/[...path]`). Opcional: `NEXT_PUBLIC_BACKEND_URL` se a API estiver noutro domínio.
  */
 export function getBackendApiBaseUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
@@ -19,8 +17,6 @@ export function getBackendApiBaseUrl(): string {
   if (typeof window !== "undefined") {
     return `${window.location.origin}/api`;
   }
-  const internal = process.env.BACKEND_API_BASE_URL?.trim();
-  if (internal) return normalizeBackendApiBaseUrl(internal);
   return "";
 }
 
@@ -30,8 +26,6 @@ async function resolveRequestApiBase(): Promise<string> {
     if (pub) return normalizeBackendApiBaseUrl(pub);
     return `${window.location.origin}/api`;
   }
-  const internal = process.env.BACKEND_API_BASE_URL?.trim();
-  if (internal) return normalizeBackendApiBaseUrl(internal);
   const pub = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
   if (pub) return normalizeBackendApiBaseUrl(pub);
   const { headers } = await import("next/headers");
@@ -41,7 +35,8 @@ async function resolveRequestApiBase(): Promise<string> {
   if (host) {
     return `${proto}://${host}/api`.replace(/\/+$/, "");
   }
-  return "http://127.0.0.1:4000/api";
+  const port = process.env.PORT?.trim() || "3001";
+  return `http://127.0.0.1:${port}/api`;
 }
 
 function formatFetchError(e: unknown): string {

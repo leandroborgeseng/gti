@@ -27,13 +27,9 @@ ENV GLPI_SKIP_BOOTSTRAP=1
 # Opcional na build: `docker build --build-arg NEXT_PUBLIC_GTI_BUILD=$(git rev-parse --short HEAD) …` para o modal Chamados mostrar o commit no cabeçalho.
 ARG NEXT_PUBLIC_GTI_BUILD=
 ENV NEXT_PUBLIC_GTI_BUILD=${NEXT_PUBLIC_GTI_BUILD}
-# O `generator output` do schema deve ser a raiz do monorepo (`node_modules/.prisma/client`); caso contrário o Next falha em «Collecting page data» com «did not initialize yet».
-RUN npx prisma generate --schema apps/backend/prisma/schema.prisma \
-  && test -f node_modules/.prisma/client/index.js \
-  && cd apps/backend && npm ci \
-  && rm -rf node_modules/@prisma/client node_modules/.prisma \
-  && npm run build \
-  && cd ../frontend && npm run build
+# O cliente Prisma é gerado na raiz (`schema` → `output`); o `npm run build` do frontend corre `prisma:generate` na raiz antes do `next build`.
+RUN cd apps/frontend && npm run build \
+  && test -f /app/node_modules/.prisma/client/index.js
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
@@ -49,16 +45,13 @@ RUN apt-get update \
 COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/backend/prisma ./apps/backend/prisma
-COPY --from=builder /app/apps/backend/package.json /app/apps/backend/package-lock.json ./apps/backend/
-RUN cd apps/backend && npm ci --omit=dev && rm -rf node_modules/@prisma/client node_modules/.prisma
-COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
 COPY --from=builder /app/apps/frontend/package.json /app/apps/frontend/package-lock.json ./apps/frontend/
 COPY --from=builder /app/apps/frontend/.next ./apps/frontend/.next
 COPY --from=builder /app/apps/frontend/public ./apps/frontend/public
 COPY --from=builder /app/apps/frontend/node_modules ./apps/frontend/node_modules
 
-COPY scripts/docker-entrypoint.sh scripts/prisma-entry-preflight.cjs scripts/start-web-with-nest.sh scripts/wait-nest-ready.cjs ./scripts/
-RUN chmod +x ./scripts/docker-entrypoint.sh ./scripts/start-web-with-nest.sh
+COPY scripts/docker-entrypoint.sh scripts/prisma-entry-preflight.cjs ./scripts/
+RUN chmod +x ./scripts/docker-entrypoint.sh
 
 EXPOSE 3000
 USER node
