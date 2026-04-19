@@ -28,7 +28,7 @@ ENV GLPI_SKIP_BOOTSTRAP=1
 ARG NEXT_PUBLIC_GTI_BUILD=
 ENV NEXT_PUBLIC_GTI_BUILD=${NEXT_PUBLIC_GTI_BUILD}
 # Bust do cache do stage `builder` na Railway quando o resto do Dockerfile não muda (evita `RUN` antigo com prisma em separado).
-ARG GTI_DOCKER_BUILDER_TAG=2026-04-22-next-stack
+ARG GTI_DOCKER_BUILDER_TAG=2026-04-22-no-nest-proxy
 ENV GTI_DOCKER_BUILDER_TAG=${GTI_DOCKER_BUILDER_TAG}
 # O cliente Prisma é gerado na raiz (`schema` → `output`); o `npm run build` do frontend corre `prisma:generate` na raiz antes do `next build`.
 RUN echo "GTI builder tag=${GTI_DOCKER_BUILDER_TAG}" && cd apps/frontend && npm run build \
