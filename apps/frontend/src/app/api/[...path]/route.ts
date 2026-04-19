@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { backendFetchAbortSignal } from "@/lib/backend-fetch-timeout";
+import { backendFetchAbortSignal, getBackendFetchTimeoutMs } from "@/lib/backend-fetch-timeout";
 import { normalizeBackendApiBaseUrl } from "@/lib/normalize-backend-api-url";
 
 export const runtime = "nodejs";
@@ -69,12 +69,38 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }): Promise
     const err = e instanceof Error ? e : new Error(String(e));
     const cause = err.cause != null ? (err.cause instanceof Error ? err.cause.message : String(err.cause)) : "";
     const msg = [err.message, cause].filter(Boolean).join(" — ");
+    let upstreamOrigin = "";
+    let upstreamPath = "";
+    try {
+      const u = new URL(target);
+      upstreamOrigin = u.origin;
+      upstreamPath = `${u.pathname}${u.search}`;
+    } catch {
+      upstreamOrigin = "(URL inválida)";
+    }
+    const timeoutMs = getBackendFetchTimeoutMs();
+    const timedOut =
+      err.name === "TimeoutError" ||
+      err.name === "AbortError" ||
+      /timeout|aborted|signal/i.test(msg);
+    console.error("[gti/api-proxy] Falha ao contactar Nest", {
+      method,
+      upstreamOrigin,
+      upstreamPath,
+      timeoutMs,
+      detail: msg
+    });
     return NextResponse.json(
       {
         error: "API de gestão indisponível",
         message:
-          "Não foi possível contactar o backend Nest. Em produção defina BACKEND_API_BASE_URL com o URL interno do Nest (evita o Next chamar o próprio domínio). Em local use Nest na porta 4000 ou NEXT_PUBLIC_BACKEND_URL.",
-        detail: msg
+          "Não foi possível contactar o backend Nest. Na Railway: serviço Nest em separado, `BACKEND_API_BASE_URL` com URL interno (rede privada) ou público que o contentor Next alcance, sempre terminando em `/api`. Evite apontar para o próprio domínio do Next.",
+        detail: msg,
+        upstreamOrigin: upstreamOrigin || undefined,
+        upstreamPath: upstreamPath || undefined,
+        hint: timedOut
+          ? `Pedido cancelado após ${timeoutMs} ms (timeout). O alvo não respondeu — confirme que o Nest está deployed, PORT, e o hostname em BACKEND_API_BASE_URL.`
+          : "Confira Deploy Logs do Next por `[gti/api-proxy]` e a variável BACKEND_API_BASE_URL."
       },
       { status: 502 }
     );
