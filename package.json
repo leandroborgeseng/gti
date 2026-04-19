@@ -9,8 +9,8 @@
   },
   "scripts": {
     "postinstall": "prisma generate --schema apps/backend/prisma/schema.prisma",
-    "build": "npm ci && cd apps/frontend && npm ci && npm run build",
-    "start": "npm run prisma:deploy && cd apps/frontend && npm run start",
+    "build": "npm ci && npm run prisma:generate && cd apps/backend && npm ci && rm -rf node_modules/@prisma/client node_modules/.prisma && npm run build && cd ../frontend && npm ci && npm run build",
+    "start": "npm run prisma:deploy && sh ./scripts/start-web-with-nest.sh",
     "start:worker": "tsx apps/frontend/scripts/glpi-worker-cli.ts",
     "dev": "cd apps/frontend && npm run dev",
     "dev:worker": "tsx apps/frontend/scripts/glpi-worker-cli.ts",

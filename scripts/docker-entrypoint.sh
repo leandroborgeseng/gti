@@ -25,4 +25,4 @@ if [ -n "$PRISMA_RESOLVE_APPLIED" ]; then
 fi
 
 npx prisma migrate deploy --schema "$SCHEMA"
-cd apps/frontend && exec npm run start
+exec sh ./scripts/start-web-with-nest.sh
