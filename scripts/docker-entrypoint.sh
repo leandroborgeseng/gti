@@ -12,6 +12,9 @@
 set -e
 SCHEMA="apps/backend/prisma/schema.prisma"
 
+# Diagnóstico: se nos Deploy Logs não aparecer esta linha, o contentor não é a imagem deste repositório (ou há outro processo a logar por cima).
+echo "[gti-contratos] entrypoint imagem monorepo Next+Prisma (sem proxy Nest no repo)"
+
 node ./scripts/prisma-entry-preflight.cjs
 
 if [ -n "$PRISMA_RESOLVE_ROLLED_BACK" ]; then
