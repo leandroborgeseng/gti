@@ -11,7 +11,8 @@ import {
   readGlpiBootstrapDoneAtWorker,
   readGlpiBootstrapLastCheckpoint,
   readGlpiBootstrapLastCheckpointWorker,
-  readGlpiSyncStatusFromDbDetailed
+  readGlpiSyncStatusFromDbDetailed,
+  waitForBootstrapCheckpointVisible
 } from "@/glpi/glpi-sync-status-persistence";
 
 const FASES_ARRANQUE_PARCIAIS = new Set([
@@ -58,6 +59,7 @@ export async function GET(): Promise<NextResponse> {
     void mod.bootstrapGlpiSyncInNext().catch((error) => {
       console.error("[GTI] Garantia de arranque GLPI (após GET /api/glpi/status):", error);
     });
+    const checkpointVisivel = await waitForBootstrapCheckpointVisible(5000);
     const { syncStatus } = mod;
     const [dbRead, arranqueGlpiUltimo, arranqueGlpiBootstrapConcluidoEm, arranqueWorkerUltimo, arranqueWorkerConcluidoEm] =
       await Promise.all([
@@ -86,7 +88,9 @@ export async function GET(): Promise<NextResponse> {
     } else if (!dbRead.linhaComValor && sync.runs === 0 && process.env.GLPI_SKIP_BOOTSTRAP !== "1") {
       if (!arranqueGlpiUltimo) {
         avisos.push(
-          "Não existe checkpoint de arranque (`glpi_bootstrap_last_v1`) ainda. Este pedido também disparou o bootstrap GLPI (deduplicado com o instrumentation). Volte a chamar este URL dentro de alguns segundos. Se continuar vazio, veja Deploy Logs: «register() executado», «A agendar bootstrap» ou erros Prisma antes da primeira escrita."
+          checkpointVisivel
+            ? "Checkpoint de arranque não foi relido após espera — volte a chamar este URL ou veja Deploy Logs."
+            : "Após esperar até 5 s, ainda não há checkpoint em SyncState (`glpi_bootstrap_last_v1_next`). Possíveis causas: falha ao gravar na BD (Deploy Logs: «Não foi possível gravar o checkpoint de arranque GLPI»), `DATABASE_URL` errada neste processo, ou o bootstrap não arrancou (veja «register() executado» / «A agendar bootstrap GLPI»)."
         );
       } else if (arranqueGlpiUltimo.phase === "instrumentation_pre_bootstrap") {
         avisos.push(

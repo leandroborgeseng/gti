@@ -84,6 +84,20 @@ export async function readGlpiBootstrapLastCheckpoint(): Promise<GlpiBootstrapCh
   }
 }
 
+/**
+ * Espera até existir checkpoint de arranque na BD (ou timeout).
+ * Evita corrida em `/api/glpi/status`: o bootstrap começa com `void` e o primeiro `upsert` é assíncrono.
+ */
+export async function waitForBootstrapCheckpointVisible(timeoutMs = 5000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const cp = await readGlpiBootstrapLastCheckpoint();
+    if (cp) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return false;
+}
+
 /** Último checkpoint do **worker** CLI (processo separado). */
 export async function readGlpiBootstrapLastCheckpointWorker(): Promise<GlpiBootstrapCheckpoint | null> {
   try {
