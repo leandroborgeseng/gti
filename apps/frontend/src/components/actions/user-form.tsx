@@ -1,16 +1,19 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import type { UserRecord } from "@/lib/api";
 import { createUser } from "@/lib/api";
-
-const field =
-  "w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-900/10";
+import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
 
 type Props = {
   onSuccess?: () => void;
+  /** Chamado com o registo criado (ex.: selecionar automaticamente noutro formulário). */
+  onCreated?: (user: UserRecord) => void;
+  /** Texto do botão de envio (padrão: criar utilizador). */
+  submitLabel?: string;
 };
 
-export function UserForm({ onSuccess }: Props): JSX.Element {
+export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador" }: Props): JSX.Element {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -19,13 +22,14 @@ export function UserForm({ onSuccess }: Props): JSX.Element {
     const data = new FormData(event.currentTarget);
     try {
       setBusy(true);
-      await createUser({
+      const created = await createUser({
         email: String(data.get("email") ?? "").trim().toLowerCase(),
         password: String(data.get("password") ?? ""),
         role: (String(data.get("role") ?? "EDITOR") || "EDITOR") as "ADMIN" | "EDITOR" | "VIEWER"
       });
       setStatus("Utilizador criado com sucesso.");
       event.currentTarget.reset();
+      onCreated?.(created);
       onSuccess?.();
     } catch (error) {
       setStatus(String(error instanceof Error ? error.message : error));
@@ -35,33 +39,36 @@ export function UserForm({ onSuccess }: Props): JSX.Element {
   }
 
   return (
-    <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => void onSubmit(event)}>
-      <div className="sm:col-span-2">
-        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">E-mail</label>
-        <input required type="email" name="email" className={field} placeholder="nome@instituicao.gov.br" autoComplete="off" />
-      </div>
-      <div className="sm:col-span-2">
-        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Palavra-passe inicial</label>
-        <input required type="password" name="password" minLength={8} className={field} autoComplete="new-password" />
-      </div>
-      <div className="sm:col-span-2">
-        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Papel</label>
-        <select name="role" className={field} defaultValue="EDITOR">
-          <option value="VIEWER">Leitura (VIEWER)</option>
-          <option value="EDITOR">Edição (EDITOR)</option>
-          <option value="ADMIN">Administrador (ADMIN)</option>
-        </select>
-      </div>
-      <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 disabled:opacity-60"
-        >
-          {busy ? "A guardar…" : "Criar utilizador"}
-        </button>
-        {status ? <span className="text-sm text-slate-600">{status}</span> : null}
-      </div>
+    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
+      <FormSection title="Credenciais e papel" description="E-mail único no sistema. Palavra-passe com pelo menos 8 caracteres.">
+        <FormField label="E-mail" htmlFor="user-email" required className="sm:col-span-2">
+          <input
+            id="user-email"
+            required
+            type="email"
+            name="email"
+            className={formControlClass}
+            placeholder="nome@instituicao.gov.br"
+            autoComplete="off"
+          />
+        </FormField>
+        <FormField label="Palavra-passe inicial" htmlFor="user-password" required className="sm:col-span-2">
+          <input id="user-password" required type="password" name="password" minLength={8} className={formControlClass} autoComplete="new-password" />
+        </FormField>
+        <FormField label="Papel" htmlFor="user-role" required className="sm:col-span-2">
+          <select id="user-role" name="role" className={formControlClass} defaultValue="EDITOR">
+            <option value="VIEWER">Leitura (VIEWER)</option>
+            <option value="EDITOR">Edição (EDITOR)</option>
+            <option value="ADMIN">Administrador (ADMIN)</option>
+          </select>
+        </FormField>
+      </FormSection>
+
+      {status ? <p className="text-sm text-slate-600">{status}</p> : null}
+
+      <PrimaryButton type="submit" busy={busy} busyLabel="A guardar…">
+        {submitLabel}
+      </PrimaryButton>
     </form>
   );
 }

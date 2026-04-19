@@ -3,18 +3,18 @@ import Link from "next/link";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
 import { Card } from "@/components/ui/card";
 import { getDashboardAlerts, getDashboardSummary } from "@/lib/api";
+import { collectLoadErrors, safeLoad } from "@/lib/api-load";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function ReportsPage(): Promise<JSX.Element> {
   const empty: Record<string, unknown> = {};
-  const [summaryRaw, alertsRaw] = await Promise.all([
-    getDashboardSummary().catch(() => empty),
-    getDashboardAlerts().catch(() => empty)
+  const [sumRes, alRes] = await Promise.all([
+    safeLoad(() => getDashboardSummary(), empty),
+    safeLoad(() => getDashboardAlerts(), empty)
   ]);
-  const summary = summaryRaw as Record<string, unknown>;
-  const alerts = alertsRaw as Record<string, unknown>;
+  const loadErrors = collectLoadErrors([sumRes.error, alRes.error]);
 
   return (
     <div className="space-y-6">
@@ -40,7 +40,7 @@ export default async function ReportsPage(): Promise<JSX.Element> {
         </Link>
       </Card>
 
-      <DashboardHome summary={summary} alerts={alerts} />
+      <DashboardHome summary={sumRes.data} alerts={alRes.data} loadErrors={loadErrors} />
     </div>
   );
 }

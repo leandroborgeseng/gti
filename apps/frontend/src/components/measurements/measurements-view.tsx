@@ -15,8 +15,8 @@ const statusLabel: Record<string, string> = {
   GLOSSED: "Glosada"
 };
 
-const btnPrimary =
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2";
+import { buttonPrimaryClass } from "@/components/ui/form-primitives";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 
 type ContractOption = { id: string; number: string; name: string };
 
@@ -28,15 +28,23 @@ type Props = {
   filterContractId?: string;
   /** Título legível do contrato (número — nome); se omitido, usa só o ID. */
   filterContractTitle?: string;
+  dataLoadErrors?: string[];
 };
 
-export function MeasurementsView({ measurements, contractOptions, filterContractId, filterContractTitle }: Props): JSX.Element {
+export function MeasurementsView({
+  measurements,
+  contractOptions,
+  filterContractId,
+  filterContractTitle,
+  dataLoadErrors = []
+}: Props): JSX.Element {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const rows = filterContractId ? measurements.filter((m) => m.contractId === filterContractId) : measurements;
 
   return (
     <div className="space-y-6">
+      {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Medições</h1>
@@ -59,7 +67,7 @@ export function MeasurementsView({ measurements, contractOptions, filterContract
             </div>
           ) : null}
         </div>
-        <button type="button" onClick={() => setModalOpen(true)} className={btnPrimary}>
+        <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
           <span className="text-lg leading-none" aria-hidden>
             +
           </span>

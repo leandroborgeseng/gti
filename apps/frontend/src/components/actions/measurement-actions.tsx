@@ -49,7 +49,7 @@ export function MeasurementActions({ measurementId, measurementStatus }: Props):
           type="button"
           onClick={() => void onCalculate()}
           disabled={busy != null || !canCalculate}
-          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy === "calculate" ? "A calcular…" : "Calcular"}
         </button>

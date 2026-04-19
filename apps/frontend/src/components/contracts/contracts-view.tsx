@@ -7,6 +7,8 @@ import { useState } from "react";
 import type { Contract } from "@/lib/api";
 import { ContractForm } from "@/components/actions/contract-form";
 import { Modal } from "@/components/ui/modal";
+import { buttonPrimaryClass } from "@/components/ui/form-primitives";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 
 const statusLabel: Record<string, string> = {
   ACTIVE: "Ativo",
@@ -16,14 +18,17 @@ const statusLabel: Record<string, string> = {
 
 type Props = {
   contracts: Contract[];
+  /** Falha ao listar contratos (API / rede). */
+  dataLoadErrors?: string[];
 };
 
-export function ContractsView({ contracts }: Props): JSX.Element {
+export function ContractsView({ contracts, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div className="space-y-6">
+      {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Contratos</h1>
@@ -32,11 +37,7 @@ export function ContractsView({ contracts }: Props): JSX.Element {
             cadastro sem sair desta página.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModalOpen(true)}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
-        >
+        <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
           <span className="text-lg leading-none" aria-hidden>
             +
           </span>
@@ -58,6 +59,7 @@ export function ContractsView({ contracts }: Props): JSX.Element {
                 <th className="px-5 py-3">Número</th>
                 <th className="px-5 py-3">Nome</th>
                 <th className="px-5 py-3">Fornecedor</th>
+                <th className="max-w-[140px] px-5 py-3">Órgão gestor</th>
                 <th className="px-5 py-3 text-right">Valor mensal</th>
                 <th className="px-5 py-3">Vigência (fim)</th>
                 <th className="px-5 py-3">Status</th>
@@ -74,6 +76,9 @@ export function ContractsView({ contracts }: Props): JSX.Element {
                   </td>
                   <td className="max-w-[180px] truncate px-5 py-3 text-slate-600" title={c.supplier?.name ?? c.companyName}>
                     {c.supplier?.name ?? c.companyName}
+                  </td>
+                  <td className="max-w-[140px] truncate px-5 py-3 text-slate-600" title={c.managingUnit ?? ""}>
+                    {c.managingUnit ?? "—"}
                   </td>
                   <td className="whitespace-nowrap px-5 py-3 text-right tabular-nums text-slate-800">
                     R$ {Number(c.monthlyValue).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -97,7 +102,7 @@ export function ContractsView({ contracts }: Props): JSX.Element {
               ))}
               {contracts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-14 text-center">
+                  <td colSpan={9} className="px-5 py-14 text-center">
                     <p className="text-sm text-slate-500">Nenhum contrato ainda. Clique em &quot;Novo contrato&quot; para cadastrar.</p>
                   </td>
                 </tr>

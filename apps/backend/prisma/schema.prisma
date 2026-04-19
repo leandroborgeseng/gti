@@ -145,6 +145,8 @@ model Contract {
   number           String             @unique
   name             String
   description      String?
+  /// Órgão gestor no âmbito interno (ex.: secretaria responsável pelo contrato).
+  managingUnit     String?
   companyName      String
   cnpj             String
   contractType     ContractType

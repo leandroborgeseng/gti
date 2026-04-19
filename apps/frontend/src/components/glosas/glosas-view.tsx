@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Glosa } from "@/lib/api";
-import { GlosaForm } from "@/components/actions/glosa-form";
+import { GlosaForm, type MeasurementOption } from "@/components/actions/glosa-form";
 import { Modal } from "@/components/ui/modal";
 
 const typeLabel: Record<string, string> = {
@@ -14,19 +14,22 @@ const typeLabel: Record<string, string> = {
   QUALIDADE: "Qualidade"
 };
 
-const btnPrimary =
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2";
+import { buttonPrimaryClass } from "@/components/ui/form-primitives";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 
 type Props = {
   glosas: Glosa[];
+  measurementOptions?: MeasurementOption[];
+  dataLoadErrors?: string[];
 };
 
-export function GlosasView({ glosas }: Props): JSX.Element {
+export function GlosasView({ glosas, measurementOptions, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div className="space-y-6">
+      {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Glosas</h1>
@@ -35,7 +38,7 @@ export function GlosasView({ glosas }: Props): JSX.Element {
             para lançar valores; a lista atualiza ao guardar.
           </p>
         </div>
-        <button type="button" onClick={() => setModalOpen(true)} className={btnPrimary}>
+        <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
           <span className="text-lg leading-none" aria-hidden>
             +
           </span>
@@ -79,7 +82,10 @@ export function GlosasView({ glosas }: Props): JSX.Element {
                   <td className="px-5 py-3 text-slate-600">{g.createdBy}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-slate-600">{new Date(g.createdAt).toLocaleDateString("pt-BR")}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-right">
-                    <Link href={`/glosas/${g.id}`} className="text-sm font-medium text-blue-700 hover:text-blue-900">
+                    <Link
+                      href={`/glosas/${g.id}`}
+                      className="text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
+                    >
                       Abrir
                     </Link>
                   </td>
@@ -104,6 +110,7 @@ export function GlosasView({ glosas }: Props): JSX.Element {
         description="A glosa deve estar associada a uma medição já calculada. Indique valor e justificativa."
       >
         <GlosaForm
+          measurementOptions={measurementOptions}
           onSuccess={() => {
             setModalOpen(false);
             router.refresh();

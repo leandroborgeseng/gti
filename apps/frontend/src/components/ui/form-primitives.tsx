@@ -102,3 +102,15 @@ export function SecondaryButton({
     </button>
   );
 }
+
+/** Botão «Novo…» das vistas em lista (mesmo estilo em todo o produto). */
+export const buttonPrimaryClass =
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2";
+
+/** Botão compacto para linhas de tabela / cartões (ações secundárias). */
+export const buttonSmallClass =
+  "rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50";
+
+/** Botão compacto primário (adicionar linha inline). */
+export const buttonSmallPrimaryClass =
+  "rounded-md bg-slate-900 px-3 py-1 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50";

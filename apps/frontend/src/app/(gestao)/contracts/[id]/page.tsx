@@ -4,8 +4,10 @@ import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendme
 import { ContractStatusControl } from "@/components/contracts/contract-status-control";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
 import { Card } from "@/components/ui/card";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { formatBrl } from "@/lib/format-brl";
 import { getContract } from "@/lib/api";
+import { safeLoadNullable } from "@/lib/api-load";
 
 const statusLabel: Record<string, string> = {
   ACTIVE: "Ativo",
@@ -37,7 +39,22 @@ function formatSlaTarget(raw: string | null | undefined): string {
 }
 
 export default async function ContractDetailPage({ params }: { params: { id: string } }): Promise<JSX.Element> {
-  const contract = await getContract(params.id).catch(() => null);
+  const { data: contract, error } = await safeLoadNullable(() => getContract(params.id));
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <DataLoadAlert messages={[error]} title="Não foi possível carregar o contrato" />
+        <p className="text-sm">
+          <Link
+            href={"/contracts" as Route}
+            className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
+          >
+            Voltar à lista de contratos
+          </Link>
+        </p>
+      </div>
+    );
+  }
   if (!contract) {
     return (
       <Card>
@@ -77,11 +94,21 @@ export default async function ContractDetailPage({ params }: { params: { id: str
         {contract.description ? <p className="mt-2 text-sm text-slate-600">{contract.description}</p> : null}
 
         <div className="mt-4 grid gap-3 text-sm text-slate-700 md:grid-cols-2">
+          {contract.managingUnit ? (
+            <p className="md:col-span-2">
+              <strong className="text-slate-900">Órgão gestor:</strong> {contract.managingUnit}
+            </p>
+          ) : null}
           <p>
-            <strong className="text-slate-900">Fornecedor:</strong> {contract.companyName}
+            <strong className="text-slate-900">Contratante (razão social):</strong> {contract.companyName}
           </p>
+          {contract.supplier ? (
+            <p>
+              <strong className="text-slate-900">Empresa terceirizada:</strong> {contract.supplier.name}
+            </p>
+          ) : null}
           <p>
-            <strong className="text-slate-900">CNPJ:</strong> {cnpj}
+            <strong className="text-slate-900">CNPJ (contrato):</strong> {cnpj}
           </p>
           <div className="flex flex-col gap-1 md:flex-row md:flex-wrap md:items-start md:gap-x-3 md:gap-y-1">
             <p>

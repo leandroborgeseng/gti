@@ -42,6 +42,7 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
   const [number, setNumber] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [managingUnit, setManagingUnit] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [contractType, setContractType] = useState<"SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO">("SOFTWARE");
@@ -230,6 +231,7 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
         number: number.trim(),
         name: name.trim(),
         description: description.trim() || undefined,
+        managingUnit: managingUnit.trim() || undefined,
         companyName: companyName.trim(),
         cnpj: onlyDigitsCnpj(cnpj),
         contractType,
@@ -245,6 +247,7 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
       setNumber("");
       setName("");
       setDescription("");
+      setManagingUnit("");
       setCompanyName("");
       setCnpj("");
       setContractType("SOFTWARE");
@@ -323,6 +326,21 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
             <option value="LEI_8666">Lei 8.666/93</option>
             <option value="LEI_14133">Lei 14.133/21</option>
           </select>
+        </FormField>
+        <FormField
+          label="Órgão gestor"
+          htmlFor="c-managing-unit"
+          className="sm:col-span-2"
+          hint="Ex.: secretaria ou unidade responsável pelo acompanhamento do contrato (quadro de sistemas terceirizados)."
+        >
+          <input
+            id="c-managing-unit"
+            value={managingUnit}
+            onChange={(e) => setManagingUnit(e.target.value)}
+            className={formControlClass}
+            placeholder="Ex.: SEC. ADM. E RH"
+            autoComplete="organization"
+          />
         </FormField>
       </FormSection>
 

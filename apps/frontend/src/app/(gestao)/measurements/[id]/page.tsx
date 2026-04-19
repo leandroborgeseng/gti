@@ -1,10 +1,13 @@
+import Link from "next/link";
 import { MeasurementAddServiceLines } from "@/components/measurements/measurement-add-service-lines";
 import { MeasurementItemsStateful } from "@/components/measurements/measurement-items-stateful";
 import { MeasurementAttachments } from "@/components/measurements/measurement-attachments";
 import { Card } from "@/components/ui/card";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { MeasurementActions } from "@/components/actions/measurement-actions";
 import { formatBrl } from "@/lib/format-brl";
 import { getMeasurement } from "@/lib/api";
+import { safeLoadNullable } from "@/lib/api-load";
 
 const statusLabel: Record<string, string> = {
   OPEN: "Aberta",
@@ -50,7 +53,22 @@ function calcRuleDescription(contractType: string | undefined): string {
 }
 
 export default async function MeasurementDetailPage({ params }: { params: { id: string } }): Promise<JSX.Element> {
-  const measurement = await getMeasurement(params.id).catch(() => null);
+  const { data: measurement, error } = await safeLoadNullable(() => getMeasurement(params.id));
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <DataLoadAlert messages={[error]} title="Não foi possível carregar a medição" />
+        <p className="text-sm">
+          <Link
+            href="/measurements"
+            className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
+          >
+            Voltar à lista de medições
+          </Link>
+        </p>
+      </div>
+    );
+  }
   if (!measurement) {
     return (
       <Card>

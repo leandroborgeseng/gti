@@ -104,6 +104,10 @@ export class CreateContractDto {
   @IsString()
   description?: string;
 
+  @IsOptional()
+  @IsString()
+  managingUnit?: string;
+
   @IsString()
   @IsNotEmpty()
   companyName!: string;
@@ -168,6 +172,10 @@ export class UpdateContractDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  managingUnit?: string;
 
   @IsOptional()
   @IsString()

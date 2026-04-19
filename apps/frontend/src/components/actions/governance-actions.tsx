@@ -10,6 +10,7 @@ import {
   runGovernanceMonitoring,
   sendGovernanceToControladoria
 } from "@/lib/api";
+import { formControlClass } from "@/components/ui/form-primitives";
 
 type DetailProps = {
   ticketId: string;
@@ -155,7 +156,7 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
     <div className="space-y-4">
       <form className="space-y-2" onSubmit={(event) => void onAcknowledge(event)}>
         <p className="text-sm font-semibold">Registrar ciência</p>
-        <input required name="acknowledgedAt" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="datetime-local" />
+        <input required name="acknowledgedAt" className={formControlClass} type="datetime-local" />
         <button
           type="submit"
           disabled={busy != null}
@@ -168,13 +169,13 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
       <form className="space-y-2" onSubmit={(event) => void onClassify(event)}>
         <p className="text-sm font-semibold">Classificar chamado</p>
         <div className="grid gap-2 md:grid-cols-2">
-          <select name="priority" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+          <select name="priority" className={formControlClass}>
             <option value="LOW">LOW</option>
             <option value="MEDIUM">MEDIUM</option>
             <option value="HIGH">HIGH</option>
             <option value="CRITICAL">CRITICAL</option>
           </select>
-          <select name="type" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+          <select name="type" className={formControlClass}>
             <option value="CORRETIVA">CORRETIVA</option>
             <option value="EVOLUTIVA">EVOLUTIVA</option>
           </select>
@@ -182,7 +183,7 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
         <button
           type="submit"
           disabled={busy != null}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy === "classify" ? "Salvando..." : "Classificar"}
         </button>
@@ -190,7 +191,7 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
 
       <form className="space-y-2" onSubmit={(event) => void onNotify(event)}>
         <p className="text-sm font-semibold">Notificar gestor</p>
-        <textarea required name="description" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" rows={2} placeholder="Descrição da ação de notificação" />
+        <textarea required name="description" className={formControlClass} rows={2} placeholder="Descrição da ação de notificação" />
         <button
           type="submit"
           disabled={busy != null}
@@ -202,7 +203,7 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
 
       <form className="space-y-2" onSubmit={(event) => void onResolve(event)}>
         <p className="text-sm font-semibold">Registrar resolução</p>
-        <input required name="resolvedAt" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="datetime-local" />
+        <input required name="resolvedAt" className={formControlClass} type="datetime-local" />
         <button
           type="submit"
           disabled={busy != null}
@@ -214,13 +215,13 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
 
       <form className="space-y-2" onSubmit={(event) => void onExtend(event)}>
         <p className="text-sm font-semibold">Extensão de prazo</p>
-        <input required name="newDeadline" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="datetime-local" />
-        <textarea required name="justification" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" rows={3} placeholder="Justificativa" />
-        <input required name="createdBy" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Usuário responsável" />
+        <input required name="newDeadline" className={formControlClass} type="datetime-local" />
+        <textarea required name="justification" className={formControlClass} rows={3} placeholder="Justificativa" />
+        <input required name="createdBy" className={formControlClass} placeholder="Usuário responsável" />
         <button
           type="submit"
           disabled={busy != null}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy === "extend" ? "Salvando..." : "Estender prazo"}
         </button>
@@ -228,8 +229,8 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
 
       <form className="space-y-2" onSubmit={(event) => void onControladoria(event)}>
         <p className="text-sm font-semibold">Encaminhar para controladoria</p>
-        <input required name="seiProcessNumber" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Número do processo SEI" />
-        <input name="controladoriaUserId" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Usuário da controladoria (opcional)" />
+        <input required name="seiProcessNumber" className={formControlClass} placeholder="Número do processo SEI" />
+        <input name="controladoriaUserId" className={formControlClass} placeholder="Usuário da controladoria (opcional)" />
         <button
           type="submit"
           disabled={busy != null}

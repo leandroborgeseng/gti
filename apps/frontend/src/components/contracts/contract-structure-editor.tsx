@@ -23,6 +23,7 @@ import {
   projectModuleFeaturesSum,
   weightSumMatchesTarget
 } from "@/lib/contract-weights";
+import { buttonSmallClass, buttonSmallPrimaryClass, formControlClass } from "@/components/ui/form-primitives";
 
 const featureStatusLabels: Record<ContractFeatureStatus, string> = {
   NOT_STARTED: "Não iniciada",
@@ -123,14 +124,14 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 
           <div className="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-4">
             <input
-              className="min-w-[12rem] rounded border border-slate-300 px-2 py-1 text-sm"
+              className={`min-w-[12rem] ${formControlClass}`}
               placeholder="Nome do módulo"
               value={newModName}
               onChange={(e) => setNewModName(e.target.value)}
               disabled={busy}
             />
             <input
-              className="w-28 rounded border border-slate-300 px-2 py-1 text-sm"
+              className={`w-28 ${formControlClass}`}
               placeholder="Peso"
               type="number"
               step="0.0001"
@@ -141,7 +142,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
             />
             <button
               type="button"
-              className="rounded bg-slate-800 px-3 py-1 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
+              className={buttonSmallPrimaryClass}
               disabled={busy || !newModName.trim()}
               onClick={() => {
                 const w = parseContractWeight(newModWeight);
@@ -190,21 +191,21 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
           <h4 className="mb-3 font-medium text-slate-900">Serviços (medição por quantidade)</h4>
           <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-4">
             <input
-              className="min-w-[10rem] rounded border border-slate-300 px-2 py-1 text-sm"
+              className={`min-w-[10rem] ${formControlClass}`}
               placeholder="Nome do serviço"
               value={newSvcName}
               onChange={(e) => setNewSvcName(e.target.value)}
               disabled={busy}
             />
             <input
-              className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+              className={`w-24 ${formControlClass}`}
               placeholder="Unidade"
               value={newSvcUnit}
               onChange={(e) => setNewSvcUnit(e.target.value)}
               disabled={busy}
             />
             <input
-              className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
+              className={`w-32 ${formControlClass}`}
               placeholder="Valor unitário"
               type="number"
               step="0.0001"
@@ -215,7 +216,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
             />
             <button
               type="button"
-              className="rounded bg-slate-800 px-3 py-1 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
+              className={buttonSmallPrimaryClass}
               disabled={busy || !newSvcName.trim() || !newSvcUnit.trim()}
               onClick={() =>
                 void run(async () => {
@@ -313,7 +314,7 @@ function ModuleBlock(props: {
         <label className="flex min-w-[10rem] flex-col text-xs text-slate-600">
           Módulo
           <input
-            className="mt-0.5 rounded border border-slate-300 px-2 py-1 text-sm"
+            className={`mt-0.5 ${formControlClass}`}
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={busy}
@@ -322,7 +323,7 @@ function ModuleBlock(props: {
         <label className="flex w-28 flex-col text-xs text-slate-600">
           Peso
           <input
-            className="mt-0.5 rounded border border-slate-300 px-2 py-1 text-sm"
+            className={`mt-0.5 ${formControlClass}`}
             type="number"
             step="0.0001"
             min={0}
@@ -333,7 +334,7 @@ function ModuleBlock(props: {
         </label>
         <button
           type="button"
-          className="rounded border border-slate-400 px-2 py-1 text-xs hover:bg-white disabled:opacity-50"
+          className={`${buttonSmallClass} text-xs`}
           disabled={busy}
           onClick={() => {
             const w = parseContractWeight(weight);
@@ -398,14 +399,14 @@ function ModuleBlock(props: {
         </ul>
         <div className="mt-2 flex flex-wrap gap-2">
           <input
-            className="min-w-[10rem] rounded border border-slate-300 px-2 py-1 text-sm"
+            className={`min-w-[10rem] ${formControlClass}`}
             placeholder="Nova funcionalidade"
             value={fName}
             onChange={(e) => setFName(e.target.value)}
             disabled={busy}
           />
           <input
-            className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+            className={`w-24 ${formControlClass}`}
             placeholder="Peso"
             type="number"
             step="0.0001"
@@ -415,7 +416,7 @@ function ModuleBlock(props: {
             disabled={busy}
           />
           <select
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            className={`${formControlClass} text-sm`}
             value={fStatus}
             onChange={(e) => setFStatus(e.target.value as ContractFeatureStatus)}
             disabled={busy}
@@ -497,9 +498,9 @@ function FeatureRow(props: {
 
   return (
     <li className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-sm">
-      <input className="min-w-[8rem] flex-1 rounded border border-slate-300 px-2 py-1" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
+      <input className={`min-w-[8rem] flex-1 ${formControlClass}`} value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
       <input
-        className="w-24 rounded border border-slate-300 px-2 py-1"
+        className={`w-24 ${formControlClass}`}
         type="number"
         step="0.0001"
         min={0}
@@ -507,7 +508,7 @@ function FeatureRow(props: {
         onChange={(e) => setWeight(e.target.value)}
         disabled={busy}
       />
-      <select className="rounded border border-slate-300 px-2 py-1 text-xs" value={status} onChange={(e) => setStatus(e.target.value as ContractFeatureStatus)} disabled={busy}>
+      <select className={`${formControlClass} py-1.5 text-xs`} value={status} onChange={(e) => setStatus(e.target.value as ContractFeatureStatus)} disabled={busy}>
         {featureStatuses.map((s) => (
           <option key={s} value={s}>
             {featureStatusLabels[s]}
@@ -516,7 +517,7 @@ function FeatureRow(props: {
       </select>
       <button
         type="button"
-        className="rounded border border-slate-400 px-2 py-0.5 text-xs disabled:opacity-50"
+        className={`${buttonSmallClass} py-0.5 text-xs`}
         disabled={busy}
         onClick={() => {
           const w = parseContractWeight(weight);
@@ -591,10 +592,10 @@ function ServiceRow(props: {
 
   return (
     <li className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-white px-2 py-2">
-      <input className="min-w-[8rem] rounded border border-slate-300 px-2 py-1 text-sm" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
-      <input className="w-24 rounded border border-slate-300 px-2 py-1 text-sm" value={unit} onChange={(e) => setUnit(e.target.value)} disabled={busy} />
+      <input className={`min-w-[8rem] ${formControlClass}`} value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
+      <input className={`w-24 ${formControlClass}`} value={unit} onChange={(e) => setUnit(e.target.value)} disabled={busy} />
       <input
-        className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
+        className={`w-32 ${formControlClass}`}
         type="number"
         step="0.0001"
         min={0}
@@ -604,7 +605,7 @@ function ServiceRow(props: {
       />
       <button
         type="button"
-        className="rounded border border-slate-400 px-2 py-1 text-xs disabled:opacity-50"
+        className={`${buttonSmallClass} text-xs`}
         disabled={busy}
         onClick={() =>
           void exec(async () => {

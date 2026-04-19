@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
+import { FormField, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
 
 function LoginForm(): JSX.Element {
   const router = useRouter();
@@ -37,7 +38,7 @@ function LoginForm(): JSX.Element {
 
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4">
-      <Card className="w-full max-w-md space-y-4 p-6">
+      <Card className="w-full max-w-md space-y-5 p-6">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Iniciar sessão</h1>
           <p className="mt-1 text-sm text-slate-600">Gestão contratual (API protegida por JWT).</p>
@@ -47,38 +48,34 @@ function LoginForm(): JSX.Element {
             {error}
           </p>
         ) : null}
-        <form className="space-y-3" onSubmit={(ev) => void onSubmit(ev)}>
-          <label className="block text-sm">
-            <span className="font-medium text-slate-700">E-mail</span>
+        <form className="space-y-4" onSubmit={(ev) => void onSubmit(ev)}>
+          <FormField label="E-mail" htmlFor="login-email" required>
             <input
+              id="login-email"
               type="email"
               autoComplete="username"
               required
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              className={formControlClass}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
             />
-          </label>
-          <label className="block text-sm">
-            <span className="font-medium text-slate-700">Palavra-passe</span>
+          </FormField>
+          <FormField label="Palavra-passe" htmlFor="login-password" required>
             <input
+              id="login-password"
               type="password"
               autoComplete="current-password"
               required
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              className={formControlClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
             />
-          </label>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-slate-900 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          >
-            {loading ? "A entrar…" : "Entrar"}
-          </button>
+          </FormField>
+          <PrimaryButton type="submit" busy={loading} className="w-full" busyLabel="A entrar…">
+            Entrar
+          </PrimaryButton>
         </form>
       </Card>
     </div>

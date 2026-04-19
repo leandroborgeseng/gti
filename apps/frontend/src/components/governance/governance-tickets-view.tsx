@@ -19,19 +19,24 @@ const statusLabel: Record<string, string> = {
   SENT_TO_CONTROLADORIA: "Enviado à controladoria"
 };
 
-const btnPrimary =
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2";
+import { buttonPrimaryClass } from "@/components/ui/form-primitives";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
+
+type ContractOption = { id: string; number: string; name: string };
 
 type Props = {
   tickets: GovernanceTicket[];
+  contractOptions?: ContractOption[];
+  dataLoadErrors?: string[];
 };
 
-export function GovernanceTicketsView({ tickets }: Props): JSX.Element {
+export function GovernanceTicketsView({ tickets, contractOptions, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div className="space-y-6">
+      {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Governança de chamados (SLA)</h1>
@@ -42,7 +47,7 @@ export function GovernanceTicketsView({ tickets }: Props): JSX.Element {
         </div>
         <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center">
           <GovernanceListActions onMonitoringComplete={() => router.refresh()} />
-          <button type="button" onClick={() => setModalOpen(true)} className={btnPrimary}>
+          <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
             <span className="text-lg leading-none" aria-hidden>
               +
             </span>
@@ -113,6 +118,7 @@ export function GovernanceTicketsView({ tickets }: Props): JSX.Element {
         description="Identificador GLPI, contrato e data de abertura (opcional). O monitoramento de SLA pode ser executado na barra acima."
       >
         <GovernanceCreateForm
+          contractOptions={contractOptions}
           onSuccess={() => {
             setModalOpen(false);
             router.refresh();

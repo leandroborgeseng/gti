@@ -1,7 +1,9 @@
 import { GoalsView } from "@/components/goals/goals-view";
-import { getGoals } from "@/lib/api";
+import { getGoals, getUsers } from "@/lib/api";
+import { collectLoadErrors, safeLoad } from "@/lib/api-load";
 
 export default async function GoalsPage(): Promise<JSX.Element> {
-  const goals = await getGoals().catch(() => []);
-  return <GoalsView goals={goals} />;
+  const [gRes, uRes] = await Promise.all([safeLoad(() => getGoals(), []), safeLoad(() => getUsers(), [])]);
+  const dataLoadErrors = collectLoadErrors([gRes.error, uRes.error]);
+  return <GoalsView goals={gRes.data} users={uRes.data} dataLoadErrors={dataLoadErrors} />;
 }

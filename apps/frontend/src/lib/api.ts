@@ -2,7 +2,8 @@ import { authHeadersForApi, readBrowserAuthToken } from "@/lib/auth-token";
 
 /**
  * Base da API de gestão (`.../api`), sem obrigar `NEXT_PUBLIC_BACKEND_URL`.
- * Por omissão: mesmo host que a app Next (`/api/...` no browser; cabeçalhos `Host` no servidor).
+ * Por omissão: mesmo host que a app Next (`/api/...` no browser; no servidor, `Host` do pedido).
+ * Rotas Nest sem ficheiro dedicado em `app/api/*` são encaminhadas pelo proxy em `app/api/[...path]/route.ts`.
  */
 export function getBackendApiBaseUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
@@ -81,6 +82,8 @@ export type Contract = {
   number: string;
   name: string;
   description?: string | null;
+  /** Secretaria ou unidade gestora (ex.: quadro de sistemas terceirizados). */
+  managingUnit?: string | null;
   companyName: string;
   cnpj?: string;
   contractType: string;
@@ -229,6 +232,7 @@ export async function updateContract(
     status?: "ACTIVE" | "EXPIRED" | "SUSPENDED";
     name?: string;
     description?: string | null;
+    managingUnit?: string | null;
     companyName?: string;
     cnpj?: string;
     contractType?: "SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO";
@@ -250,6 +254,7 @@ export async function createContract(payload: {
   number: string;
   name: string;
   description?: string;
+  managingUnit?: string;
   companyName: string;
   cnpj: string;
   contractType: "SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO";

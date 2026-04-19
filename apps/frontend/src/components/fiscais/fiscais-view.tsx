@@ -6,19 +6,21 @@ import type { Fiscal } from "@/lib/api";
 import { FiscalForm } from "@/components/actions/fiscal-form";
 import { Modal } from "@/components/ui/modal";
 
-const btnPrimary =
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2";
+import { buttonPrimaryClass } from "@/components/ui/form-primitives";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 
 type Props = {
   fiscais: Fiscal[];
+  dataLoadErrors?: string[];
 };
 
-export function FiscaisView({ fiscais }: Props): JSX.Element {
+export function FiscaisView({ fiscais, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div className="space-y-6">
+      {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Fiscais e gestores</h1>
@@ -27,7 +29,7 @@ export function FiscaisView({ fiscais }: Props): JSX.Element {
             <strong className="font-medium text-slate-700">Novo fiscal</strong> abre o cadastro em modal.
           </p>
         </div>
-        <button type="button" onClick={() => setModalOpen(true)} className={btnPrimary}>
+        <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
           <span className="text-lg leading-none" aria-hidden>
             +
           </span>

@@ -13,7 +13,8 @@ type Result = {
   detail: string;
 };
 
-const appUrl = process.env.SMOKE_APP_URL?.trim() || "http://localhost:3000";
+/** Alinhado com `apps/frontend` em dev (`next dev -p 3001`). Em Docker produção use `SMOKE_APP_URL=http://localhost:3000`. */
+const appUrl = process.env.SMOKE_APP_URL?.trim() || "http://localhost:3001";
 const backendUrl = process.env.SMOKE_BACKEND_URL?.trim() || "http://localhost:4000/api";
 
 /** Páginas Next e health (sem JWT). */
@@ -249,6 +250,19 @@ async function main(): Promise<void> {
       const result = await runCheck(check, apiHeaders);
       results.push(result);
       printResult(result);
+    }
+
+    if (process.env.SMOKE_SKIP_NEXT_PROXY !== "1") {
+      const proxyCheck: Check = {
+        name: "Next proxy GET /api/contracts (via SMOKE_APP_URL)",
+        url: `${appUrl}/api/contracts`,
+        expectedStatus: 200
+      };
+      const proxyResult = await runCheck(proxyCheck, apiHeaders);
+      results.push(proxyResult);
+      printResult(proxyResult);
+    } else {
+      console.log("[IGNORADO] Next proxy (SMOKE_SKIP_NEXT_PROXY=1).");
     }
 
     const patchOutcome = await runPatchMeasurementItemSmoke(apiHeaders);

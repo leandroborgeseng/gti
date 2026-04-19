@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { addGoalLink, createGoalAction, setManualGoalProgress } from "@/lib/api";
+import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
 
 type Props = {
   goalId: string;
@@ -65,61 +66,77 @@ export function GoalActions({ goalId }: Props): JSX.Element {
     }
   }
 
+  const disabled = busy != null;
+
   return (
-    <div className="space-y-4">
-      <form className="space-y-2" onSubmit={(event) => void onCreateAction(event)}>
-        <p className="font-semibold">Nova ação</p>
-        <input required name="title" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Título da ação" />
-        <textarea name="description" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Descrição" rows={3} />
-        <div className="grid gap-2 md:grid-cols-3">
-          <select name="status" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
-            <option value="NOT_STARTED">NOT_STARTED</option>
-            <option value="IN_PROGRESS">IN_PROGRESS</option>
-            <option value="COMPLETED">COMPLETED</option>
-          </select>
-          <input name="progress" type="number" min={0} max={100} defaultValue={0} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          <input name="responsibleId" required className="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Responsável" />
-        </div>
-        <input name="dueDate" type="date" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+    <div className="space-y-5">
+      <form className="space-y-4" onSubmit={(event) => void onCreateAction(event)}>
+        <FormSection title="Nova ação" description="Tarefas associadas à meta; responsável obrigatório (ID de utilizador).">
+          <FormField label="Título" htmlFor={`ga-title-${goalId}`} required className="sm:col-span-2">
+            <input id={`ga-title-${goalId}`} required name="title" className={formControlClass} placeholder="Título da ação" />
+          </FormField>
+          <FormField label="Descrição" htmlFor={`ga-desc-${goalId}`} className="sm:col-span-2">
+            <textarea id={`ga-desc-${goalId}`} name="description" className={`${formControlClass} min-h-[72px]`} placeholder="Descrição" rows={3} />
+          </FormField>
+          <FormField label="Estado" htmlFor={`ga-st-${goalId}`}>
+            <select id={`ga-st-${goalId}`} name="status" className={formControlClass}>
+              <option value="NOT_STARTED">Não iniciada</option>
+              <option value="IN_PROGRESS">Em andamento</option>
+              <option value="COMPLETED">Concluída</option>
+            </select>
+          </FormField>
+          <FormField label="Progresso (%)" htmlFor={`ga-pr-${goalId}`}>
+            <input id={`ga-pr-${goalId}`} name="progress" type="number" min={0} max={100} defaultValue={0} className={formControlClass} />
+          </FormField>
+          <FormField label="Responsável (ID)" htmlFor={`ga-rsp-${goalId}`} required className="sm:col-span-2">
+            <input id={`ga-rsp-${goalId}`} name="responsibleId" required className={formControlClass} placeholder="UUID do utilizador" />
+          </FormField>
+          <FormField label="Prazo (opcional)" htmlFor={`ga-due-${goalId}`} className="sm:col-span-2">
+            <input id={`ga-due-${goalId}`} name="dueDate" type="date" className={formControlClass} />
+          </FormField>
+        </FormSection>
+        <PrimaryButton type="submit" disabled={disabled} busy={busy === "action"} busyLabel="A guardar…">
+          Adicionar ação
+        </PrimaryButton>
+      </form>
+
+      <form className="space-y-4" onSubmit={(event) => void onLink(event)}>
+        <FormSection title="Novo vínculo" description="Ligação a contrato ou identificador de ticket (conforme tipo).">
+          <FormField label="Tipo" htmlFor={`gl-type-${goalId}`}>
+            <select id={`gl-type-${goalId}`} name="type" className={formControlClass}>
+              <option value="CONTRACT">Contrato</option>
+              <option value="TICKET">Ticket</option>
+            </select>
+          </FormField>
+          <FormField label="ID de referência" htmlFor={`gl-ref-${goalId}`} required className="sm:col-span-2">
+            <input id={`gl-ref-${goalId}`} name="referenceId" required className={formControlClass} placeholder="UUID ou identificador" />
+          </FormField>
+        </FormSection>
+        <PrimaryButton type="submit" disabled={disabled} busy={busy === "link"} busyLabel="A guardar…">
+          Adicionar vínculo
+        </PrimaryButton>
+      </form>
+
+      <form className="space-y-4" onSubmit={(event) => void onManual(event)}>
+        <FormSection title="Progresso manual" description="Sobrescreve o progresso calculado (0–100%).">
+          <FormField label="Progresso (%)" htmlFor={`gm-pr-${goalId}`} required className="sm:col-span-2">
+            <input id={`gm-pr-${goalId}`} name="progress" required type="number" min={0} max={100} className={formControlClass} />
+          </FormField>
+        </FormSection>
         <button
           type="submit"
-          disabled={busy != null}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={disabled}
+          className="rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy === "action" ? "Salvando..." : "Adicionar ação"}
+          {busy === "manual" ? "A guardar…" : "Atualizar progresso"}
         </button>
       </form>
 
-      <form className="space-y-2" onSubmit={(event) => void onLink(event)}>
-        <p className="font-semibold">Adicionar vínculo</p>
-        <div className="grid gap-2 md:grid-cols-2">
-          <select name="type" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
-            <option value="CONTRACT">CONTRACT</option>
-            <option value="TICKET">TICKET</option>
-          </select>
-          <input name="referenceId" required className="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="ID de referência" />
-        </div>
-        <button
-          type="submit"
-          disabled={busy != null}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "link" ? "Salvando..." : "Adicionar vínculo"}
-        </button>
-      </form>
-
-      <form className="space-y-2" onSubmit={(event) => void onManual(event)}>
-        <p className="font-semibold">Ajuste manual de progresso</p>
-        <input name="progress" required type="number" min={0} max={100} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <button
-          type="submit"
-          disabled={busy != null}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "manual" ? "Salvando..." : "Atualizar progresso"}
-        </button>
-      </form>
-      {status ? <p className="text-sm text-slate-600">{status}</p> : null}
+      {status ? (
+        <p className="text-sm text-slate-600" role="status">
+          {status}
+        </p>
+      ) : null}
     </div>
   );
 }

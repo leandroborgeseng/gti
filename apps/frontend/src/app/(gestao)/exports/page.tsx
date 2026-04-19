@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import {
   fetchContractAmendmentsCsvBlob,
   fetchContractsCsvBlob,
@@ -9,18 +10,24 @@ import {
   fetchMeasurementsCsvBlob,
   getAuthMe
 } from "@/lib/api";
+import { formatLoadError } from "@/lib/api-load";
 
 type ExportKind = "contracts" | "measurements" | "glosas" | "amendments";
 
+type AuthState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ok"; role: string };
+
 export default function ExportsPage(): JSX.Element {
-  const [role, setRole] = useState<string | null | undefined>(undefined);
+  const [auth, setAuth] = useState<AuthState>({ status: "loading" });
   const [busy, setBusy] = useState<ExportKind | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     void getAuthMe()
-      .then((m) => setRole(m.role))
-      .catch(() => setRole(null));
+      .then((m) => setAuth({ status: "ok", role: m.role }))
+      .catch((e) => setAuth({ status: "error", message: formatLoadError(e) }));
   }, []);
 
   const download = useCallback(async (kind: ExportKind, fetcher: () => Promise<Blob>, filename: string) => {
@@ -42,7 +49,7 @@ export default function ExportsPage(): JSX.Element {
     }
   }, []);
 
-  if (role === undefined) {
+  if (auth.status === "loading") {
     return (
       <Card className="p-6">
         <p className="text-sm text-slate-600">A carregar…</p>
@@ -50,6 +57,16 @@ export default function ExportsPage(): JSX.Element {
     );
   }
 
+  if (auth.status === "error") {
+    return (
+      <Card className="space-y-4 p-6">
+        <h1 className="text-lg font-semibold text-slate-900">Exportações</h1>
+        <DataLoadAlert messages={[auth.message]} title="Não foi possível confirmar a sessão" />
+      </Card>
+    );
+  }
+
+  const { role } = auth;
   if (role !== "ADMIN" && role !== "EDITOR") {
     return (
       <Card className="p-6">

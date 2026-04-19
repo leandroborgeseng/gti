@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { AuthMe, Contract } from "@/lib/api";
 import { createContractAmendment, getAuthMe } from "@/lib/api";
 import { Card } from "@/components/ui/card";
+import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
 import { formatBrl } from "@/lib/format-brl";
 
 function toDateInputValue(iso: string): string {
@@ -107,81 +108,79 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
       ) : canEdit ? (
         <form
           key={`${props.contract.id}-${props.contract.totalValue}-${props.contract.endDate}-${list.length}`}
-          className="mt-4 grid gap-3 border-t border-slate-100 pt-4 md:grid-cols-2"
+          className="mt-4 space-y-4 border-t border-slate-100 pt-4"
           onSubmit={(e) => void onSubmit(e)}
         >
-          <label className="grid gap-1 text-sm md:col-span-2">
-            <span className="font-medium text-slate-700">Referência do instrumento (opcional)</span>
-            <input
-              name="referenceCode"
-              type="text"
-              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Ex.: 1º termo aditivo, SEI nº …"
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium text-slate-700">Data de vigência do aditivo</span>
-            <input
-              name="effectiveDate"
-              type="date"
-              required
-              defaultValue={todayDateInputValue()}
-              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium text-slate-700">Novo término do contrato</span>
-            <input
-              name="newEndDate"
-              type="date"
-              required
-              defaultValue={toDateInputValue(props.contract.endDate)}
-              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium text-slate-700">Novo valor total (R$)</span>
-            <input
-              name="newTotalValue"
-              type="number"
-              min={0}
-              step="0.01"
-              required
-              defaultValue={Number(String(props.contract.totalValue).replace(",", ".")) || 0}
-              className="rounded-md border border-slate-200 px-3 py-2 text-sm tabular-nums"
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium text-slate-700">Novo valor mensal (R$)</span>
-            <input
-              name="newMonthlyValue"
-              type="number"
-              min={0}
-              step="0.01"
-              required
-              defaultValue={Number(String(props.contract.monthlyValue).replace(",", ".")) || 0}
-              className="rounded-md border border-slate-200 px-3 py-2 text-sm tabular-nums"
-            />
-          </label>
-          <label className="grid gap-1 text-sm md:col-span-2">
-            <span className="font-medium text-slate-700">Descrição / objeto</span>
-            <textarea
-              name="description"
-              required
-              rows={3}
-              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Resumo do que foi alterado e fundamentação."
-            />
-          </label>
-          <div className="md:col-span-2">
-            <button
-              type="submit"
-              disabled={busy}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
-            >
-              {busy ? "A gravar…" : "Registar aditivo e aplicar"}
-            </button>
-          </div>
+          <FormSection title="Instrumento e datas" description="Valores pré-preenchidos com o estado atual do contrato; ajuste conforme o aditivo.">
+            <FormField label="Referência do instrumento (opcional)" htmlFor="amend-ref" className="sm:col-span-2">
+              <input
+                id="amend-ref"
+                name="referenceCode"
+                type="text"
+                className={formControlClass}
+                placeholder="Ex.: 1º termo aditivo, SEI nº …"
+              />
+            </FormField>
+            <FormField label="Data de vigência do aditivo" htmlFor="amend-effective" required>
+              <input
+                id="amend-effective"
+                name="effectiveDate"
+                type="date"
+                required
+                defaultValue={todayDateInputValue()}
+                className={formControlClass}
+              />
+            </FormField>
+            <FormField label="Novo término do contrato" htmlFor="amend-end" required>
+              <input
+                id="amend-end"
+                name="newEndDate"
+                type="date"
+                required
+                defaultValue={toDateInputValue(props.contract.endDate)}
+                className={formControlClass}
+              />
+            </FormField>
+          </FormSection>
+          <FormSection title="Novos valores e descrição" description="Após gravar, o contrato passa a refletir estes valores de imediato.">
+            <FormField label="Novo valor total (R$)" htmlFor="amend-total" required>
+              <input
+                id="amend-total"
+                name="newTotalValue"
+                type="number"
+                min={0}
+                step="0.01"
+                required
+                defaultValue={Number(String(props.contract.totalValue).replace(",", ".")) || 0}
+                className={`${formControlClass} tabular-nums`}
+              />
+            </FormField>
+            <FormField label="Novo valor mensal (R$)" htmlFor="amend-monthly" required>
+              <input
+                id="amend-monthly"
+                name="newMonthlyValue"
+                type="number"
+                min={0}
+                step="0.01"
+                required
+                defaultValue={Number(String(props.contract.monthlyValue).replace(",", ".")) || 0}
+                className={`${formControlClass} tabular-nums`}
+              />
+            </FormField>
+            <FormField label="Descrição / objeto" htmlFor="amend-desc" required className="sm:col-span-2">
+              <textarea
+                id="amend-desc"
+                name="description"
+                required
+                rows={3}
+                className={formControlClass}
+                placeholder="Resumo do que foi alterado e fundamentação."
+              />
+            </FormField>
+          </FormSection>
+          <PrimaryButton type="submit" busy={busy} busyLabel="A gravar…">
+            Registar aditivo e aplicar
+          </PrimaryButton>
         </form>
       ) : (
         <p className="mt-4 text-sm text-slate-600">O seu perfil só permite consultar o histórico de aditivos.</p>

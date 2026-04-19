@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { GlosaAttachments } from "@/components/glosas/glosa-attachments";
 import { Card } from "@/components/ui/card";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { getGlosa } from "@/lib/api";
+import { safeLoadNullable } from "@/lib/api-load";
 
 const typeLabel: Record<string, string> = {
   ATRASO: "Atraso",
@@ -11,7 +13,22 @@ const typeLabel: Record<string, string> = {
 };
 
 export default async function GlosaDetailPage({ params }: { params: { id: string } }): Promise<JSX.Element> {
-  const glosa = await getGlosa(params.id).catch(() => null);
+  const { data: glosa, error } = await safeLoadNullable(() => getGlosa(params.id));
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <DataLoadAlert messages={[error]} title="Não foi possível carregar a glosa" />
+        <p className="text-sm">
+          <Link
+            href="/glosas"
+            className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
+          >
+            Voltar à lista de glosas
+          </Link>
+        </p>
+      </div>
+    );
+  }
   if (!glosa) {
     return (
       <Card>
@@ -28,7 +45,10 @@ export default async function GlosaDetailPage({ params }: { params: { id: string
   return (
     <div className="space-y-4">
       <p className="text-sm">
-        <Link href="/glosas" className="text-blue-700 underline hover:text-blue-900">
+        <Link
+          href="/glosas"
+          className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
+        >
           Voltar à lista de glosas
         </Link>
       </p>

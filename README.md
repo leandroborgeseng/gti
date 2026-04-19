@@ -30,6 +30,26 @@ npm run dev
 npm run dev:worker
 ```
 
+### Gestão contratual (Nest + Next)
+
+O **Kanban** e o login vivem no Next; **contratos, medições, glosas, fiscais, fornecedores, utilizadores (API Nest)** correm no backend `apps/backend` (porta **4000** por omissão, prefixo **`/api`**).
+
+1. Na raiz: `npm install`, `DATABASE_URL` e `JWT_SECRET` **iguais** (ou por omissão de desenvolvimento) no `.env` / `apps/frontend/.env.local` / `apps/backend/.env`, conforme o seu fluxo.
+2. Terminal A: `cd apps/backend && npm run start:dev` (Nest em `http://127.0.0.1:4000/api`).
+3. Terminal B: na raiz `npm run dev` (Next em `http://localhost:3001`).
+
+Sem o Nest, as páginas de gestão mostram **avisos explícitos** (em vez de listas vazias). O Next encaminha pedidos `GET/POST/...` de `/api/*` não tratados localmente para o Nest (`apps/frontend/src/app/api/[...path]/route.ts`), por omissão para `http://127.0.0.1:4000/api`. Em Docker ou na cloud, defina **`BACKEND_API_BASE_URL`** (URL interna do serviço Nest) ou **`NEXT_PUBLIC_BACKEND_URL`** (URL pública da API).
+
+Validação de tipos na raiz: `npm run typecheck` (requer dependências instaladas em `apps/frontend` e `apps/backend`, por exemplo `npm install` na raiz e `npm ci` em `apps/frontend` se o `tsc` reclamar de tipos React).
+
+**Importar quadro «Sistemas terceirizados atuais» (contratos de software):** após `prisma migrate deploy` e com `DATABASE_URL` apontando para a base desejada:
+
+```bash
+cd apps/backend && npm run prisma:seed:outsourced
+```
+
+Cria fornecedores, um fiscal técnico de importação e nove contratos (`ST-2026-001` … `ST-2026-009`) com valores, vigência e **órgão gestor** (`managingUnit`). Reexecutar não duplica (ignora números já existentes). Opcional: `SEED_CONTRACTING_PARTY`, `SEED_CONTRACTING_CNPJ` (14 dígitos).
+
 ### Docker (só a app Next)
 
 O contentor **não** inclui PostgreSQL: a base fica num **serviço separado** (ex.: **Railway Postgres**), com `DATABASE_URL` persistente e cópias de segurança geridas pela plataforma.
@@ -44,6 +64,8 @@ docker compose up
 
 O `docker-compose.yml` usa `env_file: .env` na raiz (não inclui Postgres). O serviço `app` corre `prisma migrate deploy` no arranque e inicia o Next (porta `3000` por defeito). Ver `Dockerfile`.
 
+**Gestão contratual na mesma imagem:** o contentor **não** inclui o processo Nest. Para contratos/medições/etc. em produção, use um **segundo serviço** (ou host) com o Nest e configure **`BACKEND_API_BASE_URL`** no serviço Next para o URL interno da API (ex.: `http://api-interno:4000/api`).
+
 Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`npm start`** (sobe o Next) e, se quiser o cron GLPI noutro processo, crie um **segundo** serviço com **`npm run start:worker`**. O build deve incluir **`npm run build`** na raiz (ou defina o comando de build assim no painel).
 
 ### Checklist rápida — produção hoje (Railway)
@@ -54,6 +76,7 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 4. **Start:** `npm start` — corre `prisma migrate deploy` e inicia o Next.
 5. **Opcional:** segundo serviço com `npm run start:worker` e as mesmas variáveis (só sync GLPI).
 6. **Teste:** `GET /health` no domínio publicado.
+7. **Gestão contratual:** se precisar de contratos/medições na mesma instalação, suba o **Nest** noutro serviço e defina **`BACKEND_API_BASE_URL`** (e o mesmo `DATABASE_URL` / `JWT_SECRET` alinhados com o login Next).
 
 ## Scripts úteis (`npm run`)
 
@@ -68,6 +91,7 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 | `prisma:generate` | Gera o cliente Prisma a partir de `apps/backend/prisma/schema.prisma` |
 | `prisma:migrate` | Cria/aplica migrações em desenvolvimento (Prisma Migrate) |
 | `prisma:deploy` | Aplica migrações pendentes em CI/produção |
+| `cd apps/backend && npm run prisma:seed:outsourced` | Importa contratos de software do quadro de sistemas terceirizados (idempotente) |
 
 ## Endpoints HTTP (resumo)
 
@@ -184,6 +208,8 @@ Com os serviços no ar, execute:
 ```bash
 npm run smoke:regression
 ```
+
+Por omissão, `SMOKE_APP_URL` é `http://localhost:3001` (porta do `npm run dev`). O script também testa **`GET` da listagem de contratos via o mesmo host** (`/api/contracts` no Next), confirmando o **proxy** para o Nest. Para desativar só este passo (ex.: imagem Docker sem Nest): `SMOKE_SKIP_NEXT_PROXY=1`.
 
 No GitHub Actions existe o workflow **Smoke (manual)** (`.github/workflows/smoke-manual.yml`): em **Actions**, escolha o workflow, **Run workflow** e preencha a URL da app e da API (`/api`). As variáveis `SMOKE_APP_URL` e `SMOKE_BACKEND_URL` são injetadas automaticamente. Para as chamadas à API Nest (JWT), configure no repositório os secrets **`SMOKE_EMAIL`** e **`SMOKE_PASSWORD`** (utilizador existente) ou **`SMOKE_API_BEARER`** (token já emitido).
 

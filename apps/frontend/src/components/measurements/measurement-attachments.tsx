@@ -52,7 +52,7 @@ export function MeasurementAttachments(props: { measurementId: string; attachmen
             <li key={a.id} className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
               <a
                 href={attachmentDownloadUrl(a.id)}
-                className="text-blue-700 underline hover:text-blue-900"
+                className="text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-2 transition hover:decoration-slate-900"
                 target="_blank"
                 rel="noreferrer"
               >

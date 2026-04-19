@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { Goal } from "@/lib/api";
+import type { Goal, UserRecord } from "@/lib/api";
 import { GoalCreateForm } from "@/components/actions/goal-create-form";
 import { Modal } from "@/components/ui/modal";
 
@@ -14,19 +14,22 @@ const statusLabel: Record<string, string> = {
   COMPLETED: "Concluída"
 };
 
-const btnPrimary =
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2";
+import { buttonPrimaryClass } from "@/components/ui/form-primitives";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 
 type Props = {
   goals: Goal[];
+  users?: UserRecord[];
+  dataLoadErrors?: string[];
 };
 
-export function GoalsView({ goals }: Props): JSX.Element {
+export function GoalsView({ goals, users = [], dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div className="space-y-6">
+      {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Metas estratégicas</h1>
@@ -35,7 +38,7 @@ export function GoalsView({ goals }: Props): JSX.Element {
             detalhe e as ações ficam na página da meta.
           </p>
         </div>
-        <button type="button" onClick={() => setModalOpen(true)} className={btnPrimary}>
+        <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
           <span className="text-lg leading-none" aria-hidden>
             +
           </span>
@@ -103,6 +106,7 @@ export function GoalsView({ goals }: Props): JSX.Element {
         description="Cadastro inicial. Na página da meta pode adicionar ações, vínculos e progresso manual."
       >
         <GoalCreateForm
+          users={users}
           onSuccess={() => {
             setModalOpen(false);
             router.refresh();

@@ -1,6 +1,9 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { GoalActions } from "@/components/actions/goal-actions";
 import { getGoal } from "@/lib/api";
+import { safeLoadNullable } from "@/lib/api-load";
 
 const statusLabel: Record<string, string> = {
   PLANNED: "Planejada",
@@ -13,7 +16,22 @@ type PageProps = {
 };
 
 export default async function GoalDetailPage({ params }: PageProps): Promise<JSX.Element> {
-  const goal = await getGoal(params.id).catch(() => null);
+  const { data: goal, error } = await safeLoadNullable(() => getGoal(params.id));
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <DataLoadAlert messages={[error]} title="Não foi possível carregar a meta" />
+        <p className="text-sm">
+          <Link
+            href="/goals"
+            className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
+          >
+            Voltar à lista de metas
+          </Link>
+        </p>
+      </div>
+    );
+  }
   if (!goal) {
     return (
       <Card>

@@ -1,6 +1,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { formatBrl, formatPercent } from "@/lib/format-brl";
 
 type GovernanceBlock = {
@@ -79,9 +80,15 @@ function parseAlerts(raw: Record<string, unknown>): {
   };
 }
 
-export function DashboardHome(props: { summary: Record<string, unknown>; alerts: Record<string, unknown> }): JSX.Element {
+export function DashboardHome(props: {
+  summary: Record<string, unknown>;
+  alerts: Record<string, unknown>;
+  /** Falhas ao obter resumo ou alertas (ex.: API indisponível). */
+  loadErrors?: string[];
+}): JSX.Element {
   const s = parseSummary(props.summary);
   const a = parseAlerts(props.alerts);
+  const loadErrors = props.loadErrors ?? [];
 
   const kpis = [
     { label: "Total contratado", value: formatBrl(s.totalContratado) },
@@ -100,6 +107,7 @@ export function DashboardHome(props: { summary: Record<string, unknown>; alerts:
 
   return (
     <div className="space-y-8">
+      {loadErrors.length > 0 ? <DataLoadAlert messages={loadErrors} title="Indicadores incompletos" /> : null}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
         {kpis.map((kpi) => (
           <Card key={kpi.label} className="p-4">

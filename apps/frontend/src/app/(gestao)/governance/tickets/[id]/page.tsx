@@ -1,6 +1,9 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { GovernanceDetailActions } from "@/components/actions/governance-actions";
 import { getGovernanceTicket } from "@/lib/api";
+import { safeLoadNullable } from "@/lib/api-load";
 
 const statusLabel: Record<string, string> = {
   OPEN: "Aberto",
@@ -17,7 +20,22 @@ type PageProps = {
 };
 
 export default async function GovernanceTicketDetailPage({ params }: PageProps): Promise<JSX.Element> {
-  const ticket = await getGovernanceTicket(params.id).catch(() => null);
+  const { data: ticket, error } = await safeLoadNullable(() => getGovernanceTicket(params.id));
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <DataLoadAlert messages={[error]} title="Não foi possível carregar o chamado de governança" />
+        <p className="text-sm">
+          <Link
+            href="/governance/tickets"
+            className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
+          >
+            Voltar à lista de governança
+          </Link>
+        </p>
+      </div>
+    );
+  }
   if (!ticket) {
     return (
       <Card>

@@ -6,9 +6,8 @@ import type { UserRecord } from "@/lib/api";
 import { updateUser } from "@/lib/api";
 import { UserForm } from "@/components/actions/user-form";
 import { Modal } from "@/components/ui/modal";
-
-const btnPrimary =
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2";
+import { FormField, PrimaryButton, SecondaryButton, buttonPrimaryClass, formControlClass } from "@/components/ui/form-primitives";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 
 const roleLabel: Record<string, string> = {
   ADMIN: "Administrador",
@@ -18,9 +17,10 @@ const roleLabel: Record<string, string> = {
 
 type Props = {
   users: UserRecord[];
+  dataLoadErrors?: string[];
 };
 
-export function UsersView({ users: initialUsers }: Props): JSX.Element {
+export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<UserRecord | null>(null);
@@ -54,6 +54,7 @@ export function UsersView({ users: initialUsers }: Props): JSX.Element {
 
   return (
     <div className="space-y-6">
+      {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Utilizadores</h1>
@@ -61,7 +62,7 @@ export function UsersView({ users: initialUsers }: Props): JSX.Element {
             Gestão de contas e papéis. Apenas administradores podem criar ou alterar utilizadores.
           </p>
         </div>
-        <button type="button" onClick={() => setCreateOpen(true)} className={btnPrimary}>
+        <button type="button" onClick={() => setCreateOpen(true)} className={buttonPrimaryClass}>
           <span className="text-lg leading-none" aria-hidden>
             +
           </span>
@@ -141,11 +142,11 @@ export function UsersView({ users: initialUsers }: Props): JSX.Element {
         description={editUser ? editUser.email : ""}
       >
         {editUser ? (
-          <div className="grid gap-3">
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium text-slate-700">Papel</span>
+          <div className="space-y-4">
+            <FormField label="Papel" htmlFor="edit-user-role">
               <select
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+                id="edit-user-role"
+                className={formControlClass}
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value)}
               >
@@ -153,32 +154,27 @@ export function UsersView({ users: initialUsers }: Props): JSX.Element {
                 <option value="EDITOR">Edição (EDITOR)</option>
                 <option value="ADMIN">Administrador (ADMIN)</option>
               </select>
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium text-slate-700">Nova palavra-passe (opcional)</span>
+            </FormField>
+            <FormField label="Nova palavra-passe (opcional)" htmlFor="edit-user-pass" hint="Mínimo 8 caracteres se preencher.">
               <input
+                id="edit-user-pass"
                 type="password"
                 value={editPassword}
                 onChange={(e) => setEditPassword(e.target.value)}
                 minLength={8}
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+                className={formControlClass}
                 placeholder="Deixe vazio para manter a atual"
                 autoComplete="new-password"
               />
-            </label>
+            </FormField>
             {msg ? <p className="text-sm text-red-600">{msg}</p> : null}
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className="rounded-md border border-slate-200 px-3 py-2 text-sm" onClick={() => setEditUser(null)}>
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              <SecondaryButton type="button" onClick={() => setEditUser(null)}>
                 Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                onClick={() => void saveEdit()}
-              >
-                {busy ? "A guardar…" : "Guardar"}
-              </button>
+              </SecondaryButton>
+              <PrimaryButton type="button" busy={busy} busyLabel="A guardar…" onClick={() => void saveEdit()}>
+                Guardar
+              </PrimaryButton>
             </div>
           </div>
         ) : null}
