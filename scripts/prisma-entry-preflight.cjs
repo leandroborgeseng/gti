@@ -27,9 +27,10 @@ function localMigrationNames() {
 }
 
 async function wipePublic(prisma) {
-  await prisma.$executeRawUnsafe(
-    "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO PUBLIC;"
-  );
+  // Um comando por chamada: o Postgres via prepared statement não aceita várias instruções.
+  await prisma.$executeRawUnsafe("DROP SCHEMA IF EXISTS public CASCADE");
+  await prisma.$executeRawUnsafe("CREATE SCHEMA public");
+  await prisma.$executeRawUnsafe("GRANT ALL ON SCHEMA public TO PUBLIC");
   console.warn("[prisma-preflight] Schema public reiniciado (DROP CASCADE + CREATE).");
 }
 
