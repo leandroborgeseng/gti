@@ -1,4 +1,5 @@
 import { authHeadersForApi, readBrowserAuthToken } from "@/lib/auth-token";
+import { backendFetchAbortSignal } from "@/lib/backend-fetch-timeout";
 import { normalizeBackendApiBaseUrl } from "@/lib/normalize-backend-api-url";
 import type { MondayImportPayload } from "@/lib/monday-xlsx-import";
 
@@ -65,9 +66,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const pathPart = path.startsWith("/") ? path : `/${path}`;
   let response: Response;
   try {
+    const signal = backendFetchAbortSignal(init?.signal ?? null);
     response = await fetch(`${apiBase}${pathPart}`, {
       ...init,
       headers,
+      signal,
       cache: "no-store"
     });
   } catch (e) {

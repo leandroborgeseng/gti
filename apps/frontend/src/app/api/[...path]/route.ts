@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { backendFetchAbortSignal } from "@/lib/backend-fetch-timeout";
 import { normalizeBackendApiBaseUrl } from "@/lib/normalize-backend-api-url";
 
 export const runtime = "nodejs";
@@ -57,7 +58,13 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }): Promise
 
   let res: Response;
   try {
-    res = await fetch(target, { method, headers, body, cache: "no-store" });
+    res = await fetch(target, {
+      method,
+      headers,
+      body,
+      cache: "no-store",
+      signal: backendFetchAbortSignal(null)
+    });
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e));
     const cause = err.cause != null ? (err.cause instanceof Error ? err.cause.message : String(err.cause)) : "";

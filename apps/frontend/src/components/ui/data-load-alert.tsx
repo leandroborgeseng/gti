@@ -34,7 +34,9 @@ export function DataLoadAlert({ messages, title = "Não foi possível carregar d
         Nest (termina em <span className="font-mono text-[11px]">/api</span>) ou{" "}
         <span className="font-mono text-[11px]">NEXT_PUBLIC_BACKEND_URL</span> com um URL que o Next consiga alcançar (Nest público ou
         rede privada). «fetch failed» costuma ser URL errado, Nest parado ou TLS/porta incorretos. Confirme também a sessão (inicie sessão
-        de novo se preciso).
+        de novo se preciso). Se a página ficar a carregar sem fim, o pedido ao Nest pode estar preso: confira o URL e, em último caso,
+        ajuste <span className="font-mono text-[11px]">BACKEND_FETCH_TIMEOUT_MS</span> (p.ex. 15000) para obter erro visível em vez de
+        espera infinita.
       </p>
     </div>
   );
