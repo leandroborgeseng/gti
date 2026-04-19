@@ -18,4 +18,4 @@
 
 - `docker compose up --build` na raiz: **só** a imagem da app Next (ver `Dockerfile` e `docker-compose.yml`). O Postgres fica fora (ex.: Railway); defina `DATABASE_URL` no `.env` ou nas variáveis do ambiente.
 - Ficheiro `.env` na raiz (referenciado por `docker-compose.yml`) com `DATABASE_URL` (Postgres externo, ex.: Railway) e `GLPI_*`.
-- **Railway / P3009 (migração falhada):** sem shell na base, podes correr `migrate resolve` no arranque do serviço: variável `PRISMA_RESOLVE_ROLLED_BACK` ou `PRISMA_RESOLVE_APPLIED` com o nome da migração (ex.: `20260418130000_contract_amendments`), um deploy, depois remove a variável e volta a fazer deploy. Ver comentários em `scripts/docker-entrypoint.sh`.
+- **Railway / P3009 ou BD inconsistente:** ver `scripts/docker-entrypoint.sh`. Para **apagar tudo e reaplicar migrações** num deploy: `PRISMA_FRESH_PUBLIC_SCHEMA_ON_BOOT=1` (uma vez), depois remove. Isto corre `DROP SCHEMA public CASCADE` antes de `migrate deploy`. Migrações atuais: uma baseline (`20260419100000_baseline_full_schema`) alinhada com o `schema.prisma`.
