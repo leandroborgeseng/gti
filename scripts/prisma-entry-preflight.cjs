@@ -2,10 +2,11 @@
  * Corre antes de `prisma migrate deploy` no contentor.
  *
  * - PRISMA_FRESH_PUBLIC_SCHEMA_ON_BOOT: sempre faz DROP/CREATE do schema public.
- * - Caso contrário: se a BD tiver nomes de migração em _prisma_migrations que já não
- *   existem como pastas em prisma/migrations, migrate deploy nunca passa (P3009 ou P3015).
- *   Com PRISMA_AUTO_WIPE_ON_LEGACY_DRIFT=1, apaga o schema public uma vez e segue.
- *   Sem essa variável, termina com exit 1 e mensagem a pedir uma das duas.
+ * - Se _prisma_migrations tiver nomes que já não existem em prisma/migrations (histórico
+ *   órfão), por defeito faz o mesmo reset do schema public — migrate deploy nunca passaria
+ *   sem isso (P3009 / P3015). Para falhar em vez de apagar: PRISMA_NO_AUTO_WIPE_ON_LEGACY_DRIFT=1.
+ * - PRISMA_AUTO_WIPE_ON_LEGACY_DRIFT=1 continua válido (explícito); o efeito é o mesmo do
+ *   comportamento por defeito quando há órfãos.
  */
 
 const { PrismaClient } = require("@prisma/client");
@@ -59,26 +60,24 @@ async function main() {
     (r) => r.finished_at == null && locals.has(r.migration_name)
   );
 
-  const autoWipe = process.env.PRISMA_AUTO_WIPE_ON_LEGACY_DRIFT === "1";
+  const noAutoWipe = process.env.PRISMA_NO_AUTO_WIPE_ON_LEGACY_DRIFT === "1";
 
   if (orphanInDb.length > 0) {
     const names = orphanInDb.map((r) => r.migration_name).join(", ");
-    if (autoWipe) {
-      console.warn(
-        `[prisma-preflight] Migrações na BD sem ficheiro local (${names}). PRISMA_AUTO_WIPE_ON_LEGACY_DRIFT=1 → reinício do schema public.`
+    if (noAutoWipe) {
+      console.error(
+        `[prisma-preflight] Migrações órfãs na BD (${names}). migrate deploy não pode continuar.\n` +
+          "Remove PRISMA_NO_AUTO_WIPE_ON_LEGACY_DRIFT ou define PRISMA_FRESH_PUBLIC_SCHEMA_ON_BOOT=1."
       );
-      await wipePublic(prisma);
       await prisma.$disconnect();
-      return;
+      process.exit(1);
     }
-    console.error(
-      `[prisma-preflight] A base referencia migrações que já não estão no repositório: ${names}.\n` +
-        "Corrige de uma destas formas (Railway → Variables, um deploy, depois remove a variável):\n" +
-        "  • PRISMA_FRESH_PUBLIC_SCHEMA_ON_BOOT=1  (reinício total)\n" +
-        "  • PRISMA_AUTO_WIPE_ON_LEGACY_DRIFT=1   (só apaga se houver nomes órfãos, como acima)"
+    console.warn(
+      `[prisma-preflight] Migrações na BD sem ficheiro local (${names}) → reinício automático do schema public.`
     );
+    await wipePublic(prisma);
     await prisma.$disconnect();
-    process.exit(1);
+    return;
   }
 
   if (failedInRepo.length > 0) {
