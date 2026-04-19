@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { createFiscal } from "@/lib/api";
+import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
 
 type Props = {
   onSuccess?: () => void;
@@ -32,18 +33,22 @@ export function FiscalForm({ onSuccess }: Props): JSX.Element {
   }
 
   return (
-    <form className="grid gap-2 md:grid-cols-3" onSubmit={(event) => void onSubmit(event)}>
-      <input required name="name" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Nome" />
-      <input required type="email" name="email" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="E-mail" />
-      <input required name="phone" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="Telefone" />
-      <div className="md:col-span-3 flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy ? "A guardar…" : "Cadastrar fiscal"}
-        </button>
+    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
+      <FormSection title="Dados do fiscal" description="Nome, e-mail e telefone de contacto.">
+        <FormField label="Nome" htmlFor="fiscal-name" required>
+          <input id="fiscal-name" required name="name" className={formControlClass} placeholder="Nome completo" />
+        </FormField>
+        <FormField label="E-mail" htmlFor="fiscal-email" required>
+          <input id="fiscal-email" required type="email" name="email" className={formControlClass} placeholder="email@org.br" />
+        </FormField>
+        <FormField label="Telefone" htmlFor="fiscal-phone" required className="sm:col-span-2">
+          <input id="fiscal-phone" required name="phone" className={formControlClass} placeholder="Telefone" />
+        </FormField>
+      </FormSection>
+      <div className="flex flex-wrap items-center gap-3">
+        <PrimaryButton type="submit" busy={busy} busyLabel="A guardar…">
+          Cadastrar fiscal
+        </PrimaryButton>
         {status ? <span className="text-sm text-slate-600">{status}</span> : null}
       </div>
     </form>

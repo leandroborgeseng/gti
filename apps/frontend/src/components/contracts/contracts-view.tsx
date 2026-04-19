@@ -84,6 +84,7 @@ export function ContractsView({ contracts }: Props): JSX.Element {
                       {statusLabel[c.status] ?? c.status}
                     </span>
                   </td>
+                  <td className="px-5 py-3 text-center tabular-nums text-slate-600">{c._count?.amendments ?? 0}</td>
                   <td className="px-5 py-3 text-right">
                     <Link
                       href={`/contracts/${c.id}` as Route}

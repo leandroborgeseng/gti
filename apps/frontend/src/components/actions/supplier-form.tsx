@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { createSupplier } from "@/lib/api";
+import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
 
 type Props = {
   onSuccess?: () => void;
@@ -18,7 +19,7 @@ export function SupplierForm({ onSuccess }: Props): JSX.Element {
       setBusy(true);
       await createSupplier({
         name: String(data.get("name") ?? ""),
-        cnpj: String(data.get("cnpj") ?? "")
+        cnpj: String(data.get("cnpj") ?? "").replace(/\D/g, "")
       });
       setStatus("Fornecedor cadastrado com sucesso.");
       event.currentTarget.reset();
@@ -31,17 +32,19 @@ export function SupplierForm({ onSuccess }: Props): JSX.Element {
   }
 
   return (
-    <form className="grid gap-2 md:grid-cols-3" onSubmit={(event) => void onSubmit(event)}>
-      <input required name="name" className="rounded-lg border border-border px-3 py-2 text-sm md:col-span-2" placeholder="Nome do fornecedor" />
-      <input required name="cnpj" className="rounded-lg border border-border px-3 py-2 text-sm" placeholder="CNPJ" />
-      <div className="md:col-span-3 flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy ? "A guardar…" : "Cadastrar fornecedor"}
-        </button>
+    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
+      <FormSection title="Dados do fornecedor" description="Razão social e CNPJ (apenas dígitos ao enviar).">
+        <FormField label="Razão social" htmlFor="sup-name" required className="sm:col-span-2">
+          <input id="sup-name" required name="name" className={formControlClass} placeholder="Nome do fornecedor" />
+        </FormField>
+        <FormField label="CNPJ" htmlFor="sup-cnpj" required>
+          <input id="sup-cnpj" required name="cnpj" className={formControlClass} placeholder="Somente números ou com máscara" inputMode="numeric" />
+        </FormField>
+      </FormSection>
+      <div className="flex flex-wrap items-center gap-3">
+        <PrimaryButton type="submit" busy={busy} busyLabel="A guardar…">
+          Cadastrar fornecedor
+        </PrimaryButton>
         {status ? <span className="text-sm text-slate-600">{status}</span> : null}
       </div>
     </form>
