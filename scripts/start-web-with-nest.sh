@@ -34,19 +34,11 @@ trap cleanup INT TERM EXIT
 (cd apps/backend && NODE_ENV=production PORT="$NEST_PORT" exec node dist/main.js) &
 NEST_PID=$!
 
-i=0
-while ! node -e "
-require('net').createConnection(Number(process.env.NEST_PORT || 4000), '127.0.0.1')
-  .on('connect', () => process.exit(0))
-  .on('error', () => process.exit(1));
-" 2>/dev/null; do
-  i=$((i + 1))
-  if [ "$i" -gt 45 ]; then
-    echo "[start-web] Timeout: Nest não abriu a porta ${NEST_PORT} (pid ${NEST_PID})."
-    exit 1
-  fi
-  sleep 1
-done
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if ! node "$ROOT/scripts/wait-nest-ready.cjs"; then
+  echo "[start-web] Falha à espera do Nest (pid ${NEST_PID}). Ver Deploy Logs."
+  exit 1
+fi
 
 echo "[start-web] Nest pronto (pid ${NEST_PID}); a iniciar Next…"
 cd apps/frontend

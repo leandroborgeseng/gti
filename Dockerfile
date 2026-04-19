@@ -57,7 +57,7 @@ COPY --from=builder /app/apps/frontend/.next ./apps/frontend/.next
 COPY --from=builder /app/apps/frontend/public ./apps/frontend/public
 COPY --from=builder /app/apps/frontend/node_modules ./apps/frontend/node_modules
 
-COPY scripts/docker-entrypoint.sh scripts/prisma-entry-preflight.cjs scripts/start-web-with-nest.sh ./scripts/
+COPY scripts/docker-entrypoint.sh scripts/prisma-entry-preflight.cjs scripts/start-web-with-nest.sh scripts/wait-nest-ready.cjs ./scripts/
 RUN chmod +x ./scripts/docker-entrypoint.sh ./scripts/start-web-with-nest.sh
 
 EXPOSE 3000

@@ -64,7 +64,7 @@ docker compose up
 
 O `docker-compose.yml` usa `env_file: .env` na raiz (não inclui Postgres). O serviço `app` corre `prisma migrate deploy` no arranque e inicia o Next (porta `3000` por defeito). Ver `Dockerfile`.
 
-**Gestão contratual na mesma imagem / um só serviço Railway:** o comando `npm start` (e o `docker-entrypoint.sh`) arranca o **Nest na porta 4000** e o **Next na `PORT`**, definindo `BACKEND_API_BASE_URL=http://127.0.0.1:4000/api` para o proxy. Não defina `BACKEND_API_BASE_URL` nesse cenário. Para desligar o Nest embutido e usar um serviço Nest à parte, defina **`GTI_SKIP_NEST=1`** e **`BACKEND_API_BASE_URL`** com o URL desse Nest (termina em `/api`).
+**Gestão contratual na mesma imagem / um só serviço Railway:** o comando `npm start` (e o `docker-entrypoint.sh`) arranca o **Nest na porta 4000** e o **Next na `PORT`**, definindo `BACKEND_API_BASE_URL=http://127.0.0.1:4000/api` para o proxy. Não defina `BACKEND_API_BASE_URL` nesse cenário. O arranque espera até **90 s** por TCP+HTTP no Nest (`NEST_WAIT_MAX_MS` para alterar). Para desligar o Nest embutido e usar um serviço Nest à parte, defina **`GTI_SKIP_NEST=1`** e **`BACKEND_API_BASE_URL`** com o URL desse Nest (termina em `/api`).
 
 Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`npm start`** (sobe o Next) e, se quiser o cron GLPI noutro processo, crie um **segundo** serviço com **`npm run start:worker`**. O build deve incluir **`npm run build`** na raiz (ou defina o comando de build assim no painel).
 

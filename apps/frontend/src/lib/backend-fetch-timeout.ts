@@ -1,4 +1,5 @@
-const DEFAULT_MS = 25_000;
+/** 60s: primeiro pedido ao Nest + Prisma em Postgres na Railway costuma ser mais lento que 25s. */
+const DEFAULT_MS = 60_000;
 const MAX_MS = 120_000;
 
 /**

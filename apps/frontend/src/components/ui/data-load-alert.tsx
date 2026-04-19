@@ -29,14 +29,16 @@ export function DataLoadAlert({ messages, title = "Não foi possível carregar d
         </ul>
       )}
       <p className="mt-3 text-xs leading-relaxed text-amber-900/80">
-        Na <strong className="font-medium text-amber-950">Railway</strong>, no serviço <strong className="font-medium">Next</strong>, use{" "}
-        <span className="font-mono text-[11px]">BACKEND_API_BASE_URL</span> com o URL <strong className="font-medium">interno</strong> do
-        Nest (termina em <span className="font-mono text-[11px]">/api</span>) ou{" "}
-        <span className="font-mono text-[11px]">NEXT_PUBLIC_BACKEND_URL</span> com um URL que o Next consiga alcançar (Nest público ou
-        rede privada). «fetch failed» costuma ser URL errado, Nest parado ou TLS/porta incorretos. Confirme também a sessão (inicie sessão
-        de novo se preciso). Se a página ficar a carregar sem fim, o pedido ao Nest pode estar preso: confira o URL e, em último caso,
-        ajuste <span className="font-mono text-[11px]">BACKEND_FETCH_TIMEOUT_MS</span> (p.ex. 15000) para obter erro visível em vez de
-        espera infinita.
+        <strong className="font-medium text-amber-950">Um só serviço</strong> (<span className="font-mono text-[11px]">npm start</span> na
+        raiz): o Nest corre na mesma máquina — <strong className="font-medium text-amber-950">apague</strong>{" "}
+        <span className="font-mono text-[11px]">BACKEND_API_BASE_URL</span> e{" "}
+        <span className="font-mono text-[11px]">NEXT_PUBLIC_BACKEND_URL</span> se apontarem para um host errado ou{" "}
+        <span className="font-mono text-[11px]">localhost</span>, depois redeploy.{" "}
+        <strong className="font-medium text-amber-950">Nest noutro serviço</strong>: defina{" "}
+        <span className="font-mono text-[11px]">BACKEND_API_BASE_URL</span> (URL interno ou público, termina em{" "}
+        <span className="font-mono text-[11px]">/api</span>) e <span className="font-mono text-[11px]">GTI_SKIP_NEST=1</span>. «Timeout»
+        ou «aborted» com URL externo errado é comum. Confirme sessão (saia e entre de novo). Opcional:{" "}
+        <span className="font-mono text-[11px]">BACKEND_FETCH_TIMEOUT_MS</span> (ms) para pedidos lentos ao arranque.
       </p>
     </div>
   );
