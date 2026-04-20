@@ -368,15 +368,19 @@ model GoalLink {
 }
 
 model Attachment {
-  id            String   @id @default(uuid())
-  fileName      String
-  mimeType      String
-  filePath      String
-  measurementId String?
-  glosaId       String?
-  createdAt     DateTime @default(now())
-  measurement   Measurement? @relation(fields: [measurementId], references: [id], onDelete: Restrict)
-  glosa         Glosa?       @relation(fields: [glosaId], references: [id], onDelete: Restrict)
+  id              String       @id @default(uuid())
+  fileName        String
+  mimeType        String
+  filePath        String
+  measurementId   String?
+  glosaId         String?
+  projectTaskId   String?
+  createdAt       DateTime     @default(now())
+  measurement     Measurement? @relation(fields: [measurementId], references: [id], onDelete: Restrict)
+  glosa           Glosa?       @relation(fields: [glosaId], references: [id], onDelete: Restrict)
+  projectTask     ProjectTask? @relation(fields: [projectTaskId], references: [id], onDelete: Cascade)
+
+  @@index([projectTaskId])
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +424,7 @@ model ProjectTask {
   group               ProjectGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
   parent              ProjectTask?  @relation("ProjectTaskHierarchy", fields: [parentTaskId], references: [id], onDelete: Cascade)
   children            ProjectTask[] @relation("ProjectTaskHierarchy")
+  attachments         Attachment[]
 
   @@index([projectId, groupId])
   @@index([parentTaskId])

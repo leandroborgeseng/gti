@@ -1,11 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
-import { ImportProjectDto, ImportProjectGroupDto, ImportProjectTaskNodeDto } from "./projects.dto";
+import { StorageService } from "../../storage/storage.service";
+import { ImportProjectDto, ImportProjectGroupDto, ImportProjectTaskNodeDto, UpdateProjectTaskDto } from "./projects.dto";
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService
+  ) {}
 
   async delete(id: string): Promise<{ ok: true; id: string }> {
     const exists = await this.prisma.project.findUnique({ where: { id }, select: { id: true } });
@@ -98,7 +102,13 @@ export class ProjectsService {
 
     const tasks = await this.prisma.projectTask.findMany({
       where: { projectId: id },
-      orderBy: [{ groupId: "asc" }, { sortOrder: "asc" }]
+      orderBy: [{ groupId: "asc" }, { sortOrder: "asc" }],
+      include: {
+        attachments: {
+          orderBy: { createdAt: "asc" },
+          select: { id: true, fileName: true, mimeType: true, createdAt: true }
+        }
+      }
     });
 
     type Node = (typeof tasks)[number] & { children: Node[] };
@@ -124,6 +134,130 @@ export class ProjectsService {
     }));
 
     return { ...project, groups: groupsWithTasks };
+  }
+
+  async updateTask(projectId: string, taskId: string, dto: UpdateProjectTaskDto): Promise<unknown> {
+    const hasPatch =
+      dto.title !== undefined ||
+      dto.status !== undefined ||
+      dto.assigneeExternal !== undefined ||
+      dto.description !== undefined ||
+      dto.internalResponsible !== undefined ||
+      dto.dueDate !== undefined ||
+      dto.effort !== undefined;
+    if (!hasPatch) {
+      throw new BadRequestException("Indique pelo menos um campo a atualizar.");
+    }
+
+    const exists = await this.prisma.projectTask.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true }
+    });
+    if (!exists) {
+      throw new NotFoundException("Tarefa não encontrada neste projeto.");
+    }
+
+    const data: Prisma.ProjectTaskUpdateInput = {};
+
+    if (dto.title !== undefined) {
+      const title = dto.title.trim();
+      if (!title) throw new BadRequestException("O título não pode ficar vazio.");
+      data.title = title;
+    }
+    if (dto.status !== undefined) {
+      data.status = dto.status.trim();
+    }
+    if (dto.assigneeExternal !== undefined) {
+      const v = dto.assigneeExternal.trim();
+      data.assigneeExternal = v === "" ? null : v;
+    }
+    if (dto.description !== undefined) {
+      const v = dto.description.trim();
+      data.description = v === "" ? null : v;
+    }
+    if (dto.internalResponsible !== undefined) {
+      const v = dto.internalResponsible.trim();
+      data.internalResponsible = v === "" ? null : v;
+    }
+    if (dto.dueDate !== undefined) {
+      const raw = dto.dueDate.trim();
+      if (raw === "") {
+        data.dueDate = null;
+      } else {
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) {
+          throw new BadRequestException("Data inválida.");
+        }
+        data.dueDate = d;
+      }
+    }
+    if (dto.effort !== undefined) {
+      if (!Number.isFinite(dto.effort)) {
+        throw new BadRequestException("Esforço (número) inválido.");
+      }
+      data.effort = new Prisma.Decimal(dto.effort);
+    }
+
+    const updated = await this.prisma.projectTask.update({
+      where: { id: taskId },
+      data,
+      include: {
+        attachments: {
+          orderBy: { createdAt: "asc" },
+          select: { id: true, fileName: true, mimeType: true, createdAt: true }
+        }
+      }
+    });
+
+    return {
+      id: updated.id,
+      projectId: updated.projectId,
+      groupId: updated.groupId,
+      parentTaskId: updated.parentTaskId,
+      title: updated.title,
+      status: updated.status,
+      assigneeExternal: updated.assigneeExternal,
+      dueDate: updated.dueDate ? updated.dueDate.toISOString() : null,
+      description: updated.description,
+      effort: updated.effort != null ? String(updated.effort) : null,
+      internalResponsible: updated.internalResponsible,
+      sortOrder: updated.sortOrder,
+      attachments: updated.attachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        createdAt: a.createdAt.toISOString()
+      }))
+    };
+  }
+
+  async addTaskAttachment(projectId: string, taskId: string, file: Express.Multer.File): Promise<unknown> {
+    const task = await this.prisma.projectTask.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true }
+    });
+    if (!task) {
+      throw new NotFoundException("Tarefa não encontrada neste projeto.");
+    }
+    if (!file.buffer?.length) {
+      throw new BadRequestException("Ficheiro vazio.");
+    }
+    const { filePath } = await this.storage.saveProjectTaskFile(taskId, file.buffer, file.originalname, file.mimetype);
+    const attachment = await this.prisma.attachment.create({
+      data: {
+        projectTaskId: taskId,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        filePath
+      },
+      select: { id: true, fileName: true, mimeType: true, createdAt: true }
+    });
+    return {
+      id: attachment.id,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+      createdAt: attachment.createdAt.toISOString()
+    };
   }
 
   async importFromMonday(raw: unknown): Promise<unknown> {

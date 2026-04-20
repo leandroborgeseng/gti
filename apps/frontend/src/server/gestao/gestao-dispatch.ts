@@ -322,6 +322,24 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       }
       return jsonOk(await gestaoProjects.importFromMonday(body));
     }
+    if (seg.length === 4 && seg[2] === "tasks" && method === "PATCH") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou em falta. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoProjects.updateTask(seg[1], seg[3], body as never));
+    }
+    if (seg.length === 5 && seg[2] === "tasks" && seg[4] === "attachments" && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      const form = await req.formData();
+      const file = form.get("file");
+      if (!(file instanceof File)) return jsonErr(400, "Ficheiro em falta");
+      if (file.size > uploadMaxBytes()) return jsonErr(400, "Ficheiro demasiado grande");
+      return jsonOk(await gestaoProjects.addTaskAttachment(seg[1], seg[3], await multerLikeFromFile(file)));
+    }
     if (seg.length === 2 && method === "DELETE") {
       assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
       assertMutation(user, method);

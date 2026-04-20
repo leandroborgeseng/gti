@@ -1,6 +1,39 @@
 import { Type } from "class-transformer";
 import { ArrayMinSize, IsArray, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from "class-validator";
 
+/** Atualização parcial de uma tarefa de projeto (quadro Monday). */
+export class UpdateProjectTaskDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  assigneeExternal?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  internalResponsible?: string;
+
+  /** ISO 8601 ou string vazia para limpar a data. */
+  @IsOptional()
+  @IsString()
+  dueDate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  effort?: number;
+}
+
 /** Nó de tarefa (raiz ou subtarefa), recursivo. */
 export class ImportProjectTaskNodeDto {
   @IsString()

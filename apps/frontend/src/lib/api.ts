@@ -706,6 +706,13 @@ export type ProjectListItem = {
   _count?: { groups: number; tasks: number };
 };
 
+export type ProjectTaskFile = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  createdAt: string;
+};
+
 export type ProjectTaskTree = {
   id: string;
   projectId: string;
@@ -719,7 +726,24 @@ export type ProjectTaskTree = {
   effort: string | null;
   internalResponsible: string | null;
   sortOrder: number;
+  /** Anexos da tarefa (quando o backend devolve na árvore). */
+  attachments?: ProjectTaskFile[];
   children: ProjectTaskTree[];
+};
+
+export type ProjectTaskPatchPayload = {
+  title?: string;
+  status?: string;
+  assigneeExternal?: string;
+  description?: string;
+  internalResponsible?: string;
+  /** ISO 8601 ou string vazia para limpar. */
+  dueDate?: string;
+  effort?: number;
+};
+
+export type ProjectTaskPatchResponse = Omit<ProjectTaskTree, "children" | "attachments"> & {
+  attachments: ProjectTaskFile[];
 };
 
 export type ProjectGroupWithTasks = {
@@ -752,4 +776,33 @@ export async function importProjectMonday(payload: MondayImportPayload): Promise
 
 export async function deleteProject(id: string): Promise<{ ok: true; id: string }> {
   return request(`/projects/${id}`, { method: "DELETE" });
+}
+
+export async function patchProjectTask(
+  projectId: string,
+  taskId: string,
+  payload: ProjectTaskPatchPayload
+): Promise<ProjectTaskPatchResponse> {
+  return request(`/projects/${projectId}/tasks/${taskId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function uploadProjectTaskAttachment(projectId: string, taskId: string, file: File): Promise<ProjectTaskFile> {
+  const form = new FormData();
+  form.append("file", file);
+  const t = readBrowserAuthToken();
+  const headers: HeadersInit = t ? { Authorization: `Bearer ${t}` } : {};
+  const apiBase = await resolveRequestApiBase();
+  const response = await fetch(`${apiBase}/projects/${projectId}/tasks/${taskId}/attachments`, {
+    method: "POST",
+    headers,
+    body: form,
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(await parseUploadError(response));
+  }
+  return (await response.json()) as ProjectTaskFile;
 }

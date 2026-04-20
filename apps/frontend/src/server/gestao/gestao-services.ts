@@ -27,7 +27,7 @@ export const gestaoSuppliers = new SuppliersService(prismaSvc);
 export const gestaoFiscais = new FiscaisService(prismaSvc);
 export const gestaoUsers = new UsersService(prismaSvc);
 export const gestaoExports = new ExportsService(prismaSvc);
-export const gestaoProjects = new ProjectsService(prismaSvc);
+export const gestaoProjects = new ProjectsService(prismaSvc, storage);
 
 let goalsBootstrapped = false;
 

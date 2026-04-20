@@ -84,6 +84,23 @@ export class StorageService {
     return { filePath: rel, storedFileName };
   }
 
+  async saveProjectTaskFile(
+    projectTaskId: string,
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string
+  ): Promise<{ filePath: string; storedFileName: string }> {
+    this.assertMimeAllowed(mimeType);
+    this.assertSize(buffer.length);
+    const safe = basename(originalName).replace(/[^\w.\-()+ ]/g, "_").slice(0, 120);
+    const storedFileName = `${randomUUID()}_${safe || "anexo"}`;
+    const rel = join("project-tasks", projectTaskId, storedFileName).replace(/\\/g, "/");
+    const abs = join(this.root, rel);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, buffer);
+    return { filePath: rel, storedFileName };
+  }
+
   /** Caminho absoluto seguro para leitura (evita path traversal). */
   resolveAbsoluteSafe(relativePath: string): string {
     const normalized = normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, "");
