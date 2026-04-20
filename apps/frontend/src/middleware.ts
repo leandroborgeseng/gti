@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { GTI_TOKEN_COOKIE } from "@/lib/auth-cookie-name";
+import { publicAbsoluteUrl } from "@/lib/public-site-url";
 
 const gestaoPrefixes = [
   "/dashboard",
@@ -25,9 +26,7 @@ export function middleware(request: NextRequest): NextResponse {
   const pathname = request.nextUrl.pathname;
 
   if (pathname.startsWith("/operacao/glpi")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/chamados";
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(publicAbsoluteUrl(request, "/chamados"));
   }
 
   if (
@@ -41,8 +40,7 @@ export function middleware(request: NextRequest): NextResponse {
   }
 
   if (needsAuth(pathname) && !request.cookies.get(GTI_TOKEN_COOKIE)?.value) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    const url = publicAbsoluteUrl(request, "/login");
     url.searchParams.set("returnUrl", pathname);
     return NextResponse.redirect(url);
   }

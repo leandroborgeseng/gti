@@ -31,7 +31,7 @@ ENV GLPI_SKIP_BOOTSTRAP=1
 ARG NEXT_PUBLIC_GTI_BUILD=
 ENV NEXT_PUBLIC_GTI_BUILD=${NEXT_PUBLIC_GTI_BUILD}
 # Bust do cache do stage `builder` na Railway quando o resto do Dockerfile não muda (evita `RUN` antigo com prisma em separado).
-ARG GTI_DOCKER_BUILDER_TAG=2026-04-20-bcrypt-types-shim
+ARG GTI_DOCKER_BUILDER_TAG=2026-04-20-logout-redirect-host
 ENV GTI_DOCKER_BUILDER_TAG=${GTI_DOCKER_BUILDER_TAG}
 # O cliente Prisma é gerado na raiz (`schema` → `output`); o `npm run build` do frontend corre `prisma:generate` na raiz antes do `next build`.
 RUN echo "GTI builder tag=${GTI_DOCKER_BUILDER_TAG}" && cd apps/frontend && npm run build \
@@ -43,7 +43,7 @@ ENV NODE_ENV=production
 # O stage `builder` usa GLPI_SKIP_BOOTSTRAP=1 só para `next build`. No runtime o arranque GLPI deve estar ativo.
 ENV GLPI_SKIP_BOOTSTRAP=
 ENV PORT=3000
-ENV HOSTNAME=0.0.0.0
+# Não definir HOSTNAME=0.0.0.0: o Next usa isso em redirects e o browser acaba em https://0.0.0.0/… . O bind em todas as interfaces fica a cargo de `next start -H 0.0.0.0`.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
