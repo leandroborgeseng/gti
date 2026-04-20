@@ -7,10 +7,12 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 COPY apps/backend/prisma ./apps/backend/prisma
-RUN npm ci
+# A Railway (e outras CI) costuma injectar NODE_ENV=production; com isso `npm ci` omite devDependencies
+# e falta TypeScript, @types/*, Tailwind, etc. para `next build`.
+RUN NODE_ENV=development NPM_CONFIG_PRODUCTION=false npm ci
 COPY apps/frontend/package.json apps/frontend/package-lock.json ./apps/frontend/
 WORKDIR /app/apps/frontend
-RUN npm ci
+RUN NODE_ENV=development NPM_CONFIG_PRODUCTION=false npm ci
 WORKDIR /app
 
 FROM node:20-bookworm-slim AS builder
@@ -22,13 +24,14 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/frontend/node_modules ./apps/frontend/node_modules
 COPY package.json package-lock.json ./
 COPY apps ./apps
+ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV GLPI_SKIP_BOOTSTRAP=1
 # Opcional na build: `docker build --build-arg NEXT_PUBLIC_GTI_BUILD=$(git rev-parse --short HEAD) …` para o modal Chamados mostrar o commit no cabeçalho.
 ARG NEXT_PUBLIC_GTI_BUILD=
 ENV NEXT_PUBLIC_GTI_BUILD=${NEXT_PUBLIC_GTI_BUILD}
 # Bust do cache do stage `builder` na Railway quando o resto do Dockerfile não muda (evita `RUN` antigo com prisma em separado).
-ARG GTI_DOCKER_BUILDER_TAG=2026-04-23-gestao-dispatch-only
+ARG GTI_DOCKER_BUILDER_TAG=2026-04-20-docker-deps-dev
 ENV GTI_DOCKER_BUILDER_TAG=${GTI_DOCKER_BUILDER_TAG}
 # O cliente Prisma é gerado na raiz (`schema` → `output`); o `npm run build` do frontend corre `prisma:generate` na raiz antes do `next build`.
 RUN echo "GTI builder tag=${GTI_DOCKER_BUILDER_TAG}" && cd apps/frontend && npm run build \
