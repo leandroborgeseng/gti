@@ -26,7 +26,8 @@
       "reflect-metadata": ["./node_modules/reflect-metadata"],
       "rxjs": ["./node_modules/rxjs"],
       "rxjs/*": ["./node_modules/rxjs/*"],
-      "@nestjs/common": ["./node_modules/@nestjs/common"]
+      "@nestjs/common": ["./node_modules/@nestjs/common"],
+      "bcrypt": ["./node_modules/bcrypt"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
