@@ -128,9 +128,14 @@ export class ProjectsService {
       }
     }
 
+    const sortTaskTree = (n: Node): Node => ({
+      ...n,
+      children: [...n.children].sort((a, b) => a.sortOrder - b.sortOrder).map(sortTaskTree)
+    });
+
     const groupsWithTasks = project.groups.map((g) => ({
       ...g,
-      tasks: rootsByGroup.get(g.id) ?? []
+      tasks: [...(rootsByGroup.get(g.id) ?? [])].sort((a, b) => a.sortOrder - b.sortOrder).map(sortTaskTree)
     }));
 
     return { ...project, groups: groupsWithTasks };

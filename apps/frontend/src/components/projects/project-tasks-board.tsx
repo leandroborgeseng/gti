@@ -3,15 +3,7 @@
 import { ChevronDown, ChevronRight, MessageSquare, Paperclip, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ChangeEvent,
-  type Dispatch,
-  type SetStateAction
-} from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import type { ProjectGroupWithTasks, ProjectTaskPatchPayload, ProjectTaskTree } from "@/lib/api";
 import { attachmentDownloadUrl, getAuthMe, patchProjectTask, uploadProjectTaskAttachment } from "@/lib/api";
@@ -36,20 +28,20 @@ function isDoneLike(status: string): boolean {
 
 function StatusPill({ status }: { status: string }): JSX.Element | null {
   const raw = status.trim();
-  if (!raw) return <span className="text-muted-foreground">—</span>;
+  if (!raw) return <span className="text-violet-400/80">—</span>;
   const n = normStatus(raw);
   let cls =
-    "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold text-white shadow-sm";
+    "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm ring-1 ring-black/5";
   if (n.includes("feito") || n.includes("conclu") || n.includes("done")) {
-    cls = cn(cls, "bg-emerald-500");
+    cls = cn(cls, "bg-[#00c875] shadow-[0_1px_0_rgba(0,0,0,0.12)]");
   } else if (n.includes("progresso") || n.includes("andamento") || n.includes("progress")) {
-    cls = cn(cls, "bg-amber-500");
+    cls = cn(cls, "bg-[#fdab3d] text-white");
   } else if (n.includes("parado") || n.includes("bloque") || n.includes("hold")) {
     cls = cn(cls, "bg-slate-500");
   } else if (n.includes("nao") && n.includes("inici")) {
     cls = cn(cls, "bg-slate-400");
   } else {
-    cls = cn(cls, "bg-violet-600");
+    cls = cn(cls, "bg-[#7c3aed]");
   }
   return <span className={cls}>{raw}</span>;
 }
@@ -67,9 +59,14 @@ function pmfBadgeClass(name: string): string {
 
 function PmfPill({ name }: { name: string }): JSX.Element | null {
   const raw = name.trim();
-  if (!raw) return <span className="text-muted-foreground">—</span>;
+  if (!raw) return <span className="text-violet-400/80">—</span>;
   return (
-    <span className={cn("inline-flex rounded-md px-2 py-0.5 text-xs font-semibold shadow-sm", pmfBadgeClass(raw))}>
+    <span
+      className={cn(
+        "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold shadow-sm ring-1 ring-black/10",
+        pmfBadgeClass(raw)
+      )}
+    >
       {raw}
     </span>
   );
@@ -92,14 +89,16 @@ function subProgressPercent(task: ProjectTaskTree): number | null {
 function SubElementBar({ task }: { task: ProjectTaskTree }): JSX.Element {
   const pct = subProgressPercent(task);
   if (pct == null) {
-    return <div className="h-2 max-w-[120px] rounded-full bg-muted" />;
+    return <span className="text-[11px] font-medium text-violet-300/90">—</span>;
   }
   return (
-    <div className="h-2 max-w-[140px] overflow-hidden rounded-full bg-muted">
+    <div
+      className="h-2.5 max-w-[148px] overflow-hidden rounded-full bg-violet-100 ring-1 ring-violet-200/60"
+      title={`${pct}% concluído nos subelementos`}
+    >
       <div
-        className="h-full rounded-full bg-emerald-500 transition-[width]"
+        className="h-full rounded-full bg-gradient-to-r from-[#00c875] to-[#34d399] shadow-sm transition-[width]"
         style={{ width: `${pct}%` }}
-        title={`${pct}% concluído nos subelementos`}
       />
     </div>
   );
@@ -138,6 +137,24 @@ function taskAttachments(task: ProjectTaskTree): NonNullable<ProjectTaskTree["at
   return task.attachments ?? [];
 }
 
+/** Garante `children` e `attachments` sempre como arrays (evita subtarefas invisíveis se o JSON vier incompleto). */
+function ensureTaskTree(t: ProjectTaskTree): ProjectTaskTree {
+  const raw = t.children;
+  const ch = Array.isArray(raw) ? raw : [];
+  return {
+    ...t,
+    attachments: t.attachments ?? [],
+    children: ch.map(ensureTaskTree)
+  };
+}
+
+function normalizeProjectGroups(groups: ProjectGroupWithTasks[]): ProjectGroupWithTasks[] {
+  return groups.map((g) => ({
+    ...g,
+    tasks: g.tasks.map(ensureTaskTree)
+  }));
+}
+
 type FilesCellProps = {
   projectId: string;
   task: ProjectTaskTree;
@@ -173,7 +190,7 @@ function FilesCell({ projectId, task, canEdit, busy, onUploaded }: FilesCellProp
           type="button"
           variant="ghost"
           size="sm"
-          className="h-8 gap-1 px-2 text-muted-foreground hover:text-foreground"
+          className="h-8 gap-1 px-2 text-violet-600 hover:bg-violet-100 hover:text-violet-800"
           disabled={busy}
           title="Anexos"
         >
@@ -221,7 +238,7 @@ type TaskRowsProps = {
   task: ProjectTaskTree;
   depth: number;
   expanded: Record<string, boolean>;
-  setExpanded: Dispatch<SetStateAction<Record<string, boolean>>>;
+  onToggleExpand: (taskId: string) => void;
   canEdit: boolean;
   savingTaskId: string | null;
   onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
@@ -233,7 +250,7 @@ function TaskRows({
   task,
   depth,
   expanded,
-  setExpanded,
+  onToggleExpand,
   canEdit,
   savingTaskId,
   onPatch,
@@ -244,8 +261,14 @@ function TaskRows({
   const busy = savingTaskId === task.id;
 
   const toggle = useCallback(() => {
-    setExpanded((prev) => ({ ...prev, [task.id]: prev[task.id] === false ? true : false }));
-  }, [setExpanded, task.id]);
+    onToggleExpand(task.id);
+  }, [onToggleExpand, task.id]);
+
+  const rowTint = isDoneLike(task.status)
+    ? "bg-emerald-50/55 hover:bg-emerald-50/90"
+    : depth > 0
+      ? "bg-sky-50/60 hover:bg-sky-100/70"
+      : "bg-white hover:bg-violet-50/50";
 
   const statusOptions = useMemo(() => {
     const s = task.status.trim();
@@ -256,11 +279,22 @@ function TaskRows({
 
   return (
     <>
-      <tr className={cn("border-b border-border transition-colors hover:bg-muted/40", busy && "opacity-70")}>
-        <td className="w-9 shrink-0 border-r border-border p-1 align-middle">
+      <tr
+        className={cn(
+          "border-b border-violet-100/90 transition-colors",
+          rowTint,
+          busy && "opacity-70"
+        )}
+      >
+        <td
+          className={cn(
+            "w-9 shrink-0 border-r border-violet-100/90 p-1 align-middle",
+            isDoneLike(task.status) && "bg-emerald-100/40"
+          )}
+        >
           <input
             type="checkbox"
-            className="rounded border-input"
+            className="h-4 w-4 rounded border-violet-300 accent-[#00c875] focus:ring-2 focus:ring-[#00c875]/40"
             checked={isDoneLike(task.status)}
             disabled={!canEdit || busy}
             title={canEdit ? "Marcar como feito" : "Apenas leitura"}
@@ -269,15 +303,16 @@ function TaskRows({
             }}
           />
         </td>
-        <td className="min-w-[220px] max-w-md border-r border-border p-2 align-middle">
+        <td className="min-w-[220px] max-w-md border-r border-violet-100/90 p-2 align-middle">
           <div className="flex items-start gap-1.5" style={{ paddingLeft: depth * 18 }}>
             {hasChildren ? (
               <button
                 type="button"
                 onClick={toggle}
-                className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="mt-0.5 shrink-0 rounded p-0.5 text-violet-600 hover:bg-violet-100 hover:text-violet-900"
                 aria-expanded={isOpen}
                 aria-label={isOpen ? "Recolher subtarefas" : "Expandir subtarefas"}
+                title={isOpen ? "Recolher subtarefas" : "Expandir subtarefas"}
               >
                 {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               </button>
@@ -286,7 +321,7 @@ function TaskRows({
             )}
             {hasChildren ? (
               <span
-                className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0 text-[10px] font-semibold tabular-nums text-muted-foreground"
+                className="mt-0.5 shrink-0 rounded-full bg-violet-200/80 px-1.5 py-0 text-[10px] font-bold tabular-nums text-violet-900"
                 title="Número de subtarefas"
               >
                 {task.children!.length}
@@ -317,13 +352,13 @@ function TaskRows({
             </span>
           </div>
         </td>
-        <td className="w-[150px] border-r border-border p-2 align-middle">
+        <td className="w-[150px] border-r border-violet-100/90 bg-violet-50/25 p-2 align-middle">
           <SubElementBar task={task} />
         </td>
-        <td className="w-[130px] border-r border-border p-2 align-middle">
+        <td className="w-[130px] border-r border-violet-100/90 bg-amber-50/20 p-2 align-middle">
           {canEdit ? (
             <select
-              className="max-w-[124px] rounded-md border border-input bg-background px-1 py-1 text-xs font-medium shadow-sm"
+              className="max-w-[124px] rounded-full border border-amber-200/80 bg-white px-2 py-1 text-xs font-semibold text-amber-950 shadow-sm"
               value={task.status}
               disabled={busy}
               aria-label="Status"
@@ -341,11 +376,11 @@ function TaskRows({
             <StatusPill status={task.status} />
           )}
         </td>
-        <td className="min-w-[160px] border-r border-border p-2 align-middle">
+        <td className="min-w-[160px] border-r border-violet-100/90 bg-orange-50/15 p-2 align-middle">
           {canEdit ? (
             <div className="flex items-center gap-2">
               <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground ring-1 ring-border"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-100 to-orange-200 text-[10px] font-bold text-orange-900 ring-2 ring-orange-200/80"
                 title={task.assigneeExternal ?? ""}
               >
                 {task.assigneeExternal?.trim() ? initials(task.assigneeExternal) : "—"}
@@ -369,7 +404,7 @@ function TaskRows({
               {task.assigneeExternal?.trim() ? (
                 <>
                   <span
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground ring-1 ring-border"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-100 to-orange-200 text-[10px] font-bold text-orange-900 ring-2 ring-orange-200/80"
                     title={task.assigneeExternal}
                   >
                     {initials(task.assigneeExternal)}
@@ -384,7 +419,7 @@ function TaskRows({
             </div>
           )}
         </td>
-        <td className="w-[110px] whitespace-nowrap border-r border-border p-2 align-middle">
+        <td className="w-[110px] whitespace-nowrap border-r border-violet-100/90 p-2 align-middle">
           {canEdit ? (
             <input
               type="date"
@@ -401,7 +436,7 @@ function TaskRows({
             <span className="text-xs text-muted-foreground">{formatBoardDate(task.dueDate)}</span>
           )}
         </td>
-        <td className="w-[90px] border-r border-border p-2 align-middle text-right">
+        <td className="w-[90px] border-r border-violet-100/90 p-2 align-middle text-right">
           {canEdit ? (
             <input
               key={`${task.id}-effort-${task.effort ?? ""}`}
@@ -430,7 +465,7 @@ function TaskRows({
             </span>
           )}
         </td>
-        <td className="min-w-[180px] max-w-xs border-r border-border p-2 align-middle">
+        <td className="min-w-[180px] max-w-xs border-r border-violet-100/90 bg-slate-50/40 p-2 align-middle">
           {canEdit ? (
             <textarea
               key={`${task.id}-desc-${task.description ?? ""}`}
@@ -451,7 +486,7 @@ function TaskRows({
             </span>
           )}
         </td>
-        <td className="w-[120px] border-r border-border p-2 align-middle">
+        <td className="w-[120px] border-r border-violet-100/90 bg-fuchsia-50/20 p-2 align-middle">
           {canEdit ? (
             <input
               key={`${task.id}-pmf-${task.internalResponsible ?? ""}`}
@@ -470,7 +505,7 @@ function TaskRows({
             <PmfPill name={task.internalResponsible ?? ""} />
           )}
         </td>
-        <td className="w-[88px] p-2 align-middle">
+        <td className="w-[88px] border-l border-transparent p-2 align-middle">
           <FilesCell projectId={projectId} task={task} canEdit={canEdit} busy={busy} onUploaded={onFilesUploaded} />
         </td>
       </tr>
@@ -482,7 +517,7 @@ function TaskRows({
               task={c}
               depth={depth + 1}
               expanded={expanded}
-              setExpanded={setExpanded}
+              onToggleExpand={onToggleExpand}
               canEdit={canEdit}
               savingTaskId={savingTaskId}
               onPatch={onPatch}
@@ -514,6 +549,10 @@ function GroupBoard({
   const [open, setOpen] = useState(defaultExpanded);
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
 
+  useEffect(() => {
+    setExpandedTasks({});
+  }, [projectId, group.id]);
+
   const initExpanded = useMemo(() => {
     const o: Record<string, boolean> = {};
     function walk(t: ProjectTaskTree): void {
@@ -526,42 +565,57 @@ function GroupBoard({
 
   const mergedExpanded = useMemo(() => ({ ...initExpanded, ...expandedTasks }), [initExpanded, expandedTasks]);
 
+  const toggleTaskExpand = useCallback(
+    (taskId: string) => {
+      setExpandedTasks((prev) => {
+        const merged = { ...initExpanded, ...prev };
+        const currentlyOpen = merged[taskId] !== false;
+        return { ...prev, [taskId]: !currentlyOpen };
+      });
+    },
+    [initExpanded]
+  );
+
   return (
-    <div className="mb-6 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+    <div className="mb-6 overflow-hidden rounded-xl border border-violet-200/80 bg-white shadow-md ring-1 ring-violet-100/60 dark:border-violet-900/50 dark:bg-violet-950/20 dark:ring-violet-900/40">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 border-b border-violet-200/80 bg-violet-100 px-3 py-2.5 text-left transition hover:bg-violet-100/90 dark:border-violet-900/50 dark:bg-violet-950/40 dark:hover:bg-violet-950/60"
+        className="flex w-full items-center gap-2 bg-gradient-to-r from-[#a78bfa] via-[#8b5cf6] to-[#6d28d9] px-3 py-3 text-left text-white shadow-inner transition hover:brightness-105"
       >
-        {open ? <ChevronDown className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-300" /> : <ChevronRight className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-300" />}
-        <span className="text-sm font-semibold tracking-tight text-violet-900 dark:text-violet-100">{group.name}</span>
-        <span className="ml-auto text-xs font-medium text-violet-700/80 dark:text-violet-300/80">
+        {open ? (
+          <ChevronDown className="h-4 w-4 shrink-0 text-white/95 drop-shadow-sm" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-white/95 drop-shadow-sm" />
+        )}
+        <span className="text-sm font-bold tracking-tight drop-shadow-sm">{group.name}</span>
+        <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold text-white/95 backdrop-blur-sm">
           {group.tasks.length} na raiz
         </span>
       </button>
       {open ? (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto bg-[#f6f7fb] dark:bg-violet-950/30">
           <table className="w-full min-w-[1000px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/50 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="w-9 border-r border-border p-2" title="Concluído">
+              <tr className="border-b border-violet-200 bg-gradient-to-b from-violet-100 to-violet-50/90 text-left text-[11px] font-bold uppercase tracking-wide text-violet-900/90 dark:border-violet-800 dark:from-violet-900/50 dark:to-violet-950/40 dark:text-violet-100">
+                <th className="w-9 border-r border-violet-200/90 p-2 dark:border-violet-800" title="Concluído">
                   ✓
                 </th>
-                <th className="border-r border-border p-2">Elemento</th>
-                <th className="w-[150px] border-r border-border p-2">Subelementos</th>
-                <th className="w-[130px] border-r border-border p-2">Status</th>
-                <th className="min-w-[160px] border-r border-border p-2">Pessoa</th>
-                <th className="w-[110px] border-r border-border p-2">Data</th>
-                <th className="w-[90px] border-r border-border p-2">Números</th>
-                <th className="min-w-[180px] border-r border-border p-2">Observação</th>
-                <th className="w-[120px] border-r border-border p-2">Resp. PMF</th>
+                <th className="border-r border-violet-200/90 p-2 dark:border-violet-800">Elemento</th>
+                <th className="w-[150px] border-r border-violet-200/90 p-2 dark:border-violet-800">Subelementos</th>
+                <th className="w-[130px] border-r border-violet-200/90 p-2 dark:border-violet-800">Status</th>
+                <th className="min-w-[160px] border-r border-violet-200/90 p-2 dark:border-violet-800">Pessoa</th>
+                <th className="w-[110px] border-r border-violet-200/90 p-2 dark:border-violet-800">Data</th>
+                <th className="w-[90px] border-r border-violet-200/90 p-2 dark:border-violet-800">Números</th>
+                <th className="min-w-[180px] border-r border-violet-200/90 p-2 dark:border-violet-800">Observação</th>
+                <th className="w-[120px] border-r border-violet-200/90 p-2 dark:border-violet-800">Resp. PMF</th>
                 <th className="w-[88px] p-2">Arquivos</th>
               </tr>
             </thead>
-            <tbody className="bg-background">
+            <tbody>
               {group.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-6 text-center text-sm text-muted-foreground">
+                  <td colSpan={10} className="p-6 text-center text-sm text-violet-600/80">
                     Sem tarefas neste grupo.
                   </td>
                 </tr>
@@ -573,7 +627,7 @@ function GroupBoard({
                     task={t}
                     depth={0}
                     expanded={mergedExpanded}
-                    setExpanded={setExpandedTasks}
+                    onToggleExpand={toggleTaskExpand}
                     canEdit={canEdit}
                     savingTaskId={savingTaskId}
                     onPatch={onPatch}
@@ -627,12 +681,14 @@ export function ProjectTasksBoard({ projectId, groups }: Props): JSX.Element {
     router.refresh();
   }, [router]);
 
+  const displayGroups = useMemo(() => normalizeProjectGroups(groups), [groups]);
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3 rounded-xl border border-violet-100/80 bg-gradient-to-b from-violet-50/40 to-transparent p-3 dark:border-violet-900/40 dark:from-violet-950/20">
       {role === undefined ? (
-        <p className="text-xs text-muted-foreground">A carregar permissões…</p>
+        <p className="text-xs text-violet-600/80">A carregar permissões…</p>
       ) : null}
-      {groups.map((g) => (
+      {displayGroups.map((g) => (
         <GroupBoard
           key={g.id}
           projectId={projectId}
