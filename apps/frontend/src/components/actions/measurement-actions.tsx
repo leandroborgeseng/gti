@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { approveMeasurement, calculateMeasurement } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   measurementId: string;
@@ -11,62 +13,49 @@ type Props = {
 
 export function MeasurementActions({ measurementId, measurementStatus }: Props): JSX.Element {
   const router = useRouter();
-  const [status, setStatus] = useState<string>("");
-  const [busy, setBusy] = useState<"calculate" | "approve" | null>(null);
   const canCalculate = measurementStatus !== "APPROVED";
   const canApprove = measurementStatus !== "OPEN" && measurementStatus !== "APPROVED";
 
-  async function onCalculate(): Promise<void> {
-    try {
-      setBusy("calculate");
-      await calculateMeasurement(measurementId);
-      setStatus("Medição calculada com sucesso.");
+  const calculateMut = useMutation({
+    mutationFn: () => calculateMeasurement(measurementId),
+    onSuccess: () => {
+      toast.success("Medição calculada.");
       router.refresh();
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(null);
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao calcular a medição.");
     }
-  }
+  });
 
-  async function onApprove(): Promise<void> {
-    try {
-      setBusy("approve");
-      await approveMeasurement(measurementId);
-      setStatus("Medição aprovada com sucesso.");
+  const approveMut = useMutation({
+    mutationFn: () => approveMeasurement(measurementId),
+    onSuccess: () => {
+      toast.success("Medição aprovada.");
       router.refresh();
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(null);
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao aprovar a medição.");
     }
-  }
+  });
+
+  const busy = calculateMut.isPending || approveMut.isPending;
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => void onCalculate()}
-          disabled={busy != null || !canCalculate}
-          className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "calculate" ? "A calcular…" : "Calcular"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void onApprove()}
-          disabled={busy != null || !canApprove}
-          className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "approve" ? "A aprovar…" : "Aprovar"}
-        </button>
+        <Button type="button" disabled={busy || !canCalculate} onClick={() => calculateMut.mutate()}>
+          {calculateMut.isPending ? "A calcular…" : "Calcular"}
+        </Button>
+        <Button type="button" variant="secondary" disabled={busy || !canApprove} onClick={() => approveMut.mutate()}>
+          {approveMut.isPending ? "A aprovar…" : "Aprovar"}
+        </Button>
       </div>
-      {!canCalculate ? <p className="text-xs text-amber-700">Medição aprovada não permite recálculo.</p> : null}
-      {measurementStatus === "OPEN" ? (
-        <p className="text-xs text-amber-700">Para aprovar, calcule a medição primeiro.</p>
+      {!canCalculate ? (
+        <p className="text-xs text-amber-700 dark:text-amber-500">Medição aprovada não permite recálculo.</p>
       ) : null}
-      {status ? <p className="text-sm text-slate-600">{status}</p> : null}
+      {measurementStatus === "OPEN" ? (
+        <p className="text-xs text-amber-700 dark:text-amber-500">Para aprovar, calcule a medição primeiro.</p>
+      ) : null}
     </div>
   );
 }

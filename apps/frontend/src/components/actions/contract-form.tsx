@@ -1,16 +1,36 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import type { Fiscal, Supplier } from "@/lib/api";
-import { createContract, createFiscal, createSupplier, getFiscais, getSuppliers } from "@/lib/api";
-import { Modal } from "@/components/ui/modal";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { toast } from "sonner";
 import {
-  FormField,
-  FormSection,
-  PrimaryButton,
-  SecondaryButton,
-  formControlClass
-} from "@/components/ui/form-primitives";
+  createContract,
+  createFiscal,
+  createSupplier,
+  getFiscais,
+  getSuppliers,
+  type Fiscal,
+  type Supplier
+} from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
+import {
+  CONTRACT_FORM_DEFAULT_VALUES,
+  contractPageSchema,
+  onlyDigitsCnpj,
+  quickFiscalSchema,
+  quickSupplierSchema,
+  type ContractPageFormInput,
+  type ContractPageParsed
+} from "@/modules/contracts/contract-form-schema";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { FormSection } from "@/components/ui/form-primitives";
 import { EntitySelectWithCreate } from "@/components/ui/entity-select-with-create";
 
 type Props = {
@@ -18,10 +38,6 @@ type Props = {
 };
 
 type FiscalModalRole = "fiscal" | "manager";
-
-function onlyDigitsCnpj(v: string): string {
-  return v.replace(/\D/g, "");
-}
 
 function formatCnpjHint(v: string): string {
   const d = onlyDigitsCnpj(v).slice(0, 14);
@@ -34,546 +50,567 @@ function formatCnpjHint(v: string): string {
 }
 
 export function ContractForm({ onSuccess }: Props): JSX.Element {
-  const [listsLoading, setListsLoading] = useState(true);
-  const [listsError, setListsError] = useState<string | null>(null);
-  const [fiscais, setFiscais] = useState<Fiscal[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-
-  const [number, setNumber] = useState("");
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [managingUnit, setManagingUnit] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [cnpj, setCnpj] = useState("");
-  const [contractType, setContractType] = useState<"SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO">("SOFTWARE");
-  const [lawType, setLawType] = useState<"" | "LEI_8666" | "LEI_14133">("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [monthlyValue, setMonthlyValue] = useState("");
-  const [fiscalId, setFiscalId] = useState("");
-  const [managerId, setManagerId] = useState("");
-  const [supplierId, setSupplierId] = useState("");
-
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const qc = useQueryClient();
+  const qFiscais = useQuery({ queryKey: queryKeys.fiscais, queryFn: getFiscais });
+  const qSuppliers = useQuery({ queryKey: queryKeys.suppliers, queryFn: getSuppliers });
+  const fiscais = qFiscais.data ?? [];
+  const suppliers = qSuppliers.data ?? [];
+  const listsLoading = qFiscais.isPending || qSuppliers.isPending;
+  const listsError =
+    qFiscais.error || qSuppliers.error
+      ? [qFiscais.error, qSuppliers.error]
+          .filter(Boolean)
+          .map((e) => (e instanceof Error ? e.message : String(e)))
+          .join(" · ")
+      : null;
 
   const [fiscalModalRole, setFiscalModalRole] = useState<FiscalModalRole | null>(null);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
-
-  const [newFiscalName, setNewFiscalName] = useState("");
-  const [newFiscalEmail, setNewFiscalEmail] = useState("");
-  const [newFiscalPhone, setNewFiscalPhone] = useState("");
-  const [newFiscalBusy, setNewFiscalBusy] = useState(false);
   const [newFiscalErr, setNewFiscalErr] = useState<string | null>(null);
-
-  const [newSupplierName, setNewSupplierName] = useState("");
-  const [newSupplierCnpj, setNewSupplierCnpj] = useState("");
-  const [newSupplierBusy, setNewSupplierBusy] = useState(false);
   const [newSupplierErr, setNewSupplierErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        setListsLoading(true);
-        setListsError(null);
-        const [f, s] = await Promise.all([getFiscais(), getSuppliers()]);
-        if (cancelled) return;
-        setFiscais(f);
-        setSuppliers(s);
-      } catch (e) {
-        if (!cancelled) {
-          setListsError(e instanceof Error ? e.message : "Falha ao carregar listas.");
-        }
-      } finally {
-        if (!cancelled) setListsLoading(false);
+  const form = useForm<ContractPageFormInput>({
+    resolver: zodResolver(contractPageSchema),
+    defaultValues: CONTRACT_FORM_DEFAULT_VALUES
+  });
+
+  const createFiscalMut = useMutation({
+    mutationFn: async (vars: { name: string; email: string; phone: string; role: FiscalModalRole }) => {
+      const created = await createFiscal({ name: vars.name, email: vars.email, phone: vars.phone });
+      return { created, role: vars.role };
+    },
+    onSuccess: ({ created, role }: { created: Fiscal; role: FiscalModalRole }) => {
+      toast.success("Fiscal cadastrado.");
+      void qc.invalidateQueries({ queryKey: queryKeys.fiscais });
+      if (role === "fiscal") {
+        form.setValue("fiscalId", created.id, { shouldValidate: true });
+        form.clearErrors("fiscalId");
+      } else {
+        form.setValue("managerId", created.id, { shouldValidate: true });
+        form.clearErrors("managerId");
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      form.setValue("quickFiscalName", "");
+      form.setValue("quickFiscalEmail", "");
+      form.setValue("quickFiscalPhone", "");
+      setNewFiscalErr(null);
+      setFiscalModalRole(null);
+    },
+    onError: (e: unknown) => {
+      setNewFiscalErr(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  const createSupplierMut = useMutation({
+    mutationFn: (vars: { name: string; cnpj: string }) => createSupplier({ name: vars.name, cnpj: vars.cnpj }),
+    onSuccess: (created: Supplier) => {
+      toast.success("Fornecedor cadastrado.");
+      void qc.invalidateQueries({ queryKey: queryKeys.suppliers });
+      form.setValue("supplierId", created.id, { shouldValidate: true });
+      form.setValue("companyName", created.name);
+      form.setValue("cnpj", created.cnpj);
+      form.clearErrors(["supplierId", "companyName", "cnpj"]);
+      form.setValue("quickSupplierName", "");
+      form.setValue("quickSupplierCnpj", "");
+      setNewSupplierErr(null);
+      setSupplierModalOpen(false);
+    },
+    onError: (e: unknown) => {
+      setNewSupplierErr(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  const createContractMut = useMutation({
+    mutationFn: createContract,
+    onSuccess: () => {
+      toast.success("Contrato cadastrado.");
+      void qc.invalidateQueries({ queryKey: queryKeys.contracts });
+      form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+      onSuccess?.();
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao guardar contrato");
+    }
+  });
 
   const fiscalOptions = useMemo(
-    () => fiscais.map((f) => ({ value: f.id, label: `${f.name} · ${f.email}` })),
+    () => fiscais.map((f: Fiscal) => ({ value: f.id, label: `${f.name} · ${f.email}` })),
     [fiscais]
   );
 
   const supplierOptions = useMemo(
-    () => suppliers.map((s) => ({ value: s.id, label: `${s.name} (${onlyDigitsCnpj(s.cnpj)})` })),
+    () => suppliers.map((s: Supplier) => ({ value: s.id, label: `${s.name} (${onlyDigitsCnpj(s.cnpj)})` })),
     [suppliers]
   );
 
   const onSupplierSelect = useCallback(
     (id: string) => {
-      setSupplierId(id);
-      setFieldErrors((prev) => {
-        const next = { ...prev };
-        delete next.supplierId;
-        delete next.companyName;
-        delete next.cnpj;
-        return next;
-      });
+      form.setValue("supplierId", id, { shouldValidate: true });
+      form.clearErrors(["supplierId", "companyName", "cnpj"]);
       if (!id) return;
-      const s = suppliers.find((x) => x.id === id);
+      const s = suppliers.find((x: Supplier) => x.id === id);
       if (s) {
-        setCompanyName(s.name);
-        setCnpj(s.cnpj);
+        form.setValue("companyName", s.name);
+        form.setValue("cnpj", s.cnpj);
       }
     },
-    [suppliers]
+    [form, suppliers]
   );
 
   const openFiscalModal = useCallback((role: FiscalModalRole) => {
-    setNewFiscalName("");
-    setNewFiscalEmail("");
-    setNewFiscalPhone("");
+    form.setValue("quickFiscalName", "");
+    form.setValue("quickFiscalEmail", "");
+    form.setValue("quickFiscalPhone", "");
     setNewFiscalErr(null);
     setFiscalModalRole(role);
-  }, []);
+  }, [form]);
 
-  const submitNewFiscal = useCallback(async () => {
+  function submitNewFiscal(): void {
     setNewFiscalErr(null);
-    if (!newFiscalName.trim() || !newFiscalEmail.trim() || !newFiscalPhone.trim()) {
-      setNewFiscalErr("Preencha nome, e-mail e telefone.");
+    if (!fiscalModalRole) return;
+    const r = quickFiscalSchema.safeParse(form.getValues());
+    if (!r.success) {
+      const msg = r.error.flatten().fieldErrors;
+      const first = Object.values(msg).flat()[0];
+      setNewFiscalErr(typeof first === "string" ? first : "Verifique os campos.");
       return;
     }
-    try {
-      setNewFiscalBusy(true);
-      const created = await createFiscal({
-        name: newFiscalName.trim(),
-        email: newFiscalEmail.trim(),
-        phone: newFiscalPhone.trim()
-      });
-      setFiscais((prev) => [...prev.filter((x) => x.id !== created.id), created]);
-      if (fiscalModalRole === "fiscal") {
-        setFiscalId(created.id);
-        setFieldErrors((p) => {
-          const n = { ...p };
-          delete n.fiscalId;
-          return n;
-        });
-      } else if (fiscalModalRole === "manager") {
-        setManagerId(created.id);
-        setFieldErrors((p) => {
-          const n = { ...p };
-          delete n.managerId;
-          return n;
-        });
-      }
-      setFiscalModalRole(null);
-    } catch (e) {
-      setNewFiscalErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setNewFiscalBusy(false);
-    }
-  }, [fiscalModalRole, newFiscalEmail, newFiscalName, newFiscalPhone]);
+    createFiscalMut.mutate({
+      name: r.data.quickFiscalName.trim(),
+      email: r.data.quickFiscalEmail.trim(),
+      phone: r.data.quickFiscalPhone.trim(),
+      role: fiscalModalRole
+    });
+  }
 
-  const submitNewSupplier = useCallback(async () => {
+  function submitNewSupplier(): void {
     setNewSupplierErr(null);
-    if (!newSupplierName.trim() || !onlyDigitsCnpj(newSupplierCnpj)) {
-      setNewSupplierErr("Preencha nome e CNPJ válido.");
+    const r = quickSupplierSchema.safeParse(form.getValues());
+    if (!r.success) {
+      const msg = r.error.flatten().fieldErrors;
+      const first = Object.values(msg).flat()[0];
+      setNewSupplierErr(typeof first === "string" ? first : "Verifique os campos.");
       return;
     }
-    try {
-      setNewSupplierBusy(true);
-      const created = await createSupplier({
-        name: newSupplierName.trim(),
-        cnpj: onlyDigitsCnpj(newSupplierCnpj)
-      });
-      setSuppliers((prev) => [...prev.filter((x) => x.id !== created.id), created]);
-      setSupplierId(created.id);
-      setCompanyName(created.name);
-      setCnpj(created.cnpj);
-      setSupplierModalOpen(false);
-      setFieldErrors((p) => {
-        const n = { ...p };
-        delete n.supplierId;
-        delete n.companyName;
-        delete n.cnpj;
-        return n;
-      });
-    } catch (e) {
-      setNewSupplierErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setNewSupplierBusy(false);
-    }
-  }, [newSupplierCnpj, newSupplierName]);
+    createSupplierMut.mutate({
+      name: r.data.quickSupplierName.trim(),
+      cnpj: r.data.quickSupplierCnpj
+    });
+  }
 
-  const validate = useCallback((): boolean => {
-    const err: Record<string, string> = {};
-    if (!number.trim()) err.number = "Informe o número do contrato.";
-    if (!name.trim()) err.name = "Informe o nome.";
-    if (!companyName.trim()) err.companyName = "Informe a razão social.";
-    const cnpjDigits = onlyDigitsCnpj(cnpj);
-    if (cnpjDigits.length !== 14) err.cnpj = "CNPJ deve ter 14 dígitos.";
-    if (!fiscalId) err.fiscalId = "Selecione ou cadastre o fiscal.";
-    if (!startDate || !endDate) {
-      err.dates = "Informe início e fim da vigência.";
-    } else if (new Date(endDate) < new Date(startDate)) {
-      err.dates = "A data final não pode ser anterior à data inicial.";
-    }
-    const mv = Number(String(monthlyValue).replace(",", "."));
-    if (!Number.isFinite(mv) || mv <= 0) err.monthlyValue = "Valor mensal deve ser maior que zero.";
-    setFieldErrors(err);
-    return Object.keys(err).length === 0;
-  }, [cnpj, companyName, endDate, fiscalId, monthlyValue, name, number, startDate]);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    setStatus("");
-    if (!validate()) return;
-    const mv = Number(String(monthlyValue).replace(",", "."));
-    try {
-      setBusy(true);
-      await createContract({
-        number: number.trim(),
-        name: name.trim(),
-        description: description.trim() || undefined,
-        managingUnit: managingUnit.trim() || undefined,
-        companyName: companyName.trim(),
-        cnpj: onlyDigitsCnpj(cnpj),
-        contractType,
-        lawType: lawType || undefined,
-        startDate,
-        endDate,
-        monthlyValue: mv,
-        fiscalId,
-        managerId: managerId || undefined,
-        supplierId: supplierId || undefined
-      });
-      setStatus("Contrato cadastrado com sucesso.");
-      setNumber("");
-      setName("");
-      setDescription("");
-      setManagingUnit("");
-      setCompanyName("");
-      setCnpj("");
-      setContractType("SOFTWARE");
-      setLawType("");
-      setStartDate("");
-      setEndDate("");
-      setMonthlyValue("");
-      setFiscalId("");
-      setManagerId("");
-      setSupplierId("");
-      setFieldErrors({});
-      onSuccess?.();
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(false);
-    }
+  function onValidSubmit(data: ContractPageParsed): void {
+    const mv = Number(String(data.monthlyValue).replace(",", "."));
+    createContractMut.mutate({
+      number: data.number.trim(),
+      name: data.name.trim(),
+      description: data.description.trim() || undefined,
+      managingUnit: data.managingUnit.trim() || undefined,
+      companyName: data.companyName.trim(),
+      cnpj: data.cnpj,
+      contractType: data.contractType,
+      lawType: data.lawType || undefined,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      monthlyValue: mv,
+      fiscalId: data.fiscalId,
+      managerId: data.managerId.trim() || undefined,
+      supplierId: data.supplierId.trim() || undefined
+    });
   }
 
   const sameAsFiscal = useCallback(() => {
-    if (!fiscalId) {
-      setFieldErrors((p) => ({ ...p, managerId: "Defina primeiro o fiscal." }));
+    const fid = form.getValues("fiscalId");
+    if (!fid) {
+      form.setError("managerId", { type: "manual", message: "Defina primeiro o fiscal." });
       return;
     }
-    setManagerId(fiscalId);
-    setFieldErrors((p) => {
-      const n = { ...p };
-      delete n.managerId;
-      return n;
-    });
-  }, [fiscalId]);
+    form.setValue("managerId", fid, { shouldValidate: true });
+    form.clearErrors("managerId");
+  }, [form]);
 
   return (
-    <form className="space-y-5" onSubmit={(e) => void onSubmit(e)}>
-      {listsLoading ? (
-        <p className="text-sm text-slate-600">A carregar fiscais e fornecedores…</p>
-      ) : null}
-      {listsError ? <p className="text-sm text-amber-800">{listsError}</p> : null}
+    <Form {...form}>
+      <form className="space-y-5" onSubmit={form.handleSubmit(onValidSubmit)}>
+        {listsLoading ? <p className="text-sm text-muted-foreground">A carregar fiscais e fornecedores…</p> : null}
+        {listsError ? <p className="text-sm text-destructive">{listsError}</p> : null}
 
-      <FormSection title="Identificação do contrato" description="Número e nome como aparecem na gestão interna.">
-        <FormField label="Número do contrato" htmlFor="c-number" required error={fieldErrors.number}>
-          <input
-            id="c-number"
-            value={number}
-            onChange={(e) => setNumber(e.target.value)}
-            className={formControlClass}
-            placeholder="Ex.: 001/2026"
-            autoComplete="off"
+        <FormSection title="Identificação do contrato" description="Número e nome como aparecem na gestão interna.">
+          <FormField
+            control={form.control}
+            name="number"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Número do contrato</FormLabel>
+                <FormControl>
+                  <Input placeholder="Ex.: 001/2026" autoComplete="off" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </FormField>
-        <FormField label="Nome" htmlFor="c-name" required error={fieldErrors.name} className="sm:col-span-2">
-          <input
-            id="c-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className={formControlClass}
-            placeholder="Denominação do contrato"
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Nome</FormLabel>
+                <FormControl>
+                  <Input placeholder="Denominação do contrato" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </FormField>
-        <FormField label="Tipo" htmlFor="c-type" required>
-          <select
-            id="c-type"
-            value={contractType}
-            onChange={(e) => setContractType(e.target.value as typeof contractType)}
-            className={formControlClass}
-          >
-            <option value="SOFTWARE">Software</option>
-            <option value="DATACENTER">Datacenter</option>
-            <option value="INFRA">Infraestrutura</option>
-            <option value="SERVICO">Serviço</option>
-          </select>
-        </FormField>
-        <FormField label="Lei aplicável" htmlFor="c-law" hint="Se vazio, o servidor usa a regra por omissão (14133).">
-          <select id="c-law" value={lawType} onChange={(e) => setLawType(e.target.value as typeof lawType)} className={formControlClass}>
-            <option value="">Padrão do sistema</option>
-            <option value="LEI_8666">Lei 8.666/93</option>
-            <option value="LEI_14133">Lei 14.133/21</option>
-          </select>
-        </FormField>
-        <FormField
-          label="Órgão gestor"
-          htmlFor="c-managing-unit"
-          className="sm:col-span-2"
-          hint="Ex.: secretaria ou unidade responsável pelo acompanhamento do contrato (quadro de sistemas terceirizados)."
+          <FormField
+            control={form.control}
+            name="contractType"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Tipo</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="SOFTWARE">Software</SelectItem>
+                    <SelectItem value="DATACENTER">Datacenter</SelectItem>
+                    <SelectItem value="INFRA">Infraestrutura</SelectItem>
+                    <SelectItem value="SERVICO">Serviço</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="lawType"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Lei aplicável</FormLabel>
+                <Select
+                  onValueChange={(v) => field.onChange(v === "__default__" ? "" : v)}
+                  value={field.value === "" ? "__default__" : field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Padrão do sistema" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="__default__">Padrão do sistema</SelectItem>
+                    <SelectItem value="LEI_8666">Lei 8.666/93</SelectItem>
+                    <SelectItem value="LEI_14133">Lei 14.133/21</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormDescription>Se vazio, o servidor usa a regra por omissão (14133).</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="managingUnit"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Órgão gestor</FormLabel>
+                <FormControl>
+                  <Input placeholder="Ex.: SEC. ADM. E RH" autoComplete="organization" {...field} />
+                </FormControl>
+                <FormDescription>
+                  Ex.: secretaria ou unidade responsável pelo acompanhamento do contrato (quadro de sistemas terceirizados).
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
+
+        <FormSection
+          title="Fornecedor"
+          description="Vincule a um cadastro existente ou preencha manualmente. Novo fornecedor abre num modal sem sair desta página."
         >
-          <input
-            id="c-managing-unit"
-            value={managingUnit}
-            onChange={(e) => setManagingUnit(e.target.value)}
-            className={formControlClass}
-            placeholder="Ex.: SEC. ADM. E RH"
-            autoComplete="organization"
-          />
-        </FormField>
-      </FormSection>
-
-      <FormSection
-        title="Fornecedor"
-        description="Vincule a um cadastro existente ou preencha manualmente. Novo fornecedor abre num modal sem sair desta página."
-      >
-        <div className="sm:col-span-2">
-          <EntitySelectWithCreate
-            id="c-supplier"
-            label="Fornecedor cadastrado (opcional)"
-            value={supplierId}
-            onChange={onSupplierSelect}
-            options={supplierOptions}
-            placeholder="— Nenhum; preencher manualmente abaixo —"
-            addNewLabel="+ Novo fornecedor"
-            onAddNew={() => {
-              setNewSupplierName("");
-              setNewSupplierCnpj("");
-              setNewSupplierErr(null);
-              setSupplierModalOpen(true);
-            }}
-            disabled={listsLoading}
-            hint="Ao selecionar, a razão social e o CNPJ são preenchidos automaticamente (pode ajustar antes de guardar)."
-          />
-        </div>
-        <FormField label="Razão social" htmlFor="c-company" required error={fieldErrors.companyName}>
-          <input
-            id="c-company"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            className={formControlClass}
-            placeholder="Razão social no contrato"
-          />
-        </FormField>
-        <FormField label="CNPJ" htmlFor="c-cnpj" required error={fieldErrors.cnpj} hint={`Formato sugerido: ${formatCnpjHint(cnpj || "00000000000000")}`}>
-          <input
-            id="c-cnpj"
-            value={cnpj}
-            onChange={(e) => setCnpj(e.target.value)}
-            className={formControlClass}
-            placeholder="00.000.000/0000-00"
-            inputMode="numeric"
-          />
-        </FormField>
-      </FormSection>
-
-      <FormSection title="Responsáveis" description="Fiscal e gestor vêm da mesma lista de fiscais; pode cadastrar novo sem sair da página.">
-        <div className="sm:col-span-2">
-          <EntitySelectWithCreate
-            id="c-fiscal"
-            label="Fiscal"
-            required
-            value={fiscalId}
-            onChange={(v) => {
-              setFiscalId(v);
-              setFieldErrors((p) => {
-                const n = { ...p };
-                delete n.fiscalId;
-                return n;
-              });
-            }}
-            options={fiscalOptions}
-            placeholder="Selecione o fiscal"
-            addNewLabel="+ Novo fiscal"
-            onAddNew={() => openFiscalModal("fiscal")}
-            disabled={listsLoading}
-            error={fieldErrors.fiscalId}
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <EntitySelectWithCreate
-            id="c-manager"
-            label="Gestor (opcional)"
-            value={managerId}
-            onChange={(v) => {
-              setManagerId(v);
-              setFieldErrors((p) => {
-                const n = { ...p };
-                delete n.managerId;
-                return n;
-              });
-            }}
-            options={fiscalOptions}
-            placeholder="— Igual ao fiscal (omissão no servidor) —"
-            addNewLabel="+ Novo gestor"
-            onAddNew={() => openFiscalModal("manager")}
-            disabled={listsLoading}
-            error={fieldErrors.managerId}
-            hint="Se não selecionar, o servidor assume o mesmo fiscal como gestor."
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <SecondaryButton type="button" onClick={sameAsFiscal} disabled={listsLoading || !fiscalId}>
-            Usar o fiscal selecionado como gestor
-          </SecondaryButton>
-        </div>
-      </FormSection>
-
-      <FormSection title="Vigência e valores" description="Datas em formato ISO (campo nativo); valor mensal em reais.">
-        {fieldErrors.dates ? (
-          <p className="sm:col-span-2 text-sm text-amber-800" role="alert">
-            {fieldErrors.dates}
-          </p>
-        ) : null}
-        <FormField label="Início da vigência" htmlFor="c-start" required>
-          <input id="c-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={formControlClass} />
-        </FormField>
-        <FormField label="Fim da vigência" htmlFor="c-end" required>
-          <input id="c-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={formControlClass} />
-        </FormField>
-        <FormField label="Valor mensal (R$)" htmlFor="c-monthly" required error={fieldErrors.monthlyValue} className="sm:col-span-2">
-          <input
-            id="c-monthly"
-            type="text"
-            inputMode="decimal"
-            value={monthlyValue}
-            onChange={(e) => setMonthlyValue(e.target.value)}
-            className={formControlClass}
-            placeholder="0,00"
-          />
-        </FormField>
-      </FormSection>
-
-      <FormSection title="Descrição" description="Opcional — objeto ou observações.">
-        <FormField label="Texto livre" htmlFor="c-desc" className="sm:col-span-2">
-          <textarea
-            id="c-desc"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className={`${formControlClass} min-h-[88px] resize-y`}
-            rows={3}
-            placeholder="Objeto ou observações"
-          />
-        </FormField>
-      </FormSection>
-
-      {status ? (
-        <p className={`text-sm ${status.includes("sucesso") ? "text-emerald-700" : "text-amber-800"}`} role="status">
-          {status}
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-3">
-        <PrimaryButton type="submit" disabled={listsLoading || Boolean(listsError)} busy={busy} busyLabel="A guardar…">
-          Guardar contrato
-        </PrimaryButton>
-      </div>
-
-      <Modal
-        open={fiscalModalRole !== null}
-        onClose={() => setFiscalModalRole(null)}
-        title={fiscalModalRole === "manager" ? "Novo gestor (fiscal)" : "Novo fiscal"}
-        description="Os dados ficam guardados na lista de fiscais e são selecionados automaticamente neste contrato."
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="Nome" htmlFor="nf-name" required className="sm:col-span-2">
-            <input
-              id="nf-name"
-              value={newFiscalName}
-              onChange={(e) => setNewFiscalName(e.target.value)}
-              className={formControlClass}
-              placeholder="Nome completo"
+          <div className="sm:col-span-2">
+            <Controller
+              control={form.control}
+              name="supplierId"
+              render={({ field }) => (
+                <EntitySelectWithCreate
+                  id="c-supplier"
+                  label="Fornecedor cadastrado (opcional)"
+                  value={field.value}
+                  onChange={(id) => {
+                    field.onChange(id);
+                    onSupplierSelect(id);
+                  }}
+                  options={supplierOptions}
+                  placeholder="— Nenhum; preencher manualmente abaixo —"
+                  addNewLabel="+ Novo fornecedor"
+                  onAddNew={() => {
+                    form.setValue("quickSupplierName", "");
+                    form.setValue("quickSupplierCnpj", "");
+                    setNewSupplierErr(null);
+                    setSupplierModalOpen(true);
+                  }}
+                  disabled={listsLoading}
+                  hint="Ao selecionar, a razão social e o CNPJ são preenchidos automaticamente (pode ajustar antes de guardar)."
+                />
+              )}
             />
-          </FormField>
-          <FormField label="E-mail" htmlFor="nf-email" required>
-            <input
-              id="nf-email"
-              type="email"
-              value={newFiscalEmail}
-              onChange={(e) => setNewFiscalEmail(e.target.value)}
-              className={formControlClass}
-              placeholder="email@org.br"
-            />
-          </FormField>
-          <FormField label="Telefone" htmlFor="nf-phone" required>
-            <input
-              id="nf-phone"
-              value={newFiscalPhone}
-              onChange={(e) => setNewFiscalPhone(e.target.value)}
-              className={formControlClass}
-              placeholder="(00) 00000-0000"
-            />
-          </FormField>
-          {newFiscalErr ? <p className="sm:col-span-2 text-sm text-amber-800">{newFiscalErr}</p> : null}
-          <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <PrimaryButton type="button" busy={newFiscalBusy} onClick={() => void submitNewFiscal()}>
-              Guardar e selecionar
-            </PrimaryButton>
-            <SecondaryButton type="button" onClick={() => setFiscalModalRole(null)}>
-              Cancelar
-            </SecondaryButton>
           </div>
-        </div>
-      </Modal>
+          <FormField
+            control={form.control}
+            name="companyName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Razão social</FormLabel>
+                <FormControl>
+                  <Input placeholder="Razão social no contrato" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="cnpj"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>CNPJ</FormLabel>
+                <FormControl>
+                  <Input placeholder="00.000.000/0000-00" inputMode="numeric" {...field} />
+                </FormControl>
+                <FormDescription>Formato sugerido: {formatCnpjHint(field.value || "00000000000000")}</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
 
-      <Modal
-        open={supplierModalOpen}
-        onClose={() => setSupplierModalOpen(false)}
-        title="Novo fornecedor"
-        description="Após guardar, o fornecedor passa a constar na lista e os campos do contrato são preenchidos."
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="Razão social" htmlFor="ns-name" required className="sm:col-span-2">
-            <input
-              id="ns-name"
-              value={newSupplierName}
-              onChange={(e) => setNewSupplierName(e.target.value)}
-              className={formControlClass}
-              placeholder="Nome do fornecedor"
+        <FormSection title="Responsáveis" description="Fiscal e gestor vêm da mesma lista de fiscais; pode cadastrar novo sem sair da página.">
+          <div className="sm:col-span-2">
+            <Controller
+              control={form.control}
+              name="fiscalId"
+              render={({ field, fieldState }) => (
+                <EntitySelectWithCreate
+                  id="c-fiscal"
+                  label="Fiscal"
+                  required
+                  value={field.value}
+                  onChange={(v) => {
+                    field.onChange(v);
+                    form.clearErrors("fiscalId");
+                  }}
+                  options={fiscalOptions}
+                  placeholder="Selecione o fiscal"
+                  addNewLabel="+ Novo fiscal"
+                  onAddNew={() => openFiscalModal("fiscal")}
+                  disabled={listsLoading}
+                  error={fieldState.error?.message}
+                />
+              )}
             />
-          </FormField>
-          <FormField label="CNPJ" htmlFor="ns-cnpj" required className="sm:col-span-2">
-            <input
-              id="ns-cnpj"
-              value={newSupplierCnpj}
-              onChange={(e) => setNewSupplierCnpj(e.target.value)}
-              className={formControlClass}
-              placeholder="Somente números ou com máscara"
-              inputMode="numeric"
-            />
-          </FormField>
-          {newSupplierErr ? <p className="sm:col-span-2 text-sm text-amber-800">{newSupplierErr}</p> : null}
-          <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <PrimaryButton type="button" busy={newSupplierBusy} onClick={() => void submitNewSupplier()}>
-              Guardar e selecionar
-            </PrimaryButton>
-            <SecondaryButton type="button" onClick={() => setSupplierModalOpen(false)}>
-              Cancelar
-            </SecondaryButton>
           </div>
+          <div className="sm:col-span-2">
+            <Controller
+              control={form.control}
+              name="managerId"
+              render={({ field, fieldState }) => (
+                <EntitySelectWithCreate
+                  id="c-manager"
+                  label="Gestor (opcional)"
+                  value={field.value}
+                  onChange={(v) => {
+                    field.onChange(v);
+                    form.clearErrors("managerId");
+                  }}
+                  options={fiscalOptions}
+                  placeholder="— Igual ao fiscal (omissão no servidor) —"
+                  addNewLabel="+ Novo gestor"
+                  onAddNew={() => openFiscalModal("manager")}
+                  disabled={listsLoading}
+                  error={fieldState.error?.message}
+                  hint="Se não selecionar, o servidor assume o mesmo fiscal como gestor."
+                />
+              )}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Button type="button" variant="outline" onClick={sameAsFiscal} disabled={listsLoading || Boolean(listsError) || !form.watch("fiscalId")}>
+              Usar o fiscal selecionado como gestor
+            </Button>
+          </div>
+        </FormSection>
+
+        <FormSection title="Vigência e valores" description="Datas em formato ISO (campo nativo); valor mensal em reais.">
+          <FormField
+            control={form.control}
+            name="startDate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Início da vigência</FormLabel>
+                <FormControl>
+                  <Input type="date" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="endDate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Fim da vigência</FormLabel>
+                <FormControl>
+                  <Input type="date" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="monthlyValue"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Valor mensal (R$)</FormLabel>
+                <FormControl>
+                  <Input type="text" inputMode="decimal" placeholder="0,00" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
+
+        <FormSection title="Descrição" description="Opcional — objeto ou observações.">
+          <FormField
+            control={form.control}
+            name="description"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Texto livre</FormLabel>
+                <FormControl>
+                  <Textarea rows={3} placeholder="Objeto ou observações" className="min-h-[88px] resize-y" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" disabled={listsLoading || Boolean(listsError) || createContractMut.isPending}>
+            {createContractMut.isPending ? "A guardar…" : "Guardar contrato"}
+          </Button>
         </div>
-      </Modal>
-    </form>
+
+        <Modal
+          open={fiscalModalRole !== null}
+          onClose={() => setFiscalModalRole(null)}
+          title={fiscalModalRole === "manager" ? "Novo gestor (fiscal)" : "Novo fiscal"}
+          description="Os dados ficam guardados na lista de fiscais e são selecionados automaticamente neste contrato."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="quickFiscalName"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                  <FormLabel>Nome</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Nome completo" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="quickFiscalEmail"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>E-mail</FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="email@org.br" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="quickFiscalPhone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Telefone</FormLabel>
+                  <FormControl>
+                    <Input placeholder="(00) 00000-0000" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {newFiscalErr ? <p className="sm:col-span-2 text-sm text-destructive">{newFiscalErr}</p> : null}
+            <div className="flex flex-wrap gap-2 sm:col-span-2">
+              <Button type="button" disabled={createFiscalMut.isPending} onClick={() => submitNewFiscal()}>
+                {createFiscalMut.isPending ? "A guardar…" : "Guardar e selecionar"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setFiscalModalRole(null)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal
+          open={supplierModalOpen}
+          onClose={() => setSupplierModalOpen(false)}
+          title="Novo fornecedor"
+          description="Após guardar, o fornecedor passa a constar na lista e os campos do contrato são preenchidos."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="quickSupplierName"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                  <FormLabel>Razão social</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Nome do fornecedor" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="quickSupplierCnpj"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                  <FormLabel>CNPJ</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Somente números ou com máscara" inputMode="numeric" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {newSupplierErr ? <p className="sm:col-span-2 text-sm text-destructive">{newSupplierErr}</p> : null}
+            <div className="flex flex-wrap gap-2 sm:col-span-2">
+              <Button type="button" disabled={createSupplierMut.isPending} onClick={() => submitNewSupplier()}>
+                {createSupplierMut.isPending ? "A guardar…" : "Guardar e selecionar"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setSupplierModalOpen(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      </form>
+    </Form>
   );
 }

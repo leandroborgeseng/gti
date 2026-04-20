@@ -1,6 +1,10 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import {
   acknowledgeGovernanceTicket,
   classifyGovernanceTicket,
@@ -10,7 +14,32 @@ import {
   runGovernanceMonitoring,
   sendGovernanceToControladoria
 } from "@/lib/api";
-import { formControlClass } from "@/components/ui/form-primitives";
+import { queryKeys } from "@/lib/query-keys";
+import {
+  GOVERNANCE_ACKNOWLEDGE_DEFAULTS,
+  GOVERNANCE_CLASSIFY_DEFAULTS,
+  GOVERNANCE_CONTROLADORIA_DEFAULTS,
+  GOVERNANCE_EXTEND_DEFAULTS,
+  GOVERNANCE_NOTIFY_DEFAULTS,
+  GOVERNANCE_RESOLVE_DEFAULTS,
+  governanceAcknowledgeSchema,
+  governanceClassifySchema,
+  governanceControladoriaSchema,
+  governanceExtendSchema,
+  governanceNotifySchema,
+  governanceResolveSchema,
+  type GovernanceAcknowledgeValues,
+  type GovernanceClassifyValues,
+  type GovernanceControladoriaValues,
+  type GovernanceExtendValues,
+  type GovernanceNotifyValues,
+  type GovernanceResolveValues
+} from "@/modules/governance/governance-detail-actions-schemas";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 type DetailProps = {
   ticketId: string;
@@ -21,225 +50,355 @@ type ListActionsProps = {
 };
 
 export function GovernanceListActions({ onMonitoringComplete }: ListActionsProps): JSX.Element {
+  const qc = useQueryClient();
   const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
 
-  async function onRun(): Promise<void> {
-    try {
-      setBusy(true);
-      const result = await runGovernanceMonitoring();
-      setMessage(
-        `Monitoramento executado. Verificados: ${result.checked ?? 0} | SLA violados: ${result.slaViolated ?? 0} | Escalados: ${result.escalated ?? 0}`
-      );
+  const monitoring = useMutation({
+    mutationFn: runGovernanceMonitoring,
+    onSuccess: (result) => {
+      const msg = `Monitoramento executado. Verificados: ${result.checked ?? 0} | SLA violados: ${result.slaViolated ?? 0} | Escalados: ${result.escalated ?? 0}`;
+      setMessage(msg);
+      toast.success("Monitoramento de SLA concluído.");
+      void qc.invalidateQueries({ queryKey: queryKeys.governanceTickets });
       onMonitoringComplete?.();
-    } catch (error) {
-      setMessage(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(false);
+    },
+    onError: (e: unknown) => {
+      const err = e instanceof Error ? e.message : String(e);
+      setMessage(err);
+      toast.error(err);
     }
-  }
+  });
 
   return (
     <div className="space-y-2">
-      <button
-        type="button"
-        onClick={() => void onRun()}
-        disabled={busy}
-        className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {busy ? "A executar…" : "Executar monitoramento de SLA"}
-      </button>
-      {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+      <Button type="button" variant="secondary" onClick={() => monitoring.mutate()} disabled={monitoring.isPending}>
+        {monitoring.isPending ? "A executar…" : "Executar monitoramento de SLA"}
+      </Button>
+      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
     </div>
   );
 }
 
 export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element {
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState<"ack" | "classify" | "notify" | "resolve" | "extend" | "controladoria" | null>(null);
+  const qc = useQueryClient();
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.governanceTickets });
+  };
 
-  async function onAcknowledge(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const acknowledgedAt = String(form.get("acknowledgedAt") ?? "");
-    try {
-      setBusy("ack");
-      await acknowledgeGovernanceTicket(ticketId, { acknowledgedAt });
-      setStatus("Ciência registrada com sucesso.");
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(null);
-    }
-  }
+  const formAck = useForm<GovernanceAcknowledgeValues>({
+    resolver: zodResolver(governanceAcknowledgeSchema),
+    defaultValues: GOVERNANCE_ACKNOWLEDGE_DEFAULTS
+  });
 
-  async function onClassify(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const priority = String(form.get("priority") ?? "MEDIUM") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-    const type = String(form.get("type") ?? "CORRETIVA") as "CORRETIVA" | "EVOLUTIVA";
-    try {
-      setBusy("classify");
-      await classifyGovernanceTicket(ticketId, { priority, type });
-      setStatus("Chamado classificado com sucesso.");
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(null);
-    }
-  }
+  const formClassify = useForm<GovernanceClassifyValues>({
+    resolver: zodResolver(governanceClassifySchema),
+    defaultValues: GOVERNANCE_CLASSIFY_DEFAULTS
+  });
 
-  async function onNotify(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const description = String(form.get("description") ?? "");
-    try {
-      setBusy("notify");
-      await notifyGovernanceManager(ticketId, { managerNotified: true, description });
-      setStatus("Notificação do gestor registrada.");
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(null);
-    }
-  }
+  const formNotify = useForm<GovernanceNotifyValues>({
+    resolver: zodResolver(governanceNotifySchema),
+    defaultValues: GOVERNANCE_NOTIFY_DEFAULTS
+  });
 
-  async function onResolve(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const resolvedAt = String(form.get("resolvedAt") ?? "");
-    try {
-      setBusy("resolve");
-      await resolveGovernanceTicket(ticketId, { resolvedAt });
-      setStatus("Chamado marcado como resolvido.");
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(null);
-    }
-  }
+  const formResolve = useForm<GovernanceResolveValues>({
+    resolver: zodResolver(governanceResolveSchema),
+    defaultValues: GOVERNANCE_RESOLVE_DEFAULTS
+  });
 
-  async function onExtend(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const newDeadline = String(form.get("newDeadline") ?? "");
-    const justification = String(form.get("justification") ?? "");
-    const createdBy = String(form.get("createdBy") ?? "");
-    try {
-      setBusy("extend");
-      await extendGovernanceDeadline(ticketId, { newDeadline, justification, createdBy });
-      setStatus("Prazo estendido com sucesso.");
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(null);
-    }
-  }
+  const formExtend = useForm<GovernanceExtendValues>({
+    resolver: zodResolver(governanceExtendSchema),
+    defaultValues: GOVERNANCE_EXTEND_DEFAULTS
+  });
 
-  async function onControladoria(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const seiProcessNumber = String(form.get("seiProcessNumber") ?? "");
-    const controladoriaUserId = String(form.get("controladoriaUserId") ?? "");
-    try {
-      setBusy("controladoria");
-      await sendGovernanceToControladoria(ticketId, { seiProcessNumber, controladoriaUserId });
-      setStatus("Chamado enviado para controladoria com sucesso.");
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(null);
-    }
-  }
+  const formControladoria = useForm<GovernanceControladoriaValues>({
+    resolver: zodResolver(governanceControladoriaSchema),
+    defaultValues: GOVERNANCE_CONTROLADORIA_DEFAULTS
+  });
+
+  const ackMut = useMutation({
+    mutationFn: (v: GovernanceAcknowledgeValues) => acknowledgeGovernanceTicket(ticketId, { acknowledgedAt: v.acknowledgedAt }),
+    onSuccess: () => {
+      toast.success("Ciência registrada.");
+      invalidate();
+      formAck.reset(GOVERNANCE_ACKNOWLEDGE_DEFAULTS);
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Erro ao registrar ciência.")
+  });
+
+  const classifyMut = useMutation({
+    mutationFn: (v: GovernanceClassifyValues) => classifyGovernanceTicket(ticketId, { priority: v.priority, type: v.type }),
+    onSuccess: () => {
+      toast.success("Classificação atualizada.");
+      invalidate();
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Erro ao classificar.")
+  });
+
+  const notifyMut = useMutation({
+    mutationFn: (v: GovernanceNotifyValues) =>
+      notifyGovernanceManager(ticketId, { managerNotified: true, description: v.description.trim() }),
+    onSuccess: () => {
+      toast.success("Notificação registrada.");
+      invalidate();
+      formNotify.reset(GOVERNANCE_NOTIFY_DEFAULTS);
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Erro ao notificar.")
+  });
+
+  const resolveMut = useMutation({
+    mutationFn: (v: GovernanceResolveValues) => resolveGovernanceTicket(ticketId, { resolvedAt: v.resolvedAt }),
+    onSuccess: () => {
+      toast.success("Chamado resolvido.");
+      invalidate();
+      formResolve.reset(GOVERNANCE_RESOLVE_DEFAULTS);
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Erro ao resolver.")
+  });
+
+  const extendMut = useMutation({
+    mutationFn: (v: GovernanceExtendValues) =>
+      extendGovernanceDeadline(ticketId, {
+        newDeadline: v.newDeadline,
+        justification: v.justification.trim(),
+        createdBy: v.createdBy.trim()
+      }),
+    onSuccess: () => {
+      toast.success("Prazo estendido.");
+      invalidate();
+      formExtend.reset(GOVERNANCE_EXTEND_DEFAULTS);
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Erro ao estender prazo.")
+  });
+
+  const controladoriaMut = useMutation({
+    mutationFn: (v: GovernanceControladoriaValues) =>
+      sendGovernanceToControladoria(ticketId, {
+        seiProcessNumber: v.seiProcessNumber.trim(),
+        controladoriaUserId: v.controladoriaUserId.trim() || undefined
+      }),
+    onSuccess: () => {
+      toast.success("Enviado à controladoria.");
+      invalidate();
+      formControladoria.reset(GOVERNANCE_CONTROLADORIA_DEFAULTS);
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Erro ao enviar.")
+  });
+
+  const busy =
+    ackMut.isPending ||
+    classifyMut.isPending ||
+    notifyMut.isPending ||
+    resolveMut.isPending ||
+    extendMut.isPending ||
+    controladoriaMut.isPending;
+
+  const blockClass = "space-y-3 rounded-lg border border-border bg-card/40 p-4";
 
   return (
     <div className="space-y-4">
-      <form className="space-y-2" onSubmit={(event) => void onAcknowledge(event)}>
-        <p className="text-sm font-semibold">Registrar ciência</p>
-        <input required name="acknowledgedAt" className={formControlClass} type="datetime-local" />
-        <button
-          type="submit"
-          disabled={busy != null}
-          className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "ack" ? "Salvando..." : "Registrar ciência"}
-        </button>
-      </form>
+      <Form {...formAck}>
+        <form className={blockClass} onSubmit={formAck.handleSubmit((v) => ackMut.mutate(v))}>
+          <p className="text-sm font-semibold text-foreground">Registrar ciência</p>
+          <FormField
+            control={formAck.control}
+            name="acknowledgedAt"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Data e hora</FormLabel>
+                <FormControl>
+                  <Input type="datetime-local" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" disabled={busy}>
+            {ackMut.isPending ? "A guardar…" : "Registrar ciência"}
+          </Button>
+        </form>
+      </Form>
 
-      <form className="space-y-2" onSubmit={(event) => void onClassify(event)}>
-        <p className="text-sm font-semibold">Classificar chamado</p>
-        <div className="grid gap-2 md:grid-cols-2">
-          <select name="priority" className={formControlClass}>
-            <option value="LOW">LOW</option>
-            <option value="MEDIUM">MEDIUM</option>
-            <option value="HIGH">HIGH</option>
-            <option value="CRITICAL">CRITICAL</option>
-          </select>
-          <select name="type" className={formControlClass}>
-            <option value="CORRETIVA">CORRETIVA</option>
-            <option value="EVOLUTIVA">EVOLUTIVA</option>
-          </select>
-        </div>
-        <button
-          type="submit"
-          disabled={busy != null}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "classify" ? "Salvando..." : "Classificar"}
-        </button>
-      </form>
+      <Form {...formClassify}>
+        <form className={blockClass} onSubmit={formClassify.handleSubmit((v) => classifyMut.mutate(v))}>
+          <p className="text-sm font-semibold text-foreground">Classificar chamado</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <FormField
+              control={formClassify.control}
+              name="priority"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Prioridade</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="LOW">Baixa</SelectItem>
+                      <SelectItem value="MEDIUM">Média</SelectItem>
+                      <SelectItem value="HIGH">Alta</SelectItem>
+                      <SelectItem value="CRITICAL">Crítica</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={formClassify.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="CORRETIVA">Corretiva</SelectItem>
+                      <SelectItem value="EVOLUTIVA">Evolutiva</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          <Button type="submit" disabled={busy}>
+            {classifyMut.isPending ? "A guardar…" : "Classificar"}
+          </Button>
+        </form>
+      </Form>
 
-      <form className="space-y-2" onSubmit={(event) => void onNotify(event)}>
-        <p className="text-sm font-semibold">Notificar gestor</p>
-        <textarea required name="description" className={formControlClass} rows={2} placeholder="Descrição da ação de notificação" />
-        <button
-          type="submit"
-          disabled={busy != null}
-          className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "notify" ? "Salvando..." : "Registrar notificação"}
-        </button>
-      </form>
+      <Form {...formNotify}>
+        <form className={blockClass} onSubmit={formNotify.handleSubmit((v) => notifyMut.mutate(v))}>
+          <p className="text-sm font-semibold text-foreground">Notificar gestor</p>
+          <FormField
+            control={formNotify.control}
+            name="description"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Descrição</FormLabel>
+                <FormControl>
+                  <Textarea rows={2} placeholder="Descrição da ação de notificação" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" variant="secondary" disabled={busy}>
+            {notifyMut.isPending ? "A guardar…" : "Registrar notificação"}
+          </Button>
+        </form>
+      </Form>
 
-      <form className="space-y-2" onSubmit={(event) => void onResolve(event)}>
-        <p className="text-sm font-semibold">Registrar resolução</p>
-        <input required name="resolvedAt" className={formControlClass} type="datetime-local" />
-        <button
-          type="submit"
-          disabled={busy != null}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "resolve" ? "Salvando..." : "Marcar como resolvido"}
-        </button>
-      </form>
+      <Form {...formResolve}>
+        <form className={blockClass} onSubmit={formResolve.handleSubmit((v) => resolveMut.mutate(v))}>
+          <p className="text-sm font-semibold text-foreground">Registrar resolução</p>
+          <FormField
+            control={formResolve.control}
+            name="resolvedAt"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Data e hora</FormLabel>
+                <FormControl>
+                  <Input type="datetime-local" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" disabled={busy}>
+            {resolveMut.isPending ? "A guardar…" : "Marcar como resolvido"}
+          </Button>
+        </form>
+      </Form>
 
-      <form className="space-y-2" onSubmit={(event) => void onExtend(event)}>
-        <p className="text-sm font-semibold">Extensão de prazo</p>
-        <input required name="newDeadline" className={formControlClass} type="datetime-local" />
-        <textarea required name="justification" className={formControlClass} rows={3} placeholder="Justificativa" />
-        <input required name="createdBy" className={formControlClass} placeholder="Usuário responsável" />
-        <button
-          type="submit"
-          disabled={busy != null}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "extend" ? "Salvando..." : "Estender prazo"}
-        </button>
-      </form>
+      <Form {...formExtend}>
+        <form className={blockClass} onSubmit={formExtend.handleSubmit((v) => extendMut.mutate(v))}>
+          <p className="text-sm font-semibold text-foreground">Extensão de prazo</p>
+          <FormField
+            control={formExtend.control}
+            name="newDeadline"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Novo prazo</FormLabel>
+                <FormControl>
+                  <Input type="datetime-local" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={formExtend.control}
+            name="justification"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Justificativa</FormLabel>
+                <FormControl>
+                  <Textarea rows={3} placeholder="Justificativa" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={formExtend.control}
+            name="createdBy"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Utilizador responsável</FormLabel>
+                <FormControl>
+                  <Input placeholder="Identificador do utilizador" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" variant="outline" disabled={busy}>
+            {extendMut.isPending ? "A guardar…" : "Estender prazo"}
+          </Button>
+        </form>
+      </Form>
 
-      <form className="space-y-2" onSubmit={(event) => void onControladoria(event)}>
-        <p className="text-sm font-semibold">Encaminhar para controladoria</p>
-        <input required name="seiProcessNumber" className={formControlClass} placeholder="Número do processo SEI" />
-        <input name="controladoriaUserId" className={formControlClass} placeholder="Usuário da controladoria (opcional)" />
-        <button
-          type="submit"
-          disabled={busy != null}
-          className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy === "controladoria" ? "Enviando..." : "Enviar para controladoria"}
-        </button>
-      </form>
-      {status ? <p className="text-sm text-slate-600">{status}</p> : null}
+      <Form {...formControladoria}>
+        <form className={blockClass} onSubmit={formControladoria.handleSubmit((v) => controladoriaMut.mutate(v))}>
+          <p className="text-sm font-semibold text-foreground">Encaminhar para controladoria</p>
+          <FormField
+            control={formControladoria.control}
+            name="seiProcessNumber"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Número do processo SEI</FormLabel>
+                <FormControl>
+                  <Input placeholder="Número do processo SEI" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={formControladoria.control}
+            name="controladoriaUserId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Utilizador da controladoria (opcional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="Opcional" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" variant="secondary" disabled={busy}>
+            {controladoriaMut.isPending ? "A enviar…" : "Enviar para controladoria"}
+          </Button>
+        </form>
+      </Form>
     </div>
   );
 }

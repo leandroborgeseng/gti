@@ -1,11 +1,18 @@
 "use client";
 
+import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Receipt } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Glosa } from "@/lib/api";
+import { getGlosas } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { GlosaForm, type MeasurementOption } from "@/components/actions/glosa-form";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/tables/data-table";
 
 const typeLabel: Record<string, string> = {
   ATRASO: "Atraso",
@@ -14,8 +21,7 @@ const typeLabel: Record<string, string> = {
   QUALIDADE: "Qualidade"
 };
 
-import { buttonPrimaryClass } from "@/components/ui/form-primitives";
-import { DataLoadAlert } from "@/components/ui/data-load-alert";
+const columnHelper = createColumnHelper<Glosa>();
 
 type Props = {
   glosas: Glosa[];
@@ -23,84 +29,87 @@ type Props = {
   dataLoadErrors?: string[];
 };
 
-export function GlosasView({ glosas, measurementOptions, dataLoadErrors = [] }: Props): JSX.Element {
-  const router = useRouter();
+export function GlosasView({ glosas: initialGlosas, measurementOptions, dataLoadErrors = [] }: Props): JSX.Element {
+  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: glosas = initialGlosas } = useQuery({
+    queryKey: queryKeys.glosas,
+    queryFn: getGlosas,
+    initialData: initialGlosas
+  });
+
+  const columns = useMemo<ColumnDef<Glosa, any>[]>(
+    () => [
+      columnHelper.accessor(
+        (row) =>
+          row.measurement
+            ? `${String(row.measurement.referenceMonth).padStart(2, "0")}/${row.measurement.referenceYear}`
+            : row.measurementId,
+        {
+          id: "measurement",
+          header: "Medição",
+          cell: (info) => <span className="font-mono text-xs text-muted-foreground">{info.getValue()}</span>
+        }
+      ),
+      columnHelper.accessor("type", {
+        header: "Tipo",
+        cell: (info) => <span className="text-foreground">{typeLabel[info.getValue()] ?? info.getValue()}</span>
+      }),
+      columnHelper.accessor("value", {
+        header: () => <span className="flex w-full justify-end">Valor</span>,
+        cell: (info) => <div className="text-right tabular-nums text-foreground">{info.getValue()}</div>
+      }),
+      columnHelper.accessor("createdBy", {
+        header: "Criado por",
+        cell: (info) => <span className="text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor("createdAt", {
+        header: "Data",
+        cell: (info) => (
+          <span className="whitespace-nowrap text-muted-foreground">{new Date(info.getValue()).toLocaleDateString("pt-BR")}</span>
+        )
+      }),
+      columnHelper.display({
+        id: "actions",
+        enableSorting: false,
+        header: () => <span className="sr-only">Ações</span>,
+        cell: (ctx) => (
+          <div className="text-right">
+            <Button variant="link" className="h-auto p-0 text-foreground" asChild>
+              <Link href={`/glosas/${ctx.row.original.id}`}>Abrir</Link>
+            </Button>
+          </div>
+        )
+      })
+    ],
+    []
+  );
 
   return (
     <div className="space-y-6">
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Glosas</h1>
-          <p className="mt-1 max-w-xl text-sm text-slate-500">
-            Registro por medição (atraso, não entrega, SLA, qualidade). Use <strong className="font-medium text-slate-700">Nova glosa</strong>{" "}
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Glosas</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Registro por medição (atraso, não entrega, SLA, qualidade). Use <strong className="font-medium text-foreground">Nova glosa</strong>{" "}
             para lançar valores; a lista atualiza ao guardar.
           </p>
         </div>
-        <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
-          <span className="text-lg leading-none" aria-hidden>
-            +
-          </span>
+        <Button type="button" className="shrink-0 gap-2" onClick={() => setModalOpen(true)}>
+          <Receipt className="h-4 w-4" />
           Nova glosa
-        </button>
+        </Button>
       </div>
 
-      <section className="overflow-hidden border border-slate-200/90 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <span className="text-sm font-medium text-slate-700">Registradas</span>
-          <span className="tabular-nums text-xs font-medium uppercase tracking-wide text-slate-400">
-            {glosas.length} {glosas.length === 1 ? "registro" : "registros"}
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="px-5 py-3">Medição</th>
-                <th className="px-5 py-3">Tipo</th>
-                <th className="px-5 py-3 text-right">Valor</th>
-                <th className="px-5 py-3">Criado por</th>
-                <th className="px-5 py-3">Data</th>
-                <th className="px-5 py-3 text-right"> </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {glosas.map((g) => (
-                <tr key={g.id} className="transition hover:bg-slate-50/60">
-                  <td className="whitespace-nowrap px-5 py-3 text-xs text-slate-600">
-                    {g.measurement ? (
-                      <span className="font-mono">
-                        {String(g.measurement.referenceMonth).padStart(2, "0")}/{g.measurement.referenceYear}
-                      </span>
-                    ) : (
-                      <span className="font-mono">{g.measurementId}</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 text-slate-800">{typeLabel[g.type] ?? g.type}</td>
-                  <td className="px-5 py-3 text-right tabular-nums text-slate-800">{g.value}</td>
-                  <td className="px-5 py-3 text-slate-600">{g.createdBy}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">{new Date(g.createdAt).toLocaleDateString("pt-BR")}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right">
-                    <Link
-                      href={`/glosas/${g.id}`}
-                      className="text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
-                    >
-                      Abrir
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              {glosas.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-14 text-center text-sm text-slate-500">
-                    Nenhuma glosa ainda. Clique em &quot;Nova glosa&quot; após calcular a medição.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+      <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <DataTable
+          columns={columns}
+          data={glosas}
+          searchPlaceholder="Pesquisar medição, tipo…"
+          emptyLabel='Nenhuma glosa ainda. Clique em "Nova glosa" após calcular a medição.'
+        />
       </section>
 
       <Modal
@@ -113,7 +122,7 @@ export function GlosasView({ glosas, measurementOptions, dataLoadErrors = [] }: 
           measurementOptions={measurementOptions}
           onSuccess={() => {
             setModalOpen(false);
-            router.refresh();
+            void qc.invalidateQueries({ queryKey: queryKeys.glosas });
           }}
         />
       </Modal>

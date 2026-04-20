@@ -1,56 +1,89 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { createFiscal } from "@/lib/api";
-import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
+import { queryKeys } from "@/lib/query-keys";
+import { fiscalFormSchema, type FiscalFormValues } from "@/modules/fiscais/fiscal-schema";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { FormSection } from "@/components/ui/form-primitives";
 
 type Props = {
   onSuccess?: () => void;
 };
 
 export function FiscalForm({ onSuccess }: Props): JSX.Element {
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
+  const form = useForm<FiscalFormValues>({
+    resolver: zodResolver(fiscalFormSchema),
+    defaultValues: { name: "", email: "", phone: "" }
+  });
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    try {
-      setBusy(true);
-      await createFiscal({
-        name: String(data.get("name") ?? ""),
-        email: String(data.get("email") ?? ""),
-        phone: String(data.get("phone") ?? "")
-      });
-      setStatus("Fiscal cadastrado com sucesso.");
-      event.currentTarget.reset();
+  const mutation = useMutation({
+    mutationFn: (values: FiscalFormValues) => createFiscal(values),
+    onSuccess: () => {
+      toast.success("Fiscal cadastrado.");
+      void qc.invalidateQueries({ queryKey: queryKeys.fiscais });
+      form.reset({ name: "", email: "", phone: "" });
       onSuccess?.();
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(false);
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao cadastrar");
     }
-  }
+  });
 
   return (
-    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
-      <FormSection title="Dados do fiscal" description="Nome, e-mail e telefone de contacto.">
-        <FormField label="Nome" htmlFor="fiscal-name" required>
-          <input id="fiscal-name" required name="name" className={formControlClass} placeholder="Nome completo" />
-        </FormField>
-        <FormField label="E-mail" htmlFor="fiscal-email" required>
-          <input id="fiscal-email" required type="email" name="email" className={formControlClass} placeholder="email@org.br" />
-        </FormField>
-        <FormField label="Telefone" htmlFor="fiscal-phone" required className="sm:col-span-2">
-          <input id="fiscal-phone" required name="phone" className={formControlClass} placeholder="Telefone" />
-        </FormField>
-      </FormSection>
-      <div className="flex flex-wrap items-center gap-3">
-        <PrimaryButton type="submit" busy={busy} busyLabel="A guardar…">
-          Cadastrar fiscal
-        </PrimaryButton>
-        {status ? <span className="text-sm text-slate-600">{status}</span> : null}
-      </div>
-    </form>
+    <Form {...form}>
+      <form className="space-y-6" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <FormSection title="Dados do fiscal" description="Nome, e-mail e telefone de contacto.">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Nome</FormLabel>
+                <FormControl>
+                  <Input placeholder="Nome completo" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>E-mail</FormLabel>
+                <FormControl>
+                  <Input type="email" placeholder="email@org.br" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="phone"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Telefone</FormLabel>
+                <FormControl>
+                  <Input placeholder="Telefone" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? "A guardar…" : "Cadastrar fiscal"}
+        </Button>
+      </form>
+    </Form>
   );
 }

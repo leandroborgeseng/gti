@@ -1,166 +1,184 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { createGlosa } from "@/lib/api";
-import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
+import { queryKeys } from "@/lib/query-keys";
+import { glosaFormSchema, type GlosaFormValues } from "@/modules/glosas/glosa-form-schema";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { FormSection } from "@/components/ui/form-primitives";
 
 export type MeasurementOption = { id: string; label: string };
 
 type Props = {
   onSuccess?: () => void;
-  /** Lista de medições (evita colar UUID). */
   measurementOptions?: MeasurementOption[];
 };
 
 export function GlosaForm({ onSuccess, measurementOptions }: Props): JSX.Element {
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  const [measurementId, setMeasurementId] = useState("");
-  const [type, setType] = useState<"ATRASO" | "NAO_ENTREGA" | "SLA" | "QUALIDADE">("ATRASO");
-  const [value, setValue] = useState("");
-  const [createdBy, setCreatedBy] = useState("");
-  const [justification, setJustification] = useState("");
-
+  const qc = useQueryClient();
   const hasSelect = Boolean(measurementOptions && measurementOptions.length > 0);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    setStatus("");
-    const err: Record<string, string> = {};
-    const mid = hasSelect ? measurementId : String((event.currentTarget.elements.namedItem("measurementId") as HTMLInputElement)?.value ?? "").trim();
-    if (!mid) err.measurementId = "Associe a uma medição.";
-    const v = Number(String(value).replace(",", "."));
-    if (!Number.isFinite(v) || v <= 0) err.value = "Informe um valor maior que zero.";
-    if (!justification.trim()) err.justification = "A justificativa é obrigatória.";
-    setFieldErrors(err);
-    if (Object.keys(err).length > 0) return;
-
-    try {
-      setBusy(true);
-      await createGlosa({
-        measurementId: mid,
-        type,
-        value: v,
-        createdBy: createdBy.trim() || undefined,
-        justification: justification.trim()
-      });
-      setStatus("Glosa cadastrada com sucesso.");
-      if (hasSelect) {
-        setMeasurementId("");
-        setValue("");
-        setCreatedBy("");
-        setJustification("");
-      } else {
-        event.currentTarget.reset();
-      }
-      onSuccess?.();
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(false);
+  const form = useForm<GlosaFormValues>({
+    resolver: zodResolver(glosaFormSchema),
+    defaultValues: {
+      measurementId: "",
+      type: "ATRASO",
+      value: "",
+      createdBy: "",
+      justification: ""
     }
-  }
+  });
+
+  const mutation = useMutation({
+    mutationFn: (values: GlosaFormValues) => {
+      const num = Number(String(values.value).replace(",", "."));
+      return createGlosa({
+        measurementId: values.measurementId.trim(),
+        type: values.type,
+        value: num,
+        createdBy: values.createdBy?.trim() || undefined,
+        justification: values.justification.trim()
+      });
+    },
+    onSuccess: () => {
+      toast.success("Glosa cadastrada.");
+      void qc.invalidateQueries({ queryKey: queryKeys.glosas });
+      form.reset({
+        measurementId: "",
+        type: "ATRASO",
+        value: "",
+        createdBy: "",
+        justification: ""
+      });
+      onSuccess?.();
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao guardar glosa");
+    }
+  });
 
   return (
-    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
-      <FormSection
-        title="Ligação e tipo"
-        description="A glosa associa-se a uma medição já existente. O tipo categoriza o motivo."
-      >
-        {hasSelect ? (
-          <FormField label="Medição" htmlFor="g-measurement" required error={fieldErrors.measurementId} className="sm:col-span-2">
-            <select
-              id="g-measurement"
+    <Form {...form}>
+      <form className="space-y-6" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <FormSection title="Ligação e tipo" description="A glosa associa-se a uma medição já existente. O tipo categoriza o motivo.">
+          {hasSelect ? (
+            <FormField
+              control={form.control}
               name="measurementId"
-              className={formControlClass}
-              value={measurementId}
-              onChange={(e) => {
-                setMeasurementId(e.target.value);
-                setFieldErrors((p) => {
-                  const n = { ...p };
-                  delete n.measurementId;
-                  return n;
-                });
-              }}
-            >
-              <option value="" disabled>
-                Selecione…
-              </option>
-              {measurementOptions!.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </FormField>
-        ) : (
-          <FormField label="ID da medição" htmlFor="g-measurement-id" required error={fieldErrors.measurementId} className="sm:col-span-2">
-            <input
-              id="g-measurement-id"
-              name="measurementId"
-              className={formControlClass}
-              placeholder="UUID da medição"
-              autoComplete="off"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                  <FormLabel>Medição</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione…" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {measurementOptions!.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </FormField>
-        )}
-        <FormField label="Tipo" htmlFor="g-type" required>
-          <select id="g-type" name="type" className={formControlClass} value={type} onChange={(e) => setType(e.target.value as typeof type)}>
-            <option value="ATRASO">Atraso</option>
-            <option value="NAO_ENTREGA">Não entrega</option>
-            <option value="SLA">SLA</option>
-            <option value="QUALIDADE">Qualidade</option>
-          </select>
-        </FormField>
-      </FormSection>
+          ) : (
+            <FormField
+              control={form.control}
+              name="measurementId"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                  <FormLabel>ID da medição</FormLabel>
+                  <FormControl>
+                    <Input placeholder="UUID da medição" autoComplete="off" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+          <FormField
+            control={form.control}
+            name="type"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Tipo</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="ATRASO">Atraso</SelectItem>
+                    <SelectItem value="NAO_ENTREGA">Não entrega</SelectItem>
+                    <SelectItem value="SLA">SLA</SelectItem>
+                    <SelectItem value="QUALIDADE">Qualidade</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
 
-      <FormSection title="Valor e justificativa" description="O valor deve ser coerente com a medição. Quem regista pode ser indicado abaixo.">
-        <FormField label="Valor (R$)" htmlFor="g-value" required error={fieldErrors.value}>
-          <input
-            id="g-value"
+        <FormSection title="Valor e justificativa" description="O valor deve ser coerente com a medição. Quem regista pode ser indicado abaixo.">
+          <FormField
+            control={form.control}
             name="value"
-            type="text"
-            inputMode="decimal"
-            className={formControlClass}
-            placeholder="0,00"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Valor (R$)</FormLabel>
+                <FormControl>
+                  <Input type="text" inputMode="decimal" placeholder="0,00" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </FormField>
-        <FormField label="Responsável pelo registo (opcional)" htmlFor="g-by">
-          <input
-            id="g-by"
+          <FormField
+            control={form.control}
             name="createdBy"
-            className={formControlClass}
-            placeholder="Identificador ou nome"
-            value={createdBy}
-            onChange={(e) => setCreatedBy(e.target.value)}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Responsável pelo registo (opcional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="Identificador ou nome" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </FormField>
-        <FormField label="Justificativa" htmlFor="g-just" required error={fieldErrors.justification} className="sm:col-span-2">
-          <textarea
-            id="g-just"
+          <FormField
+            control={form.control}
             name="justification"
-            className={`${formControlClass} min-h-[88px] resize-y`}
-            rows={3}
-            placeholder="Fundamento da glosa"
-            value={justification}
-            onChange={(e) => setJustification(e.target.value)}
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Justificativa</FormLabel>
+                <FormControl>
+                  <Textarea rows={3} placeholder="Fundamento da glosa" className="min-h-[88px] resize-y" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </FormField>
-      </FormSection>
+        </FormSection>
 
-      {status ? (
-        <p className={`text-sm ${status.includes("sucesso") ? "text-emerald-700" : "text-amber-800"}`} role="status">
-          {status}
-        </p>
-      ) : null}
-
-      <PrimaryButton type="submit" busy={busy} busyLabel="A guardar…">
-        Guardar glosa
-      </PrimaryButton>
-    </form>
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? "A guardar…" : "Guardar glosa"}
+        </Button>
+      </form>
+    </Form>
   );
 }

@@ -115,7 +115,7 @@ export function DashboardHome(props: {
       ) : null}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
         {kpis.map((kpi) => (
-          <Card key={kpi.label} className="p-4">
+          <Card key={kpi.label}>
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{kpi.label}</p>
             <p className="mt-2 text-lg font-bold tabular-nums text-slate-900">{kpi.value}</p>
           </Card>
@@ -123,7 +123,7 @@ export function DashboardHome(props: {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-4">
+        <Card>
           <h3 className="text-base font-semibold text-slate-900">Governança de chamados</h3>
           <ul className="mt-3 space-y-2 text-sm text-slate-700">
             <li>Dentro do SLA: {formatPercent(s.governance.dentroSlaPercentual)}</li>
@@ -139,7 +139,7 @@ export function DashboardHome(props: {
             .
           </p>
         </Card>
-        <Card className="p-4">
+        <Card>
           <h3 className="text-base font-semibold text-slate-900">Metas</h3>
           <ul className="mt-3 space-y-2 text-sm text-slate-700">
             <li>Planejadas: {s.goals.planejadas ?? 0}</li>
@@ -160,7 +160,7 @@ export function DashboardHome(props: {
           Resumo do que precisa de atenção (contratos a vencer, medições em aberto, entregas abaixo do mínimo e SLAs a expirar), alinhado ao painel executivo do sistema anterior.
         </p>
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="p-4">
+          <Card>
             <h4 className="text-sm font-semibold text-slate-900">Contratos a vencer (30 dias)</h4>
             <p className="mt-1 text-xs text-slate-500">Vigência a terminar no prazo indicado.</p>
             {a.vencendo.length === 0 ? (
@@ -182,7 +182,7 @@ export function DashboardHome(props: {
             )}
           </Card>
 
-          <Card className="p-4">
+          <Card>
             <h4 className="text-sm font-semibold text-slate-900">Medições pendentes</h4>
             <p className="mt-1 text-xs text-slate-500">Abertas ou em revisão.</p>
             {a.pendentes.length === 0 ? (
@@ -213,7 +213,7 @@ export function DashboardHome(props: {
             )}
           </Card>
 
-          <Card className="p-4">
+          <Card>
             <h4 className="text-sm font-semibold text-amber-900">Contratos com baixa entrega (&lt; 40% validado)</h4>
             <p className="mt-1 text-xs text-slate-500">Contratos tipo Software ou Serviço: funcionalidades validadas sobre o total.</p>
             {a.baixaEntrega.length === 0 ? (
@@ -235,7 +235,7 @@ export function DashboardHome(props: {
             )}
           </Card>
 
-          <Card className="p-4">
+          <Card>
             <h4 className="text-sm font-semibold text-slate-900">SLA de governança a vencer (30 dias)</h4>
             <p className="mt-1 text-xs text-slate-500">Chamados em acompanhamento sem resolução.</p>
             {a.sla.length === 0 ? (

@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { PropsWithChildren } from "react";
+import { AppProviders } from "@/components/providers/app-providers";
 
 function metadataBaseUrl(): URL {
   const raw = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001";
@@ -37,7 +38,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: PropsWithChildren): JSX.Element {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        <AppProviders>{children}</AppProviders>
+      </body>
     </html>
   );
 }

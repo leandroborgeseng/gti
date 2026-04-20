@@ -1,8 +1,18 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { toast } from "sonner";
 import { createMeasurement } from "@/lib/api";
-import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
+import { queryKeys } from "@/lib/query-keys";
+import { measurementFormSchema, type MeasurementFormValues } from "@/modules/measurements/measurement-form-schema";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FormSection } from "@/components/ui/form-primitives";
 
 type ContractOption = { id: string; number: string; name: string };
 
@@ -13,146 +23,144 @@ type Props = {
 };
 
 export function MeasurementForm({ onSuccess, contractOptions, defaultContractId }: Props): JSX.Element {
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  const now = new Date();
-  const defaultMonth = now.getMonth() + 1;
-  const defaultYear = now.getFullYear();
-
+  const qc = useQueryClient();
   const hasSelect = Boolean(contractOptions && contractOptions.length > 0);
-  const initialContract =
-    defaultContractId && contractOptions?.some((c) => c.id === defaultContractId) ? defaultContractId : "";
+  const [defaults] = useState(() => {
+    const n = new Date();
+    return { month: String(n.getMonth() + 1), year: String(n.getFullYear()) };
+  });
 
-  const [contractId, setContractId] = useState(initialContract);
-  const [referenceMonth, setReferenceMonth] = useState(String(defaultMonth));
-  const [referenceYear, setReferenceYear] = useState(String(defaultYear));
+  const resolvedInitialContract = useMemo(() => {
+    if (!hasSelect) return (defaultContractId ?? "").trim();
+    return defaultContractId && contractOptions?.some((c) => c.id === defaultContractId) ? defaultContractId : "";
+  }, [hasSelect, defaultContractId, contractOptions]);
 
-  const monthNum = Number(referenceMonth);
-  const yearNum = Number(referenceYear);
-
-  const contractLabel = useMemo(() => {
-    if (!hasSelect || !contractId) return "";
-    const c = contractOptions!.find((x) => x.id === contractId);
-    return c ? `${c.number} — ${c.name}` : "";
-  }, [contractId, contractOptions, hasSelect]);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    setStatus("");
-    const err: Record<string, string> = {};
-    const cid = hasSelect ? contractId : String((event.currentTarget.elements.namedItem("contractId") as HTMLInputElement)?.value ?? "");
-    if (!cid.trim()) err.contractId = "Indique o contrato.";
-    if (!Number.isFinite(monthNum) || monthNum < 1 || monthNum > 12) err.referenceMonth = "Mês entre 1 e 12.";
-    if (!Number.isFinite(yearNum) || yearNum < 2000 || yearNum > 2100) err.referenceYear = "Ano inválido.";
-    setFieldErrors(err);
-    if (Object.keys(err).length > 0) return;
-
-    try {
-      setBusy(true);
-      await createMeasurement({
-        contractId: cid.trim(),
-        referenceMonth: monthNum,
-        referenceYear: yearNum
-      });
-      setStatus("Medição criada com sucesso.");
-      setFieldErrors({});
-      if (!hasSelect) {
-        event.currentTarget.reset();
-      } else {
-        setContractId(initialContract);
-      }
-      setReferenceMonth(String(defaultMonth));
-      setReferenceYear(String(defaultYear));
-      onSuccess?.();
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(false);
+  const form = useForm<MeasurementFormValues>({
+    resolver: zodResolver(measurementFormSchema),
+    defaultValues: {
+      contractId: resolvedInitialContract,
+      referenceMonth: defaults.month,
+      referenceYear: defaults.year
     }
-  }
+  });
+
+  useEffect(() => {
+    form.reset({
+      contractId: resolvedInitialContract,
+      referenceMonth: defaults.month,
+      referenceYear: defaults.year
+    });
+  }, [resolvedInitialContract, defaults.month, defaults.year, form]);
+
+  const watchedContractId = useWatch({ control: form.control, name: "contractId" });
+  const contractLabel = useMemo(() => {
+    if (!hasSelect || !watchedContractId) return "";
+    const c = contractOptions!.find((x) => x.id === watchedContractId);
+    return c ? `${c.number} — ${c.name}` : "";
+  }, [hasSelect, watchedContractId, contractOptions]);
+
+  const mutation = useMutation({
+    mutationFn: (values: MeasurementFormValues) =>
+      createMeasurement({
+        contractId: values.contractId.trim(),
+        referenceMonth: parseInt(values.referenceMonth, 10),
+        referenceYear: parseInt(values.referenceYear, 10)
+      }),
+    onSuccess: () => {
+      toast.success("Medição criada.");
+      void qc.invalidateQueries({ queryKey: queryKeys.measurements });
+      form.reset({
+        contractId: hasSelect ? resolvedInitialContract : "",
+        referenceMonth: defaults.month,
+        referenceYear: defaults.year
+      });
+      onSuccess?.();
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao criar medição");
+    }
+  });
 
   return (
-    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
-      <FormSection
-        title="Competência e contrato"
-        description="A medição é única por contrato, mês e ano. Use a competência corrente quando fizer sentido operacional."
-      >
-        {hasSelect ? (
-          <FormField label="Contrato" htmlFor="m-contract" required error={fieldErrors.contractId} className="sm:col-span-2">
-            <select
-              id="m-contract"
+    <Form {...form}>
+      <form className="space-y-6" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <FormSection
+          title="Competência e contrato"
+          description="A medição é única por contrato, mês e ano. Use a competência corrente quando fizer sentido operacional."
+        >
+          {hasSelect ? (
+            <FormField
+              control={form.control}
               name="contractId"
-              className={formControlClass}
-              value={contractId}
-              onChange={(e) => {
-                setContractId(e.target.value);
-                setFieldErrors((p) => {
-                  const n = { ...p };
-                  delete n.contractId;
-                  return n;
-                });
-              }}
-            >
-              <option value="" disabled>
-                Selecione…
-              </option>
-              {contractOptions!.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.number} — {c.name}
-                </option>
-              ))}
-            </select>
-            {contractLabel ? <p className="mt-1 text-xs text-slate-500">Selecionado: {contractLabel}</p> : null}
-          </FormField>
-        ) : (
-          <FormField label="ID do contrato" htmlFor="m-contract-uuid" required error={fieldErrors.contractId} className="sm:col-span-2">
-            <input
-              id="m-contract-uuid"
-              name="contractId"
-              defaultValue={defaultContractId ?? ""}
-              className={formControlClass}
-              placeholder="UUID do contrato"
-              autoComplete="off"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                  <FormLabel>Contrato</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione…" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {contractOptions!.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.number} — {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {contractLabel ? <FormDescription>Selecionado: {contractLabel}</FormDescription> : null}
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </FormField>
-        )}
-        <FormField label="Mês (1–12)" htmlFor="m-month" required error={fieldErrors.referenceMonth}>
-          <input
-            id="m-month"
+          ) : (
+            <FormField
+              control={form.control}
+              name="contractId"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                  <FormLabel>ID do contrato</FormLabel>
+                  <FormControl>
+                    <Input placeholder="UUID do contrato" autoComplete="off" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+          <FormField
+            control={form.control}
             name="referenceMonth"
-            type="number"
-            min={1}
-            max={12}
-            className={formControlClass}
-            value={referenceMonth}
-            onChange={(e) => setReferenceMonth(e.target.value)}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Mês (1–12)</FormLabel>
+                <FormControl>
+                  <Input type="number" min={1} max={12} {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </FormField>
-        <FormField label="Ano" htmlFor="m-year" required error={fieldErrors.referenceYear}>
-          <input
-            id="m-year"
+          <FormField
+            control={form.control}
             name="referenceYear"
-            type="number"
-            min={2000}
-            max={2100}
-            className={formControlClass}
-            value={referenceYear}
-            onChange={(e) => setReferenceYear(e.target.value)}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Ano</FormLabel>
+                <FormControl>
+                  <Input type="number" min={2000} max={2100} {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </FormField>
-      </FormSection>
+        </FormSection>
 
-      {status ? (
-        <p className={`text-sm ${status.includes("sucesso") ? "text-emerald-700" : "text-amber-800"}`} role="status">
-          {status}
-        </p>
-      ) : null}
-
-      <PrimaryButton type="submit" busy={busy} busyLabel="A guardar…">
-        Cadastrar medição
-      </PrimaryButton>
-    </form>
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? "A guardar…" : "Cadastrar medição"}
+        </Button>
+      </form>
+    </Form>
   );
 }

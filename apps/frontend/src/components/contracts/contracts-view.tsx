@@ -1,14 +1,20 @@
 "use client";
 
 import type { Route } from "next";
+import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FilePlus2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Contract } from "@/lib/api";
+import { getContracts } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { ContractForm } from "@/components/actions/contract-form";
-import { Modal } from "@/components/ui/modal";
-import { buttonPrimaryClass } from "@/components/ui/form-primitives";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
+import { Modal } from "@/components/ui/modal";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/tables/data-table";
 
 const statusLabel: Record<string, string> = {
   ACTIVE: "Ativo",
@@ -16,100 +22,124 @@ const statusLabel: Record<string, string> = {
   SUSPENDED: "Suspenso"
 };
 
+const columnHelper = createColumnHelper<Contract>();
+
 type Props = {
   contracts: Contract[];
-  /** Falha ao listar contratos (API / rede). */
   dataLoadErrors?: string[];
 };
 
-export function ContractsView({ contracts, dataLoadErrors = [] }: Props): JSX.Element {
-  const router = useRouter();
+export function ContractsView({ contracts: initialContracts, dataLoadErrors = [] }: Props): JSX.Element {
+  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: contracts = initialContracts } = useQuery({
+    queryKey: queryKeys.contracts,
+    queryFn: getContracts,
+    initialData: initialContracts
+  });
+
+  const columns = useMemo<ColumnDef<Contract, any>[]>(
+    () => [
+      columnHelper.accessor("number", {
+        header: "Número",
+        cell: (info) => <span className="font-mono text-xs text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor("name", {
+        header: "Nome",
+        cell: (info) => (
+          <span className="max-w-[200px] truncate font-medium text-foreground" title={info.getValue()}>
+            {info.getValue()}
+          </span>
+        )
+      }),
+      columnHelper.accessor((row) => row.supplier?.name ?? row.companyName, {
+        id: "supplier",
+        header: "Fornecedor",
+        cell: (info) => (
+          <span className="max-w-[180px] truncate text-muted-foreground" title={String(info.getValue())}>
+            {String(info.getValue())}
+          </span>
+        )
+      }),
+      columnHelper.accessor("managingUnit", {
+        header: "Órgão gestor",
+        cell: (info) => (
+          <span className="max-w-[140px] truncate text-muted-foreground" title={info.getValue() ?? ""}>
+            {info.getValue() ?? "—"}
+          </span>
+        )
+      }),
+      columnHelper.accessor("monthlyValue", {
+        header: () => <span className="flex w-full justify-end">Valor mensal</span>,
+        cell: (info) => (
+          <div className="whitespace-nowrap text-right tabular-nums text-foreground">
+            R${" "}
+            {Number(info.getValue()).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        )
+      }),
+      columnHelper.accessor("endDate", {
+        header: "Vigência (fim)",
+        cell: (info) => (
+          <span className="whitespace-nowrap text-muted-foreground">
+            {new Date(info.getValue()).toLocaleDateString("pt-BR")}
+          </span>
+        )
+      }),
+      columnHelper.accessor("status", {
+        header: "Status",
+        cell: (info) => (
+          <Badge variant="secondary" className="font-normal">
+            {statusLabel[info.getValue()] ?? info.getValue()}
+          </Badge>
+        )
+      }),
+      columnHelper.accessor((row) => row._count?.amendments ?? 0, {
+        id: "amendments",
+        header: () => <span className="flex w-full justify-center tabular-nums">Aditivos</span>,
+        cell: (info) => <div className="text-center tabular-nums text-muted-foreground">{info.getValue()}</div>
+      }),
+      columnHelper.display({
+        id: "actions",
+        enableSorting: false,
+        header: () => <span className="sr-only">Ações</span>,
+        cell: (ctx) => (
+          <div className="text-right">
+            <Button variant="link" className="h-auto p-0 text-foreground" asChild>
+              <Link href={`/contracts/${ctx.row.original.id}` as Route}>Abrir</Link>
+            </Button>
+          </div>
+        )
+      })
+    ],
+    []
+  );
 
   return (
     <div className="space-y-6">
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Contratos</h1>
-          <p className="mt-1 max-w-xl text-sm text-slate-500">
-            Lista dos contratos cadastrados. Use <strong className="font-medium text-slate-700">Novo contrato</strong> para abrir o
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Contratos</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Lista dos contratos cadastrados. Use <strong className="font-medium text-foreground">Novo contrato</strong> para abrir o
             cadastro sem sair desta página.
           </p>
         </div>
-        <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
-          <span className="text-lg leading-none" aria-hidden>
-            +
-          </span>
+        <Button type="button" className="shrink-0 gap-2" onClick={() => setModalOpen(true)}>
+          <FilePlus2 className="h-4 w-4" />
           Novo contrato
-        </button>
+        </Button>
       </div>
 
-      <section className="overflow-hidden border border-slate-200/90 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <span className="text-sm font-medium text-slate-700">Cadastrados</span>
-          <span className="tabular-nums text-xs font-medium uppercase tracking-wide text-slate-400">
-            {contracts.length} {contracts.length === 1 ? "registro" : "registros"}
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="px-5 py-3">Número</th>
-                <th className="px-5 py-3">Nome</th>
-                <th className="px-5 py-3">Fornecedor</th>
-                <th className="max-w-[140px] px-5 py-3">Órgão gestor</th>
-                <th className="px-5 py-3 text-right">Valor mensal</th>
-                <th className="px-5 py-3">Vigência (fim)</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3 text-center tabular-nums">Aditivos</th>
-                <th className="px-5 py-3 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {contracts.map((c) => (
-                <tr key={c.id} className="transition hover:bg-slate-50/60">
-                  <td className="whitespace-nowrap px-5 py-3 font-mono text-xs text-slate-600">{c.number}</td>
-                  <td className="max-w-[200px] truncate px-5 py-3 font-medium text-slate-900" title={c.name}>
-                    {c.name}
-                  </td>
-                  <td className="max-w-[180px] truncate px-5 py-3 text-slate-600" title={c.supplier?.name ?? c.companyName}>
-                    {c.supplier?.name ?? c.companyName}
-                  </td>
-                  <td className="max-w-[140px] truncate px-5 py-3 text-slate-600" title={c.managingUnit ?? ""}>
-                    {c.managingUnit ?? "—"}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right tabular-nums text-slate-800">
-                    R$ {Number(c.monthlyValue).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">{new Date(c.endDate).toLocaleDateString("pt-BR")}</td>
-                  <td className="px-5 py-3">
-                    <span className="inline-flex rounded-sm border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
-                      {statusLabel[c.status] ?? c.status}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-center tabular-nums text-slate-600">{c._count?.amendments ?? 0}</td>
-                  <td className="px-5 py-3 text-right">
-                    <Link
-                      href={`/contracts/${c.id}` as Route}
-                      className="text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
-                    >
-                      Abrir
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              {contracts.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-5 py-14 text-center">
-                    <p className="text-sm text-slate-500">Nenhum contrato ainda. Clique em &quot;Novo contrato&quot; para cadastrar.</p>
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+      <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <DataTable
+          columns={columns}
+          data={contracts}
+          searchPlaceholder="Pesquisar número, fornecedor, órgão…"
+          emptyLabel='Nenhum contrato ainda. Clique em "Novo contrato" para cadastrar.'
+        />
       </section>
 
       <Modal
@@ -121,7 +151,9 @@ export function ContractsView({ contracts, dataLoadErrors = [] }: Props): JSX.El
         <ContractForm
           onSuccess={() => {
             setModalOpen(false);
-            router.refresh();
+            void qc.invalidateQueries({ queryKey: queryKeys.contracts });
+            void qc.invalidateQueries({ queryKey: queryKeys.suppliers });
+            void qc.invalidateQueries({ queryKey: queryKeys.fiscais });
           }}
         />
       </Modal>

@@ -1,52 +1,77 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { createSupplier } from "@/lib/api";
-import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
+import { queryKeys } from "@/lib/query-keys";
+import type { z } from "zod";
+import { supplierFormSchema } from "@/modules/suppliers/supplier-schema";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { FormSection } from "@/components/ui/form-primitives";
 
 type Props = {
   onSuccess?: () => void;
 };
 
 export function SupplierForm({ onSuccess }: Props): JSX.Element {
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
+  const form = useForm<z.input<typeof supplierFormSchema>>({
+    resolver: zodResolver(supplierFormSchema),
+    defaultValues: { name: "", cnpj: "" }
+  });
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    try {
-      setBusy(true);
-      await createSupplier({
-        name: String(data.get("name") ?? ""),
-        cnpj: String(data.get("cnpj") ?? "").replace(/\D/g, "")
-      });
-      setStatus("Fornecedor cadastrado com sucesso.");
-      event.currentTarget.reset();
+  const mutation = useMutation({
+    mutationFn: (values: z.infer<typeof supplierFormSchema>) => createSupplier(values),
+    onSuccess: () => {
+      toast.success("Fornecedor cadastrado.");
+      void qc.invalidateQueries({ queryKey: queryKeys.suppliers });
+      form.reset({ name: "", cnpj: "" });
       onSuccess?.();
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(false);
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao cadastrar");
     }
-  }
+  });
 
   return (
-    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
-      <FormSection title="Dados do fornecedor" description="Razão social e CNPJ (apenas dígitos ao enviar).">
-        <FormField label="Razão social" htmlFor="sup-name" required className="sm:col-span-2">
-          <input id="sup-name" required name="name" className={formControlClass} placeholder="Nome do fornecedor" />
-        </FormField>
-        <FormField label="CNPJ" htmlFor="sup-cnpj" required>
-          <input id="sup-cnpj" required name="cnpj" className={formControlClass} placeholder="Somente números ou com máscara" inputMode="numeric" />
-        </FormField>
-      </FormSection>
-      <div className="flex flex-wrap items-center gap-3">
-        <PrimaryButton type="submit" busy={busy} busyLabel="A guardar…">
-          Cadastrar fornecedor
-        </PrimaryButton>
-        {status ? <span className="text-sm text-slate-600">{status}</span> : null}
-      </div>
-    </form>
+    <Form {...form}>
+      <form className="space-y-6" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <FormSection title="Dados do fornecedor" description="Razão social e CNPJ (14 dígitos ao enviar).">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Razão social</FormLabel>
+                <FormControl>
+                  <Input placeholder="Nome do fornecedor" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="cnpj"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>CNPJ</FormLabel>
+                <FormControl>
+                  <Input placeholder="Somente números ou com máscara" inputMode="numeric" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? "A guardar…" : "Cadastrar fornecedor"}
+        </Button>
+      </form>
+    </Form>
   );
 }

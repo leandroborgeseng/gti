@@ -1,74 +1,115 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import type { UserRecord } from "@/lib/api";
 import { createUser } from "@/lib/api";
-import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
+import { queryKeys } from "@/lib/query-keys";
+import { createUserFormSchema, type CreateUserFormValues } from "@/modules/users/user-schemas";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FormSection } from "@/components/ui/form-primitives";
 
 type Props = {
   onSuccess?: () => void;
-  /** Chamado com o registo criado (ex.: selecionar automaticamente noutro formulário). */
   onCreated?: (user: UserRecord) => void;
-  /** Texto do botão de envio (padrão: criar utilizador). */
   submitLabel?: string;
 };
 
 export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador" }: Props): JSX.Element {
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
+  const form = useForm<CreateUserFormValues>({
+    resolver: zodResolver(createUserFormSchema),
+    defaultValues: { email: "", password: "", role: "EDITOR" }
+  });
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    try {
-      setBusy(true);
-      const created = await createUser({
-        email: String(data.get("email") ?? "").trim().toLowerCase(),
-        password: String(data.get("password") ?? ""),
-        role: (String(data.get("role") ?? "EDITOR") || "EDITOR") as "ADMIN" | "EDITOR" | "VIEWER"
-      });
-      setStatus("Utilizador criado com sucesso.");
-      event.currentTarget.reset();
+  const mutation = useMutation({
+    mutationFn: (values: CreateUserFormValues) =>
+      createUser({
+        email: values.email.trim().toLowerCase(),
+        password: values.password,
+        role: values.role
+      }),
+    onSuccess: (created) => {
+      toast.success("Utilizador criado.");
+      void qc.invalidateQueries({ queryKey: queryKeys.users });
+      form.reset({ email: "", password: "", role: "EDITOR" });
       onCreated?.(created);
       onSuccess?.();
-    } catch (error) {
-      setStatus(String(error instanceof Error ? error.message : error));
-    } finally {
-      setBusy(false);
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao criar utilizador");
     }
-  }
+  });
 
   return (
-    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
-      <FormSection title="Credenciais e papel" description="E-mail único no sistema. Palavra-passe com pelo menos 8 caracteres.">
-        <FormField label="E-mail" htmlFor="user-email" required className="sm:col-span-2">
-          <input
-            id="user-email"
-            required
-            type="email"
+    <Form {...form}>
+      <form
+        className="space-y-6"
+        onSubmit={form.handleSubmit((values) => {
+          mutation.mutate(values);
+        })}
+      >
+        <FormSection title="Credenciais e papel" description="E-mail único no sistema. Palavra-passe com pelo menos 8 caracteres.">
+          <FormField
+            control={form.control}
             name="email"
-            className={formControlClass}
-            placeholder="nome@instituicao.gov.br"
-            autoComplete="off"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>E-mail</FormLabel>
+                <FormControl>
+                  <Input type="email" placeholder="nome@instituicao.gov.br" autoComplete="off" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </FormField>
-        <FormField label="Palavra-passe inicial" htmlFor="user-password" required className="sm:col-span-2">
-          <input id="user-password" required type="password" name="password" minLength={8} className={formControlClass} autoComplete="new-password" />
-        </FormField>
-        <FormField label="Papel" htmlFor="user-role" required className="sm:col-span-2">
-          <select id="user-role" name="role" className={formControlClass} defaultValue="EDITOR">
-            <option value="VIEWER">Leitura (VIEWER)</option>
-            <option value="EDITOR">Edição (EDITOR)</option>
-            <option value="ADMIN">Administrador (ADMIN)</option>
-          </select>
-        </FormField>
-      </FormSection>
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Palavra-passe inicial</FormLabel>
+                <FormControl>
+                  <Input type="password" autoComplete="new-password" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="role"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Papel</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o papel" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="VIEWER">Leitura (VIEWER)</SelectItem>
+                    <SelectItem value="EDITOR">Edição (EDITOR)</SelectItem>
+                    <SelectItem value="ADMIN">Administrador (ADMIN)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormDescription>Pode alterar mais tarde na edição do utilizador.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
 
-      {status ? <p className="text-sm text-slate-600">{status}</p> : null}
-
-      <PrimaryButton type="submit" busy={busy} busyLabel="A guardar…">
-        {submitLabel}
-      </PrimaryButton>
-    </form>
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? "A guardar…" : submitLabel}
+        </Button>
+      </form>
+    </Form>
   );
 }

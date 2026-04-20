@@ -1,21 +1,29 @@
 "use client";
 
+import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileSpreadsheet } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ProjectListItem } from "@/lib/api";
-import { getAuthMe } from "@/lib/api";
+import { getAuthMe, getProjects } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { MondayImportWizard } from "@/components/projects/monday-import-wizard";
-import { buttonPrimaryClass } from "@/components/ui/form-primitives";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
+import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/tables/data-table";
+
+const columnHelper = createColumnHelper<ProjectListItem>();
 
 type Props = {
   projects: ProjectListItem[];
   dataLoadErrors?: string[];
 };
 
-export function ProjectsListView({ projects, dataLoadErrors = [] }: Props): JSX.Element {
+export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
+  const qc = useQueryClient();
   const [role, setRole] = useState<string | null | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -25,6 +33,48 @@ export function ProjectsListView({ projects, dataLoadErrors = [] }: Props): JSX.
       .catch(() => setRole(null));
   }, []);
 
+  const { data: projects = initialProjects } = useQuery({
+    queryKey: queryKeys.projects,
+    queryFn: getProjects,
+    initialData: initialProjects
+  });
+
+  const columns = useMemo<ColumnDef<ProjectListItem, any>[]>(
+    () => [
+      columnHelper.accessor("name", {
+        header: "Projeto",
+        cell: (info) => (
+          <Link href={`/projetos/${info.row.original.id}`} className="font-semibold text-foreground hover:underline">
+            {info.getValue()}
+          </Link>
+        )
+      }),
+      columnHelper.accessor((row) => row._count?.groups ?? 0, {
+        id: "groups",
+        header: "Grupos",
+        cell: (info) => <span className="tabular-nums text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor((row) => row._count?.tasks ?? 0, {
+        id: "tasks",
+        header: "Tarefas",
+        cell: (info) => <span className="tabular-nums text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.display({
+        id: "actions",
+        enableSorting: false,
+        header: () => <span className="sr-only">Ações</span>,
+        cell: (ctx) => (
+          <div className="text-right">
+            <Button variant="link" className="h-auto p-0 text-foreground" asChild>
+              <Link href={`/projetos/${ctx.row.original.id}`}>Abrir</Link>
+            </Button>
+          </div>
+        )
+      })
+    ],
+    []
+  );
+
   const canImport = role === "ADMIN" || role === "EDITOR";
 
   return (
@@ -33,55 +83,36 @@ export function ProjectsListView({ projects, dataLoadErrors = [] }: Props): JSX.
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Projetos</h1>
-          <p className="mt-1 max-w-xl text-sm text-slate-500">
-            Importação de planilhas exportadas do Monday.com (Excel). Cada folha vira um grupo; linhas viram tarefas com
-            subtarefas a partir de «Subelementos».
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Projetos</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Importação de planilhas exportadas do Monday.com (Excel). Cada folha vira um grupo; linhas viram tarefas com subtarefas a
+            partir de «Subelementos».
           </p>
         </div>
         {canImport ? (
-          <button type="button" className={buttonPrimaryClass} onClick={() => setImportOpen(true)}>
+          <Button type="button" className="shrink-0 gap-2" onClick={() => setImportOpen(true)}>
+            <FileSpreadsheet className="h-4 w-4" />
             Importar Excel (Monday)
-          </button>
+          </Button>
         ) : null}
       </div>
 
-      <section className="overflow-hidden border border-slate-200/90 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <span className="text-sm font-medium text-slate-700">Projetos</span>
-          <span className="tabular-nums text-xs font-medium uppercase tracking-wide text-slate-400">
-            {projects.length} {projects.length === 1 ? "registro" : "registros"}
-          </span>
-        </div>
-        <ul className="divide-y divide-slate-100">
-          {projects.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-4 transition hover:bg-slate-50/60">
-              <div>
-                <Link href={`/projetos/${p.id}`} className="text-base font-semibold text-slate-900 hover:underline">
-                  {p.name}
-                </Link>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {p._count?.groups ?? 0} grupo(s) · {p._count?.tasks ?? 0} tarefa(s)
-                </p>
-              </div>
-              <Link
-                href={`/projetos/${p.id}`}
-                className="text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
-              >
-                Abrir
-              </Link>
-            </li>
-          ))}
-          {projects.length === 0 ? (
-            <li className="px-5 py-12 text-center text-sm text-slate-500">Nenhum projeto ainda. Importe um Excel do Monday.com.</li>
-          ) : null}
-        </ul>
+      <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <DataTable
+          columns={columns}
+          data={projects}
+          searchPlaceholder="Pesquisar projeto…"
+          emptyLabel="Nenhum projeto ainda. Importe um Excel do Monday.com."
+        />
       </section>
 
       <MondayImportWizard
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImported={() => router.refresh()}
+        onImported={() => {
+          void qc.invalidateQueries({ queryKey: queryKeys.projects });
+          router.refresh();
+        }}
       />
     </div>
   );

@@ -1,82 +1,91 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { UserPlus } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { Fiscal } from "@/lib/api";
+import { getFiscais } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { FiscalForm } from "@/components/actions/fiscal-form";
-import { Modal } from "@/components/ui/modal";
-
-import { buttonPrimaryClass } from "@/components/ui/form-primitives";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/tables/data-table";
+
+const columnHelper = createColumnHelper<Fiscal>();
 
 type Props = {
   fiscais: Fiscal[];
   dataLoadErrors?: string[];
 };
 
-export function FiscaisView({ fiscais, dataLoadErrors = [] }: Props): JSX.Element {
-  const router = useRouter();
+export function FiscaisView({ fiscais: initialFiscais, dataLoadErrors = [] }: Props): JSX.Element {
+  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: fiscais = initialFiscais } = useQuery({
+    queryKey: queryKeys.fiscais,
+    queryFn: getFiscais,
+    initialData: initialFiscais
+  });
+
+  const columns = useMemo<ColumnDef<Fiscal, any>[]>(
+    () => [
+      columnHelper.accessor("id", {
+        header: "ID",
+        cell: (info) => <span className="font-mono text-xs text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor("name", {
+        header: "Nome",
+        cell: (info) => <span className="font-medium text-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor("email", {
+        header: "E-mail",
+        cell: (info) => <span className="text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor("phone", {
+        header: "Telefone",
+        cell: (info) => <span className="whitespace-nowrap text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor((row) => row.contractsAsFiscal?.length ?? 0, {
+        id: "asFiscal",
+        header: () => <span className="flex w-full justify-end">Como fiscal</span>,
+        cell: (info) => <div className="text-right tabular-nums">{info.getValue()}</div>
+      }),
+      columnHelper.accessor((row) => row.contractsAsManager?.length ?? 0, {
+        id: "asManager",
+        header: () => <span className="flex w-full justify-end">Como gestor</span>,
+        cell: (info) => <div className="text-right tabular-nums">{info.getValue()}</div>
+      })
+    ],
+    []
+  );
 
   return (
     <div className="space-y-6">
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Fiscais e gestores</h1>
-          <p className="mt-1 max-w-xl text-sm text-slate-500">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Fiscais e gestores</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Pessoas que podem ser vinculadas a contratos como fiscal ou gestor.{" "}
-            <strong className="font-medium text-slate-700">Novo fiscal</strong> abre o cadastro em modal.
+            <strong className="font-medium text-foreground">Novo fiscal</strong> abre o cadastro em modal.
           </p>
         </div>
-        <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
-          <span className="text-lg leading-none" aria-hidden>
-            +
-          </span>
+        <Button type="button" className="shrink-0 gap-2" onClick={() => setModalOpen(true)}>
+          <UserPlus className="h-4 w-4" />
           Novo fiscal
-        </button>
+        </Button>
       </div>
 
-      <section className="overflow-hidden border border-slate-200/90 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <span className="text-sm font-medium text-slate-700">Cadastrados</span>
-          <span className="tabular-nums text-xs font-medium uppercase tracking-wide text-slate-400">
-            {fiscais.length} {fiscais.length === 1 ? "registro" : "registros"}
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="px-5 py-3">ID</th>
-                <th className="px-5 py-3">Nome</th>
-                <th className="px-5 py-3">E-mail</th>
-                <th className="px-5 py-3">Telefone</th>
-                <th className="px-5 py-3 text-right">Como fiscal</th>
-                <th className="px-5 py-3 text-right">Como gestor</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {fiscais.map((f) => (
-                <tr key={f.id} className="transition hover:bg-slate-50/60">
-                  <td className="whitespace-nowrap px-5 py-3 font-mono text-xs text-slate-500">{f.id}</td>
-                  <td className="px-5 py-3 font-medium text-slate-900">{f.name}</td>
-                  <td className="px-5 py-3 text-slate-600">{f.email}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">{f.phone}</td>
-                  <td className="px-5 py-3 text-right tabular-nums text-slate-800">{f.contractsAsFiscal?.length ?? 0}</td>
-                  <td className="px-5 py-3 text-right tabular-nums text-slate-800">{f.contractsAsManager?.length ?? 0}</td>
-                </tr>
-              ))}
-              {fiscais.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-14 text-center text-sm text-slate-500">
-                    Nenhum fiscal ou gestor ainda. Clique em &quot;Novo fiscal&quot; para cadastrar.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+      <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <DataTable
+          columns={columns}
+          data={fiscais}
+          searchPlaceholder="Pesquisar nome, e-mail…"
+          emptyLabel='Nenhum fiscal ou gestor ainda. Clique em "Novo fiscal" para cadastrar.'
+        />
       </section>
 
       <Modal
@@ -88,7 +97,7 @@ export function FiscaisView({ fiscais, dataLoadErrors = [] }: Props): JSX.Elemen
         <FiscalForm
           onSuccess={() => {
             setModalOpen(false);
-            router.refresh();
+            void qc.invalidateQueries({ queryKey: queryKeys.fiscais });
           }}
         />
       </Modal>

@@ -1,13 +1,22 @@
 "use client";
 
 import type { Route } from "next";
+import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ShieldPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { GovernanceTicket } from "@/lib/api";
+import { getGovernanceTickets } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { GovernanceCreateForm } from "@/components/actions/governance-create-form";
 import { GovernanceListActions } from "@/components/actions/governance-actions";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/tables/data-table";
 
 const statusLabel: Record<string, string> = {
   OPEN: "Aberto",
@@ -19,8 +28,7 @@ const statusLabel: Record<string, string> = {
   SENT_TO_CONTROLADORIA: "Enviado à controladoria"
 };
 
-import { buttonPrimaryClass } from "@/components/ui/form-primitives";
-import { DataLoadAlert } from "@/components/ui/data-load-alert";
+const columnHelper = createColumnHelper<GovernanceTicket>();
 
 type ContractOption = { id: string; number: string; name: string };
 
@@ -30,85 +38,99 @@ type Props = {
   dataLoadErrors?: string[];
 };
 
-export function GovernanceTicketsView({ tickets, contractOptions, dataLoadErrors = [] }: Props): JSX.Element {
+export function GovernanceTicketsView({ tickets: initialTickets, contractOptions, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
+  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: tickets = initialTickets } = useQuery({
+    queryKey: queryKeys.governanceTickets,
+    queryFn: getGovernanceTickets,
+    initialData: initialTickets
+  });
+
+  const columns = useMemo<ColumnDef<GovernanceTicket, any>[]>(
+    () => [
+      columnHelper.accessor("ticketId", {
+        header: "Chamado GLPI",
+        cell: (info) => <span className="font-medium text-foreground">#{info.getValue()}</span>
+      }),
+      columnHelper.accessor((row) => row.contract?.number ?? "—", {
+        id: "contract",
+        header: "Contrato",
+        cell: (info) => <span className="whitespace-nowrap text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor("priority", {
+        header: "Prioridade",
+        cell: (info) => <span className="text-muted-foreground">{info.getValue() ?? "—"}</span>
+      }),
+      columnHelper.accessor("slaDeadline", {
+        header: "Prazo SLA",
+        cell: (info) => {
+          const v = info.getValue();
+          return (
+            <span className="whitespace-nowrap text-muted-foreground">
+              {v ? new Date(v as string).toLocaleString("pt-BR") : "—"}
+            </span>
+          );
+        }
+      }),
+      columnHelper.accessor("status", {
+        header: "Status",
+        cell: (info) => (
+          <Badge variant="secondary" className="max-w-[200px] truncate font-normal" title={info.getValue()}>
+            {statusLabel[info.getValue()] ?? info.getValue()}
+          </Badge>
+        )
+      }),
+      columnHelper.display({
+        id: "actions",
+        enableSorting: false,
+        header: () => <span className="sr-only">Ações</span>,
+        cell: (ctx) => (
+          <div className="text-right">
+            <Button variant="link" className="h-auto p-0 text-foreground" asChild>
+              <Link href={`/governance/tickets/${ctx.row.original.id}` as Route}>Linha do tempo</Link>
+            </Button>
+          </div>
+        )
+      })
+    ],
+    []
+  );
+
+  const onMonitoringComplete = (): void => {
+    void qc.invalidateQueries({ queryKey: queryKeys.governanceTickets });
+    router.refresh();
+  };
 
   return (
     <div className="space-y-6">
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Governança de chamados (SLA)</h1>
-          <p className="mt-1 max-w-xl text-sm text-slate-500">
-            Chamados vinculados a contratos. <strong className="font-medium text-slate-700">Novo chamado</strong> abre o cadastro; a
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Governança de chamados (SLA)</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Chamados vinculados a contratos. <strong className="font-medium text-foreground">Novo chamado</strong> abre o cadastro; a
             linha do tempo fica no detalhe.
           </p>
         </div>
         <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center">
-          <GovernanceListActions onMonitoringComplete={() => router.refresh()} />
-          <button type="button" onClick={() => setModalOpen(true)} className={buttonPrimaryClass}>
-            <span className="text-lg leading-none" aria-hidden>
-              +
-            </span>
+          <GovernanceListActions onMonitoringComplete={onMonitoringComplete} />
+          <Button type="button" className="shrink-0 gap-2" onClick={() => setModalOpen(true)}>
+            <ShieldPlus className="h-4 w-4" />
             Novo chamado
-          </button>
+          </Button>
         </div>
       </div>
 
-      <section className="overflow-hidden border border-slate-200/90 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <span className="text-sm font-medium text-slate-700">Cadastrados</span>
-          <span className="tabular-nums text-xs font-medium uppercase tracking-wide text-slate-400">
-            {tickets.length} {tickets.length === 1 ? "registro" : "registros"}
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="px-5 py-3">Chamado GLPI</th>
-                <th className="px-5 py-3">Contrato</th>
-                <th className="px-5 py-3">Prioridade</th>
-                <th className="px-5 py-3">Prazo SLA</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {tickets.map((ticket) => (
-                <tr key={ticket.id} className="transition hover:bg-slate-50/60">
-                  <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-900">#{ticket.ticketId}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">{ticket.contract?.number ?? "—"}</td>
-                  <td className="px-5 py-3 text-slate-600">{ticket.priority ?? "—"}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
-                    {ticket.slaDeadline ? new Date(ticket.slaDeadline).toLocaleString("pt-BR") : "—"}
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="inline-flex rounded-sm border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
-                      {statusLabel[ticket.status] ?? ticket.status}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <Link
-                      href={`/governance/tickets/${ticket.id}` as Route}
-                      className="text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 transition hover:decoration-slate-900"
-                    >
-                      Linha do tempo
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              {tickets.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-14 text-center text-sm text-slate-500">
-                    Nenhum chamado ainda. Clique em &quot;Novo chamado&quot; para cadastrar.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+      <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <DataTable
+          columns={columns}
+          data={tickets}
+          searchPlaceholder="Pesquisar GLPI, contrato, status…"
+          emptyLabel='Nenhum chamado ainda. Clique em "Novo chamado" para cadastrar.'
+        />
       </section>
 
       <Modal
@@ -121,7 +143,7 @@ export function GovernanceTicketsView({ tickets, contractOptions, dataLoadErrors
           contractOptions={contractOptions}
           onSuccess={() => {
             setModalOpen(false);
-            router.refresh();
+            void qc.invalidateQueries({ queryKey: queryKeys.governanceTickets });
           }}
         />
       </Modal>

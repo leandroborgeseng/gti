@@ -1,13 +1,24 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, UserPlus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import type { UserRecord } from "@/lib/api";
-import { updateUser } from "@/lib/api";
+import { getUsers, updateUser } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
+import { editUserFormSchema, type EditUserFormValues } from "@/modules/users/user-schemas";
 import { UserForm } from "@/components/actions/user-form";
-import { Modal } from "@/components/ui/modal";
-import { FormField, PrimaryButton, SecondaryButton, buttonPrimaryClass, formControlClass } from "@/components/ui/form-primitives";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DataTable } from "@/components/tables/data-table";
 
 const roleLabel: Record<string, string> = {
   ADMIN: "Administrador",
@@ -15,169 +26,189 @@ const roleLabel: Record<string, string> = {
   VIEWER: "Leitura"
 };
 
+const columnHelper = createColumnHelper<UserRecord>();
+
 type Props = {
   users: UserRecord[];
   dataLoadErrors?: string[];
 };
 
+function EditUserPanel({
+  user,
+  onClose
+}: {
+  user: UserRecord;
+  onClose: () => void;
+}): JSX.Element {
+  const qc = useQueryClient();
+  const roleDefault: EditUserFormValues["role"] =
+    user.role === "ADMIN" || user.role === "EDITOR" || user.role === "VIEWER" ? user.role : "EDITOR";
+
+  const form = useForm<EditUserFormValues>({
+    resolver: zodResolver(editUserFormSchema),
+    defaultValues: {
+      role: roleDefault,
+      password: ""
+    }
+  });
+
+  const mutation = useMutation({
+    mutationFn: (values: EditUserFormValues) =>
+      updateUser(user.id, {
+        role: values.role,
+        ...(values.password !== "" ? { password: values.password.trim() } : {})
+      }),
+    onSuccess: () => {
+      toast.success("Utilizador atualizado.");
+      void qc.invalidateQueries({ queryKey: queryKeys.users });
+      onClose();
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao atualizar");
+    }
+  });
+
+  return (
+    <Form {...form}>
+      <form className="space-y-4" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <FormField
+          control={form.control}
+          name="role"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Papel</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="VIEWER">Leitura (VIEWER)</SelectItem>
+                  <SelectItem value="EDITOR">Edição (EDITOR)</SelectItem>
+                  <SelectItem value="ADMIN">Administrador (ADMIN)</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Nova palavra-passe (opcional)</FormLabel>
+              <FormControl>
+                <Input type="password" autoComplete="new-password" placeholder="Deixe vazio para manter a atual" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? "A guardar…" : "Guardar"}
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
+
 export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): JSX.Element {
-  const router = useRouter();
+  const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<UserRecord | null>(null);
-  const [editRole, setEditRole] = useState<string>("EDITOR");
-  const [editPassword, setEditPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
 
-  const refresh = useCallback(() => {
-    router.refresh();
-  }, [router]);
+  const { data: users = initialUsers } = useQuery({
+    queryKey: queryKeys.users,
+    queryFn: getUsers,
+    initialData: initialUsers
+  });
 
-  async function saveEdit(): Promise<void> {
-    if (!editUser) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      await updateUser(editUser.id, {
-        role: editRole as "ADMIN" | "EDITOR" | "VIEWER",
-        ...(editPassword.trim().length >= 8 ? { password: editPassword.trim() } : {})
-      });
-      setEditUser(null);
-      setEditPassword("");
-      refresh();
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Erro ao atualizar");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const columns = useMemo<ColumnDef<UserRecord, any>[]>(
+    () => [
+      columnHelper.accessor("email", {
+        header: "E-mail",
+        cell: (info) => <span className="font-medium text-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor("role", {
+        header: "Papel",
+        cell: (info) => <span>{roleLabel[info.getValue()] ?? info.getValue()}</span>
+      }),
+      columnHelper.accessor("createdAt", {
+        header: "Criado em",
+        cell: (info) => (
+          <span className="whitespace-nowrap text-muted-foreground">
+            {new Date(info.getValue()).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+          </span>
+        )
+      }),
+      columnHelper.display({
+        id: "actions",
+        enableSorting: false,
+        header: () => <span className="sr-only">Ações</span>,
+        cell: (ctx) => (
+          <div className="text-right">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="gap-1"
+              onClick={() => {
+                setEditUser(ctx.row.original);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+              Editar
+            </Button>
+          </div>
+        )
+      })
+    ],
+    []
+  );
 
   return (
     <div className="space-y-6">
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Utilizadores</h1>
-          <p className="mt-1 max-w-xl text-sm text-slate-500">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Utilizadores</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Gestão de contas e papéis. Apenas administradores podem criar ou alterar utilizadores.
           </p>
         </div>
-        <button type="button" onClick={() => setCreateOpen(true)} className={buttonPrimaryClass}>
-          <span className="text-lg leading-none" aria-hidden>
-            +
-          </span>
+        <Button type="button" className="shrink-0 gap-2" onClick={() => setCreateOpen(true)}>
+          <UserPlus className="h-4 w-4" />
           Novo utilizador
-        </button>
+        </Button>
       </div>
 
-      <section className="overflow-hidden border border-slate-200/90 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <span className="text-sm font-medium text-slate-700">Contas</span>
-          <span className="tabular-nums text-xs font-medium uppercase tracking-wide text-slate-400">
-            {initialUsers.length} {initialUsers.length === 1 ? "registro" : "registros"}
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="px-5 py-3">E-mail</th>
-                <th className="px-5 py-3">Papel</th>
-                <th className="px-5 py-3">Criado em</th>
-                <th className="px-5 py-3 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {initialUsers.map((u) => (
-                <tr key={u.id} className="transition hover:bg-slate-50/60">
-                  <td className="px-5 py-3 font-medium text-slate-900">{u.email}</td>
-                  <td className="px-5 py-3 text-slate-700">{roleLabel[u.role] ?? u.role}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
-                    {new Date(u.createdAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
-                      onClick={() => {
-                        setEditUser(u);
-                        setEditRole(u.role);
-                        setEditPassword("");
-                        setMsg(null);
-                      }}
-                    >
-                      Editar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {initialUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-5 py-14 text-center text-sm text-slate-500">
-                    Nenhum utilizador listado.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+      <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <DataTable columns={columns} data={users} searchPlaceholder="Pesquisar por e-mail, papel…" />
       </section>
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Novo utilizador" description="E-mail único no sistema e palavra-passe com pelo menos 8 caracteres.">
         <UserForm
           onSuccess={() => {
             setCreateOpen(false);
-            refresh();
+            void qc.invalidateQueries({ queryKey: queryKeys.users });
           }}
         />
       </Modal>
 
       <Modal
         open={Boolean(editUser)}
-        onClose={() => {
-          setEditUser(null);
-          setMsg(null);
-        }}
+        onClose={() => setEditUser(null)}
         title="Editar utilizador"
-        description={editUser ? editUser.email : ""}
+        description={editUser ? editUser.email : undefined}
       >
-        {editUser ? (
-          <div className="space-y-4">
-            <FormField label="Papel" htmlFor="edit-user-role">
-              <select
-                id="edit-user-role"
-                className={formControlClass}
-                value={editRole}
-                onChange={(e) => setEditRole(e.target.value)}
-              >
-                <option value="VIEWER">Leitura (VIEWER)</option>
-                <option value="EDITOR">Edição (EDITOR)</option>
-                <option value="ADMIN">Administrador (ADMIN)</option>
-              </select>
-            </FormField>
-            <FormField label="Nova palavra-passe (opcional)" htmlFor="edit-user-pass" hint="Mínimo 8 caracteres se preencher.">
-              <input
-                id="edit-user-pass"
-                type="password"
-                value={editPassword}
-                onChange={(e) => setEditPassword(e.target.value)}
-                minLength={8}
-                className={formControlClass}
-                placeholder="Deixe vazio para manter a atual"
-                autoComplete="new-password"
-              />
-            </FormField>
-            {msg ? <p className="text-sm text-red-600">{msg}</p> : null}
-            <div className="flex flex-wrap justify-end gap-2 pt-2">
-              <SecondaryButton type="button" onClick={() => setEditUser(null)}>
-                Cancelar
-              </SecondaryButton>
-              <PrimaryButton type="button" busy={busy} busyLabel="A guardar…" onClick={() => void saveEdit()}>
-                Guardar
-              </PrimaryButton>
-            </div>
-          </div>
-        ) : null}
+        {editUser ? <EditUserPanel key={editUser.id} user={editUser} onClose={() => setEditUser(null)} /> : null}
       </Modal>
     </div>
   );
