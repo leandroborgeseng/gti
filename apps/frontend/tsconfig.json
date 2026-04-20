@@ -16,10 +16,16 @@
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@gestao/*": ["../backend/src/*"],
-      "@prisma/client": ["../../node_modules/@prisma/client"]
+      "@prisma/client": ["../../node_modules/@prisma/client"],
+      "class-transformer": ["./node_modules/class-transformer"],
+      "class-validator": ["./node_modules/class-validator"],
+      "reflect-metadata": ["./node_modules/reflect-metadata"],
+      "rxjs": ["./node_modules/rxjs"],
+      "rxjs/*": ["./node_modules/rxjs/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
