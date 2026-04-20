@@ -25,7 +25,8 @@
       "class-validator": ["./node_modules/class-validator"],
       "reflect-metadata": ["./node_modules/reflect-metadata"],
       "rxjs": ["./node_modules/rxjs"],
-      "rxjs/*": ["./node_modules/rxjs/*"]
+      "rxjs/*": ["./node_modules/rxjs/*"],
+      "@nestjs/common": ["./node_modules/@nestjs/common"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
