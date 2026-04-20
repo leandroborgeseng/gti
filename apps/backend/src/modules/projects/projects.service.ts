@@ -135,51 +135,58 @@ export class ProjectsService {
       );
     }
 
-    const created = await this.prisma.$transaction(async (tx) => {
-      const project = await tx.project.create({
-        data: { name: dto.name.trim() }
-      });
-
-      for (let gi = 0; gi < dto.groups.length; gi++) {
-        const g = dto.groups[gi];
-        const group = await tx.projectGroup.create({
-          data: {
-            projectId: project.id,
-            name: g.name.trim(),
-            sortOrder: gi
-          }
+    /** Importações Monday podem ter centenas de linhas; o timeout por defeito (~5s) cancela a transacção a meio. */
+    const created = await this.prisma.$transaction(
+      async (tx) => {
+        const project = await tx.project.create({
+          data: { name: dto.name.trim() }
         });
 
-        let sortCounter = 0;
-        const walk = async (parentId: string | null, nodes: ImportProjectTaskNodeDto[]): Promise<void> => {
-          for (const node of nodes) {
-            const task = await tx.projectTask.create({
-              data: {
-                projectId: project.id,
-                groupId: group.id,
-                parentTaskId: parentId,
-                title: node.title.trim(),
-                status: (node.status ?? "").trim(),
-                assigneeExternal: node.assigneeExternal?.trim() || null,
-                dueDate: node.dueDate ? new Date(node.dueDate) : null,
-                description: node.description?.trim() || null,
-                effort:
-                  node.effort != null && Number.isFinite(node.effort) ? new Prisma.Decimal(node.effort) : null,
-                internalResponsible: node.internalResponsible?.trim() || null,
-                sortOrder: sortCounter++
-              }
-            });
-            if (node.children?.length) {
-              await walk(task.id, node.children);
+        for (let gi = 0; gi < dto.groups.length; gi++) {
+          const g = dto.groups[gi];
+          const group = await tx.projectGroup.create({
+            data: {
+              projectId: project.id,
+              name: g.name.trim(),
+              sortOrder: gi
             }
-          }
-        };
+          });
 
-        await walk(null, g.tasks ?? []);
+          let sortCounter = 0;
+          const walk = async (parentId: string | null, nodes: ImportProjectTaskNodeDto[]): Promise<void> => {
+            for (const node of nodes) {
+              const task = await tx.projectTask.create({
+                data: {
+                  projectId: project.id,
+                  groupId: group.id,
+                  parentTaskId: parentId,
+                  title: node.title.trim(),
+                  status: (node.status ?? "").trim(),
+                  assigneeExternal: node.assigneeExternal?.trim() || null,
+                  dueDate: node.dueDate ? new Date(node.dueDate) : null,
+                  description: node.description?.trim() || null,
+                  effort:
+                    node.effort != null && Number.isFinite(node.effort) ? new Prisma.Decimal(node.effort) : null,
+                  internalResponsible: node.internalResponsible?.trim() || null,
+                  sortOrder: sortCounter++
+                }
+              });
+              if (node.children?.length) {
+                await walk(task.id, node.children);
+              }
+            }
+          };
+
+          await walk(null, g.tasks ?? []);
+        }
+
+        return project.id;
+      },
+      {
+        maxWait: 20_000,
+        timeout: 180_000
       }
-
-      return project.id;
-    });
+    );
 
     return this.findOne(created);
   }
