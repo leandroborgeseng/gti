@@ -8,10 +8,14 @@ const nextConfig = {
   webpack: (config, { isServer }) => {
     /** Código em `apps/backend` resolve `bcrypt` para o `node_modules` do backend e o webpack puxa `node-pre-gyp`. */
     if (isServer) {
+      const nm = path.join(__dirname, "node_modules");
       config.resolve.alias = {
         ...config.resolve.alias,
-        bcrypt: path.join(__dirname, "node_modules", "bcrypt"),
+        bcrypt: path.join(nm, "bcrypt"),
+        /** Importados desde `apps/backend/src` (externalDir); na imagem Docker não há `apps/backend/node_modules`. */
+        "@nestjs/common": path.join(nm, "@nestjs", "common"),
       };
+      config.resolve.modules = [nm, ...(config.resolve.modules ?? ["node_modules"])];
     }
     return config;
   },

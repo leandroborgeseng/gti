@@ -12,6 +12,8 @@
   "dependencies": {
     "@nestjs/common": "^10.4.2",
     "axios": "^1.9.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
     "bcrypt": "^5.1.1",
     "dotenv": "^16.4.5",
     "isomorphic-dompurify": "^2.26.0",
@@ -22,6 +24,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-quill": "^2.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
     "recharts": "^2.13.0",
     "xlsx": "^0.18.5"
   },
