@@ -1,7 +1,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { DataLoadAlert } from "@/components/ui/data-load-alert";
+import { DataLoadAlert, looksLikeGestaoAuthError } from "@/components/ui/data-load-alert";
 import { formatBrl, formatPercent } from "@/lib/format-brl";
 
 type GovernanceBlock = {
@@ -107,7 +107,12 @@ export function DashboardHome(props: {
 
   return (
     <div className="space-y-8">
-      {loadErrors.length > 0 ? <DataLoadAlert messages={loadErrors} title="Indicadores incompletos" /> : null}
+      {loadErrors.length > 0 ? (
+        <DataLoadAlert
+          messages={loadErrors}
+          title={looksLikeGestaoAuthError(loadErrors) ? "Sessão ou dados do painel" : "Indicadores incompletos"}
+        />
+      ) : null}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
         {kpis.map((kpi) => (
           <Card key={kpi.label} className="p-4">
