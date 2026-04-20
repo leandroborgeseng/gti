@@ -22,10 +22,23 @@ import {
 type JwtUser = { sub: string; email: string; role: UserRole };
 
 async function readJsonBody(req: Request): Promise<unknown> {
-  const ct = req.headers.get("content-type") ?? "";
-  if (!ct.includes("application/json")) return undefined;
+  const m = req.method.toUpperCase();
+  if (m !== "POST" && m !== "PUT" && m !== "PATCH") return undefined;
+  let text = "";
   try {
-    return await req.json();
+    text = await req.text();
+  } catch {
+    return undefined;
+  }
+  const trim = text.trim();
+  if (!trim) return undefined;
+  const ct = (req.headers.get("content-type") ?? "").toLowerCase();
+  const looksJson = trim.startsWith("{") || trim.startsWith("[");
+  if (!ct.includes("application/json") && !ct.includes("text/json") && !looksJson) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(trim) as unknown;
   } catch {
     return undefined;
   }
@@ -303,7 +316,16 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 2 && seg[1] === "monday-import" && method === "POST") {
       assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
       assertMutation(user, method);
-      return jsonOk(await gestaoProjects.importFromMonday((await readJsonBody(req)) as never));
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou em falta. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoProjects.importFromMonday(body));
+    }
+    if (seg.length === 2 && method === "DELETE") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      return jsonOk(await gestaoProjects.delete(seg[1]));
     }
     if (seg.length === 2 && method === "GET") return jsonOk(await gestaoProjects.findOne(seg[1]));
     return jsonErr(404, "Não encontrado");

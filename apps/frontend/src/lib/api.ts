@@ -749,3 +749,7 @@ export async function getProject(id: string): Promise<ProjectDetail> {
 export async function importProjectMonday(payload: MondayImportPayload): Promise<ProjectDetail> {
   return request("/projects/monday-import", { method: "POST", body: JSON.stringify(payload) });
 }
+
+export async function deleteProject(id: string): Promise<{ ok: true; id: string }> {
+  return request(`/projects/${id}`, { method: "DELETE" });
+}

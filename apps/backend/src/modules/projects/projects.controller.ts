@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../../auth/roles-required.decorator";
 import { ImportProjectDto } from "./projects.dto";
@@ -17,7 +17,13 @@ export class ProjectsController {
   @Post("monday-import")
   @Roles(UserRole.ADMIN, UserRole.EDITOR)
   importMonday(@Body() dto: ImportProjectDto): Promise<unknown> {
-    return this.service.importFromMonday(dto);
+    return this.service.importFromMonday(dto as unknown);
+  }
+
+  @Delete(":id")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  delete(@Param("id") id: string): Promise<unknown> {
+    return this.service.delete(id);
   }
 
   @Get(":id")

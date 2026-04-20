@@ -1,13 +1,14 @@
 "use client";
 
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileSpreadsheet } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileSpreadsheet, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { ProjectListItem } from "@/lib/api";
-import { getAuthMe, getProjects } from "@/lib/api";
+import { deleteProject, getAuthMe, getProjects } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { MondayImportWizard } from "@/components/projects/monday-import-wizard";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
@@ -39,6 +40,20 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
     initialData: initialProjects
   });
 
+  const deleteMut = useMutation({
+    mutationFn: deleteProject,
+    onSuccess: () => {
+      toast.success("Projeto eliminado.");
+      void qc.invalidateQueries({ queryKey: queryKeys.projects });
+      router.refresh();
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Não foi possível eliminar o projeto.");
+    }
+  });
+
+  const canImport = role === "ADMIN" || role === "EDITOR";
+
   const columns = useMemo<ColumnDef<ProjectListItem, any>[]>(
     () => [
       columnHelper.accessor("name", {
@@ -64,18 +79,39 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         enableSorting: false,
         header: () => <span className="sr-only">Ações</span>,
         cell: (ctx) => (
-          <div className="text-right">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button variant="link" className="h-auto p-0 text-foreground" asChild>
               <Link href={`/projetos/${ctx.row.original.id}`}>Abrir</Link>
             </Button>
+            {canImport ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:text-destructive"
+                title="Eliminar projeto"
+                disabled={deleteMut.isPending}
+                onClick={() => {
+                  if (
+                    !confirm(
+                      `Eliminar o projeto «${ctx.row.original.name}» e todas as tarefas? Esta ação não pode ser anulada.`
+                    )
+                  ) {
+                    return;
+                  }
+                  deleteMut.mutate(ctx.row.original.id);
+                }}
+                aria-label="Eliminar projeto"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            ) : null}
           </div>
         )
       })
     ],
-    []
+    [canImport, deleteMut.isPending]
   );
-
-  const canImport = role === "ADMIN" || role === "EDITOR";
 
   return (
     <div className="space-y-6">

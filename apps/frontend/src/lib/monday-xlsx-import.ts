@@ -27,7 +27,7 @@ function stripAccents(s: string): string {
 }
 
 function normKey(s: string): string {
-  return stripAccents(String(s).trim().toLowerCase()).replace(/\s+/g, " ");
+  return stripAccents(String(s).trim().replace(/^\uFEFF/, "").toLowerCase()).replace(/\s+/g, " ");
 }
 
 /** Cabeçalhos típicos de exportação Monday (normalizados). */
@@ -106,7 +106,9 @@ function zipHeaderToRow(headerRow: unknown[], dataRow: unknown[]): Record<string
   const o: Record<string, unknown> = {};
   const used = new Map<string, number>();
   for (let c = 0; c < w; c++) {
-    const rawKey = String(headerRow[c] ?? "").trim();
+    const rawKey = String(headerRow[c] ?? "")
+      .trim()
+      .replace(/^\uFEFF/, "");
     if (!rawKey) continue;
     let key = rawKey;
     const prev = used.get(rawKey) ?? 0;
@@ -319,6 +321,11 @@ function groupsFromRecords(records: Record<string, unknown>[], defaultName: stri
  * - Se existir apenas uma folha e coluna **Grupo** / **Group**, agrupa linhas por esse valor.
  * - Suporta folhas com **linhas introdutórias** antes do cabeçalho real (Name, Status, …) e **linhas de grupo** (uma célula) injectadas como coluna Grupo.
  */
+/** Conta tarefas na raiz (sem contar filhos aninhados). */
+export function countMondayImportRootTasks(payload: MondayImportPayload): number {
+  return payload.groups.reduce((n, g) => n + (g.tasks?.length ?? 0), 0);
+}
+
 export function parseMondayExportWorkbook(buffer: ArrayBuffer, fileName: string): MondayImportPayload {
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true, dense: false });
   const baseName = fileName.replace(/\.(xlsx|xls|xlsm)$/i, "").trim() || "Projeto importado";

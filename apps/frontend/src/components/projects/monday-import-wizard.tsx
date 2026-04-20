@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import type { MondayImportPayload } from "@/lib/monday-xlsx-import";
-import { parseMondayExportWorkbook } from "@/lib/monday-xlsx-import";
+import { countMondayImportRootTasks, parseMondayExportWorkbook } from "@/lib/monday-xlsx-import";
 import { importProjectMonday } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { FormField, PrimaryButton, SecondaryButton, formControlClass } from "@/components/ui/form-primitives";
@@ -80,6 +80,11 @@ export function MondayImportWizard({ open, onClose, onImported }: Props): JSX.El
 
   const confirmImport = useCallback(async () => {
     if (!payload) return;
+    const nTasks = countMondayImportRootTasks(payload);
+    if (nTasks === 0) {
+      setStatus("Não há tarefas na pré-visualização. Escolha outro ficheiro ou confirme que o Excel tem a linha de cabeçalho (Name, Status, …).");
+      return;
+    }
     const name = projectTitle.trim() || payload.name;
     setBusy(true);
     setStatus(null);
@@ -131,6 +136,15 @@ export function MondayImportWizard({ open, onClose, onImported }: Props): JSX.El
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pré-visualização</p>
               <p className="mt-1 text-xs text-slate-600">
                 Ficheiro: <span className="font-medium text-slate-800">{fileName}</span>
+                {payload ? (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <span className="font-medium text-slate-800">
+                      {countMondayImportRootTasks(payload)} tarefa(s) na raiz
+                    </span>
+                  </>
+                ) : null}
               </p>
               {payload?.groups.map((g) => (
                 <div key={g.name} className="mt-4 border-t border-slate-200 pt-3 first:border-t-0 first:pt-0">
