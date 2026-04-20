@@ -74,7 +74,7 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 5. **Opcional:** segundo serviço com `npm run start:worker` e as mesmas variáveis (só sync GLPI).
 6. **Teste:** `GET /health` no domínio publicado.
 7. **Gestão contratual:** use o mesmo **`JWT_SECRET`** que o login Next (`/api/auth/login`). Opcional: `NEXT_PUBLIC_BACKEND_URL` só se a API estiver noutro domínio.
-8. **Imagem Docker presa ao proxy Nest (logs `[gti/api-proxy]` / timeout 25s):** isso é o bundle **antigo** de `app/api/[...path]` (antes da API no Next). Na Railway, no serviço da app, defina **`NO_CACHE=1`** (variável de serviço), faça **um redeploy**, espere o build terminar e **remova `NO_CACHE`** para voltar a usar cache. Confirme nos **Build logs** a linha `GTI builder tag=` e nos **Deploy logs** `[gti-contratos] entrypoint`.
+8. **Imagem Docker presa ao proxy Nest (logs `[gti/api-proxy]` / timeout 25s):** isso é o bundle **antigo** de `app/api/[...path]` (antes da API no Next). Na Railway, no serviço da app, defina **`NO_CACHE=1`** (variável de serviço), faça **um redeploy**, espere o build terminar e **remova `NO_CACHE`** para voltar a usar cache. Confirme nos **Build logs** a linha `GTI builder tag=` e nos **Deploy logs** `[gti-contratos] entrypoint`. Se o **ID do deploy ativo** não muda há dias, o Git pode não estar a disparar builds: em **Railway → serviço gti → Settings → Source** verifique o ramo e use **Redeploy** manual; no **GitHub → Settings → Webhooks** confirme entregas recentes sem erro.
 
 ## Scripts úteis (`npm run`)
 
