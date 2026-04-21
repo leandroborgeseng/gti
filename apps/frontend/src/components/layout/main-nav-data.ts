@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  BookOpen,
   ClipboardList,
   FileSpreadsheet,
   FileText,
@@ -66,7 +67,8 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
       { href: "/suppliers", label: "Fornecedores", icon: Package },
       { href: "/fiscais", label: "Fiscais", icon: UserCog },
       { href: "/exports", label: "Exportações", icon: FileSpreadsheet, hideForViewer: true },
-      { href: "/reports", label: "Relatórios", icon: BarChart3 }
+      { href: "/reports", label: "Relatórios", icon: BarChart3 },
+      { href: "/manual", label: "Manual do sistema", icon: BookOpen }
     ]
   },
   {

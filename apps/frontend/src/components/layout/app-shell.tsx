@@ -23,6 +23,7 @@ const titles: Record<string, string> = {
   "/fiscais": "Fiscais",
   "/reports": "Relatórios",
   "/reports/fechamento-mensal": "Fechamento mensal",
+  "/manual": "Manual do sistema",
   "/users": "Utilizadores",
   "/exports": "Exportações"
 };

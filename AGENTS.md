@@ -8,6 +8,11 @@
 - **Schema e migrações Prisma:** `apps/backend/prisma/`.
 - **API Nest (contratos, medições, glosas, …):** `apps/backend/src/`.
 
+## Manual do utilizador (interface)
+
+- O manual em `/manual` é alimentado por `apps/frontend/src/content/manual-do-utilizador.ts`.
+- Sempre que alterar menus (`main-nav-data.ts`), fluxos relevantes da UI ou permissões por papel, **atualize o manual** no mesmo PR (texto em pt-BR, foco no utilizador) e ajuste a data `MANUAL_LAST_UPDATED` nesse ficheiro.
+
 ## Regras rápidas
 
 - Documentação de projeto e mensagens ao utilizador: **pt-BR** (ver `.cursor/rules/`).

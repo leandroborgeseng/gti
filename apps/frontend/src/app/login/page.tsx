@@ -5,6 +5,8 @@ import { useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Suspense } from "react";
 import { useForm } from "react-hook-form";
+import type { Route } from "next";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { loginFormSchema, type LoginFormValues } from "@/modules/auth/login-schema";
@@ -94,6 +96,16 @@ function LoginForm(): JSX.Element {
             </Form>
           </CardContent>
         </Card>
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          Após iniciar sessão, consulte o{" "}
+          <Link
+            href={"/manual" as Route}
+            className="font-medium text-foreground underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground"
+          >
+            manual do sistema
+          </Link>{" "}
+          (menu Cadastros e relatórios). Se ainda não entrou, este atalho pede autenticação e abre o manual em seguida.
+        </p>
       </motion.div>
     </div>
   );
