@@ -14,34 +14,37 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-/** Fundos suaves por cartão (claro / escuro). */
-const STAT_TONE: Record<
+/**
+ * Paleta alinhada ao Monday.com (workspace / quadro do projeto).
+ * Texto: #323338 / #676879; bordas: #e6e9ef; destaques: azul #579bfc, verde #00c875, vermelho #e44258, cinza #797e93.
+ */
+const MONDAY_STAT: Record<
   "projects" | "tasks" | "overdue" | "noDue",
   { card: string; label: string; value: string; desc: string }
 > = {
   projects: {
-    card: "border-sky-200/90 bg-gradient-to-br from-sky-50 via-white to-sky-100/70 shadow-sky-100/50 dark:border-sky-800/80 dark:from-sky-950/60 dark:via-neutral-950 dark:to-sky-950/40 dark:shadow-none",
-    label: "text-sky-800/90 dark:text-sky-200/90",
-    value: "text-sky-950 dark:text-sky-50",
-    desc: "text-sky-900/75 dark:text-sky-200/70"
+    card: "border-0 border-l-[4px] border-l-[#579bfc] bg-white shadow-none dark:border-l-[#579bfc] dark:bg-neutral-950",
+    label: "text-[#676879] dark:text-[#a0a3b3]",
+    value: "text-[#323338] dark:text-[#f6f7fb]",
+    desc: "text-[#676879] dark:text-[#a0a3b3]"
   },
   tasks: {
-    card: "border-emerald-200/90 bg-gradient-to-br from-emerald-50 via-white to-teal-100/60 shadow-emerald-100/50 dark:border-emerald-800/80 dark:from-emerald-950/55 dark:via-neutral-950 dark:to-teal-950/35 dark:shadow-none",
-    label: "text-emerald-900/85 dark:text-emerald-200/85",
-    value: "text-emerald-950 dark:text-emerald-50",
-    desc: "text-emerald-900/75 dark:text-emerald-200/70"
+    card: "border-0 border-l-[4px] border-l-[#00c875] bg-white shadow-none dark:border-l-[#00c875] dark:bg-neutral-950",
+    label: "text-[#676879] dark:text-[#a0a3b3]",
+    value: "text-[#323338] dark:text-[#f6f7fb]",
+    desc: "text-[#676879] dark:text-[#a0a3b3]"
   },
   overdue: {
-    card: "border-rose-200/90 bg-gradient-to-br from-rose-50 via-white to-amber-50/70 shadow-rose-100/40 dark:border-rose-900/70 dark:from-rose-950/50 dark:via-neutral-950 dark:to-amber-950/25 dark:shadow-none",
-    label: "text-rose-900/85 dark:text-rose-200/85",
-    value: "text-rose-950 dark:text-rose-50",
-    desc: "text-rose-900/75 dark:text-rose-200/70"
+    card: "border-0 border-l-[4px] border-l-[#e44258] bg-white shadow-none dark:border-l-[#e44258] dark:bg-neutral-950",
+    label: "text-[#676879] dark:text-[#a0a3b3]",
+    value: "text-[#323338] dark:text-[#f6f7fb]",
+    desc: "text-[#676879] dark:text-[#a0a3b3]"
   },
   noDue: {
-    card: "border-violet-200/90 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50/65 shadow-violet-100/40 dark:border-violet-900/70 dark:from-violet-950/50 dark:via-neutral-950 dark:to-fuchsia-950/25 dark:shadow-none",
-    label: "text-violet-900/85 dark:text-violet-200/85",
-    value: "text-violet-950 dark:text-violet-50",
-    desc: "text-violet-900/75 dark:text-violet-200/70"
+    card: "border-0 border-l-[4px] border-l-[#797e93] bg-white shadow-none dark:border-l-[#797e93] dark:bg-neutral-950",
+    label: "text-[#676879] dark:text-[#a0a3b3]",
+    value: "text-[#323338] dark:text-[#f6f7fb]",
+    desc: "text-[#676879] dark:text-[#a0a3b3]"
   }
 };
 
@@ -54,11 +57,11 @@ function tasksListHref(params: Record<string, string>): string {
 function MiniStatusBar({ breakdown }: { breakdown: ProjectsDashboardStats["statusBreakdown"] }): JSX.Element {
   const total = STATUS_KIND_ORDER.reduce((s, k) => s + breakdown[k], 0);
   if (total === 0) {
-    return <p className="text-xs text-muted-foreground">Sem tarefas nos projetos.</p>;
+    return <p className="text-xs text-[#676879] dark:text-[#a0a3b3]">Sem tarefas nos projetos.</p>;
   }
   return (
     <div
-      className="flex h-3 w-full overflow-hidden rounded-md bg-muted"
+      className="flex h-3 w-full overflow-hidden rounded-sm bg-[#e6e9ef] dark:bg-neutral-800"
       role="img"
       aria-label={`Distribuição de ${total} tarefas por tipo de status`}
     >
@@ -86,14 +89,14 @@ function Legend({ breakdown }: { breakdown: ProjectsDashboardStats["statusBreakd
     const n = breakdown[kind];
     if (n > 0) parts.push({ kind, n });
   }
-  if (parts.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
+  if (parts.length === 0) return <span className="text-xs text-[#676879] dark:text-[#a0a3b3]">—</span>;
   return (
-    <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#676879] dark:text-[#a0a3b3]">
       {parts.map(({ kind, n }) => (
         <li key={kind}>
           <Link
             href={tasksListHref({ statusKind: kind })}
-            className="inline-flex items-center gap-1.5 rounded-sm hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-sm hover:text-[#323338] dark:hover:text-[#f6f7fb]"
           >
             <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: STATUS_KIND_COLORS[kind].bg }} />
             <span>
@@ -117,15 +120,15 @@ function StatCard({
   value: string | number;
   description?: string;
   href?: string;
-  tone: keyof typeof STAT_TONE;
+  tone: keyof typeof MONDAY_STAT;
 }): JSX.Element {
-  const t = STAT_TONE[tone];
+  const t = MONDAY_STAT[tone];
   const body = (
     <Card
       className={cn(
-        "flex h-full min-h-[148px] flex-col border-2 shadow-sm transition-shadow",
+        "flex h-full min-h-[148px] flex-col rounded-none border-0 shadow-none transition-colors",
         t.card,
-        href && "cursor-pointer hover:brightness-[1.02] hover:shadow-md dark:hover:brightness-110"
+        href && "cursor-pointer hover:bg-[#f6f7fb] dark:hover:bg-neutral-900/90"
       )}
     >
       <CardHeader className="flex flex-1 flex-col space-y-1 p-4 pb-2">
@@ -145,21 +148,23 @@ function StatCard({
     return (
       <Link
         href={href}
-        className="flex h-full min-h-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-full min-h-0 min-w-0 rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#579bfc] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-950"
       >
         {body}
       </Link>
     );
   }
-  return <div className="flex h-full min-h-0">{body}</div>;
+  return <div className="flex h-full min-h-0 min-w-0">{body}</div>;
 }
 
 function DashboardSkeleton(): JSX.Element {
   return (
-    <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="min-h-[148px] animate-pulse rounded-xl border bg-muted/40" />
-      ))}
+    <div className="overflow-hidden rounded-lg border border-[#e6e9ef] dark:border-neutral-800">
+      <div className="grid auto-rows-fr grid-cols-2 divide-x divide-y divide-[#e6e9ef] bg-[#e6e9ef] dark:divide-neutral-800 dark:bg-neutral-800 lg:grid-cols-[1.15fr_1.15fr_0.85fr_0.85fr] lg:divide-y-0">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="min-h-[148px] animate-pulse bg-white dark:bg-neutral-950" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -197,7 +202,8 @@ export function ProjectsOverviewDashboard(): JSX.Element {
         {" · "}
         Clique nos cartões ou na barra de cores para filtrar por atraso, sem data ou tipo de status.
       </p>
-      <div className="grid auto-rows-fr items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="overflow-hidden rounded-lg border border-[#e6e9ef] shadow-sm dark:border-neutral-800">
+        <div className="grid auto-rows-fr grid-cols-2 divide-x divide-y divide-[#e6e9ef] bg-[#e6e9ef] dark:divide-neutral-800 dark:bg-neutral-800 lg:grid-cols-[1.15fr_1.15fr_0.85fr_0.85fr] lg:divide-y-0 [&>*]:min-w-0">
         <StatCard
           tone="projects"
           title="Projetos"
@@ -229,12 +235,13 @@ export function ProjectsOverviewDashboard(): JSX.Element {
           href={tasksListHref({ filter: "no_due" })}
           description="Tarefas não concluídas sem due date"
         />
+        </div>
       </div>
 
-      <Card className="shadow-sm">
+      <Card className="rounded-lg border-[#e6e9ef] bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-base">Tarefas por tipo de status</CardTitle>
-          <CardDescription className="text-xs">
+          <CardTitle className="text-base text-[#323338] dark:text-[#f6f7fb]">Tarefas por tipo de status</CardTitle>
+          <CardDescription className="text-xs text-[#676879] dark:text-[#a0a3b3]">
             Mesma lógica do quadro (Feito, Em progresso, Não iniciado, Bloqueado, …). Clique numa cor ou legenda para ver na lista.
           </CardDescription>
         </CardHeader>
