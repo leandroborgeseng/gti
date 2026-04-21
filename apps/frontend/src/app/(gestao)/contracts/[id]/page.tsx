@@ -1,5 +1,6 @@
 import type { Route } from "next";
 import Link from "next/link";
+import { ContractFinancialSnapshotsPanel } from "@/components/contracts/contract-financial-snapshots-panel";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractGlpiGroupsPanel } from "@/components/contracts/contract-glpi-groups-panel";
 import { ContractStatusControl } from "@/components/contracts/contract-status-control";
@@ -130,8 +131,23 @@ export default async function ContractDetailPage({ params }: { params: { id: str
             {new Date(contract.endDate).toLocaleDateString("pt-BR")}
           </p>
           <p>
-            <strong className="text-slate-900">Valor mensal:</strong> {formatBrl(contract.monthlyValue)}
+            <strong className="text-slate-900">Mensalidade:</strong> {formatBrl(contract.monthlyValue)}
           </p>
+          <p>
+            <strong className="text-slate-900">Implantação:</strong> {formatBrl(contract.installationValue)}
+          </p>
+          {contract.implementationPeriodStart || contract.implementationPeriodEnd ? (
+            <p>
+              <strong className="text-slate-900">Período de implantação:</strong>{" "}
+              {contract.implementationPeriodStart
+                ? new Date(contract.implementationPeriodStart).toLocaleDateString("pt-BR")
+                : "—"}{" "}
+              a{" "}
+              {contract.implementationPeriodEnd
+                ? new Date(contract.implementationPeriodEnd).toLocaleDateString("pt-BR")
+                : "—"}
+            </p>
+          ) : null}
           <p>
             <strong className="text-slate-900">Valor total:</strong> {formatBrl(contract.totalValue)}
           </p>
@@ -166,6 +182,12 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           </div>
         </div>
       </Card>
+
+      <ContractFinancialSnapshotsPanel
+        contractId={contract.id}
+        snapshots={contract.financialSnapshots}
+        currentMonthly={contract.monthlyValue}
+      />
 
       <ContractImplantationProportionPanel data={contract.featureImplantationProportion} />
 

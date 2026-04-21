@@ -5,8 +5,20 @@ import {
   ContractType,
   LawType
 } from "@prisma/client";
+
+/** Linha validada para importação em massa de módulos/funcionalidades (planilha). */
+export type ContractStructureImportRow = {
+  moduleName: string;
+  moduleWeight: number;
+  featureName: string;
+  featureWeight: number;
+  featureStatus?: ContractFeatureStatus;
+  featureDelivery?: ContractItemDeliveryStatus;
+  /** Número da linha na folha Excel (para mensagens de erro). */
+  sourceRow: number;
+};
 import { Type } from "class-transformer";
-import { IsArray, IsDateString, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from "class-validator";
+import { IsArray, IsDateString, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateIf, ValidateNested } from "class-validator";
 
 /** Grupo de trabalho GLPI (ID na instância; nome opcional para exibição). */
 export class ContractGlpiGroupLinkDto {
@@ -165,6 +177,21 @@ export class CreateContractDto {
   monthlyValue!: number;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  installationValue?: number | null;
+
+  @IsOptional()
+  @IsDateString()
+  implementationPeriodStart?: string;
+
+  @IsOptional()
+  @IsDateString()
+  implementationPeriodEnd?: string;
+
+  @IsOptional()
   @IsEnum(ContractStatus)
   status?: ContractStatus;
 
@@ -247,6 +274,23 @@ export class UpdateContractDto {
   monthlyValue?: number;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  installationValue?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsDateString()
+  implementationPeriodStart?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsDateString()
+  implementationPeriodEnd?: string | null;
+
+  @IsOptional()
   @IsEnum(ContractStatus)
   status?: ContractStatus;
 
@@ -275,6 +319,13 @@ export class UpdateContractDto {
   @ValidateNested({ each: true })
   @Type(() => ContractGlpiGroupLinkDto)
   glpiGroups?: ContractGlpiGroupLinkDto[];
+}
+
+/** Corpo opcional ao gravar uma memória financeira do contrato (valores actuais antes de alterar). */
+export class CreateContractFinancialSnapshotDto {
+  @IsOptional()
+  @IsString()
+  note?: string;
 }
 
 /** Aditivo ou reajuste que altera valores e/ou fim de vigência do contrato (gravado e aplicado na BD). */

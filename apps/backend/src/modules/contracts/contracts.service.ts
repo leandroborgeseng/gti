@@ -6,14 +6,20 @@ import {
   CreateContractAmendmentDto,
   CreateContractDto,
   CreateContractFeatureDto,
+  CreateContractFinancialSnapshotDto,
   CreateContractModuleDto,
   CreateContractServiceDto,
   ContractGlpiGroupLinkDto,
+  ContractStructureImportRow,
   UpdateContractDto,
   UpdateContractFeatureDto,
   UpdateContractModuleDto,
   UpdateContractServiceDto
 } from "./contracts.dto";
+
+function moduleGroupKey(name: string): string {
+  return name.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+}
 
 function dedupeGlpiGroupLinks(links: ContractGlpiGroupLinkDto[]): { glpiGroupId: number; glpiGroupName: string | null }[] {
   const seen = new Set<number>();
@@ -28,6 +34,8 @@ function dedupeGlpiGroupLinks(links: ContractGlpiGroupLinkDto[]): { glpiGroupId:
   return out;
 }
 
+export type BillingPhase = "UNDEFINED" | "PRE_IMPLEMENTATION" | "IMPLEMENTATION" | "MONTHLY";
+
 export type FeatureImplantationProportionDto = {
   applicable: boolean;
   totalFeatures: number;
@@ -39,25 +47,72 @@ export type FeatureImplantationProportionDto = {
   /** Percentagem formatada para UI (pt-BR) ou null */
   ratioImplantedPercent: string | null;
   contractMonthlyValue: string;
-  /** Valor mensal × (implantadas / total funcionalidades), duas casas decimais */
+  /** Valor mensal × ratio (entregues + 0,5×parciais) / total. */
   proportionalMonthlyValue: string | null;
+  /** Valor de implantação contratual (referência), ou null se não definido. */
+  contractInstallationValue: string | null;
+  /** Valor de implantação × o mesmo ratio (itens implantados). */
+  proportionalInstallationValue: string | null;
+  /** Início do período de implantação (AAAA-MM-DD), se definido. */
+  implementationPeriodStart: string | null;
+  /** Fim do período de implantação (AAAA-MM-DD), se definido. */
+  implementationPeriodEnd: string | null;
+  /** Fase inferida pela data de referência e pelo período definido. */
+  billingPhase: BillingPhase;
+  /** Enfoque sugerido: implantação, mensalidade ou ambos (datas não configuradas). */
+  billingEmphasis: "INSTALLATION" | "MONTHLY" | "BOTH";
   explanation: string | null;
 };
 
+function calendarKeyLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function resolveBillingPhase(at: Date, start: Date | null | undefined, end: Date | null | undefined): BillingPhase {
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return "UNDEFINED";
+  }
+  const a = calendarKeyLocal(at);
+  const s = calendarKeyLocal(start);
+  const e = calendarKeyLocal(end);
+  if (a < s) return "PRE_IMPLEMENTATION";
+  if (a <= e) return "IMPLEMENTATION";
+  return "MONTHLY";
+}
+
+function resolveBillingEmphasis(phase: BillingPhase): "INSTALLATION" | "MONTHLY" | "BOTH" {
+  if (phase === "IMPLEMENTATION") return "INSTALLATION";
+  if (phase === "MONTHLY") return "MONTHLY";
+  return "BOTH";
+}
+
+function toIsoDateOnly(d: Date | null | undefined): string | null {
+  if (!d || Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+type ImplantationModulesInput = Array<{ features: Array<{ deliveryStatus: ContractItemDeliveryStatus }> }>;
+
 /**
- * Proporção do valor mensal alinhada às funcionalidades **entregues** (implantadas):
- * (nº com entrega «Entregue» / total de funcionalidades em módulos) × valor mensal do contrato.
- * Parciais e não entregues entram só no total (denominador), não no numerador.
+ * Indicadores de progresso de entrega: ratio comum aplicado à mensalidade e ao valor de implantação;
+ * fase (pré / implantação / mensalidade) conforme datas do período de implantação.
  */
-function buildFeatureImplantationProportion(
-  monthlyValue: Prisma.Decimal,
-  modules: Array<{ features: Array<{ deliveryStatus: ContractItemDeliveryStatus }> }>
-): FeatureImplantationProportionDto {
+function buildFeatureImplantationProportion(ctx: {
+  monthlyValue: Prisma.Decimal;
+  installationValue?: Prisma.Decimal | null;
+  implementationPeriodStart?: Date | null;
+  implementationPeriodEnd?: Date | null;
+  modules: ImplantationModulesInput;
+  at: Date;
+}): FeatureImplantationProportionDto {
   let totalFeatures = 0;
   let implantedCount = 0;
   let partialCount = 0;
   let notDeliveredCount = 0;
-  for (const m of modules) {
+  for (const m of ctx.modules) {
     for (const f of m.features) {
       totalFeatures++;
       if (f.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) {
@@ -69,8 +124,15 @@ function buildFeatureImplantationProportion(
       }
     }
   }
-  const monthly = new Prisma.Decimal(monthlyValue);
+  const monthly = new Prisma.Decimal(ctx.monthlyValue);
   const contractMonthlyValue = monthly.toFixed(2);
+  const instDec = ctx.installationValue != null ? new Prisma.Decimal(ctx.installationValue) : null;
+  const contractInstallationValue = instDec != null ? instDec.toFixed(2) : null;
+  const phase = resolveBillingPhase(ctx.at, ctx.implementationPeriodStart, ctx.implementationPeriodEnd);
+  const billingEmphasis = resolveBillingEmphasis(phase);
+  const implementationPeriodStart = toIsoDateOnly(ctx.implementationPeriodStart ?? null);
+  const implementationPeriodEnd = toIsoDateOnly(ctx.implementationPeriodEnd ?? null);
+
   if (totalFeatures === 0) {
     return {
       applicable: false,
@@ -82,12 +144,22 @@ function buildFeatureImplantationProportion(
       ratioImplantedPercent: null,
       contractMonthlyValue,
       proportionalMonthlyValue: null,
+      contractInstallationValue,
+      proportionalInstallationValue: null,
+      implementationPeriodStart,
+      implementationPeriodEnd,
+      billingPhase: phase,
+      billingEmphasis,
       explanation:
-        "Não existem funcionalidades em módulos; não é possível calcular o valor mensal proporcional à implantação."
+        "Não existem funcionalidades em módulos; não é possível calcular valores proporcionais ao progresso de entrega."
     };
   }
-  const ratioDec = new Prisma.Decimal(implantedCount).div(new Prisma.Decimal(totalFeatures));
-  const proportional = monthly.mul(ratioDec).toDecimalPlaces(2);
+  const half = new Prisma.Decimal("0.5");
+  const weightedDelivered = new Prisma.Decimal(implantedCount).plus(new Prisma.Decimal(partialCount).mul(half));
+  const ratioDec = weightedDelivered.div(new Prisma.Decimal(totalFeatures));
+  const proportionalMonthly = monthly.mul(ratioDec).toDecimalPlaces(2);
+  const proportionalInstallation =
+    instDec != null ? instDec.mul(ratioDec).toDecimalPlaces(2) : null;
   const ratioNum = Number(ratioDec.toString());
   return {
     applicable: true,
@@ -100,9 +172,21 @@ function buildFeatureImplantationProportion(
       ? (ratioNum * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2, minimumFractionDigits: 1 })
       : null,
     contractMonthlyValue,
-    proportionalMonthlyValue: proportional.toFixed(2),
+    proportionalMonthlyValue: proportionalMonthly.toFixed(2),
+    contractInstallationValue,
+    proportionalInstallationValue: proportionalInstallation != null ? proportionalInstallation.toFixed(2) : null,
+    implementationPeriodStart,
+    implementationPeriodEnd,
+    billingPhase: phase,
+    billingEmphasis,
     explanation: null
   };
+}
+
+function assertImplementationPeriodOrder(start: Date | null, end: Date | null): void {
+  if (start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end.getTime() < start.getTime()) {
+    throw new BadRequestException("A data de fim do período de implantação não pode ser anterior à data de início.");
+  }
 }
 
 @Injectable()
@@ -113,6 +197,9 @@ export class ContractsService {
     const { glpiGroups, ...rest } = dto;
     const totalValue = rest.totalValue ?? rest.monthlyValue * 12;
     const managerId = rest.managerId ?? rest.fiscalId;
+    const implStart = rest.implementationPeriodStart ? new Date(rest.implementationPeriodStart) : null;
+    const implEnd = rest.implementationPeriodEnd ? new Date(rest.implementationPeriodEnd) : null;
+    assertImplementationPeriodOrder(implStart, implEnd);
     const created = await this.prisma.contract.create({
       data: {
         number: rest.number,
@@ -127,6 +214,12 @@ export class ContractsService {
         endDate: new Date(rest.endDate),
         totalValue: new Prisma.Decimal(totalValue),
         monthlyValue: new Prisma.Decimal(rest.monthlyValue),
+        installationValue:
+          rest.installationValue === undefined || rest.installationValue === null
+            ? null
+            : new Prisma.Decimal(rest.installationValue),
+        implementationPeriodStart: implStart,
+        implementationPeriodEnd: implEnd,
         status: rest.status ?? ContractStatus.ACTIVE,
         slaTarget: rest.slaTarget != null ? new Prisma.Decimal(rest.slaTarget) : null,
         fiscalId: rest.fiscalId,
@@ -170,6 +263,9 @@ export class ContractsService {
         contractType: true,
         status: true,
         monthlyValue: true,
+        installationValue: true,
+        implementationPeriodStart: true,
+        implementationPeriodEnd: true,
         modules: {
           select: {
             id: true,
@@ -193,7 +289,14 @@ export class ContractsService {
     });
     return rows.map((row) => ({
       ...row,
-      featureImplantationProportion: buildFeatureImplantationProportion(row.monthlyValue, row.modules)
+      featureImplantationProportion: buildFeatureImplantationProportion({
+        monthlyValue: row.monthlyValue,
+        installationValue: row.installationValue ?? null,
+        implementationPeriodStart: row.implementationPeriodStart ?? null,
+        implementationPeriodEnd: row.implementationPeriodEnd ?? null,
+        modules: row.modules,
+        at: new Date()
+      })
     }));
   }
 
@@ -221,13 +324,21 @@ export class ContractsService {
         manager: true,
         supplier: true,
         glpiGroups: { orderBy: { glpiGroupName: "asc" } },
-        amendments: { orderBy: { createdAt: "desc" } }
+        amendments: { orderBy: { createdAt: "desc" } },
+        financialSnapshots: { orderBy: { recordedAt: "desc" }, take: 50 }
       }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");
     return {
       ...contract,
-      featureImplantationProportion: buildFeatureImplantationProportion(contract.monthlyValue, contract.modules)
+      featureImplantationProportion: buildFeatureImplantationProportion({
+        monthlyValue: contract.monthlyValue,
+        installationValue: contract.installationValue,
+        implementationPeriodStart: contract.implementationPeriodStart,
+        implementationPeriodEnd: contract.implementationPeriodEnd,
+        modules: contract.modules,
+        at: new Date()
+      })
     };
   }
 
@@ -292,9 +403,43 @@ export class ContractsService {
     return this.findOne(contractId);
   }
 
+  /**
+   * Grava na memória os valores financeiros actuais do contrato (mensal, total, implantação),
+   * para comparar depois de uma renovação ou reajuste manual.
+   */
+  async createFinancialSnapshot(contractId: string, dto: CreateContractFinancialSnapshotDto): Promise<unknown> {
+    const prev = await this.prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } });
+    if (!prev) throw new NotFoundException("Contrato não encontrado");
+    const note = dto.note?.trim();
+    const created = await this.prisma.contractFinancialSnapshot.create({
+      data: {
+        contractId,
+        monthlyValue: prev.monthlyValue,
+        totalValue: prev.totalValue,
+        installationValue: prev.installationValue,
+        note: note ? note : null
+      }
+    });
+    await this.createAudit("ContractFinancialSnapshot", created.id, "CREATE", null, created);
+    return this.findOne(contractId);
+  }
+
   async update(id: string, dto: UpdateContractDto): Promise<unknown> {
     const prev = await this.prisma.contract.findFirst({ where: { id, deletedAt: null } });
     if (!prev) throw new NotFoundException("Contrato não encontrado");
+    const nextImplStart =
+      dto.implementationPeriodStart !== undefined
+        ? dto.implementationPeriodStart === null
+          ? null
+          : new Date(dto.implementationPeriodStart)
+        : prev.implementationPeriodStart;
+    const nextImplEnd =
+      dto.implementationPeriodEnd !== undefined
+        ? dto.implementationPeriodEnd === null
+          ? null
+          : new Date(dto.implementationPeriodEnd)
+        : prev.implementationPeriodEnd;
+    assertImplementationPeriodOrder(nextImplStart, nextImplEnd);
     const { glpiGroups, ...rest } = dto;
     const totalValue = dto.totalValue ?? (dto.monthlyValue != null ? dto.monthlyValue * 12 : undefined);
     const updated = await this.prisma.contract.update({
@@ -308,11 +453,110 @@ export class ContractsService {
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
         totalValue: totalValue != null ? new Prisma.Decimal(totalValue) : undefined,
         monthlyValue: dto.monthlyValue != null ? new Prisma.Decimal(dto.monthlyValue) : undefined,
-        slaTarget: dto.slaTarget != null ? new Prisma.Decimal(dto.slaTarget) : dto.slaTarget === null ? null : undefined
+        slaTarget: dto.slaTarget != null ? new Prisma.Decimal(dto.slaTarget) : dto.slaTarget === null ? null : undefined,
+        installationValue:
+          dto.installationValue === undefined
+            ? undefined
+            : dto.installationValue === null
+              ? null
+              : new Prisma.Decimal(dto.installationValue),
+        implementationPeriodStart:
+          dto.implementationPeriodStart === undefined
+            ? undefined
+            : dto.implementationPeriodStart === null
+              ? null
+              : new Date(dto.implementationPeriodStart),
+        implementationPeriodEnd:
+          dto.implementationPeriodEnd === undefined
+            ? undefined
+            : dto.implementationPeriodEnd === null
+              ? null
+              : new Date(dto.implementationPeriodEnd)
       }
     });
     await this.createAudit("Contract", id, "UPDATE", prev, updated);
     return this.findOne(id);
+  }
+
+  /**
+   * Importa módulos e funcionalidades a partir de linhas já validadas (planilha).
+   * Com `replace`, remove todos os módulos e funcionalidades do contrato antes de importar.
+   * Sem `replace`, acrescenta módulos novos e funcionalidades; módulos existentes são identificados pelo nome (sem distinção de maiúsculas).
+   */
+  async importModulesAndFeatures(
+    contractId: string,
+    rows: ContractStructureImportRow[],
+    opts: { replace: boolean }
+  ): Promise<unknown> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, contractType: true }
+    });
+    if (!contract) throw new NotFoundException("Contrato não encontrado");
+    const typesWithModules: ContractType[] = [ContractType.SOFTWARE, ContractType.INFRA, ContractType.SERVICO];
+    if (!typesWithModules.includes(contract.contractType)) {
+      throw new BadRequestException("Este tipo de contrato não utiliza módulos e funcionalidades.");
+    }
+    if (!rows.length) throw new BadRequestException("Nenhuma linha válida para importar.");
+
+    const groups = new Map<string, { displayName: string; weight: number; features: ContractStructureImportRow[] }>();
+    for (const row of rows) {
+      const key = moduleGroupKey(row.moduleName);
+      const prev = groups.get(key);
+      if (!prev) {
+        groups.set(key, { displayName: row.moduleName.trim(), weight: row.moduleWeight, features: [row] });
+      } else {
+        if (Math.abs(prev.weight - row.moduleWeight) > 1e-6) {
+          throw new BadRequestException(
+            `Peso do módulo inconsistente para «${row.moduleName.trim()}» (linhas ${prev.features[0]?.sourceRow} e ${row.sourceRow}).`
+          );
+        }
+        prev.features.push(row);
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (opts.replace) {
+        await tx.contractFeature.deleteMany({ where: { module: { contractId } } });
+        await tx.contractModule.deleteMany({ where: { contractId } });
+      }
+      for (const [, group] of groups) {
+        let moduleId: string | undefined;
+        if (!opts.replace) {
+          const existing = await tx.contractModule.findFirst({
+            where: {
+              contractId,
+              name: { equals: group.displayName, mode: "insensitive" }
+            }
+          });
+          if (existing) moduleId = existing.id;
+        }
+        if (!moduleId) {
+          const created = await tx.contractModule.create({
+            data: {
+              contractId,
+              name: group.displayName,
+              weight: new Prisma.Decimal(group.weight)
+            }
+          });
+          moduleId = created.id;
+        }
+        for (const fr of group.features) {
+          await tx.contractFeature.create({
+            data: {
+              moduleId: moduleId!,
+              name: fr.featureName.trim(),
+              weight: new Prisma.Decimal(fr.featureWeight),
+              status: fr.featureStatus ?? ContractFeatureStatus.NOT_STARTED,
+              deliveryStatus: fr.featureDelivery ?? ContractItemDeliveryStatus.NOT_DELIVERED
+            }
+          });
+        }
+      }
+    });
+
+    await this.createAudit("Contract", contractId, "IMPORT_STRUCTURE", null, { rows: rows.length, replace: opts.replace });
+    return this.findOne(contractId);
   }
 
   async createModule(contractId: string, dto: CreateContractModuleDto): Promise<unknown> {

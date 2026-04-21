@@ -4,6 +4,7 @@ import {
   CreateContractAmendmentDto,
   CreateContractDto,
   CreateContractFeatureDto,
+  CreateContractFinancialSnapshotDto,
   CreateContractModuleDto,
   CreateContractServiceDto,
   UpdateContractDto,
@@ -108,6 +109,14 @@ export class ContractsController {
   @Post(":id/amendments")
   createAmendment(@Param("id") contractId: string, @Body() dto: CreateContractAmendmentDto): Promise<unknown> {
     return this.service.createAmendment(contractId, dto);
+  }
+
+  @Post(":id/financial-snapshots")
+  createFinancialSnapshot(
+    @Param("id") contractId: string,
+    @Body() dto: CreateContractFinancialSnapshotDto
+  ): Promise<unknown> {
+    return this.service.createFinancialSnapshot(contractId, dto);
   }
 
   @Get(":id")

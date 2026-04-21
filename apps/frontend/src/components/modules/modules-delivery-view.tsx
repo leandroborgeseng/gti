@@ -115,7 +115,8 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
           <strong className="font-medium text-foreground">funcionalidades</strong> (itens de entrega). Cada funcionalidade
           regista se a entrega está <strong className="font-medium text-foreground">não feita</strong>,{" "}
           <strong className="font-medium text-foreground">parcial</strong> ou <strong className="font-medium text-foreground">concluída</strong>,
-          para acompanhar se o contrato está a ser prestado.
+          para acompanhar se o contrato está a ser prestado. No indicador proporcional ao valor mensal, cada parcial conta como{" "}
+          <strong className="font-medium text-foreground">0,5</strong> e cada concluída como <strong className="font-medium text-foreground">1</strong>.
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
           Contratos no tipo Software, Infraestrutura ou Serviço: {totalContracts} listado(s), {totalItems} item(ns) no total.

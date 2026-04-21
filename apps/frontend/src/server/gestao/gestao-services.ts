@@ -7,6 +7,7 @@ import { GlosasService } from "@gestao/modules/glosas/glosas.service";
 import { GoalsService } from "@gestao/modules/goals/goals.service";
 import { GovernanceTicketsService } from "@gestao/modules/governance-tickets/governance-tickets.service";
 import { MeasurementsService } from "@gestao/modules/measurements/measurements.service";
+import { MonthlyContractClosureReportService } from "@gestao/modules/reports/monthly-contract-closure.service";
 import { ProjectsService } from "@gestao/modules/projects/projects.service";
 import { SuppliersService } from "@gestao/modules/suppliers/suppliers.service";
 import { UsersService } from "@gestao/modules/users/users.service";
@@ -27,6 +28,7 @@ export const gestaoSuppliers = new SuppliersService(prismaSvc);
 export const gestaoFiscais = new FiscaisService(prismaSvc);
 export const gestaoUsers = new UsersService(prismaSvc);
 export const gestaoExports = new ExportsService(prismaSvc);
+export const gestaoMonthlyClosureReport = new MonthlyContractClosureReportService(prismaSvc);
 export const gestaoProjects = new ProjectsService(prismaSvc, storage);
 
 let goalsBootstrapped = false;

@@ -46,6 +46,11 @@ type Props = {
 function contractToFormDefaults(c: Contract): ContractPageFormInput {
   const mv = Number(String(c.monthlyValue).replace(",", "."));
   const monthlyValueStr = Number.isFinite(mv) ? String(mv).replace(".", ",") : String(c.monthlyValue);
+  const iv =
+    c.installationValue != null && String(c.installationValue).trim() !== ""
+      ? Number(String(c.installationValue).replace(",", "."))
+      : NaN;
+  const installationValueStr = Number.isFinite(iv) ? String(iv).replace(".", ",") : "";
   const cnpjDigits = onlyDigitsCnpj(c.cnpj ?? c.supplier?.cnpj ?? "");
   const lt = (c.lawType ?? "") as ContractPageFormInput["lawType"];
   const ct = c.contractType as ContractPageFormInput["contractType"];
@@ -62,6 +67,15 @@ function contractToFormDefaults(c: Contract): ContractPageFormInput {
     startDate: c.startDate.slice(0, 10),
     endDate: c.endDate.slice(0, 10),
     monthlyValue: monthlyValueStr,
+    installationValue: installationValueStr,
+    implementationPeriodStart:
+      c.implementationPeriodStart && String(c.implementationPeriodStart).trim().length >= 10
+        ? String(c.implementationPeriodStart).slice(0, 10)
+        : "",
+    implementationPeriodEnd:
+      c.implementationPeriodEnd && String(c.implementationPeriodEnd).trim().length >= 10
+        ? String(c.implementationPeriodEnd).slice(0, 10)
+        : "",
     fiscalId: c.fiscal?.id ?? "",
     managerId: c.manager?.id ?? "",
     supplierId: c.supplier?.id ?? "",
@@ -179,6 +193,10 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const updateContractMut = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: ContractPageParsed }) => {
       const mv = Number(String(data.monthlyValue).replace(",", "."));
+      const instStr = (data.installationValue ?? "").trim();
+      const installationValue = instStr === "" ? null : Number(instStr.replace(",", "."));
+      const implS = (data.implementationPeriodStart ?? "").trim();
+      const implE = (data.implementationPeriodEnd ?? "").trim();
       return updateContract(id, {
         number: data.number.trim(),
         name: data.name.trim(),
@@ -191,6 +209,9 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
         startDate: data.startDate,
         endDate: data.endDate,
         monthlyValue: mv,
+        installationValue,
+        implementationPeriodStart: implS ? implS : null,
+        implementationPeriodEnd: implE ? implE : null,
         fiscalId: data.fiscalId,
         managerId: data.managerId.trim() || undefined,
         supplierId: data.supplierId.trim() || null,
@@ -280,6 +301,10 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
       return;
     }
     const mv = Number(String(data.monthlyValue).replace(",", "."));
+    const instStr = (data.installationValue ?? "").trim();
+    const installationValue = instStr === "" ? null : Number(instStr.replace(",", "."));
+    const implS = (data.implementationPeriodStart ?? "").trim();
+    const implE = (data.implementationPeriodEnd ?? "").trim();
     createContractMut.mutate({
       number: data.number.trim(),
       name: data.name.trim(),
@@ -292,6 +317,9 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
       startDate: data.startDate,
       endDate: data.endDate,
       monthlyValue: mv,
+      ...(installationValue !== null ? { installationValue } : {}),
+      ...(implS ? { implementationPeriodStart: implS } : {}),
+      ...(implE ? { implementationPeriodEnd: implE } : {}),
       fiscalId: data.fiscalId,
       managerId: data.managerId.trim() || undefined,
       supplierId: data.supplierId.trim() || undefined,
@@ -553,7 +581,10 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
           </div>
         </FormSection>
 
-        <FormSection title="Vigência e valores" description="Datas em formato ISO (campo nativo); valor mensal em reais.">
+        <FormSection
+          title="Vigência e valores"
+          description="Mensalidade e implantação são rubricas distintas. Defina o período de implantação (opcional) para o sistema indicar a fase: durante esse período a referência proporcional é a implantação; depois, a mensalidade."
+        >
           <FormField
             control={form.control}
             name="startDate"
@@ -584,10 +615,52 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             control={form.control}
             name="monthlyValue"
             render={({ field }) => (
-              <FormItem className="sm:col-span-2">
-                <FormLabel>Valor mensal (R$)</FormLabel>
+              <FormItem>
+                <FormLabel>Mensalidade (R$)</FormLabel>
                 <FormControl>
                   <Input type="text" inputMode="decimal" placeholder="0,00" {...field} />
+                </FormControl>
+                <FormDescription>Valor recorrente mensal do contrato.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="installationValue"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Implantação (R$)</FormLabel>
+                <FormControl>
+                  <Input type="text" inputMode="decimal" placeholder="Opcional" {...field} />
+                </FormControl>
+                <FormDescription>Valor único de implantação ou projecto, separado da mensalidade.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="implementationPeriodStart"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Início do período de implantação</FormLabel>
+                <FormControl>
+                  <Input type="date" {...field} value={field.value ?? ""} />
+                </FormControl>
+                <FormDescription>Opcional. Com início e fim definidos, o painel de proporcionalidade destaca implantação ou mensalidade conforme a data de hoje.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="implementationPeriodEnd"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Fim do período de implantação</FormLabel>
+                <FormControl>
+                  <Input type="date" {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

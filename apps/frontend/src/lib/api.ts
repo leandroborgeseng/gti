@@ -136,6 +136,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export type ContractFinancialSnapshot = {
+  id: string;
+  contractId: string;
+  recordedAt: string;
+  monthlyValue: string;
+  totalValue: string;
+  installationValue?: string | null;
+  note?: string | null;
+};
+
 export type ContractAmendment = {
   id: string;
   contractId: string;
@@ -162,7 +172,12 @@ export type ContractGlpiGroup = {
 /** Estado de entrega do item (funcionalidade) para acompanhar a prestação do contrato. */
 export type ContractItemDeliveryStatus = "NOT_DELIVERED" | "PARTIALLY_DELIVERED" | "DELIVERED";
 
-/** Proporção do valor mensal com base em funcionalidades «Entregue» / total em módulos. */
+/**
+ * Proporção do valor mensal com base no progresso de entrega: «Entregue» = 1, «Parcialmente entregue» = 0,5,
+ * «Não entregue» = 0; (soma dos pesos / total de itens em módulos) × valor mensal.
+ */
+export type BillingPhase = "UNDEFINED" | "PRE_IMPLEMENTATION" | "IMPLEMENTATION" | "MONTHLY";
+
 export type FeatureImplantationProportion = {
   applicable: boolean;
   totalFeatures: number;
@@ -173,6 +188,12 @@ export type FeatureImplantationProportion = {
   ratioImplantedPercent: string | null;
   contractMonthlyValue: string;
   proportionalMonthlyValue: string | null;
+  contractInstallationValue: string | null;
+  proportionalInstallationValue: string | null;
+  implementationPeriodStart: string | null;
+  implementationPeriodEnd: string | null;
+  billingPhase: BillingPhase;
+  billingEmphasis: "INSTALLATION" | "MONTHLY" | "BOTH";
   explanation: string | null;
 };
 
@@ -190,6 +211,12 @@ export type Contract = {
   status: string;
   totalValue: string;
   monthlyValue: string;
+  /** Valor de implantação (único), separado da mensalidade. */
+  installationValue?: string | null;
+  /** Início do período em que a rubrica de implantação é a referência principal (AAAA-MM-DD). */
+  implementationPeriodStart?: string | null;
+  /** Fim do período de implantação (AAAA-MM-DD). */
+  implementationPeriodEnd?: string | null;
   startDate: string;
   endDate: string;
   slaTarget?: string | null;
@@ -211,6 +238,8 @@ export type Contract = {
   _count?: { amendments: number };
   /** Indicador: valor mensal × (funcionalidades entregues / total em módulos). */
   featureImplantationProportion?: FeatureImplantationProportion;
+  /** Memória dos valores antes de renovações ou reajustes (mais recente primeiro). */
+  financialSnapshots?: ContractFinancialSnapshot[];
 };
 
 export type GlpiAssignedGroupOption = {
@@ -348,12 +377,48 @@ export async function getDashboardAlerts(): Promise<Record<string, unknown>> {
   return request("/dashboard/alerts");
 }
 
+/** Linha do relatório de fechamento mensal (medições + OS GLPI por contrato). */
+export type MonthlyContractClosureRow = {
+  contractId: string;
+  contractNumber: string;
+  contractName: string;
+  contractStatus: string;
+  contractTotalValue: string;
+  contractMonthlyValue: string;
+  contractInstallationValue: string | null;
+  implementationPeriodStart: string | null;
+  implementationPeriodEnd: string | null;
+  previousMonthApprovedPayment: string | null;
+  measurementStatus: string | null;
+  monthApprovedPayment: string | null;
+  monthMeasuredValue: string | null;
+  glpiOsOpenedInMonth: number;
+  glpiOsClosedInMonth: number;
+  glpiOsOpenBacklog: number;
+};
+
+export async function getMonthlyContractClosureReport(year: number, month: number): Promise<MonthlyContractClosureRow[]> {
+  const y = encodeURIComponent(String(year));
+  const m = encodeURIComponent(String(month));
+  return request(`/reports/monthly-contract-closure?year=${y}&month=${m}`);
+}
+
 export async function getContracts(): Promise<Contract[]> {
   return request("/contracts");
 }
 
 export async function getContract(id: string): Promise<Contract> {
   return request(`/contracts/${id}`);
+}
+
+export async function createContractFinancialSnapshot(
+  contractId: string,
+  payload?: { note?: string }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/financial-snapshots`, {
+    method: "POST",
+    body: JSON.stringify(payload ?? {})
+  });
 }
 
 export async function createContractAmendment(
@@ -386,6 +451,9 @@ export async function updateContract(
     endDate?: string;
     totalValue?: number;
     monthlyValue?: number;
+    installationValue?: number | null;
+    implementationPeriodStart?: string | null;
+    implementationPeriodEnd?: string | null;
     slaTarget?: number | null;
     fiscalId?: string;
     managerId?: string;
@@ -410,6 +478,9 @@ export async function createContract(payload: {
   endDate: string;
   totalValue?: number;
   monthlyValue: number;
+  installationValue?: number | null;
+  implementationPeriodStart?: string;
+  implementationPeriodEnd?: string;
   status?: "ACTIVE" | "EXPIRED" | "SUSPENDED";
   slaTarget?: number;
   fiscalId: string;
@@ -681,6 +752,58 @@ export async function fetchGlosasCsvBlob(): Promise<Blob> {
 
 export async function fetchContractAmendmentsCsvBlob(): Promise<Blob> {
   return fetchExportCsvBlob("/exports/contract-amendments.csv", "aditivos de contratos");
+}
+
+/** Modelo .xlsx para preencher módulos e funcionalidades antes de importar no contrato. */
+export async function fetchContractStructureTemplateBlob(contractId: string): Promise<Blob> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/contracts/${contractId}/structure-template.xlsx`, {
+    headers: { ...auth },
+    cache: "no-store"
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const payload = (await res.json()) as { message?: string | string[]; error?: string };
+      const m = payload.message;
+      detail = (Array.isArray(m) ? m.join("; ") : m) || payload.error || "";
+    } catch {
+      detail = "";
+    }
+    throw new Error(detail || `Falha ao descarregar modelo (${res.status})`);
+  }
+  return res.blob();
+}
+
+/** Importa módulos e funcionalidades a partir de ficheiro .xlsx (campo file + opcional replace). */
+export async function importContractStructureFromXlsx(
+  contractId: string,
+  file: File,
+  replace: boolean
+): Promise<Contract> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const form = new FormData();
+  form.append("file", file);
+  if (replace) form.append("replace", "true");
+  const res = await fetch(`${apiBase}/contracts/${contractId}/structure-import`, {
+    method: "POST",
+    headers: { ...auth },
+    body: form,
+    cache: "no-store"
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const payload = (await res.json()) as { message?: string; error?: string };
+      detail = (typeof payload.message === "string" ? payload.message : "") || payload.error || "";
+    } catch {
+      detail = "";
+    }
+    throw new Error(detail || `Falha na importação (${res.status})`);
+  }
+  return (await res.json()) as Contract;
 }
 
 export async function getGovernanceTickets(): Promise<GovernanceTicket[]> {

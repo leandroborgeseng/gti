@@ -36,6 +36,17 @@ export const contractPageSchema = z
         const n = Number(String(s).replace(",", "."));
         return Number.isFinite(n) && n > 0;
       }, { message: "Valor mensal deve ser maior que zero." }),
+    installationValue: z
+      .string()
+      .optional()
+      .transform((s) => (typeof s === "string" ? s.trim() : ""))
+      .refine((s) => {
+        if (s === "") return true;
+        const n = Number(String(s).replace(",", "."));
+        return Number.isFinite(n) && n >= 0;
+      }, { message: "Valor de implantação inválido." }),
+    implementationPeriodStart: z.string().optional().default(""),
+    implementationPeriodEnd: z.string().optional().default(""),
     fiscalId: z.string().min(1, "Selecione ou cadastre o fiscal."),
     managerId: z.string(),
     supplierId: z.string(),
@@ -49,7 +60,19 @@ export const contractPageSchema = z
   .refine((d) => new Date(d.endDate) >= new Date(d.startDate), {
     message: "A data final não pode ser anterior à data inicial.",
     path: ["endDate"]
-  });
+  })
+  .refine(
+    (d) => {
+      const a = (d.implementationPeriodStart ?? "").trim();
+      const b = (d.implementationPeriodEnd ?? "").trim();
+      if (!a || !b) return true;
+      return new Date(b) >= new Date(a);
+    },
+    {
+      message: "O fim do período de implantação não pode ser anterior ao início.",
+      path: ["implementationPeriodEnd"]
+    }
+  );
 
 export type ContractPageFormInput = z.input<typeof contractPageSchema>;
 export type ContractPageParsed = z.output<typeof contractPageSchema>;
@@ -81,6 +104,9 @@ export const CONTRACT_FORM_DEFAULT_VALUES: ContractPageFormInput = {
   startDate: "",
   endDate: "",
   monthlyValue: "",
+  installationValue: "",
+  implementationPeriodStart: "",
+  implementationPeriodEnd: "",
   fiscalId: "",
   managerId: "",
   supplierId: "",

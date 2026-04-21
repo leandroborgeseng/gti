@@ -22,6 +22,7 @@ const titles: Record<string, string> = {
   "/suppliers": "Fornecedores",
   "/fiscais": "Fiscais",
   "/reports": "Relatórios",
+  "/reports/fechamento-mensal": "Fechamento mensal",
   "/users": "Utilizadores",
   "/exports": "Exportações"
 };
@@ -52,7 +53,9 @@ export function AppShell({ children }: PropsWithChildren): JSX.Element {
               ? "Detalhe do projeto"
               : pathname?.startsWith("/goals/")
                 ? "Detalhe da meta"
-                : "Gestão contratual");
+                : pathname?.startsWith("/reports/")
+                  ? "Relatórios"
+                  : "Gestão contratual");
 
   return (
     <div className="flex min-h-screen bg-muted/30">

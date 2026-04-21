@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { Contract, ContractItemDeliveryStatus } from "@/lib/api";
 import {
   createContractFeature,
@@ -10,6 +11,8 @@ import {
   deleteContractFeature,
   deleteContractModule,
   deleteContractService,
+  fetchContractStructureTemplateBlob,
+  importContractStructureFromXlsx,
   updateContractFeature,
   updateContractModule,
   updateContractService,
@@ -104,6 +107,9 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 
   const [newModName, setNewModName] = useState("");
   const [newModWeight, setNewModWeight] = useState("");
+  const [replaceOnImport, setReplaceOnImport] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const fileImportRef = useRef<HTMLInputElement>(null);
 
   const [newSvcName, setNewSvcName] = useState("");
   const [newSvcUnit, setNewSvcUnit] = useState("");
@@ -129,6 +135,98 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
             <strong>1</strong> (tolerância numérica para arredondamentos).
           </p>
           <ModuleWeightsSummary modules={modules} />
+
+          <div className="mb-6 rounded-md border border-sky-200/80 bg-sky-50/50 px-3 py-3 text-sm text-slate-800">
+            <p className="font-medium text-slate-900">Planilha (.xlsx)</p>
+            <p className="mt-1 text-xs text-slate-600">
+              Descarregue o modelo, preencha a folha «Dados» e importe para criar módulos e funcionalidades de uma vez. Leia as instruções na
+              folha «Instrucoes».
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={buttonSmallPrimaryClass}
+                disabled={busy}
+                onClick={() => {
+                  void (async () => {
+                    setError(null);
+                    setBusy(true);
+                    try {
+                      const blob = await fetchContractStructureTemplateBlob(cid);
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `modelo-modulos-funcionalidades-${contract.number.replace(/[^\w.-]+/g, "_")}.xlsx`;
+                      a.rel = "noopener";
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      URL.revokeObjectURL(url);
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Erro ao descarregar o modelo");
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                Descarregar modelo
+              </button>
+              <input
+                ref={fileImportRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                disabled={busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setImportFile(f);
+                }}
+              />
+              <button
+                type="button"
+                className={buttonSmallClass}
+                disabled={busy}
+                onClick={() => fileImportRef.current?.click()}
+              >
+                Escolher ficheiro…
+              </button>
+              <button
+                type="button"
+                className={buttonSmallPrimaryClass}
+                disabled={busy || !importFile}
+                onClick={() => {
+                  if (!importFile) return;
+                  void run(async () => {
+                    const next = await importContractStructureFromXlsx(cid, importFile, replaceOnImport);
+                    setImportFile(null);
+                    setReplaceOnImport(false);
+                    if (fileImportRef.current) fileImportRef.current.value = "";
+                    return next;
+                  });
+                }}
+              >
+                Importar
+              </button>
+            </div>
+            {importFile ? (
+              <p className="mt-2 text-xs text-slate-600">
+                Seleccionado: <span className="font-mono">{importFile.name}</span>
+              </p>
+            ) : null}
+            <div className="mt-3 flex items-start gap-2">
+              <Checkbox
+                id="replace-structure-import"
+                checked={replaceOnImport}
+                onCheckedChange={(v) => setReplaceOnImport(v === true)}
+                disabled={busy}
+                className="mt-0.5"
+              />
+              <label htmlFor="replace-structure-import" className="cursor-pointer text-xs leading-snug text-slate-700">
+                Substituir módulos e funcionalidades existentes (remove os actuais deste contrato antes de importar).
+              </label>
+            </div>
+          </div>
 
           <div className="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-4">
             <input

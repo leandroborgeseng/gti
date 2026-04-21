@@ -27,6 +27,20 @@ export default async function ReportsPage(): Promise<JSX.Element> {
       </header>
 
       <Card className="p-5">
+        <h2 className="text-base font-semibold text-slate-900">Fechamento mensal (contratos vigentes)</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Medições aprovadas por mês, referência do mês anterior, estado da medição da competência e ordens de serviço GLPI (abertas, fechadas e
+          represadas) por contrato.
+        </p>
+        <Link
+          href={"/reports/fechamento-mensal" as Route}
+          className="mt-4 inline-flex text-sm font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
+        >
+          Abrir relatório de fechamento mensal →
+        </Link>
+      </Card>
+
+      <Card className="p-5">
         <h2 className="text-base font-semibold text-slate-900">Dados tabulares (CSV)</h2>
         <p className="mt-1 text-sm text-slate-600">
           Contratos, medições e glosas em UTF-8 com BOM. Requer perfil de <strong className="font-medium text-slate-800">edição</strong>{" "}

@@ -28,7 +28,8 @@ export class ExportsService {
         startDate: true,
         endDate: true,
         monthlyValue: true,
-        totalValue: true
+        totalValue: true,
+        installationValue: true
       }
     });
     const header = [
@@ -42,7 +43,8 @@ export class ExportsService {
       "inicio",
       "fim",
       "valor_mensal",
-      "valor_total"
+      "valor_total",
+      "valor_implantacao"
     ].join(",");
     const lines = rows.map((r) =>
       [
@@ -56,7 +58,8 @@ export class ExportsService {
         csvCell(r.startDate.toISOString().slice(0, 10)),
         csvCell(r.endDate.toISOString().slice(0, 10)),
         csvCell(r.monthlyValue.toString()),
-        csvCell(r.totalValue.toString())
+        csvCell(r.totalValue.toString()),
+        csvCell(r.installationValue != null ? r.installationValue.toString() : "")
       ].join(",")
     );
     return [header, ...lines].join("\n");

@@ -162,6 +162,12 @@ model Contract {
   endDate          DateTime
   totalValue       Decimal            @db.Decimal(18, 2)
   monthlyValue     Decimal            @db.Decimal(18, 2)
+  /// Valor de implantação (único / projecto), separado da mensalidade.
+  installationValue Decimal?          @db.Decimal(18, 2)
+  /// Início do período em que predomina a cobrança/referência da implantação (data civil).
+  implementationPeriodStart DateTime?
+  /// Fim do período de implantação; após esta data considera-se a fase de mensalidade proporcional.
+  implementationPeriodEnd   DateTime?
   status           ContractStatus
   slaTarget        Decimal?           @db.Decimal(5, 2)
   fiscalId         String
@@ -180,9 +186,25 @@ model Contract {
   amendments        ContractAmendment[]
   /** Grupos GLPI atribuídos aos chamados (alinhado a `Ticket.contractGroupId`) para métricas de SLA por contrato. */
   glpiGroups        ContractGlpiGroup[]
+  /** Memória dos valores antes de alterações / renovações (consulta e comparação). */
+  financialSnapshots ContractFinancialSnapshot[]
 
   @@index([status, endDate])
   @@index([deletedAt])
+}
+
+/// Registo pontual dos valores do contrato (ex.: antes de uma renovação), para comparar com os valores actuais.
+model ContractFinancialSnapshot {
+  id                String   @id @default(uuid())
+  contractId        String
+  recordedAt        DateTime @default(now())
+  monthlyValue      Decimal  @db.Decimal(18, 2)
+  totalValue        Decimal  @db.Decimal(18, 2)
+  installationValue Decimal? @db.Decimal(18, 2)
+  note              String?
+  contract          Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, recordedAt])
 }
 
 /// Liga um contrato a um ou mais grupos de trabalho do GLPI (ID do grupo na instância sincronizada).

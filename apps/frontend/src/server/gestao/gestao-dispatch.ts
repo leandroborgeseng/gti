@@ -14,6 +14,7 @@ import {
   gestaoGoals,
   gestaoGovernance,
   gestaoMeasurements,
+  gestaoMonthlyClosureReport,
   gestaoProjects,
   gestaoSuppliers,
   gestaoUsers
@@ -89,6 +90,16 @@ function jsonOk(data: unknown, init?: ResponseInit): NextResponse {
 
 function jsonErr(status: number, message: string): NextResponse {
   return NextResponse.json({ error: message, message }, { status });
+}
+
+function xlsxAttachment(buffer: Buffer, filename: string): NextResponse {
+  return new NextResponse(new Uint8Array(buffer), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="${filename.replace(/"/g, "'")}"`
+    }
+  });
 }
 
 function uploadMaxBytes(): number {
@@ -192,7 +203,7 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertMutation(user, method);
       return jsonOk(await gestaoContracts.deleteFeature(seg[1], seg[3], seg[5]));
     }
-    if (seg.length === 4 && seg[2] === "services" && method === "POST") {
+    if (seg.length === 3 && seg[2] === "services" && method === "POST") {
       assertMutation(user, method);
       return jsonOk(await gestaoContracts.createService(seg[1], (await readJsonBody(req)) as never));
     }
@@ -204,9 +215,42 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertMutation(user, method);
       return jsonOk(await gestaoContracts.deleteService(seg[1], seg[3]));
     }
-    if (seg.length === 4 && seg[2] === "amendments" && method === "POST") {
+    if (seg.length === 3 && seg[2] === "amendments" && method === "POST") {
       assertMutation(user, method);
       return jsonOk(await gestaoContracts.createAmendment(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "financial-snapshots" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContracts.createFinancialSnapshot(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "structure-template.xlsx" && method === "GET") {
+      const { prisma } = await import("@/glpi/config/prisma");
+      const c = await prisma.contract.findFirst({
+        where: { id: seg[1], deletedAt: null },
+        select: { number: true }
+      });
+      if (!c) return jsonErr(404, "Contrato não encontrado");
+      const { buildContractStructureTemplateBuffer } = await import("./contract-structure-xlsx");
+      const buf = buildContractStructureTemplateBuffer(c.number);
+      const fn = `modelo-modulos-funcionalidades-${c.number.replace(/[^\w.-]+/g, "_")}.xlsx`;
+      return xlsxAttachment(buf, fn);
+    }
+    if (seg.length === 3 && seg[2] === "structure-import" && method === "POST") {
+      assertMutation(user, method);
+      const form = await req.formData();
+      const file = form.get("file");
+      const replace = String(form.get("replace") ?? "").toLowerCase() === "true";
+      if (!(file instanceof File)) return jsonErr(400, "Ficheiro em falta (campo file).");
+      if (file.size > uploadMaxBytes()) return jsonErr(400, "Ficheiro demasiado grande");
+      try {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const { parseContractStructureExcel } = await import("./contract-structure-xlsx");
+        const rows = parseContractStructureExcel(buffer);
+        return jsonOk(await gestaoContracts.importModulesAndFeatures(seg[1], rows, { replace }));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return jsonErr(400, msg);
+      }
     }
     return jsonErr(404, "Não encontrado");
   }
@@ -297,6 +341,19 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 2 && method === "PATCH") {
       assertMutation(user, method);
       return jsonOk(await gestaoUsers.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "reports") {
+    if (seg.length === 2 && seg[1] === "monthly-contract-closure" && method === "GET") {
+      const u = new URL(req.url);
+      const y = Number(u.searchParams.get("year"));
+      const m = Number(u.searchParams.get("month"));
+      if (!Number.isFinite(y) || !Number.isFinite(m)) {
+        return jsonErr(400, "Parâmetros year e month são obrigatórios (ex.: ?year=2026&month=4).");
+      }
+      return jsonOk(await gestaoMonthlyClosureReport.build(Math.floor(y), Math.floor(m)));
     }
     return jsonErr(404, "Não encontrado");
   }

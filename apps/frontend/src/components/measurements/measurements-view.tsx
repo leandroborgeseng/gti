@@ -112,8 +112,18 @@ export function MeasurementsView({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Medições</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Lista das medições por contrato e competência. Use <strong className="font-medium text-foreground">Nova medição</strong>{" "}
-            para cadastrar sem sair desta página.
+            Lista das medições por contrato e competência (uma por mês). O <strong className="font-medium text-foreground">estado</strong>{" "}
+            (Aberta → Em revisão / Glosada → Aprovada) fica registado após calcular e aprovar. Use{" "}
+            <strong className="font-medium text-foreground">Nova medição</strong> para cada fechamento mensal.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            <Link
+              href={"/reports/fechamento-mensal" as Route}
+              className="font-medium text-foreground underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground"
+            >
+              Relatório de fechamento mensal
+            </Link>{" "}
+            — pagamentos por medição aprovada, valor de referência do mês anterior e OS GLPI (abertas, fechadas e represadas) por contrato.
           </p>
           {filterContractId ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
