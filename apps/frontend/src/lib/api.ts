@@ -322,6 +322,7 @@ export async function createContractAmendment(
 export async function updateContract(
   contractId: string,
   payload: {
+    number?: string;
     status?: "ACTIVE" | "EXPIRED" | "SUSPENDED";
     name?: string;
     description?: string | null;

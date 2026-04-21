@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,8 @@ import {
   getFiscais,
   getGlpiAssignedGroupsCatalog,
   getSuppliers,
+  updateContract,
+  type Contract,
   type Fiscal,
   type Supplier
 } from "@/lib/api";
@@ -23,7 +25,8 @@ import {
   onlyDigitsCnpj,
   quickFiscalSchema,
   quickSupplierSchema,
-  type ContractPageFormInput
+  type ContractPageFormInput,
+  type ContractPageParsed
 } from "@/modules/contracts/contract-form-schema";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -36,7 +39,38 @@ import { EntitySelectWithCreate } from "@/components/ui/entity-select-with-creat
 
 type Props = {
   onSuccess?: () => void;
+  /** Se definido, o formulário passa a modo edição (`PUT /contracts/:id`). */
+  initialContract?: Contract | null;
 };
+
+function contractToFormDefaults(c: Contract): ContractPageFormInput {
+  const mv = Number(String(c.monthlyValue).replace(",", "."));
+  const monthlyValueStr = Number.isFinite(mv) ? String(mv).replace(".", ",") : String(c.monthlyValue);
+  const cnpjDigits = onlyDigitsCnpj(c.cnpj ?? c.supplier?.cnpj ?? "");
+  const lt = (c.lawType ?? "") as ContractPageFormInput["lawType"];
+  const ct = c.contractType as ContractPageFormInput["contractType"];
+  return {
+    ...CONTRACT_FORM_DEFAULT_VALUES,
+    number: c.number,
+    name: c.name,
+    description: c.description ?? "",
+    managingUnit: c.managingUnit ?? "",
+    companyName: c.companyName,
+    cnpj: cnpjDigits,
+    contractType: ct,
+    lawType: lt === "LEI_8666" || lt === "LEI_14133" ? lt : "",
+    startDate: c.startDate.slice(0, 10),
+    endDate: c.endDate.slice(0, 10),
+    monthlyValue: monthlyValueStr,
+    fiscalId: c.fiscal?.id ?? "",
+    managerId: c.manager?.id ?? "",
+    supplierId: c.supplier?.id ?? "",
+    glpiGroups: (c.glpiGroups ?? []).map((g) => ({
+      glpiGroupId: g.glpiGroupId,
+      glpiGroupName: g.glpiGroupName ?? undefined
+    }))
+  };
+}
 
 type FiscalModalRole = "fiscal" | "manager";
 
@@ -50,7 +84,7 @@ function formatCnpjHint(v: string): string {
   return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12, 14)}`;
 }
 
-export function ContractForm({ onSuccess }: Props): JSX.Element {
+export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.Element {
   const qc = useQueryClient();
   const qFiscais = useQuery({ queryKey: queryKeys.fiscais, queryFn: getFiscais });
   const qSuppliers = useQuery({ queryKey: queryKeys.suppliers, queryFn: getSuppliers });
@@ -75,6 +109,14 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
     resolver: zodResolver(contractPageSchema),
     defaultValues: CONTRACT_FORM_DEFAULT_VALUES
   });
+
+  useEffect(() => {
+    if (initialContract) {
+      form.reset(contractToFormDefaults(initialContract));
+    } else {
+      form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+    }
+  }, [initialContract?.id, form, initialContract]);
 
   const createFiscalMut = useMutation({
     mutationFn: async (vars: { name: string; email: string; phone: string; role: FiscalModalRole }) => {
@@ -131,6 +173,38 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Erro ao guardar contrato");
+    }
+  });
+
+  const updateContractMut = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: ContractPageParsed }) => {
+      const mv = Number(String(data.monthlyValue).replace(",", "."));
+      return updateContract(id, {
+        number: data.number.trim(),
+        name: data.name.trim(),
+        description: data.description.trim() || null,
+        managingUnit: data.managingUnit.trim() || null,
+        companyName: data.companyName.trim(),
+        cnpj: data.cnpj,
+        contractType: data.contractType,
+        lawType: data.lawType || undefined,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        monthlyValue: mv,
+        fiscalId: data.fiscalId,
+        managerId: data.managerId.trim() || undefined,
+        supplierId: data.supplierId.trim() || null,
+        glpiGroups: data.glpiGroups
+      });
+    },
+    onSuccess: () => {
+      toast.success("Contrato actualizado.");
+      void qc.invalidateQueries({ queryKey: queryKeys.contracts });
+      void qc.invalidateQueries({ queryKey: queryKeys.glpiAssignedGroups });
+      onSuccess?.();
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao actualizar contrato");
     }
   });
 
@@ -201,6 +275,10 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
 
   function onValidSubmit(raw: ContractPageFormInput): void {
     const data = contractPageSchema.parse(raw);
+    if (initialContract) {
+      updateContractMut.mutate({ id: initialContract.id, data });
+      return;
+    }
     const mv = Number(String(data.monthlyValue).replace(",", "."));
     createContractMut.mutate({
       number: data.number.trim(),
@@ -534,8 +612,22 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
         </FormSection>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" disabled={listsLoading || Boolean(listsError) || createContractMut.isPending}>
-            {createContractMut.isPending ? "A guardar…" : "Guardar contrato"}
+          <Button
+            type="submit"
+            disabled={
+              listsLoading ||
+              Boolean(listsError) ||
+              createContractMut.isPending ||
+              updateContractMut.isPending
+            }
+          >
+            {initialContract
+              ? updateContractMut.isPending
+                ? "A guardar…"
+                : "Guardar alterações"
+              : createContractMut.isPending
+                ? "A guardar…"
+                : "Guardar contrato"}
           </Button>
         </div>
 
