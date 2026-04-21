@@ -23,21 +23,55 @@ export type MainNavItem = {
   hideForViewer?: true;
 };
 
-/** Itens da barra lateral / menu mobile (ordem = ordem na UI). */
-export const MAIN_NAV_ITEMS: MainNavItem[] = [
-  { href: "/dashboard", label: "Painel executivo", icon: LayoutDashboard },
-  { href: "/chamados", label: "Chamados (GLPI)", icon: Ticket },
-  { href: "/contracts", label: "Contratos", icon: FileText },
-  { href: "/measurements", label: "Medições", icon: ClipboardList },
-  { href: "/glosas", label: "Glosas", icon: Wallet },
-  { href: "/governance/tickets", label: "Governança SLA", icon: Shield },
-  { href: "/goals", label: "Metas", icon: Target },
-  { href: "/projetos", label: "Projetos", icon: Flag },
-  { href: "/suppliers", label: "Fornecedores", icon: Package },
-  { href: "/fiscais", label: "Fiscais", icon: UserCog },
-  { href: "/exports", label: "Exportações", icon: FileSpreadsheet, hideForViewer: true },
-  { href: "/reports", label: "Relatórios", icon: BarChart3 },
-  { href: "/users", label: "Utilizadores", icon: Users, adminOnly: true }
+export type MainNavGroup = {
+  id: string;
+  label: string;
+  items: MainNavItem[];
+};
+
+/** Grupos da barra lateral / menu mobile (sanfona). */
+export const MAIN_NAV_GROUPS: MainNavGroup[] = [
+  {
+    id: "painel-operacao",
+    label: "Painel e operação",
+    items: [
+      { href: "/dashboard", label: "Painel executivo", icon: LayoutDashboard },
+      { href: "/chamados", label: "Chamados (GLPI)", icon: Ticket }
+    ]
+  },
+  {
+    id: "contratos-medicao",
+    label: "Contratos e medição",
+    items: [
+      { href: "/contracts", label: "Contratos", icon: FileText },
+      { href: "/measurements", label: "Medições", icon: ClipboardList },
+      { href: "/glosas", label: "Glosas", icon: Wallet }
+    ]
+  },
+  {
+    id: "governanca-planeamento",
+    label: "Governança e planeamento",
+    items: [
+      { href: "/governance/tickets", label: "Governança SLA", icon: Shield },
+      { href: "/goals", label: "Metas", icon: Target },
+      { href: "/projetos", label: "Projetos", icon: Flag }
+    ]
+  },
+  {
+    id: "cadastros-relatorios",
+    label: "Cadastros e relatórios",
+    items: [
+      { href: "/suppliers", label: "Fornecedores", icon: Package },
+      { href: "/fiscais", label: "Fiscais", icon: UserCog },
+      { href: "/exports", label: "Exportações", icon: FileSpreadsheet, hideForViewer: true },
+      { href: "/reports", label: "Relatórios", icon: BarChart3 }
+    ]
+  },
+  {
+    id: "administracao",
+    label: "Administração",
+    items: [{ href: "/users", label: "Utilizadores", icon: Users, adminOnly: true }]
+  }
 ];
 
 /**
@@ -60,4 +94,17 @@ export function filterMainNavByRole(
     }
     return true;
   });
+}
+
+/** Grupos com itens visíveis para o papel; remove grupos vazios. */
+export function filterMainNavGroups(
+  groups: MainNavGroup[],
+  role: string | null | undefined
+): MainNavGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: filterMainNavByRole(group.items, role)
+    }))
+    .filter((g) => g.items.length > 0);
 }

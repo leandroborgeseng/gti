@@ -434,6 +434,58 @@
   color: rgba(51, 65, 85, 0.92);
 }
 
+/* Painel executivo — «Indicadores consolidados»: 3 linhas × 4 cartões; valores e cartões maiores */
+.gti-exec-metric-dash .dashboard-exec-consolidated-kpis {
+  display: flex;
+  flex-direction: column;
+  gap: 1.05rem;
+}
+
+.gti-exec-metric-dash .dashboard-exec-consolidated-kpis .aging-dash__grid--cols-4 {
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .gti-exec-metric-dash .dashboard-exec-consolidated-kpis .aging-dash__grid--cols-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .gti-exec-metric-dash .dashboard-exec-consolidated-kpis .aging-dash__grid--cols-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.gti-exec-metric-dash .dashboard-exec-consolidated-kpis .aging-card.aging-card--kpi-only {
+  min-height: 7.5rem;
+  padding: 1.2rem 1.15rem 1.25rem 1.15rem;
+}
+
+.gti-exec-metric-dash .dashboard-exec-consolidated-kpis .aging-card--kpi-only .aging-card__value-row {
+  margin-bottom: 0.55rem;
+}
+
+.gti-exec-metric-dash .dashboard-exec-consolidated-kpis .aging-card--kpi-only .aging-card__value {
+  font-size: clamp(1.14rem, 2.6vmin, 1.9rem);
+  line-height: 1.18;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.gti-exec-metric-dash .dashboard-exec-consolidated-kpis .aging-card--kpi-only .aging-card__title {
+  font-size: clamp(0.66rem, 1.35vmin, 0.78rem);
+  line-height: 1.38;
+  margin-top: 0.15rem;
+}
+
+@media (min-width: 1280px) {
+  .gti-exec-metric-dash .dashboard-exec-consolidated-kpis .aging-card--kpi-only .aging-card__value {
+    font-size: clamp(1.22rem, 1.65vw, 2rem);
+  }
+}
+
 .gti-exec-metric-dash .aging-dash__panel {
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.38);

@@ -141,6 +141,9 @@ export function DashboardHome(props: {
     { label: "Metas concluídas", value: String(s.goals.concluidas ?? 0) }
   ];
 
+  /** Três linhas de quatro indicadores: financeiro, percentuais e chamados, metas. */
+  const kpiRows: { label: string; value: string }[][] = [kpis.slice(0, 4), kpis.slice(4, 8), kpis.slice(8, 12)];
+
   return (
     <div className="space-y-5">
       {loadErrors.length > 0 ? (
@@ -156,9 +159,21 @@ export function DashboardHome(props: {
             Indicadores consolidados
           </h2>
         </div>
-        <div className="aging-dash__grid" role="list">
-          {kpis.map((kpi, i) => (
-            <ExecKpiCard key={kpi.label} label={kpi.label} value={kpi.value} tone={KPI_CARD_TONES[i] ?? "prj-nodue"} />
+        <div className="dashboard-exec-consolidated-kpis mt-4">
+          {kpiRows.map((row, rowIndex) => (
+            <div key={rowIndex} className="aging-dash__grid aging-dash__grid--cols-4" role="list">
+              {row.map((kpi, i) => {
+                const toneIdx = rowIndex * 4 + i;
+                return (
+                  <ExecKpiCard
+                    key={kpi.label}
+                    label={kpi.label}
+                    value={kpi.value}
+                    tone={KPI_CARD_TONES[toneIdx] ?? "prj-nodue"}
+                  />
+                );
+              })}
+            </div>
           ))}
         </div>
       </section>

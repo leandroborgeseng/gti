@@ -4,14 +4,14 @@ import { Menu } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import type { MainNavItem } from "./main-nav-data";
-import { MainNavLinks } from "./main-nav-links";
+import type { MainNavGroup } from "./main-nav-data";
+import { MainNavAccordion } from "./main-nav-accordion";
 
 type Props = {
-  items: MainNavItem[];
+  groups: MainNavGroup[];
 };
 
-export function MobileNav({ items }: Props): JSX.Element {
+export function MobileNav({ groups }: Props): JSX.Element {
   const [open, setOpen] = useState(false);
 
   return (
@@ -29,7 +29,7 @@ export function MobileNav({ items }: Props): JSX.Element {
             <SheetDescription className="sr-only">Menu principal da aplicação</SheetDescription>
           </SheetHeader>
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3" aria-label="Navegação principal">
-            <MainNavLinks items={items} onNavigate={() => setOpen(false)} />
+            <MainNavAccordion groups={groups} onNavigate={() => setOpen(false)} />
           </nav>
         </SheetContent>
       </Sheet>

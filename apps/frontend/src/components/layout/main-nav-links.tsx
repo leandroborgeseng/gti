@@ -9,9 +9,11 @@ type Props = {
   items: MainNavItem[];
   /** Chamado após clicar num link (ex.: fechar drawer mobile). */
   onNavigate?: () => void;
+  /** Dentro da sanfona: indentação e ritmo visual alinhados ao grupo. */
+  nested?: boolean;
 };
 
-export function MainNavLinks({ items, onNavigate }: Props): JSX.Element {
+export function MainNavLinks({ items, onNavigate, nested = false }: Props): JSX.Element {
   const pathname = usePathname();
 
   return (
@@ -25,7 +27,8 @@ export function MainNavLinks({ items, onNavigate }: Props): JSX.Element {
             href={item.href}
             onClick={() => onNavigate?.()}
             className={cn(
-              "group relative flex items-center gap-2 rounded-md py-2 pl-3 pr-2 text-[13px] transition-colors",
+              "group relative flex items-center gap-2 rounded-md py-2 pr-2 transition-colors duration-200",
+              nested ? "pl-2.5 text-[12.5px] leading-snug" : "pl-3 text-[13px]",
               active
                 ? "bg-card font-medium text-foreground shadow-sm ring-1 ring-border"
                 : "text-muted-foreground hover:bg-card/80 hover:text-foreground"
@@ -33,11 +36,14 @@ export function MainNavLinks({ items, onNavigate }: Props): JSX.Element {
           >
             {active ? (
               <span
-                className="absolute left-0 top-1/2 h-[60%] w-0.5 -translate-y-1/2 rounded-full bg-primary"
+                className={cn(
+                  "absolute top-1/2 h-[58%] w-0.5 -translate-y-1/2 rounded-full bg-primary",
+                  nested ? "left-1" : "left-0"
+                )}
                 aria-hidden
               />
             ) : null}
-            <Icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+            <Icon className={cn("h-4 w-4 shrink-0 opacity-80", nested && "h-3.5 w-3.5")} aria-hidden />
             <span className="pl-0.5">{item.label}</span>
           </Link>
         );
