@@ -2,7 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { StorageService } from "../../storage/storage.service";
-import { ImportProjectDto, ImportProjectGroupDto, ImportProjectTaskNodeDto, UpdateProjectTaskDto } from "./projects.dto";
+import {
+  ImportProjectDto,
+  ImportProjectGroupDto,
+  ImportProjectTaskNodeDto,
+  type ProjectsDashboardStats,
+  UpdateProjectTaskDto
+} from "./projects.dto";
 
 @Injectable()
 export class ProjectsService {
@@ -89,6 +95,87 @@ export class ProjectsService {
         _count: { select: { groups: true, tasks: true } }
       }
     });
+  }
+
+  /**
+   * Métricas globais (todos os projetos) para o mini dashboard na lista.
+   * Regras de status alinhadas ao quadro Monday no frontend (`projects-task-status`).
+   */
+  async dashboardStats(): Promise<ProjectsDashboardStats> {
+    const [projectCount, groupCount, tasks] = await Promise.all([
+      this.prisma.project.count(),
+      this.prisma.projectGroup.count(),
+      this.prisma.projectTask.findMany({
+        select: { projectId: true, parentTaskId: true, status: true, dueDate: true }
+      })
+    ]);
+
+    const statusBreakdown: ProjectsDashboardStats["statusBreakdown"] = {
+      done: 0,
+      progress: 0,
+      blocked: 0,
+      notStarted: 0,
+      other: 0,
+      empty: 0
+    };
+
+    let rootTaskCount = 0;
+    let subTaskCount = 0;
+    let overdueNotDoneCount = 0;
+    let tasksWithoutDueDateNotDone = 0;
+    const projectsWithOverdue = new Set<string>();
+
+    const now = new Date();
+    const startOfUtcDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+    for (const t of tasks) {
+      if (t.parentTaskId) subTaskCount += 1;
+      else rootTaskCount += 1;
+
+      const kind = this.classifyTaskStatusForDashboard(t.status);
+      statusBreakdown[kind] += 1;
+
+      const done = kind === "done";
+      if (t.dueDate == null) {
+        if (!done) tasksWithoutDueDateNotDone += 1;
+      } else if (t.dueDate < startOfUtcDay && !done) {
+        overdueNotDoneCount += 1;
+        projectsWithOverdue.add(t.projectId);
+      }
+    }
+
+    return {
+      projectCount,
+      groupCount,
+      taskCount: tasks.length,
+      rootTaskCount,
+      subTaskCount,
+      statusBreakdown,
+      overdueNotDoneCount,
+      projectsWithOverdueCount: projectsWithOverdue.size,
+      tasksWithoutDueDateNotDone
+    };
+  }
+
+  private normTaskStatusForDashboard(s: string): string {
+    return s
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .trim()
+      .toLowerCase();
+  }
+
+  private classifyTaskStatusForDashboard(
+    status: string
+  ): "done" | "progress" | "blocked" | "notStarted" | "other" | "empty" {
+    const raw = status.trim();
+    if (!raw) return "empty";
+    const n = this.normTaskStatusForDashboard(raw);
+    if (n.includes("feito") || n.includes("conclu") || n.includes("done")) return "done";
+    if (n.includes("progresso") || n.includes("andamento") || n.includes("progress")) return "progress";
+    if (n.includes("parado") || n.includes("bloque") || n.includes("hold")) return "blocked";
+    if (n.includes("nao") && n.includes("inici")) return "notStarted";
+    return "other";
   }
 
   async findOne(id: string): Promise<unknown> {

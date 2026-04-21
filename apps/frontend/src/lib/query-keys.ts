@@ -9,6 +9,7 @@ export const queryKeys = {
   goals: ["gestao", "goals"] as const,
   governanceTickets: ["gestao", "governance-tickets"] as const,
   projects: ["gestao", "projects"] as const,
+  projectsDashboard: ["gestao", "projects", "dashboard"] as const,
   dashboardSummary: ["gestao", "dashboard-summary"] as const,
   dashboardAlerts: ["gestao", "dashboard-alerts"] as const
 } as const;

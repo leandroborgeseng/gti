@@ -1,6 +1,26 @@
 import { Type } from "class-transformer";
 import { ArrayMinSize, IsArray, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from "class-validator";
 
+/** Resposta de `GET /projects/dashboard` — métricas agregadas para a lista de projetos. */
+export interface ProjectsDashboardStats {
+  projectCount: number;
+  groupCount: number;
+  taskCount: number;
+  rootTaskCount: number;
+  subTaskCount: number;
+  statusBreakdown: {
+    done: number;
+    progress: number;
+    blocked: number;
+    notStarted: number;
+    other: number;
+    empty: number;
+  };
+  overdueNotDoneCount: number;
+  projectsWithOverdueCount: number;
+  tasksWithoutDueDateNotDone: number;
+}
+
 /** Atualização parcial de uma tarefa de projeto (quadro Monday). */
 export class UpdateProjectTaskDto {
   @IsOptional()

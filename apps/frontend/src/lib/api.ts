@@ -706,6 +706,26 @@ export type ProjectListItem = {
   _count?: { groups: number; tasks: number };
 };
 
+/** Métricas agregadas de todos os projetos (lista / mini dashboard). */
+export type ProjectsDashboardStats = {
+  projectCount: number;
+  groupCount: number;
+  taskCount: number;
+  rootTaskCount: number;
+  subTaskCount: number;
+  statusBreakdown: {
+    done: number;
+    progress: number;
+    blocked: number;
+    notStarted: number;
+    other: number;
+    empty: number;
+  };
+  overdueNotDoneCount: number;
+  projectsWithOverdueCount: number;
+  tasksWithoutDueDateNotDone: number;
+};
+
 export type ProjectTaskFile = {
   id: string;
   fileName: string;
@@ -764,6 +784,10 @@ export type ProjectDetail = {
 
 export async function getProjects(): Promise<ProjectListItem[]> {
   return request("/projects");
+}
+
+export async function getProjectsDashboard(): Promise<ProjectsDashboardStats> {
+  return request("/projects/dashboard");
 }
 
 export async function getProject(id: string): Promise<ProjectDetail> {

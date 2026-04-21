@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { ProjectListItem } from "@/lib/api";
 import { deleteProject, getAuthMe, getProjects } from "@/lib/api";
+import { ProjectsOverviewDashboard } from "@/components/projects/projects-overview-dashboard";
 import { queryKeys } from "@/lib/query-keys";
 import { MondayImportWizard } from "@/components/projects/monday-import-wizard";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
@@ -45,6 +46,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
     onSuccess: () => {
       toast.success("Projeto eliminado.");
       void qc.invalidateQueries({ queryKey: queryKeys.projects });
+      void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
       router.refresh();
     },
     onError: (e: unknown) => {
@@ -133,6 +135,8 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         ) : null}
       </div>
 
+      <ProjectsOverviewDashboard />
+
       <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <DataTable
           columns={columns}
@@ -147,6 +151,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         onClose={() => setImportOpen(false)}
         onImported={() => {
           void qc.invalidateQueries({ queryKey: queryKeys.projects });
+          void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
           router.refresh();
         }}
       />

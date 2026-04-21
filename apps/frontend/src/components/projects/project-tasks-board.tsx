@@ -8,7 +8,24 @@ import { toast } from "sonner";
 import type { ProjectGroupWithTasks, ProjectTaskPatchPayload, ProjectTaskTree } from "@/lib/api";
 import { attachmentDownloadUrl, getAuthMe, patchProjectTask, uploadProjectTaskAttachment } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  aggregateStatusByKind,
+  classifyStatus,
+  normStatus,
+  STATUS_KIND_COLORS,
+  STATUS_KIND_LABEL,
+  STATUS_KIND_ORDER,
+  type ProjectTaskStatusKind
+} from "@/lib/projects-task-status";
 import { cn } from "@/lib/utils";
 
 const STATUS_PRESETS = ["Feito", "Em progresso", "Não iniciado", "Bloqueado", "Parado", "Em validação"];
@@ -32,71 +49,12 @@ function countTasksRecursive(nodes: ProjectTaskTree[]): number {
   return nodes.reduce((acc, n) => acc + 1 + countTasksRecursive(n.children ?? []), 0);
 }
 
-function normStatus(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .trim()
-    .toLowerCase();
-}
-
-/** Categorias de status alinhadas às cores do quadro / barra de resumo (Monday). */
-type StatusKind = "done" | "progress" | "blocked" | "notStarted" | "other" | "empty";
-
-function classifyStatus(status: string): StatusKind {
-  const raw = status.trim();
-  if (!raw) return "empty";
-  const n = normStatus(raw);
-  if (n.includes("feito") || n.includes("conclu") || n.includes("done")) return "done";
-  if (n.includes("progresso") || n.includes("andamento") || n.includes("progress")) return "progress";
-  if (n.includes("parado") || n.includes("bloque") || n.includes("hold")) return "blocked";
-  if (n.includes("nao") && n.includes("inici")) return "notStarted";
-  return "other";
-}
-
-const STATUS_KIND_COLORS: Record<StatusKind, { bg: string; fg: string }> = {
-  done: { bg: "#33d391", fg: "#ffffff" },
-  progress: { bg: "#fdbd64", fg: "#323338" },
-  blocked: { bg: "#797e93", fg: "#ffffff" },
-  notStarted: { bg: "#c5c7d0", fg: "#323338" },
-  other: { bg: "#579bfc", fg: "#ffffff" },
-  empty: { bg: "#797e93", fg: "#ffffff" }
-};
-
-const STATUS_KIND_ORDER: StatusKind[] = ["done", "progress", "notStarted", "blocked", "other", "empty"];
-
-const STATUS_KIND_LABEL: Record<StatusKind, string> = {
-  done: "Feito / concluído",
-  progress: "Em progresso",
-  notStarted: "Não iniciado",
-  blocked: "Bloqueado / parado",
-  other: "Outros",
-  empty: "Sem status"
-};
-
-function aggregateStatusByKind(nodes: ProjectTaskTree[]): Record<StatusKind, number> {
-  const acc: Record<StatusKind, number> = {
-    done: 0,
-    progress: 0,
-    blocked: 0,
-    notStarted: 0,
-    other: 0,
-    empty: 0
-  };
-  function walk(t: ProjectTaskTree): void {
-    acc[classifyStatus(t.status)]++;
-    t.children?.forEach(walk);
-  }
-  nodes.forEach(walk);
-  return acc;
-}
-
 /** Fundo da célula de status estilo Monday (pill preenchida na célula). */
 function statusCellColors(status: string): { bg: string; fg: string } {
   return STATUS_KIND_COLORS[classifyStatus(status)];
 }
 
-function StatusDistributionFooterBar({ counts }: { counts: Record<StatusKind, number> }): JSX.Element {
+function StatusDistributionFooterBar({ counts }: { counts: Record<ProjectTaskStatusKind, number> }): JSX.Element {
   const total = STATUS_KIND_ORDER.reduce((s, k) => s + counts[k], 0);
   if (total === 0) {
     return <span className="text-[11px] text-[#c5c7d0]">—</span>;
@@ -126,7 +84,7 @@ function StatusDistributionFooterBar({ counts }: { counts: Record<StatusKind, nu
   );
 }
 
-function FooterStatusLegend({ counts }: { counts: Record<StatusKind, number> }): JSX.Element {
+function FooterStatusLegend({ counts }: { counts: Record<ProjectTaskStatusKind, number> }): JSX.Element {
   const parts: string[] = [];
   for (const kind of STATUS_KIND_ORDER) {
     const n = counts[kind];
@@ -179,28 +137,6 @@ function initials(name: string): string {
   if (p.length === 0) return "?";
   if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
   return (p[0][0] + p[p.length - 1][0]).toUpperCase();
-}
-
-function subProgressPercent(task: ProjectTaskTree): number | null {
-  const ch = task.children;
-  if (!ch?.length) return null;
-  const done = ch.filter((c) => isDoneLike(c.status)).length;
-  return Math.round((done / ch.length) * 100);
-}
-
-function SubElementBar({ task }: { task: ProjectTaskTree }): JSX.Element {
-  const pct = subProgressPercent(task);
-  if (pct == null) {
-    return <span className="text-[11px] font-medium text-[#c5c7d0]">—</span>;
-  }
-  return (
-    <div
-      className="h-2 max-w-[148px] overflow-hidden rounded-full bg-[#e6e9ef]"
-      title={`${pct}% concluído nos subelementos`}
-    >
-      <div className="h-full rounded-full bg-[#00c875] transition-[width]" style={{ width: `${pct}%` }} />
-    </div>
-  );
 }
 
 function formatBoardDate(iso: string | null): string {
@@ -332,6 +268,92 @@ function FilesCell({ projectId, task, canEdit, busy, onUploaded }: FilesCellProp
   );
 }
 
+function ObservationCell({
+  taskId,
+  description,
+  canEdit,
+  busy,
+  onPatch
+}: {
+  taskId: string;
+  description: string | null | undefined;
+  canEdit: boolean;
+  busy: boolean;
+  onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    if (open) setDraft(description ?? "");
+  }, [open, description]);
+
+  const text = (description ?? "").trim();
+
+  if (!canEdit) {
+    return (
+      <span className="block max-w-md text-xs leading-snug text-[#323338]" title={text || undefined}>
+        {text ? <span className="line-clamp-3 whitespace-pre-wrap">{description}</span> : <span className="text-[#c5c7d0]">—</span>}
+      </span>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <button
+        type="button"
+        disabled={busy}
+        className={cn(
+          "block w-full max-w-md rounded px-1.5 py-1 text-left text-xs leading-snug transition hover:bg-[#ececf0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#579bfc] focus-visible:ring-offset-1",
+          text ? "text-[#323338]" : "text-[#c5c7d0]"
+        )}
+        aria-label={text ? "Editar observação" : "Adicionar observação"}
+        title="Clique para abrir o editor"
+        onClick={() => setOpen(true)}
+      >
+        {text ? (
+          <span className="line-clamp-3 whitespace-pre-wrap">{description}</span>
+        ) : (
+          <span className="italic">Clique para adicionar observação</span>
+        )}
+      </button>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Observação</DialogTitle>
+          <DialogDescription>Edite o texto abaixo. As alterações ficam registadas ao guardar.</DialogDescription>
+        </DialogHeader>
+        <textarea
+          autoFocus
+          className="min-h-[180px] w-full resize-y rounded-md border border-input bg-background p-3 text-sm leading-relaxed shadow-sm"
+          value={draft}
+          disabled={busy}
+          aria-label="Texto da observação"
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button type="button" variant="outline" disabled={busy} onClick={() => setOpen(false)}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void (async () => {
+                const v = draft.trim();
+                const prev = (description ?? "").trim();
+                if (v !== prev) await onPatch(taskId, { description: v });
+                setOpen(false);
+              })();
+            }}
+          >
+            Guardar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 type TaskRowsProps = {
   projectId: string;
   task: ProjectTaskTree;
@@ -441,9 +463,6 @@ function TaskRows({
             </span>
           </div>
         </td>
-        <td className="w-[150px] border-r border-[#ececf0] bg-white p-2 align-middle">
-          <SubElementBar task={task} />
-        </td>
         <td className="w-[130px] border-r border-[#ececf0] bg-white p-1.5 align-middle">
           {canEdit ? (
             <div
@@ -536,55 +555,14 @@ function TaskRows({
             <span className="text-xs text-muted-foreground">{formatBoardDate(task.dueDate)}</span>
           )}
         </td>
-        <td className="w-[90px] border-r border-[#ececf0] bg-white p-2 align-middle text-right">
-          {canEdit ? (
-            <input
-              key={`${task.id}-effort-${task.effort ?? ""}`}
-              className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-right text-xs tabular-nums hover:border-border focus:border-primary focus:outline-none"
-              defaultValue={task.effort != null && String(task.effort).trim() !== "" ? String(task.effort) : ""}
-              disabled={busy}
-              inputMode="decimal"
-              placeholder="—"
-              aria-label="Números / esforço"
-              onBlur={(e) => {
-                const raw = e.target.value.trim().replace(",", ".");
-                if (raw === "") return;
-                const n = Number(raw);
-                if (!Number.isFinite(n)) {
-                  toast.error("Indique um número válido para esforço.");
-                  return;
-                }
-                const prev = task.effort != null && String(task.effort).trim() !== "" ? Number(String(task.effort).replace(",", ".")) : null;
-                if (prev === n) return;
-                void onPatch(task.id, { effort: n });
-              }}
-            />
-          ) : (
-            <span className="text-xs tabular-nums text-foreground">
-              {task.effort != null && String(task.effort).trim() !== "" ? task.effort : "—"}
-            </span>
-          )}
-        </td>
-        <td className="min-w-[180px] max-w-xs border-r border-[#ececf0] bg-white p-2 align-middle">
-          {canEdit ? (
-            <textarea
-              key={`${task.id}-desc-${task.description ?? ""}`}
-              className="min-h-[44px] w-full resize-y rounded border border-input bg-background px-2 py-1 text-xs leading-snug shadow-sm"
-              defaultValue={task.description ?? ""}
-              disabled={busy}
-              rows={2}
-              aria-label="Observação"
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                const prev = (task.description ?? "").trim();
-                if (v !== prev) void onPatch(task.id, { description: v });
-              }}
-            />
-          ) : (
-            <span className="line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground" title={task.description ?? undefined}>
-              {task.description?.trim() ? task.description : "—"}
-            </span>
-          )}
+        <td className="min-w-[200px] max-w-md border-r border-[#ececf0] bg-white p-2 align-middle">
+          <ObservationCell
+            taskId={task.id}
+            description={task.description}
+            canEdit={canEdit}
+            busy={busy}
+            onPatch={onPatch}
+          />
         </td>
         <td className="w-[120px] border-r border-[#ececf0] bg-white p-2 align-middle">
           {canEdit ? (
@@ -709,19 +687,17 @@ function GroupBoard({
       </button>
       {open ? (
         <div className="overflow-x-auto bg-[#f6f7fb] dark:bg-neutral-950">
-          <table className="w-full min-w-[1000px] border-collapse text-sm">
+          <table className="w-full min-w-[820px] border-collapse text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-[#e6e9ef] bg-[#fafbfc] text-left text-[11px] font-semibold uppercase tracking-wide text-[#676879] dark:border-neutral-800 dark:bg-neutral-900">
                 <th className="w-9 border-r border-[#ececf0] p-2 dark:border-neutral-800" title="Concluído">
                   ✓
                 </th>
                 <th className="border-r border-[#ececf0] p-2 pl-3 dark:border-neutral-800">Elemento</th>
-                <th className="w-[150px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Subelementos</th>
                 <th className="w-[130px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Status</th>
                 <th className="min-w-[160px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Pessoa</th>
                 <th className="w-[110px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Data</th>
-                <th className="w-[90px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Números</th>
-                <th className="min-w-[180px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Observação</th>
+                <th className="min-w-[200px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Observação</th>
                 <th className="w-[120px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Resp. PMF</th>
                 <th className="w-[88px] p-2">Arquivos</th>
               </tr>
@@ -729,7 +705,7 @@ function GroupBoard({
             <tbody>
               {group.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-6 text-center text-sm text-[#676879]">
+                  <td colSpan={8} className="p-6 text-center text-sm text-[#676879]">
                     Sem tarefas neste grupo.
                   </td>
                 </tr>
@@ -755,7 +731,7 @@ function GroupBoard({
               <tfoot>
                 <tr className="border-t border-[#e6e9ef] bg-white dark:border-neutral-800 dark:bg-neutral-950">
                   <td
-                    colSpan={3}
+                    colSpan={2}
                     className="border-r border-[#ececf0] p-2 align-middle dark:border-neutral-800"
                     style={{ borderLeft: `4px solid ${accentHex}` }}
                   >
@@ -765,7 +741,7 @@ function GroupBoard({
                   <td className="w-[130px] border-r border-[#ececf0] p-2 align-middle dark:border-neutral-800">
                     <StatusDistributionFooterBar counts={statusAgg} />
                   </td>
-                  <td colSpan={6} className="p-2 align-middle">
+                  <td colSpan={5} className="p-2 align-middle">
                     <FooterStatusLegend counts={statusAgg} />
                   </td>
                 </tr>

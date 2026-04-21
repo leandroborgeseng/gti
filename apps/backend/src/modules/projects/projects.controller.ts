@@ -32,6 +32,11 @@ export class ProjectsController {
     return this.service.findAll();
   }
 
+  @Get("dashboard")
+  dashboard(): Promise<unknown> {
+    return this.service.dashboardStats();
+  }
+
   /** Segmento literal antes de `:id` para evitar ambiguidade com palavras reservadas em URLs. */
   @Post("monday-import")
   @Roles(UserRole.ADMIN, UserRole.EDITOR)

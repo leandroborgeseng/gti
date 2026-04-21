@@ -345,6 +345,9 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertMutation(user, method);
       return jsonOk(await gestaoProjects.delete(seg[1]));
     }
+    if (seg.length === 2 && seg[1] === "dashboard" && method === "GET") {
+      return jsonOk(await gestaoProjects.dashboardStats());
+    }
     if (seg.length === 2 && method === "GET") return jsonOk(await gestaoProjects.findOne(seg[1]));
     return jsonErr(404, "Não encontrado");
   }
