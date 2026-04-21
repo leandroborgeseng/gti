@@ -403,3 +403,92 @@
     background-position: -200% 0;
   }
 }
+
+/* Painel executivo (/dashboard): KPI sem ícone; painéis de alertas */
+.gti-exec-metric-dash .aging-card.aging-card--kpi-only {
+  padding: 0.95rem 0.9rem 1rem 0.9rem;
+  cursor: default;
+}
+
+.gti-exec-metric-dash .aging-card.aging-card--kpi-only:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+  border-color: rgba(15, 23, 42, 0.06);
+}
+
+.gti-exec-metric-dash .aging-card--kpi-only .aging-card__value {
+  font-size: 1.05rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.gti-exec-metric-dash .aging-card--kpi-only .aging-card__title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(51, 65, 85, 0.92);
+}
+
+.gti-exec-metric-dash .aging-dash__panel {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-sm);
+  padding: 1rem 1.1rem 1.05rem;
+}
+
+.gti-exec-metric-dash .aging-dash__panel-title {
+  margin: 0 0 0.35rem 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.gti-exec-metric-dash .aging-dash__panel-lede {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--ink-muted);
+}
+
+.gti-exec-metric-dash .aging-dash__panel-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.84rem;
+  color: #334155;
+}
+
+.gti-exec-metric-dash .aging-dash__panel-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+}
+
+.gti-exec-metric-dash .aging-dash__panel-list li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.gti-exec-metric-dash .aging-dash__panel-foot {
+  margin: 0.85rem 0 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.gti-exec-metric-dash .aging-dash__panel-foot a {
+  font-weight: 600;
+  color: var(--brand);
+  text-decoration: none;
+}
+
+.gti-exec-metric-dash .aging-dash__panel-foot a:hover {
+  text-decoration: underline;
+}

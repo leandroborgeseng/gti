@@ -14,14 +14,18 @@ export default async function DashboardPage(): Promise<JSX.Element> {
   const loadErrors = collectLoadErrors([sumRes.error, alRes.error]);
 
   return (
-    <div className="space-y-2">
-      <header className="space-y-1 pb-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Painel executivo</h1>
-        <p className="max-w-3xl text-sm text-slate-600">
-          Indicadores financeiros, governança de chamados e alertas operacionais (paridade com o painel de contratos do
-          sistema anterior, em formato enxuto).
-        </p>
-      </header>
+    <div className="gti-exec-metric-dash space-y-5">
+      <section className="aging-dash" aria-labelledby="exec-dash-title">
+        <div className="aging-dash__intro">
+          <h1 id="exec-dash-title" className="aging-dash__title">
+            Painel executivo
+          </h1>
+          <p className="aging-dash__lede m-0 max-w-3xl">
+            Indicadores financeiros, governança de chamados e alertas operacionais (paridade com o painel de contratos
+            do sistema anterior, em formato enxuto).
+          </p>
+        </div>
+      </section>
       <DashboardHome summary={sumRes.data} alerts={alRes.data} loadErrors={loadErrors} />
     </div>
   );
