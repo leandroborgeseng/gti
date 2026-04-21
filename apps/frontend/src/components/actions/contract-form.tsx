@@ -411,8 +411,7 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
                   />
                 </FormControl>
                 <FormDescription>
-                  A lista vem dos chamados em cache. Se estiver vazia, execute a sincronização GLPI e confira se os
-                  chamados têm grupo de trabalho preenchido.
+                  Lista carregada a partir da API GLPI (grupos ativos) e de grupos já vistos nos chamados sincronizados.
                 </FormDescription>
                 <FormMessage />
               </FormItem>

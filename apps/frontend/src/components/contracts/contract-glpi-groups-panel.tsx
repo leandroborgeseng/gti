@@ -65,9 +65,10 @@ export function ContractGlpiGroupsPanel({ contractId, initialGroups }: Props): J
     <Card className="p-5">
       <h2 className="text-lg font-semibold text-slate-900">Grupos GLPI (trabalho atribuído)</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Associe um ou mais grupos de trabalho da instância GLPI a este contrato. Os IDs coincidem com o campo de grupo
-        nos chamados sincronizados (<code className="rounded bg-slate-100 px-1 text-xs">contractGroupId</code>), o que
-        permite cruzar chamados ao contrato para métricas de SLA.
+        Marque um ou mais grupos na lista abaixo (vinda da <strong>API GLPI</strong> e complementada por grupos já
+        observados nos chamados em cache). Os IDs coincidem com{" "}
+        <code className="rounded bg-slate-100 px-1 text-xs">contractGroupId</code> nos chamados, para cruzar métricas
+        de SLA por contrato.
       </p>
       {qCat.isError ? (
         <p className="mt-3 text-sm text-destructive">

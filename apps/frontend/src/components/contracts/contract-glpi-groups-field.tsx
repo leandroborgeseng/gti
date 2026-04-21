@@ -30,8 +30,9 @@ export function ContractGlpiGroupsField({ catalog, value, onChange, disabled }: 
   if (catalog.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Ainda não há grupos de trabalho nos chamados sincronizados. Após o GLPI popular chamados com grupo atribuído,
-        estes aparecem aqui para vincular ao contrato.
+        Não foi possível obter grupos da API GLPI nem dos chamados em cache. Confirme as variáveis{" "}
+        <code className="rounded bg-muted px-1 text-xs">GLPI_*</code>, permissões do utilizador de serviço e se a API
+        expõe o recurso de grupos (ex.: <code className="rounded bg-muted px-1 text-xs">/v2/Group</code>).
       </p>
     );
   }

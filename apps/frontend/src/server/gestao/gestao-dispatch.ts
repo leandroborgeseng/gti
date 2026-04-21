@@ -18,6 +18,7 @@ import {
   gestaoSuppliers,
   gestaoUsers
 } from "./gestao-services";
+import { loadContractGlpiGroupCatalog } from "./contract-glpi-groups-catalog";
 
 type JwtUser = { sub: string; email: string; role: UserRole };
 
@@ -151,6 +152,9 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
   }
 
   if (root === "contracts") {
+    if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "glpi-assigned-groups" && method === "GET") {
+      return jsonOk(await loadContractGlpiGroupCatalog());
+    }
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoContracts.findAll());
     if (seg.length === 1 && method === "POST") {
       assertMutation(user, method);
