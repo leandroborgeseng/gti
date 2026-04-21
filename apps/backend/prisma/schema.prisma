@@ -171,9 +171,24 @@ model Contract {
   measurements     Measurement[]
   governanceTickets TicketGovernance[]
   amendments        ContractAmendment[]
+  /** Grupos GLPI atribuídos aos chamados (alinhado a `Ticket.contractGroupId`) para métricas de SLA por contrato. */
+  glpiGroups        ContractGlpiGroup[]
 
   @@index([status, endDate])
   @@index([deletedAt])
+}
+
+/// Liga um contrato a um ou mais grupos de trabalho do GLPI (ID do grupo na instância sincronizada).
+model ContractGlpiGroup {
+  id            String   @id @default(uuid())
+  contractId    String
+  glpiGroupId   Int
+  glpiGroupName String?
+  createdAt     DateTime @default(now())
+  contract      Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, glpiGroupId])
+  @@index([glpiGroupId])
 }
 
 /// Registo de aditivo ou reajuste formal (valores e vigência); aplica alterações ao contrato na criação.

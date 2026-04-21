@@ -8,34 +8,72 @@ import {
   CreateContractFeatureDto,
   CreateContractModuleDto,
   CreateContractServiceDto,
+  ContractGlpiGroupLinkDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
   UpdateContractModuleDto,
   UpdateContractServiceDto
 } from "./contracts.dto";
 
+function dedupeGlpiGroupLinks(links: ContractGlpiGroupLinkDto[]): { glpiGroupId: number; glpiGroupName: string | null }[] {
+  const seen = new Set<number>();
+  const out: { glpiGroupId: number; glpiGroupName: string | null }[] = [];
+  for (const l of links) {
+    const id = l.glpiGroupId;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const n = l.glpiGroupName?.trim();
+    out.push({ glpiGroupId: id, glpiGroupName: n ? n : null });
+  }
+  return out;
+}
+
 @Injectable()
 export class ContractsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateContractDto): Promise<unknown> {
-    const totalValue = dto.totalValue ?? dto.monthlyValue * 12;
-    const managerId = dto.managerId ?? dto.fiscalId;
+    const { glpiGroups, ...rest } = dto;
+    const totalValue = rest.totalValue ?? rest.monthlyValue * 12;
+    const managerId = rest.managerId ?? rest.fiscalId;
     const created = await this.prisma.contract.create({
       data: {
-        ...dto,
-        lawType: dto.lawType ?? LawType.LEI_14133,
-        status: dto.status ?? ContractStatus.ACTIVE,
-        managerId,
-        startDate: new Date(dto.startDate),
-        endDate: new Date(dto.endDate),
+        number: rest.number,
+        name: rest.name,
+        description: rest.description,
+        managingUnit: rest.managingUnit,
+        companyName: rest.companyName,
+        cnpj: rest.cnpj,
+        contractType: rest.contractType,
+        lawType: rest.lawType ?? LawType.LEI_14133,
+        startDate: new Date(rest.startDate),
+        endDate: new Date(rest.endDate),
         totalValue: new Prisma.Decimal(totalValue),
-        monthlyValue: new Prisma.Decimal(dto.monthlyValue),
-        slaTarget: dto.slaTarget != null ? new Prisma.Decimal(dto.slaTarget) : null
+        monthlyValue: new Prisma.Decimal(rest.monthlyValue),
+        status: rest.status ?? ContractStatus.ACTIVE,
+        slaTarget: rest.slaTarget != null ? new Prisma.Decimal(rest.slaTarget) : null,
+        fiscalId: rest.fiscalId,
+        managerId,
+        supplierId: rest.supplierId ?? null,
+        glpiGroups:
+          glpiGroups != null && glpiGroups.length > 0 ? { create: dedupeGlpiGroupLinks(glpiGroups) } : undefined
       }
     });
     await this.createAudit("Contract", created.id, "CREATE", null, created);
-    return created;
+    return this.findOne(created.id);
+  }
+
+  /** Grupos distintos já vistos nos chamados sincronizados (`Ticket.contractGroupId`). */
+  async findDistinctGlpiAssignedGroupOptions(): Promise<{ glpiGroupId: number; glpiGroupName: string | null }[]> {
+    const rows = await this.prisma.ticket.findMany({
+      where: { contractGroupId: { not: null } },
+      distinct: ["contractGroupId"],
+      select: { contractGroupId: true, contractGroupName: true },
+      orderBy: [{ contractGroupName: "asc" }, { contractGroupId: "asc" }]
+    });
+    return rows
+      .filter((r): r is { contractGroupId: number; contractGroupName: string | null } => r.contractGroupId != null)
+      .map((r) => ({ glpiGroupId: r.contractGroupId, glpiGroupName: r.contractGroupName ?? null }));
   }
 
   async findAll(): Promise<unknown> {
@@ -45,6 +83,7 @@ export class ContractsService {
         fiscal: true,
         manager: true,
         supplier: true,
+        glpiGroups: { orderBy: { glpiGroupName: "asc" } },
         _count: { select: { amendments: true } }
       },
       orderBy: { createdAt: "desc" }
@@ -60,6 +99,7 @@ export class ContractsService {
         fiscal: true,
         manager: true,
         supplier: true,
+        glpiGroups: { orderBy: { glpiGroupName: "asc" } },
         amendments: { orderBy: { createdAt: "desc" } }
       }
     });
@@ -131,11 +171,15 @@ export class ContractsService {
   async update(id: string, dto: UpdateContractDto): Promise<unknown> {
     const prev = await this.prisma.contract.findFirst({ where: { id, deletedAt: null } });
     if (!prev) throw new NotFoundException("Contrato não encontrado");
+    const { glpiGroups, ...rest } = dto;
     const totalValue = dto.totalValue ?? (dto.monthlyValue != null ? dto.monthlyValue * 12 : undefined);
     const updated = await this.prisma.contract.update({
       where: { id },
       data: {
-        ...dto,
+        ...rest,
+        ...(glpiGroups !== undefined
+          ? { glpiGroups: { deleteMany: {}, create: dedupeGlpiGroupLinks(glpiGroups) } }
+          : {}),
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
         totalValue: totalValue != null ? new Prisma.Decimal(totalValue) : undefined,
@@ -144,7 +188,7 @@ export class ContractsService {
       }
     });
     await this.createAudit("Contract", id, "UPDATE", prev, updated);
-    return updated;
+    return this.findOne(id);
   }
 
   async createModule(contractId: string, dto: CreateContractModuleDto): Promise<unknown> {

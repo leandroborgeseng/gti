@@ -1,6 +1,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
+import { ContractGlpiGroupsPanel } from "@/components/contracts/contract-glpi-groups-panel";
 import { ContractStatusControl } from "@/components/contracts/contract-status-control";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
 import { Card } from "@/components/ui/card";
@@ -164,6 +165,8 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           </div>
         </div>
       </Card>
+
+      <ContractGlpiGroupsPanel contractId={contract.id} initialGroups={contract.glpiGroups ?? []} />
 
       <ContractAmendmentsPanel contract={contract} />
 

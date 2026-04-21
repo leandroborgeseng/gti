@@ -7,6 +7,11 @@ export function onlyDigitsCnpj(v: string): string {
 export const contractTypeSchema = z.enum(["SOFTWARE", "DATACENTER", "INFRA", "SERVICO"]);
 export const lawTypeFieldSchema = z.union([z.literal(""), z.enum(["LEI_8666", "LEI_14133"])]);
 
+const glpiGroupLinkSchema = z.object({
+  glpiGroupId: z.number().int().positive(),
+  glpiGroupName: z.string().optional()
+});
+
 /** Campos do contrato + rascunhos dos modais (fiscal / fornecedor rápido). */
 export const contractPageSchema = z
   .object({
@@ -38,7 +43,8 @@ export const contractPageSchema = z
     quickFiscalEmail: z.string(),
     quickFiscalPhone: z.string(),
     quickSupplierName: z.string(),
-    quickSupplierCnpj: z.string()
+    quickSupplierCnpj: z.string(),
+    glpiGroups: z.union([z.array(glpiGroupLinkSchema), z.undefined()]).transform((x) => x ?? [])
   })
   .refine((d) => new Date(d.endDate) >= new Date(d.startDate), {
     message: "A data final não pode ser anterior à data inicial.",
@@ -82,5 +88,6 @@ export const CONTRACT_FORM_DEFAULT_VALUES: ContractPageFormInput = {
   quickFiscalEmail: "",
   quickFiscalPhone: "",
   quickSupplierName: "",
-  quickSupplierCnpj: ""
+  quickSupplierCnpj: "",
+  glpiGroups: []
 };

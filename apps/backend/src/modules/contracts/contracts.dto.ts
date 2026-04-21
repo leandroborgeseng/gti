@@ -1,6 +1,18 @@
 import { ContractFeatureStatus, ContractStatus, ContractType, LawType } from "@prisma/client";
 import { Type } from "class-transformer";
-import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsArray, IsDateString, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from "class-validator";
+
+/** Grupo de trabalho GLPI (ID na instância; nome opcional para exibição). */
+export class ContractGlpiGroupLinkDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  glpiGroupId!: number;
+
+  @IsOptional()
+  @IsString()
+  glpiGroupName?: string;
+}
 
 export class CreateContractModuleDto {
   @IsString()
@@ -156,6 +168,13 @@ export class CreateContractDto {
   @IsOptional()
   @IsString()
   supplierId?: string;
+
+  /** Vínculos a grupos GLPI (substitui lista em criação). */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ContractGlpiGroupLinkDto)
+  glpiGroups?: ContractGlpiGroupLinkDto[];
 }
 
 export class UpdateContractDto {
@@ -232,6 +251,16 @@ export class UpdateContractDto {
   @IsOptional()
   @IsString()
   supplierId?: string;
+
+  /**
+   * Grupos GLPI associados ao contrato. Se enviado (incluindo `[]`), substitui todos os vínculos existentes.
+   * Omitir o campo para não alterar os vínculos.
+   */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ContractGlpiGroupLinkDto)
+  glpiGroups?: ContractGlpiGroupLinkDto[];
 }
 
 /** Aditivo ou reajuste que altera valores e/ou fim de vigência do contrato (gravado e aplicado na BD). */

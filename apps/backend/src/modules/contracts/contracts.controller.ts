@@ -26,6 +26,12 @@ export class ContractsController {
     return this.service.findAll();
   }
 
+  /** Grupos GLPI já observados nos chamados sincronizados (para escolher vínculos ao contrato). */
+  @Get("catalog/glpi-assigned-groups")
+  listGlpiAssignedGroups(): Promise<unknown> {
+    return this.service.findDistinctGlpiAssignedGroupOptions();
+  }
+
   /** Rotas mais específicas antes de `:id` solto (evita ambiguidade em alguns casos). */
   @Post(":id/modules")
   createModule(@Param("id") contractId: string, @Body() dto: CreateContractModuleDto): Promise<unknown> {

@@ -10,10 +10,12 @@ import {
   createFiscal,
   createSupplier,
   getFiscais,
+  getGlpiAssignedGroupsCatalog,
   getSuppliers,
   type Fiscal,
   type Supplier
 } from "@/lib/api";
+import { ContractGlpiGroupsField } from "@/components/contracts/contract-glpi-groups-field";
 import { queryKeys } from "@/lib/query-keys";
 import {
   CONTRACT_FORM_DEFAULT_VALUES,
@@ -21,8 +23,7 @@ import {
   onlyDigitsCnpj,
   quickFiscalSchema,
   quickSupplierSchema,
-  type ContractPageFormInput,
-  type ContractPageParsed
+  type ContractPageFormInput
 } from "@/modules/contracts/contract-form-schema";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
   const qc = useQueryClient();
   const qFiscais = useQuery({ queryKey: queryKeys.fiscais, queryFn: getFiscais });
   const qSuppliers = useQuery({ queryKey: queryKeys.suppliers, queryFn: getSuppliers });
+  const qGlpiGroups = useQuery({ queryKey: queryKeys.glpiAssignedGroups, queryFn: getGlpiAssignedGroupsCatalog });
   const fiscais = qFiscais.data ?? [];
   const suppliers = qSuppliers.data ?? [];
   const listsLoading = qFiscais.isPending || qSuppliers.isPending;
@@ -197,7 +199,8 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
     });
   }
 
-  function onValidSubmit(data: ContractPageParsed): void {
+  function onValidSubmit(raw: ContractPageFormInput): void {
+    const data = contractPageSchema.parse(raw);
     const mv = Number(String(data.monthlyValue).replace(",", "."));
     createContractMut.mutate({
       number: data.number.trim(),
@@ -213,7 +216,8 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
       monthlyValue: mv,
       fiscalId: data.fiscalId,
       managerId: data.managerId.trim() || undefined,
-      supplierId: data.supplierId.trim() || undefined
+      supplierId: data.supplierId.trim() || undefined,
+      glpiGroups: data.glpiGroups.length > 0 ? data.glpiGroups : undefined
     });
   }
 
@@ -382,6 +386,34 @@ export function ContractForm({ onSuccess }: Props): JSX.Element {
                   <Input placeholder="00.000.000/0000-00" inputMode="numeric" {...field} />
                 </FormControl>
                 <FormDescription>Formato sugerido: {formatCnpjHint(field.value || "00000000000000")}</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
+
+        <FormSection
+          title="Grupos GLPI (SLA)"
+          description="Opcional. Liga o contrato aos grupos de trabalho já vistos nos chamados sincronizados, para futuras métricas de SLA por contrato."
+        >
+          <FormField
+            control={form.control}
+            name="glpiGroups"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Grupos atribuídos no GLPI</FormLabel>
+                <FormControl>
+                  <ContractGlpiGroupsField
+                    catalog={qGlpiGroups.data ?? []}
+                    value={field.value ?? []}
+                    onChange={field.onChange}
+                    disabled={qGlpiGroups.isPending}
+                  />
+                </FormControl>
+                <FormDescription>
+                  A lista vem dos chamados em cache. Se estiver vazia, execute a sincronização GLPI e confira se os
+                  chamados têm grupo de trabalho preenchido.
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}

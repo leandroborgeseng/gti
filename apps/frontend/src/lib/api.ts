@@ -151,6 +151,14 @@ export type ContractAmendment = {
   createdAt: string;
 };
 
+export type ContractGlpiGroup = {
+  id: string;
+  contractId: string;
+  glpiGroupId: number;
+  glpiGroupName: string | null;
+  createdAt: string;
+};
+
 export type Contract = {
   id: string;
   number: string;
@@ -172,12 +180,23 @@ export type Contract = {
   supplier?: { id: string; name: string; cnpj: string } | null;
   fiscal?: { id: string; name: string; email: string } | null;
   manager?: { id: string; name: string; email: string } | null;
+  /** Grupos de trabalho GLPI associados ao contrato (métricas de SLA). */
+  glpiGroups?: ContractGlpiGroup[];
   modules?: Array<{ id: string; name: string; weight: string; features: Array<{ id: string; name: string; status: string; weight: string }> }>;
   services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
   amendments?: ContractAmendment[];
   /** Presente na listagem (`GET /contracts`) para indicar quantos aditivos existem. */
   _count?: { amendments: number };
 };
+
+export type GlpiAssignedGroupOption = {
+  glpiGroupId: number;
+  glpiGroupName: string | null;
+};
+
+export async function getGlpiAssignedGroupsCatalog(): Promise<GlpiAssignedGroupOption[]> {
+  return request("/contracts/catalog/glpi-assigned-groups");
+}
 
 export type AttachmentRecord = {
   id: string;
@@ -319,6 +338,8 @@ export async function updateContract(
     fiscalId?: string;
     managerId?: string;
     supplierId?: string | null;
+    /** Se enviado (incluindo lista vazia), substitui todos os vínculos a grupos GLPI. */
+    glpiGroups?: Array<{ glpiGroupId: number; glpiGroupName?: string }>;
   }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}`, { method: "PUT", body: JSON.stringify(payload) });
@@ -342,6 +363,7 @@ export async function createContract(payload: {
   fiscalId: string;
   managerId?: string;
   supplierId?: string;
+  glpiGroups?: Array<{ glpiGroupId: number; glpiGroupName?: string }>;
 }): Promise<Contract> {
   return request("/contracts", { method: "POST", body: JSON.stringify(payload) });
 }
