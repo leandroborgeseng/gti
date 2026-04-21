@@ -127,9 +127,10 @@ function AberturasFechamentosChart({
       <h3 className="chamados-ops__block-title">Abertos e fechados ao longo do tempo</h3>
       {ticketSyncScope === "open" ? (
         <p className="chamados-ops__scope-hint">
-          Sincronização só com <strong>chamados abertos</strong>: as barras de fechados ficam em zero e o acumulado não
-          evolui — o cache não guarda tickets fechados. Use <strong>todos os tickets</strong> nas definições de sync
-          para comparar fechamentos no mesmo gráfico.
+          O cache está em modo <strong>só abertos</strong>: não há tickets fechados guardados — as barras verdes e o
+          acumulado não refletem fechamentos reais. O predefinido da aplicação é <strong>todos os tickets</strong>; no
+          quadro, em Cache, escolha «Todos os tickets» e clique em <strong>Guardar escopo</strong>, depois deixe o sync
+          correr.
         </p>
       ) : null}
       <p className="chamados-ops__chart-hint">

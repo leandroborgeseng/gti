@@ -177,6 +177,10 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
   const [modalSection, setModalSection] = useState<"chamado" | "historico">("chamado");
   const [syncScopeDraft, setSyncScopeDraft] = useState<"open" | "all">(initial.ticketSyncScope);
 
+  useEffect(() => {
+    setSyncScopeDraft(initial.ticketSyncScope);
+  }, [initial.ticketSyncScope]);
+
   const colByKey = useMemo(() => new Map(initial.columns.map((c) => [c.statusKey, c])), [initial.columns]);
 
   const orderedColumns = useMemo(
@@ -390,7 +394,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       pill("Pendência", pendenciaLabelForSummary(initial.pendenciaParam), initial.pendenciaParam === ""),
       pill(
         "Sync cache",
-        initial.ticketSyncScope === "all" ? "Todos os tickets" : "Só abertos",
+        initial.ticketSyncScope === "all" ? "Todos os tickets" : "Só abertos (cache reduzido)",
         initial.ticketSyncScope === "open"
       )
     ];
@@ -481,14 +485,14 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
               <select
                 id="sync-scope-select"
                 className="filters-shell__sync-select"
-                aria-label="Escopo de sincronizacao no cache"
-                title="Próximo ciclo do cron"
+                aria-label="Escopo de sincronização no cache GLPI"
+                title="Aplica-se ao próximo ciclo de sincronização (worker/cron)"
                 value={syncScopeDraft}
                 disabled={Boolean(busy)}
                 onChange={(e) => setSyncScopeDraft(e.target.value === "all" ? "all" : "open")}
               >
-                <option value="open">Só abertos no SQLite</option>
-                <option value="all">Todos (abertos + fechados)</option>
+                <option value="all">Todos os tickets (abertos + fechados) — recomendado</option>
+                <option value="open">Só abertos (cache menor; sem fechados para gráficos)</option>
               </select>
               <button type="submit" form="kanban-filters-form" className="btn-secondary" id="btn-filters-apply">
                 Aplicar

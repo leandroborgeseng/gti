@@ -499,7 +499,7 @@ export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): 
     pendenciaParam,
     pendenciaSummary: pendenciaLabelForSummary(pendenciaParam),
     filteredTotal: 0,
-    ticketSyncScope: "open",
+    ticketSyncScope: "all",
     kanbanSettings: {},
     orderedStatusKeys: [],
     columns: [],
