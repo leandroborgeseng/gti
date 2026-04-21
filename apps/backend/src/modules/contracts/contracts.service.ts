@@ -515,45 +515,50 @@ export class ContractsService {
       }
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      if (opts.replace) {
-        await tx.contractFeature.deleteMany({ where: { module: { contractId } } });
-        await tx.contractModule.deleteMany({ where: { contractId } });
-      }
-      for (const [, group] of groups) {
-        let moduleId: string | undefined;
-        if (!opts.replace) {
-          const existing = await tx.contractModule.findFirst({
-            where: {
-              contractId,
-              name: { equals: group.displayName, mode: "insensitive" }
-            }
-          });
-          if (existing) moduleId = existing.id;
+    // Transacção interactiva: o timeout por defeito do Prisma (~5 s) é curto para planilhas grandes;
+    // ultrapassar fecha a transação e as operações seguintes falham com «Transaction not found».
+    await this.prisma.$transaction(
+      async (tx) => {
+        if (opts.replace) {
+          await tx.contractFeature.deleteMany({ where: { module: { contractId } } });
+          await tx.contractModule.deleteMany({ where: { contractId } });
         }
-        if (!moduleId) {
-          const created = await tx.contractModule.create({
-            data: {
-              contractId,
-              name: group.displayName,
-              weight: new Prisma.Decimal(group.weight)
-            }
-          });
-          moduleId = created.id;
+        for (const [, group] of groups) {
+          let moduleId: string | undefined;
+          if (!opts.replace) {
+            const existing = await tx.contractModule.findFirst({
+              where: {
+                contractId,
+                name: { equals: group.displayName, mode: "insensitive" }
+              }
+            });
+            if (existing) moduleId = existing.id;
+          }
+          if (!moduleId) {
+            const created = await tx.contractModule.create({
+              data: {
+                contractId,
+                name: group.displayName,
+                weight: new Prisma.Decimal(group.weight)
+              }
+            });
+            moduleId = created.id;
+          }
+          const mid = moduleId!;
+          const featureRows = group.features.map((fr) => ({
+            moduleId: mid,
+            name: fr.featureName.trim(),
+            weight: new Prisma.Decimal(fr.featureWeight),
+            status: fr.featureStatus ?? ContractFeatureStatus.NOT_STARTED,
+            deliveryStatus: fr.featureDelivery ?? ContractItemDeliveryStatus.NOT_DELIVERED
+          }));
+          if (featureRows.length > 0) {
+            await tx.contractFeature.createMany({ data: featureRows });
+          }
         }
-        for (const fr of group.features) {
-          await tx.contractFeature.create({
-            data: {
-              moduleId: moduleId!,
-              name: fr.featureName.trim(),
-              weight: new Prisma.Decimal(fr.featureWeight),
-              status: fr.featureStatus ?? ContractFeatureStatus.NOT_STARTED,
-              deliveryStatus: fr.featureDelivery ?? ContractItemDeliveryStatus.NOT_DELIVERED
-            }
-          });
-        }
-      }
-    });
+      },
+      { maxWait: 30_000, timeout: 180_000 }
+    );
 
     await this.createAudit("Contract", contractId, "IMPORT_STRUCTURE", null, { rows: rows.length, replace: opts.replace });
     return this.findOne(contractId);
