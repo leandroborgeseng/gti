@@ -124,7 +124,8 @@ type EditFeatureDraft = {
 
 export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props): JSX.Element {
   const qc = useQueryClient();
-  const [openContractIds, setOpenContractIds] = useState<Set<string>>(() => new Set(initialRows.map((r) => r.id)));
+  /** Contratos expandidos (ausente = colapsado). Por defeito todos fechados — expanda para ver módulos e ações. */
+  const [openContractIds, setOpenContractIds] = useState<Set<string>>(() => new Set());
   /** Módulos com corpo colapsado (chave ausente = expandido). Por defeito todos fechados. */
   const [collapsedModuleKeys, setCollapsedModuleKeys] = useState<Set<string>>(() =>
     buildAllModuleKeysFromRows(initialRows)
@@ -336,7 +337,8 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Funcionalidades</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Por contrato: <strong className="font-medium text-foreground">módulos</strong> (cada um com sanfona, por defeito fechada, e contagem por estado de entrega no cabeçalho) e respetivas{" "}
+          Por contrato: <strong className="font-medium text-foreground">contratos</strong> e{" "}
+          <strong className="font-medium text-foreground">módulos</strong> em sanfona (por defeito fechados; contagem por estado de entrega no cabeçalho de cada módulo) e respetivas{" "}
           <strong className="font-medium text-foreground">funcionalidades</strong> (itens de entrega). Cada funcionalidade
           regista se a entrega está <strong className="font-medium text-foreground">não feita</strong>,{" "}
           <strong className="font-medium text-foreground">parcial</strong> ou <strong className="font-medium text-foreground">concluída</strong>,
@@ -513,20 +515,53 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                             return (
                                               <li
                                                 key={item.id}
-                                                className="flex flex-col gap-2 rounded-md border border-border/40 bg-background/80 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                                                className="flex flex-col gap-3 rounded-md border border-border/40 bg-background/80 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
                                               >
-                                                <div className="flex min-w-0 flex-1 items-start gap-2">
-                                                  <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium text-foreground">{item.name}</p>
-                                                    <p className="text-[11px] text-muted-foreground">Peso {serializeWeight(item.weight)}</p>
+                                                <div className="min-w-0 flex-1">
+                                                  <p className="text-sm font-medium text-foreground">{item.name}</p>
+                                                  <p className="text-[11px] text-muted-foreground">Peso {serializeWeight(item.weight)}</p>
+                                                </div>
+                                                <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-[22rem] sm:flex-row sm:items-center sm:justify-end sm:gap-2">
+                                                  <div className="min-w-0 flex-1 sm:min-w-[12rem] sm:flex-1 sm:max-w-[14.5rem]">
+                                                    <Select
+                                                      value={ds}
+                                                      disabled={rowBusy}
+                                                      onValueChange={(v) => {
+                                                        updateDeliveryMut.mutate({
+                                                          contractId: contract.id,
+                                                          moduleId: mod.id,
+                                                          featureId: item.id,
+                                                          deliveryStatus: v as ContractItemDeliveryStatus
+                                                        });
+                                                      }}
+                                                    >
+                                                      <SelectTrigger
+                                                        className={cn("h-9 w-full text-left text-xs", itemDeliverySelectTriggerClass(ds))}
+                                                        aria-label={`Estado de entrega: ${item.name}`}
+                                                      >
+                                                        <SelectValue placeholder="Estado" />
+                                                      </SelectTrigger>
+                                                      <SelectContent>
+                                                        {deliveryOptions.map((opt) => (
+                                                          <SelectItem
+                                                            key={opt}
+                                                            value={opt}
+                                                            className={cn("text-xs", itemDeliverySelectItemClass(opt))}
+                                                          >
+                                                            {deliveryLabels[opt]}
+                                                          </SelectItem>
+                                                        ))}
+                                                      </SelectContent>
+                                                    </Select>
                                                   </div>
-                                                  <div className="flex shrink-0 items-center gap-0.5">
+                                                  <div className="flex shrink-0 items-center justify-end gap-1.5 sm:justify-start">
                                                     <Button
                                                       type="button"
-                                                      variant="ghost"
+                                                      variant="outline"
                                                       size="icon"
-                                                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                                      className="h-9 w-9 shrink-0"
                                                       disabled={rowBusy}
+                                                      title="Editar"
                                                       aria-label={`Editar funcionalidade ${item.name}`}
                                                       onClick={(e) => {
                                                         e.stopPropagation();
@@ -537,10 +572,11 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                                     </Button>
                                                     <Button
                                                       type="button"
-                                                      variant="ghost"
+                                                      variant="outline"
                                                       size="icon"
-                                                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                                      className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                                       disabled={rowBusy}
+                                                      title="Eliminar"
                                                       aria-label={`Eliminar funcionalidade ${item.name}`}
                                                       onClick={(e) => {
                                                         e.stopPropagation();
@@ -550,38 +586,6 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                                       <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                   </div>
-                                                </div>
-                                                <div className="w-full shrink-0 sm:w-[14.5rem]">
-                                                  <Select
-                                                    value={ds}
-                                                    disabled={rowBusy}
-                                                    onValueChange={(v) => {
-                                                      updateDeliveryMut.mutate({
-                                                        contractId: contract.id,
-                                                        moduleId: mod.id,
-                                                        featureId: item.id,
-                                                        deliveryStatus: v as ContractItemDeliveryStatus
-                                                      });
-                                                    }}
-                                                  >
-                                                    <SelectTrigger
-                                                      className={cn("h-9 text-left text-xs", itemDeliverySelectTriggerClass(ds))}
-                                                      aria-label={`Estado de entrega: ${item.name}`}
-                                                    >
-                                                      <SelectValue placeholder="Estado" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                      {deliveryOptions.map((opt) => (
-                                                        <SelectItem
-                                                          key={opt}
-                                                          value={opt}
-                                                          className={cn("text-xs", itemDeliverySelectItemClass(opt))}
-                                                        >
-                                                          {deliveryLabels[opt]}
-                                                        </SelectItem>
-                                                      ))}
-                                                    </SelectContent>
-                                                  </Select>
                                                 </div>
                                               </li>
                                             );
