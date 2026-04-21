@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ContractItemDeliveryStatus, ContractModulesDeliveryOverview } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
+import { itemDeliveryLabelClass, itemDeliverySelectItemClass, itemDeliverySelectTriggerClass } from "@/lib/item-delivery-styles";
 import { getModulesDeliveryOverview, updateContractFeature } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { Badge } from "@/components/ui/badge";
@@ -171,11 +172,11 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                     {itemsN > 0 ? (
                       <p className="mt-1 text-xs text-muted-foreground">
                         <span className="tabular-nums font-medium text-foreground">{itemsN}</span> itens ·{" "}
-                        <span className="text-emerald-700 dark:text-emerald-400">{nOk} entregues</span>
+                        <span className={itemDeliveryLabelClass("DELIVERED")}>{nOk} entregues</span>
                         {" · "}
-                        <span className="text-amber-700 dark:text-amber-400">{nPart} parciais</span>
+                        <span className={itemDeliveryLabelClass("PARTIALLY_DELIVERED")}>{nPart} parciais</span>
                         {" · "}
-                        <span className="text-rose-700 dark:text-rose-400">{nNot} não entregues</span>
+                        <span className={itemDeliveryLabelClass("NOT_DELIVERED")}>{nNot} não entregues</span>
                       </p>
                     ) : (
                       <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">Sem módulos ou itens — configure na página do contrato.</p>
@@ -247,12 +248,19 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                               });
                                             }}
                                           >
-                                            <SelectTrigger className="h-9 text-left text-xs" aria-label={`Estado de entrega: ${item.name}`}>
+                                            <SelectTrigger
+                                              className={cn("h-9 text-left text-xs", itemDeliverySelectTriggerClass(ds))}
+                                              aria-label={`Estado de entrega: ${item.name}`}
+                                            >
                                               <SelectValue placeholder="Estado" />
                                             </SelectTrigger>
                                             <SelectContent>
                                               {deliveryOptions.map((opt) => (
-                                                <SelectItem key={opt} value={opt} className="text-xs">
+                                                <SelectItem
+                                                  key={opt}
+                                                  value={opt}
+                                                  className={cn("text-xs", itemDeliverySelectItemClass(opt))}
+                                                >
                                                   {deliveryLabels[opt]}
                                                 </SelectItem>
                                               ))}
