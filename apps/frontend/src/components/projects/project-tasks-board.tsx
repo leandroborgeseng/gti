@@ -13,6 +13,25 @@ import { cn } from "@/lib/utils";
 
 const STATUS_PRESETS = ["Feito", "Em progresso", "Não iniciado", "Bloqueado", "Parado", "Em validação"];
 
+/** Paleta de grupos alinhada ao Monday (cores por grupo). */
+const GROUP_ACCENTS = ["#ff007f", "#00c875", "#579bfc", "#fdab3d", "#a358df", "#7c3aed", "#ff6900"] as const;
+
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function groupAccentHex(groupId: string, groupIndex: number): string {
+  return GROUP_ACCENTS[(hashStr(groupId) + groupIndex) % GROUP_ACCENTS.length]!;
+}
+
+function countTasksRecursive(nodes: ProjectTaskTree[]): number {
+  return nodes.reduce((acc, n) => acc + 1 + countTasksRecursive(n.children ?? []), 0);
+}
+
 function normStatus(s: string): string {
   return s
     .normalize("NFD")
@@ -21,29 +40,112 @@ function normStatus(s: string): string {
     .toLowerCase();
 }
 
-function isDoneLike(status: string): boolean {
-  const n = normStatus(status);
-  return n.includes("feito") || n.includes("conclu") || n.includes("done");
+/** Categorias de status alinhadas às cores do quadro / barra de resumo (Monday). */
+type StatusKind = "done" | "progress" | "blocked" | "notStarted" | "other" | "empty";
+
+function classifyStatus(status: string): StatusKind {
+  const raw = status.trim();
+  if (!raw) return "empty";
+  const n = normStatus(raw);
+  if (n.includes("feito") || n.includes("conclu") || n.includes("done")) return "done";
+  if (n.includes("progresso") || n.includes("andamento") || n.includes("progress")) return "progress";
+  if (n.includes("parado") || n.includes("bloque") || n.includes("hold")) return "blocked";
+  if (n.includes("nao") && n.includes("inici")) return "notStarted";
+  return "other";
 }
 
-function StatusPill({ status }: { status: string }): JSX.Element | null {
-  const raw = status.trim();
-  if (!raw) return <span className="text-violet-400/80">—</span>;
-  const n = normStatus(raw);
-  let cls =
-    "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm ring-1 ring-black/5";
-  if (n.includes("feito") || n.includes("conclu") || n.includes("done")) {
-    cls = cn(cls, "bg-[#00c875] shadow-[0_1px_0_rgba(0,0,0,0.12)]");
-  } else if (n.includes("progresso") || n.includes("andamento") || n.includes("progress")) {
-    cls = cn(cls, "bg-[#fdab3d] text-white");
-  } else if (n.includes("parado") || n.includes("bloque") || n.includes("hold")) {
-    cls = cn(cls, "bg-slate-500");
-  } else if (n.includes("nao") && n.includes("inici")) {
-    cls = cn(cls, "bg-slate-400");
-  } else {
-    cls = cn(cls, "bg-[#7c3aed]");
+const STATUS_KIND_COLORS: Record<StatusKind, { bg: string; fg: string }> = {
+  done: { bg: "#33d391", fg: "#ffffff" },
+  progress: { bg: "#fdbd64", fg: "#323338" },
+  blocked: { bg: "#797e93", fg: "#ffffff" },
+  notStarted: { bg: "#c5c7d0", fg: "#323338" },
+  other: { bg: "#579bfc", fg: "#ffffff" },
+  empty: { bg: "#797e93", fg: "#ffffff" }
+};
+
+const STATUS_KIND_ORDER: StatusKind[] = ["done", "progress", "notStarted", "blocked", "other", "empty"];
+
+const STATUS_KIND_LABEL: Record<StatusKind, string> = {
+  done: "Feito / concluído",
+  progress: "Em progresso",
+  notStarted: "Não iniciado",
+  blocked: "Bloqueado / parado",
+  other: "Outros",
+  empty: "Sem status"
+};
+
+function aggregateStatusByKind(nodes: ProjectTaskTree[]): Record<StatusKind, number> {
+  const acc: Record<StatusKind, number> = {
+    done: 0,
+    progress: 0,
+    blocked: 0,
+    notStarted: 0,
+    other: 0,
+    empty: 0
+  };
+  function walk(t: ProjectTaskTree): void {
+    acc[classifyStatus(t.status)]++;
+    t.children?.forEach(walk);
   }
-  return <span className={cls}>{raw}</span>;
+  nodes.forEach(walk);
+  return acc;
+}
+
+/** Fundo da célula de status estilo Monday (pill preenchida na célula). */
+function statusCellColors(status: string): { bg: string; fg: string } {
+  return STATUS_KIND_COLORS[classifyStatus(status)];
+}
+
+function StatusDistributionFooterBar({ counts }: { counts: Record<StatusKind, number> }): JSX.Element {
+  const total = STATUS_KIND_ORDER.reduce((s, k) => s + counts[k], 0);
+  if (total === 0) {
+    return <span className="text-[11px] text-[#c5c7d0]">—</span>;
+  }
+  return (
+    <div
+      className="flex h-3 w-full min-w-[80px] overflow-hidden rounded-sm bg-[#e6e9ef] dark:bg-neutral-800"
+      role="img"
+      aria-label={`Distribuição de status em ${total} tarefas`}
+    >
+      {STATUS_KIND_ORDER.map((kind) => {
+        const n = counts[kind];
+        if (n <= 0) return null;
+        const pct = (n / total) * 100;
+        const bg = STATUS_KIND_COLORS[kind].bg;
+        const label = STATUS_KIND_LABEL[kind];
+        return (
+          <div
+            key={kind}
+            className="h-full min-w-[2px] transition-[flex-grow] duration-300 ease-out"
+            style={{ flex: `${n} 1 0%`, backgroundColor: bg }}
+            title={`${label}: ${n} (${pct.toFixed(0)}%)`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function FooterStatusLegend({ counts }: { counts: Record<StatusKind, number> }): JSX.Element {
+  const parts: string[] = [];
+  for (const kind of STATUS_KIND_ORDER) {
+    const n = counts[kind];
+    if (n <= 0) continue;
+    parts.push(`${n} ${STATUS_KIND_LABEL[kind]}`);
+  }
+  if (parts.length === 0) {
+    return <span className="text-[#c5c7d0]">—</span>;
+  }
+  const text = parts.join(" · ");
+  return (
+    <span className="block truncate text-[11px] leading-tight text-[#676879]" title={text}>
+      {text}
+    </span>
+  );
+}
+
+function isDoneLike(status: string): boolean {
+  return classifyStatus(status) === "done";
 }
 
 function pmfBadgeClass(name: string): string {
@@ -59,7 +161,7 @@ function pmfBadgeClass(name: string): string {
 
 function PmfPill({ name }: { name: string }): JSX.Element | null {
   const raw = name.trim();
-  if (!raw) return <span className="text-violet-400/80">—</span>;
+  if (!raw) return <span className="text-[#c5c7d0]">—</span>;
   return (
     <span
       className={cn(
@@ -89,17 +191,14 @@ function subProgressPercent(task: ProjectTaskTree): number | null {
 function SubElementBar({ task }: { task: ProjectTaskTree }): JSX.Element {
   const pct = subProgressPercent(task);
   if (pct == null) {
-    return <span className="text-[11px] font-medium text-violet-300/90">—</span>;
+    return <span className="text-[11px] font-medium text-[#c5c7d0]">—</span>;
   }
   return (
     <div
-      className="h-2.5 max-w-[148px] overflow-hidden rounded-full bg-violet-100 ring-1 ring-violet-200/60"
+      className="h-2 max-w-[148px] overflow-hidden rounded-full bg-[#e6e9ef]"
       title={`${pct}% concluído nos subelementos`}
     >
-      <div
-        className="h-full rounded-full bg-gradient-to-r from-[#00c875] to-[#34d399] shadow-sm transition-[width]"
-        style={{ width: `${pct}%` }}
-      />
+      <div className="h-full rounded-full bg-[#00c875] transition-[width]" style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -190,7 +289,7 @@ function FilesCell({ projectId, task, canEdit, busy, onUploaded }: FilesCellProp
           type="button"
           variant="ghost"
           size="sm"
-          className="h-8 gap-1 px-2 text-violet-600 hover:bg-violet-100 hover:text-violet-800"
+          className="h-8 gap-1 px-2 text-[#676879] hover:bg-[#ececf0] hover:text-[#323338]"
           disabled={busy}
           title="Anexos"
         >
@@ -237,6 +336,7 @@ type TaskRowsProps = {
   projectId: string;
   task: ProjectTaskTree;
   depth: number;
+  accentHex: string;
   expanded: Record<string, boolean>;
   onToggleExpand: (taskId: string) => void;
   canEdit: boolean;
@@ -249,6 +349,7 @@ function TaskRows({
   projectId,
   task,
   depth,
+  accentHex,
   expanded,
   onToggleExpand,
   canEdit,
@@ -264,11 +365,7 @@ function TaskRows({
     onToggleExpand(task.id);
   }, [onToggleExpand, task.id]);
 
-  const rowTint = isDoneLike(task.status)
-    ? "bg-emerald-50/55 hover:bg-emerald-50/90"
-    : depth > 0
-      ? "bg-sky-50/60 hover:bg-sky-100/70"
-      : "bg-white hover:bg-violet-50/50";
+  const statusColors = statusCellColors(task.status);
 
   const statusOptions = useMemo(() => {
     const s = task.status.trim();
@@ -279,22 +376,11 @@ function TaskRows({
 
   return (
     <>
-      <tr
-        className={cn(
-          "border-b border-violet-100/90 transition-colors",
-          rowTint,
-          busy && "opacity-70"
-        )}
-      >
-        <td
-          className={cn(
-            "w-9 shrink-0 border-r border-violet-100/90 p-1 align-middle",
-            isDoneLike(task.status) && "bg-emerald-100/40"
-          )}
-        >
+      <tr className={cn("min-h-9 border-b border-[#ececf0] bg-white transition-colors hover:bg-[#f6f7fb]", busy && "opacity-70")}>
+        <td className="w-9 shrink-0 border-r border-[#ececf0] p-1 align-middle">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-violet-300 accent-[#00c875] focus:ring-2 focus:ring-[#00c875]/40"
+            className="h-4 w-4 rounded border-[#c5c7d0] accent-[#00c875] focus:ring-2 focus:ring-[#00c875]/30"
             checked={isDoneLike(task.status)}
             disabled={!canEdit || busy}
             title={canEdit ? "Marcar como feito" : "Apenas leitura"}
@@ -303,13 +389,16 @@ function TaskRows({
             }}
           />
         </td>
-        <td className="min-w-[220px] max-w-md border-r border-violet-100/90 p-2 align-middle">
-          <div className="flex items-start gap-1.5" style={{ paddingLeft: depth * 18 }}>
+        <td
+          className="min-w-[220px] max-w-md border-r border-[#ececf0] p-0 align-middle"
+          style={{ borderLeft: `4px solid ${accentHex}` }}
+        >
+          <div className="flex items-start gap-1.5 px-2 py-1.5" style={{ paddingLeft: 8 + depth * 16 }}>
             {hasChildren ? (
               <button
                 type="button"
                 onClick={toggle}
-                className="mt-0.5 shrink-0 rounded p-0.5 text-violet-600 hover:bg-violet-100 hover:text-violet-900"
+                className="mt-0.5 shrink-0 rounded p-0.5 text-[#676879] hover:bg-[#ececf0] hover:text-[#323338]"
                 aria-expanded={isOpen}
                 aria-label={isOpen ? "Recolher subtarefas" : "Expandir subtarefas"}
                 title={isOpen ? "Recolher subtarefas" : "Expandir subtarefas"}
@@ -321,7 +410,7 @@ function TaskRows({
             )}
             {hasChildren ? (
               <span
-                className="mt-0.5 shrink-0 rounded-full bg-violet-200/80 px-1.5 py-0 text-[10px] font-bold tabular-nums text-violet-900"
+                className="mt-0.5 shrink-0 rounded-full bg-[#ececf0] px-1.5 py-0 text-[10px] font-semibold tabular-nums text-[#323338]"
                 title="Número de subtarefas"
               >
                 {task.children!.length}
@@ -330,7 +419,7 @@ function TaskRows({
             {canEdit ? (
               <input
                 key={`${task.id}-title-${task.title}`}
-                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium leading-snug text-foreground hover:border-border focus:border-primary focus:outline-none"
+                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium leading-snug text-[#323338] hover:border-[#e6e9ef] focus:border-[#579bfc] focus:outline-none"
                 defaultValue={task.title}
                 disabled={busy}
                 aria-label="Título da tarefa"
@@ -340,9 +429,9 @@ function TaskRows({
                 }}
               />
             ) : (
-              <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground">{task.title}</span>
+              <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-[#323338]">{task.title}</span>
             )}
-            <span className="flex shrink-0 gap-0.5 opacity-40">
+            <span className="flex shrink-0 gap-0.5 opacity-35">
               <button type="button" className="rounded p-0.5 hover:bg-muted" title="Adicionar (em breve)" disabled>
                 <Plus className="h-3.5 w-3.5" />
               </button>
@@ -352,42 +441,53 @@ function TaskRows({
             </span>
           </div>
         </td>
-        <td className="w-[150px] border-r border-violet-100/90 bg-violet-50/25 p-2 align-middle">
+        <td className="w-[150px] border-r border-[#ececf0] bg-white p-2 align-middle">
           <SubElementBar task={task} />
         </td>
-        <td className="w-[130px] border-r border-violet-100/90 bg-amber-50/20 p-2 align-middle">
+        <td className="w-[130px] border-r border-[#ececf0] bg-white p-1.5 align-middle">
           {canEdit ? (
-            <select
-              className="max-w-[124px] rounded-full border border-amber-200/80 bg-white px-2 py-1 text-xs font-semibold text-amber-950 shadow-sm"
-              value={task.status}
-              disabled={busy}
-              aria-label="Status"
-              onChange={(e) => {
-                void onPatch(task.id, { status: e.target.value });
-              }}
+            <div
+              className="flex min-h-[32px] items-stretch justify-center rounded-md px-0.5 py-0.5"
+              style={{ backgroundColor: statusColors.bg }}
             >
-              {statusOptions.map((opt) => (
-                <option key={opt || "__empty"} value={opt}>
-                  {opt === "" ? "(vazio)" : opt}
-                </option>
-              ))}
-            </select>
+              <select
+                className="max-w-full flex-1 cursor-pointer rounded-md border-0 bg-transparent px-1 py-1 text-center text-xs font-semibold outline-none ring-0 focus:ring-0"
+                style={{ color: statusColors.fg }}
+                value={task.status}
+                disabled={busy}
+                aria-label="Status"
+                onChange={(e) => {
+                  void onPatch(task.id, { status: e.target.value });
+                }}
+              >
+                {statusOptions.map((opt) => (
+                  <option key={opt || "__empty"} value={opt}>
+                    {opt === "" ? "(vazio)" : opt}
+                  </option>
+                ))}
+              </select>
+            </div>
           ) : (
-            <StatusPill status={task.status} />
+            <div
+              className="flex min-h-[32px] items-center justify-center rounded-md px-2 text-xs font-semibold"
+              style={{ backgroundColor: statusColors.bg, color: statusColors.fg }}
+            >
+              {task.status.trim() ? task.status : "—"}
+            </div>
           )}
         </td>
-        <td className="min-w-[160px] border-r border-violet-100/90 bg-orange-50/15 p-2 align-middle">
+        <td className="min-w-[160px] border-r border-[#ececf0] bg-white p-2 align-middle">
           {canEdit ? (
             <div className="flex items-center gap-2">
               <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-100 to-orange-200 text-[10px] font-bold text-orange-900 ring-2 ring-orange-200/80"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ececf0] text-[10px] font-bold text-[#323338] ring-1 ring-[#e6e9ef]"
                 title={task.assigneeExternal ?? ""}
               >
                 {task.assigneeExternal?.trim() ? initials(task.assigneeExternal) : "—"}
               </span>
               <input
                 key={`${task.id}-person-${task.assigneeExternal ?? ""}`}
-                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-border focus:border-primary focus:outline-none"
+                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-[#323338] hover:border-[#e6e9ef] focus:border-[#579bfc] focus:outline-none"
                 defaultValue={task.assigneeExternal ?? ""}
                 disabled={busy}
                 placeholder="Pessoa"
@@ -404,22 +504,22 @@ function TaskRows({
               {task.assigneeExternal?.trim() ? (
                 <>
                   <span
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-100 to-orange-200 text-[10px] font-bold text-orange-900 ring-2 ring-orange-200/80"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ececf0] text-[10px] font-bold text-[#323338] ring-1 ring-[#e6e9ef]"
                     title={task.assigneeExternal}
                   >
                     {initials(task.assigneeExternal)}
                   </span>
-                  <span className="max-w-[140px] truncate text-xs text-foreground" title={task.assigneeExternal}>
+                  <span className="max-w-[140px] truncate text-xs text-[#323338]" title={task.assigneeExternal}>
                     {task.assigneeExternal}
                   </span>
                 </>
               ) : (
-                <span className="text-muted-foreground">—</span>
+                <span className="text-[#c5c7d0]">—</span>
               )}
             </div>
           )}
         </td>
-        <td className="w-[110px] whitespace-nowrap border-r border-violet-100/90 p-2 align-middle">
+        <td className="w-[110px] whitespace-nowrap border-r border-[#ececf0] bg-white p-2 align-middle">
           {canEdit ? (
             <input
               type="date"
@@ -436,7 +536,7 @@ function TaskRows({
             <span className="text-xs text-muted-foreground">{formatBoardDate(task.dueDate)}</span>
           )}
         </td>
-        <td className="w-[90px] border-r border-violet-100/90 p-2 align-middle text-right">
+        <td className="w-[90px] border-r border-[#ececf0] bg-white p-2 align-middle text-right">
           {canEdit ? (
             <input
               key={`${task.id}-effort-${task.effort ?? ""}`}
@@ -465,7 +565,7 @@ function TaskRows({
             </span>
           )}
         </td>
-        <td className="min-w-[180px] max-w-xs border-r border-violet-100/90 bg-slate-50/40 p-2 align-middle">
+        <td className="min-w-[180px] max-w-xs border-r border-[#ececf0] bg-white p-2 align-middle">
           {canEdit ? (
             <textarea
               key={`${task.id}-desc-${task.description ?? ""}`}
@@ -486,7 +586,7 @@ function TaskRows({
             </span>
           )}
         </td>
-        <td className="w-[120px] border-r border-violet-100/90 bg-fuchsia-50/20 p-2 align-middle">
+        <td className="w-[120px] border-r border-[#ececf0] bg-white p-2 align-middle">
           {canEdit ? (
             <input
               key={`${task.id}-pmf-${task.internalResponsible ?? ""}`}
@@ -516,6 +616,7 @@ function TaskRows({
               projectId={projectId}
               task={c}
               depth={depth + 1}
+              accentHex={accentHex}
               expanded={expanded}
               onToggleExpand={onToggleExpand}
               canEdit={canEdit}
@@ -532,6 +633,7 @@ function TaskRows({
 function GroupBoard({
   projectId,
   group,
+  groupIndex,
   defaultExpanded,
   canEdit,
   savingTaskId,
@@ -540,12 +642,17 @@ function GroupBoard({
 }: {
   projectId: string;
   group: ProjectGroupWithTasks;
+  groupIndex: number;
   defaultExpanded: boolean;
   canEdit: boolean;
   savingTaskId: string | null;
   onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
   onFilesUploaded: () => void;
 }): JSX.Element {
+  const accentHex = groupAccentHex(group.id, groupIndex);
+  const rootCount = group.tasks.length;
+  const totalCount = countTasksRecursive(group.tasks);
+
   const [open, setOpen] = useState(defaultExpanded);
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
 
@@ -565,6 +672,8 @@ function GroupBoard({
 
   const mergedExpanded = useMemo(() => ({ ...initExpanded, ...expandedTasks }), [initExpanded, expandedTasks]);
 
+  const statusAgg = useMemo(() => aggregateStatusByKind(group.tasks), [group.tasks]);
+
   const toggleTaskExpand = useCallback(
     (taskId: string) => {
       setExpandedTasks((prev) => {
@@ -577,45 +686,50 @@ function GroupBoard({
   );
 
   return (
-    <div className="mb-6 overflow-hidden rounded-xl border border-violet-200/80 bg-white shadow-md ring-1 ring-violet-100/60 dark:border-violet-900/50 dark:bg-violet-950/20 dark:ring-violet-900/40">
+    <div className="mb-4 overflow-hidden rounded-lg border border-[#e6e9ef] bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 bg-gradient-to-r from-[#a78bfa] via-[#8b5cf6] to-[#6d28d9] px-3 py-3 text-left text-white shadow-inner transition hover:brightness-105"
+        className="flex w-full items-center gap-2 border-b border-[#e6e9ef] bg-white px-3 py-2.5 text-left transition hover:bg-[#f6f7fb] dark:border-neutral-800 dark:hover:bg-neutral-900/80"
       >
         {open ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-white/95 drop-shadow-sm" />
+          <ChevronDown className="h-4 w-4 shrink-0" style={{ color: accentHex }} aria-hidden />
         ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-white/95 drop-shadow-sm" />
+          <ChevronRight className="h-4 w-4 shrink-0" style={{ color: accentHex }} aria-hidden />
         )}
-        <span className="text-sm font-bold tracking-tight drop-shadow-sm">{group.name}</span>
-        <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold text-white/95 backdrop-blur-sm">
-          {group.tasks.length} na raiz
+        <span className="text-sm font-semibold tracking-tight" style={{ color: accentHex }}>
+          {group.name}
+        </span>
+        <span className="ml-auto text-xs font-medium tabular-nums text-[#676879]">
+          {rootCount} {rootCount === 1 ? "elemento" : "elementos"}
+          {totalCount > rootCount ? (
+            <span className="text-[#c5c7d0]"> · {totalCount} no total</span>
+          ) : null}
         </span>
       </button>
       {open ? (
-        <div className="overflow-x-auto bg-[#f6f7fb] dark:bg-violet-950/30">
+        <div className="overflow-x-auto bg-[#f6f7fb] dark:bg-neutral-950">
           <table className="w-full min-w-[1000px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-violet-200 bg-gradient-to-b from-violet-100 to-violet-50/90 text-left text-[11px] font-bold uppercase tracking-wide text-violet-900/90 dark:border-violet-800 dark:from-violet-900/50 dark:to-violet-950/40 dark:text-violet-100">
-                <th className="w-9 border-r border-violet-200/90 p-2 dark:border-violet-800" title="Concluído">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-[#e6e9ef] bg-[#fafbfc] text-left text-[11px] font-semibold uppercase tracking-wide text-[#676879] dark:border-neutral-800 dark:bg-neutral-900">
+                <th className="w-9 border-r border-[#ececf0] p-2 dark:border-neutral-800" title="Concluído">
                   ✓
                 </th>
-                <th className="border-r border-violet-200/90 p-2 dark:border-violet-800">Elemento</th>
-                <th className="w-[150px] border-r border-violet-200/90 p-2 dark:border-violet-800">Subelementos</th>
-                <th className="w-[130px] border-r border-violet-200/90 p-2 dark:border-violet-800">Status</th>
-                <th className="min-w-[160px] border-r border-violet-200/90 p-2 dark:border-violet-800">Pessoa</th>
-                <th className="w-[110px] border-r border-violet-200/90 p-2 dark:border-violet-800">Data</th>
-                <th className="w-[90px] border-r border-violet-200/90 p-2 dark:border-violet-800">Números</th>
-                <th className="min-w-[180px] border-r border-violet-200/90 p-2 dark:border-violet-800">Observação</th>
-                <th className="w-[120px] border-r border-violet-200/90 p-2 dark:border-violet-800">Resp. PMF</th>
+                <th className="border-r border-[#ececf0] p-2 pl-3 dark:border-neutral-800">Elemento</th>
+                <th className="w-[150px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Subelementos</th>
+                <th className="w-[130px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Status</th>
+                <th className="min-w-[160px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Pessoa</th>
+                <th className="w-[110px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Data</th>
+                <th className="w-[90px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Números</th>
+                <th className="min-w-[180px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Observação</th>
+                <th className="w-[120px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Resp. PMF</th>
                 <th className="w-[88px] p-2">Arquivos</th>
               </tr>
             </thead>
             <tbody>
               {group.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-6 text-center text-sm text-violet-600/80">
+                  <td colSpan={10} className="p-6 text-center text-sm text-[#676879]">
                     Sem tarefas neste grupo.
                   </td>
                 </tr>
@@ -626,6 +740,7 @@ function GroupBoard({
                     projectId={projectId}
                     task={t}
                     depth={0}
+                    accentHex={accentHex}
                     expanded={mergedExpanded}
                     onToggleExpand={toggleTaskExpand}
                     canEdit={canEdit}
@@ -636,6 +751,26 @@ function GroupBoard({
                 ))
               )}
             </tbody>
+            {group.tasks.length > 0 ? (
+              <tfoot>
+                <tr className="border-t border-[#e6e9ef] bg-white dark:border-neutral-800 dark:bg-neutral-950">
+                  <td
+                    colSpan={3}
+                    className="border-r border-[#ececf0] p-2 align-middle dark:border-neutral-800"
+                    style={{ borderLeft: `4px solid ${accentHex}` }}
+                  >
+                    <span className="sr-only">Resumo de status de todas as tarefas do grupo</span>
+                    <span className="text-[11px] font-medium text-[#676879]">Resumo de status</span>
+                  </td>
+                  <td className="w-[130px] border-r border-[#ececf0] p-2 align-middle dark:border-neutral-800">
+                    <StatusDistributionFooterBar counts={statusAgg} />
+                  </td>
+                  <td colSpan={6} className="p-2 align-middle">
+                    <FooterStatusLegend counts={statusAgg} />
+                  </td>
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         </div>
       ) : null}
@@ -684,15 +819,16 @@ export function ProjectTasksBoard({ projectId, groups }: Props): JSX.Element {
   const displayGroups = useMemo(() => normalizeProjectGroups(groups), [groups]);
 
   return (
-    <div className="space-y-3 rounded-xl border border-violet-100/80 bg-gradient-to-b from-violet-50/40 to-transparent p-3 dark:border-violet-900/40 dark:from-violet-950/20">
+    <div className="space-y-2 rounded-lg border border-[#e6e9ef] bg-[#f6f7fb] p-2 dark:border-neutral-800 dark:bg-neutral-950">
       {role === undefined ? (
-        <p className="text-xs text-violet-600/80">A carregar permissões…</p>
+        <p className="text-xs text-[#676879]">A carregar permissões…</p>
       ) : null}
-      {displayGroups.map((g) => (
+      {displayGroups.map((g, idx) => (
         <GroupBoard
           key={g.id}
           projectId={projectId}
           group={g}
+          groupIndex={idx}
           defaultExpanded
           canEdit={canEdit}
           savingTaskId={savingTaskId}
