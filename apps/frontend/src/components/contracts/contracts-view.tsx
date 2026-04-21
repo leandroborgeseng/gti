@@ -12,8 +12,8 @@ import { formatBrl } from "@/lib/format-brl";
 import { queryKeys } from "@/lib/query-keys";
 import { ContractForm } from "@/components/actions/contract-form";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
-import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
+import "@/styles/gti-exec-metric-dash.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
@@ -92,6 +92,56 @@ function computeContractDashboardStats(list: Contract[]): {
     expiringActiveWithin90Days,
     amendmentsSum
   };
+}
+
+function formatDashPct(count: number, total: number): string {
+  if (total <= 0) {
+    return "—";
+  }
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 0 }).format(
+    (100 * count) / total
+  );
+}
+
+type ContractDashTone = "total" | "active" | "expired" | "suspended" | "monthly" | "expiring" | "amendments";
+
+function ContractDashMetricCard({
+  tone,
+  value,
+  title,
+  hint,
+  icon,
+  pctOfTotal
+}: {
+  tone: ContractDashTone;
+  value: string | number;
+  title: string;
+  hint: string;
+  icon: JSX.Element;
+  pctOfTotal?: { count: number; total: number } | null;
+}): JSX.Element {
+  const pctEl =
+    pctOfTotal && pctOfTotal.total > 0 ? (
+      <span className="aging-card__pct" title="Percentual do total na lista">
+        {formatDashPct(pctOfTotal.count, pctOfTotal.total)}%
+      </span>
+    ) : null;
+  const kpiOnly = tone === "monthly";
+  return (
+    <div
+      className={`aging-card aging-card--ctr-${tone}${kpiOnly ? " aging-card--kpi-only" : ""}`}
+      role="listitem"
+      aria-label={`${title}: ${value}`}
+    >
+      <div className="aging-card__iconwrap">{icon}</div>
+      <div className="aging-card__value-row">
+        <span className="aging-card__value">{value}</span>
+        {pctEl}
+      </div>
+      <h3 className="aging-card__title">{title}</h3>
+      <p className="aging-card__hint">{hint}</p>
+    </div>
+  );
 }
 
 const columnHelper = createColumnHelper<Contract>();
@@ -239,155 +289,137 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
         </Button>
       </div>
 
-      <section aria-label="Resumo dos contratos" className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <h2 className="text-sm font-semibold text-foreground">Resumo</h2>
-          {dash.total > 0 ? (
-            <p className="text-xs text-muted-foreground">Métricas calculadas com base na lista atual.</p>
-          ) : null}
-        </div>
-        {dash.total > 0 ? (
-          <>
-            <div
-              className="flex h-2 overflow-hidden rounded-full bg-muted"
-              role="img"
-              aria-label="Distribuição por status na lista"
-            >
-              {statusBar.activePct > 0 ? (
-                <span
-                  className="h-full bg-emerald-500/90"
-                  style={{ width: `${statusBar.activePct}%` }}
-                  title={`${statusLabel.ACTIVE}: ${dash.active}`}
-                />
-              ) : null}
-              {statusBar.expiredPct > 0 ? (
-                <span
-                  className="h-full bg-slate-400/90"
-                  style={{ width: `${statusBar.expiredPct}%` }}
-                  title={`${statusLabel.EXPIRED}: ${dash.expired}`}
-                />
-              ) : null}
-              {statusBar.suspendedPct > 0 ? (
-                <span
-                  className="h-full bg-amber-500/90"
-                  style={{ width: `${statusBar.suspendedPct}%` }}
-                  title={`${statusLabel.SUSPENDED}: ${dash.suspended}`}
-                />
-              ) : null}
-              {statusBar.otherPct > 0 ? (
-                <span
-                  className="h-full bg-violet-500/80"
-                  style={{ width: `${statusBar.otherPct}%` }}
-                  title={`Outros status: ${dash.otherStatus}`}
-                />
-              ) : null}
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Card className="p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Total na lista</CardTitle>
-                    <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{dash.total}</p>
-                    <CardDescription className="mt-1">Contratos carregados</CardDescription>
-                  </div>
-                  <span className="rounded-md border bg-muted/40 p-2 text-muted-foreground">
-                    <Layers className="h-4 w-4" aria-hidden />
-                  </span>
+      <div className="gti-exec-metric-dash">
+        <section
+          className="aging-dash aging-dash--contracts"
+          aria-label="Resumo dos contratos"
+          aria-labelledby="contracts-dash-title"
+        >
+          <div className="aging-dash__intro">
+            <h2 id="contracts-dash-title" className="aging-dash__title">
+              Resumo dos contratos
+            </h2>
+            {dash.total > 0 ? (
+              <>
+                <div className="aging-dash__total-row">
+                  <p className="aging-dash__total">
+                    <span className="aging-dash__total-num">{dash.total}</span>
+                    <span className="aging-dash__total-label"> contratos na lista</span>
+                  </p>
                 </div>
-              </Card>
-              <Card className="p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">{statusLabel.ACTIVE}</CardTitle>
-                    <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{dash.active}</p>
-                    <CardDescription className="mt-1">Em vigência</CardDescription>
+                <p className="aging-dash__lede">Métricas calculadas com base na lista atual (mesmos dados da tabela abaixo).</p>
+                <div className="aging-dash__panel mt-3">
+                  <h3 className="aging-dash__panel-title">Distribuição por status</h3>
+                  <p className="aging-dash__panel-lede">Passe o rato sobre cada faixa para ver o rótulo e a contagem.</p>
+                  <div className="aging-dash__status-track" role="img" aria-label="Distribuição por status na lista">
+                    {statusBar.activePct > 0 ? (
+                      <span
+                        style={{ width: `${statusBar.activePct}%`, backgroundColor: "#14b8a6" }}
+                        title={`${statusLabel.ACTIVE}: ${dash.active}`}
+                      />
+                    ) : null}
+                    {statusBar.expiredPct > 0 ? (
+                      <span
+                        style={{ width: `${statusBar.expiredPct}%`, backgroundColor: "#71717a" }}
+                        title={`${statusLabel.EXPIRED}: ${dash.expired}`}
+                      />
+                    ) : null}
+                    {statusBar.suspendedPct > 0 ? (
+                      <span
+                        style={{ width: `${statusBar.suspendedPct}%`, backgroundColor: "#f97316" }}
+                        title={`${statusLabel.SUSPENDED}: ${dash.suspended}`}
+                      />
+                    ) : null}
+                    {statusBar.otherPct > 0 ? (
+                      <span
+                        style={{ width: `${statusBar.otherPct}%`, backgroundColor: "#a855f7" }}
+                        title={`Outros status: ${dash.otherStatus}`}
+                      />
+                    ) : null}
                   </div>
-                  <span className="rounded-md border bg-emerald-500/10 p-2 text-emerald-700 dark:text-emerald-400">
-                    <FileStack className="h-4 w-4" aria-hidden />
-                  </span>
                 </div>
-              </Card>
-              <Card className="p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">{statusLabel.EXPIRED}</CardTitle>
-                    <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{dash.expired}</p>
-                    <CardDescription className="mt-1">Histórico</CardDescription>
-                  </div>
-                  <span className="rounded-md border bg-slate-500/10 p-2 text-slate-600 dark:text-slate-300">
-                    <FileStack className="h-4 w-4" aria-hidden />
-                  </span>
-                </div>
-              </Card>
-              <Card className="p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">{statusLabel.SUSPENDED}</CardTitle>
-                    <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{dash.suspended}</p>
-                    <CardDescription className="mt-1">Pausados</CardDescription>
-                  </div>
-                  <span className="rounded-md border bg-amber-500/10 p-2 text-amber-800 dark:text-amber-400">
-                    <FileStack className="h-4 w-4" aria-hidden />
-                  </span>
-                </div>
-              </Card>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Card className="p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Valor mensal (ativos)</CardTitle>
-                    <p className="mt-2 truncate text-xl font-semibold tabular-nums tracking-tight text-foreground sm:text-2xl">
-                      {formatBrl(dash.monthlyActiveSum)}
-                    </p>
-                    <CardDescription className="mt-1">Soma dos contratos com status ativo</CardDescription>
-                  </div>
-                  <span className="shrink-0 rounded-md border bg-muted/40 p-2 text-muted-foreground">
-                    <Layers className="h-4 w-4" aria-hidden />
-                  </span>
-                </div>
-              </Card>
-              <Card className="p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Fim da vigência em 90 dias</CardTitle>
-                    <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                      {dash.expiringActiveWithin90Days}
-                    </p>
-                    <CardDescription className="mt-1">Contratos ativos com data de fim no período</CardDescription>
-                  </div>
-                  <span className="rounded-md border bg-sky-500/10 p-2 text-sky-800 dark:text-sky-300">
-                    <CalendarClock className="h-4 w-4" aria-hidden />
-                  </span>
-                </div>
-              </Card>
-              <Card className="p-4 shadow-sm sm:col-span-2 lg:col-span-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Aditivos registados</CardTitle>
-                    <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{dash.amendmentsSum}</p>
-                    <CardDescription className="mt-1">Soma dos contadores na lista</CardDescription>
-                  </div>
-                  <span className="rounded-md border bg-violet-500/10 p-2 text-violet-800 dark:text-violet-300">
-                    <FileStack className="h-4 w-4" aria-hidden />
-                  </span>
-                </div>
-              </Card>
-            </div>
-            {dash.otherStatus > 0 ? (
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
-                Existem {dash.otherStatus} contrato(s) com status fora do conjunto habitual (ativo, encerrado, suspenso).
+              </>
+            ) : (
+              <p className="aging-dash__lede">
+                Quando existirem contratos na lista, aparecem aqui totais por status, valor mensal agregado dos ativos e
+                alertas de vigência.
               </p>
-            ) : null}
-          </>
-        ) : (
-          <p className="rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
-            Quando existirem contratos na lista, aparecem aqui totais por status, valor mensal agregado dos ativos e alertas
-            de vigência.
-          </p>
-        )}
-      </section>
+            )}
+          </div>
+
+          {dash.total > 0 ? (
+            <>
+              <div className="aging-dash__grid aging-dash__grid--cols-4 mt-4" role="list">
+                <ContractDashMetricCard
+                  tone="total"
+                  value={dash.total}
+                  title="Total na lista"
+                  hint="Contratos carregados nesta página"
+                  icon={<Layers className="aging-card__svg" aria-hidden />}
+                />
+                <ContractDashMetricCard
+                  tone="active"
+                  value={dash.active}
+                  title={statusLabel.ACTIVE}
+                  hint="Em vigência"
+                  pctOfTotal={{ count: dash.active, total: dash.total }}
+                  icon={<FileStack className="aging-card__svg" aria-hidden />}
+                />
+                <ContractDashMetricCard
+                  tone="expired"
+                  value={dash.expired}
+                  title={statusLabel.EXPIRED}
+                  hint="Histórico"
+                  pctOfTotal={{ count: dash.expired, total: dash.total }}
+                  icon={<FileStack className="aging-card__svg" aria-hidden />}
+                />
+                <ContractDashMetricCard
+                  tone="suspended"
+                  value={dash.suspended}
+                  title={statusLabel.SUSPENDED}
+                  hint="Pausados"
+                  pctOfTotal={{ count: dash.suspended, total: dash.total }}
+                  icon={<FileStack className="aging-card__svg" aria-hidden />}
+                />
+              </div>
+              <div className="aging-dash__grid aging-dash__grid--cols-3 mt-4" role="list">
+                <ContractDashMetricCard
+                  tone="monthly"
+                  value={formatBrl(dash.monthlyActiveSum)}
+                  title="Valor mensal (ativos)"
+                  hint="Soma dos contratos com status ativo"
+                  icon={<Layers className="aging-card__svg" aria-hidden />}
+                />
+                <ContractDashMetricCard
+                  tone="expiring"
+                  value={dash.expiringActiveWithin90Days}
+                  title="Fim da vigência em 90 dias"
+                  hint="Contratos ativos com data de fim no período"
+                  icon={<CalendarClock className="aging-card__svg" aria-hidden />}
+                />
+                <ContractDashMetricCard
+                  tone="amendments"
+                  value={dash.amendmentsSum}
+                  title="Aditivos registados"
+                  hint="Soma dos contadores na lista"
+                  icon={<FileStack className="aging-card__svg" aria-hidden />}
+                />
+              </div>
+              {dash.otherStatus > 0 ? (
+                <p className="aging-dash__delayed mt-3">
+                  <AlertTriangle className="mr-1 inline-block h-3.5 w-3.5 align-text-bottom text-amber-600" aria-hidden />
+                  <span className="aging-dash__delayed-k">Atenção</span>
+                  <span className="aging-dash__delayed-v"> {dash.otherStatus}</span>
+                  <span className="text-[#334155]">
+                    {" "}
+                    contrato(s) com status fora do conjunto habitual (ativo, encerrado, suspenso).
+                  </span>
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </section>
+      </div>
 
       <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <DataTable

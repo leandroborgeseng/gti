@@ -181,6 +181,10 @@
   .gti-exec-metric-dash .aging-dash__grid--cols-4 {
     grid-template-columns: repeat(4, 1fr);
   }
+
+  .gti-exec-metric-dash .aging-dash__grid--cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 .gti-exec-metric-dash a.aging-card {
@@ -491,6 +495,117 @@
 
 .gti-exec-metric-dash .aging-dash__panel-foot a:hover {
   text-decoration: underline;
+}
+
+/* Contratos — resumo (tons próprios: violeta, teal, zinco, laranja, ciano, rosa, fúcsia) */
+.gti-exec-metric-dash .aging-dash--contracts .aging-dash__title::before {
+  background: linear-gradient(180deg, #0d9488, #7c3aed);
+}
+
+.gti-exec-metric-dash .aging-dash__status-track {
+  display: flex;
+  height: 0.55rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.gti-exec-metric-dash .aging-dash__status-track > span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-total {
+  background: linear-gradient(155deg, #f5f3ff 0%, #ede9fe 48%, #ddd6fe 100%);
+}
+
+.gti-exec-metric-dash .aging-card--ctr-total .aging-card__iconwrap {
+  background: rgba(109, 40, 217, 0.2);
+  color: #6d28d9;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-total .aging-card__value {
+  color: #5b21b6;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-active {
+  background: linear-gradient(155deg, #f0fdfa 0%, #ccfbf1 50%, #99f6e4 100%);
+}
+
+.gti-exec-metric-dash .aging-card--ctr-active .aging-card__iconwrap {
+  background: rgba(13, 148, 136, 0.22);
+  color: #0f766e;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-active .aging-card__value {
+  color: #115e59;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-expired {
+  background: linear-gradient(155deg, #fafafa 0%, #f4f4f5 50%, #e4e4e7 100%);
+}
+
+.gti-exec-metric-dash .aging-card--ctr-expired .aging-card__iconwrap {
+  background: rgba(82, 82, 91, 0.18);
+  color: #52525b;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-expired .aging-card__value {
+  color: #3f3f46;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-suspended {
+  background: linear-gradient(155deg, #fff7ed 0%, #ffedd5 50%, #fed7aa 100%);
+}
+
+.gti-exec-metric-dash .aging-card--ctr-suspended .aging-card__iconwrap {
+  background: rgba(234, 88, 12, 0.2);
+  color: #c2410c;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-suspended .aging-card__value {
+  color: #9a3412;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-monthly {
+  background: linear-gradient(155deg, #ecfeff 0%, #cffafe 50%, #a5f3fc 100%);
+}
+
+.gti-exec-metric-dash .aging-card--ctr-monthly .aging-card__iconwrap {
+  background: rgba(14, 116, 144, 0.2);
+  color: #0e7490;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-monthly .aging-card__value {
+  color: #155e75;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-expiring {
+  background: linear-gradient(155deg, #fff1f2 0%, #ffe4e6 50%, #fecdd3 100%);
+}
+
+.gti-exec-metric-dash .aging-card--ctr-expiring .aging-card__iconwrap {
+  background: rgba(225, 29, 72, 0.18);
+  color: #e11d48;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-expiring .aging-card__value {
+  color: #be123c;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-amendments {
+  background: linear-gradient(155deg, #fdf4ff 0%, #fae8ff 50%, #f5d0fe 100%);
+}
+
+.gti-exec-metric-dash .aging-card--ctr-amendments .aging-card__iconwrap {
+  background: rgba(162, 28, 175, 0.18);
+  color: #a21caf;
+}
+
+.gti-exec-metric-dash .aging-card--ctr-amendments .aging-card__value {
+  color: #86198f;
 }
 
 /**
