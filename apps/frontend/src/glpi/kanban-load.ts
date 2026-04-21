@@ -1,10 +1,12 @@
 import { prisma } from "./config/prisma";
 import { getCachedUsersByIds } from "./services/glpi-users-cache.service";
+import type { TicketWhereInput } from "./types/ticket-where";
 import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
 import {
-  getOpenTicketAgeBuckets,
+  getOpenTicketOperationalMetrics,
   sumOpenAgeBuckets,
-  type OpenAgeBuckets
+  type OpenAgeBuckets,
+  type OpenTicketOperationalMetrics
 } from "./utils/open-ticket-aging";
 
 const EMPTY_OPEN_AGE_BUCKETS: OpenAgeBuckets = {
@@ -134,6 +136,35 @@ export type KanbanCardDto = {
   cardStyle: string;
 };
 
+export type ChamadosRankRow = { label: string; count: number };
+
+export type ChamadosOldestTicketRow = {
+  glpiTicketId: number;
+  title: string | null;
+  status: string | null;
+  contractGroupName: string | null;
+  dateCreation: string | null;
+  daysOpen: number;
+  requesterLabel: string;
+};
+
+/** Agregados sobre chamados não fechados com o mesmo filtro do Kanban (`forceNonClosed`). */
+export type ChamadosOperationsSummary = {
+  openTotal: number;
+  agePctOver30: number;
+  agePctOver60: number;
+  weightedDaysCapped90: number;
+  idleGlpiModDays7Plus: number;
+  idleGlpiModDays14Plus: number;
+  byWaitingParty: ChamadosRankRow[];
+  byStatus: ChamadosRankRow[];
+  topGroups: ChamadosRankRow[];
+  topRequesters: ChamadosRankRow[];
+  /** % do total aberto que está nos 3 grupos GLPI (contrato) com mais stock; null se total 0. */
+  concentrationTop3GroupsPct: number | null;
+  oldestTickets: ChamadosOldestTicketRow[];
+};
+
 export type KanbanBoardPayload = {
   q: string;
   statusFilter: string;
@@ -150,11 +181,181 @@ export type KanbanBoardPayload = {
   ageTotal: number;
   statuses: string[];
   groups: string[];
+  operationsSummary: ChamadosOperationsSummary;
 };
 
 /**
  * Payload mínimo quando a base ou o cache não estão disponíveis (evita derrubar o Server Component).
  */
+function emptyOperationsSummary(): ChamadosOperationsSummary {
+  return {
+    openTotal: 0,
+    agePctOver30: 0,
+    agePctOver60: 0,
+    weightedDaysCapped90: 0,
+    idleGlpiModDays7Plus: 0,
+    idleGlpiModDays14Plus: 0,
+    byWaitingParty: [],
+    byStatus: [],
+    topGroups: [],
+    topRequesters: [],
+    concentrationTop3GroupsPct: null,
+    oldestTickets: []
+  };
+}
+
+function pctOfTotal(part: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round((1000 * part) / total) / 10;
+}
+
+function waitingPartyLabel(value: string | null): string {
+  switch (value) {
+    case "cliente":
+      return "Aguardando cliente";
+    case "empresa":
+      return "Aguardando empresa";
+    case "na":
+      return "Sem pendência (inferência)";
+    case "unknown":
+      return "Pendência indefinida";
+    default:
+      return "Não inferido";
+  }
+}
+
+async function buildChamadosOperationsSummary(
+  whereOpen: TicketWhereInput,
+  operational: OpenTicketOperationalMetrics
+): Promise<ChamadosOperationsSummary> {
+  const b = operational.buckets;
+  const openTotal = sumOpenAgeBuckets(b);
+  const over30 = b.days30 + b.days60 + b.over60;
+  const agePctOver30 = pctOfTotal(over30, openTotal);
+  const agePctOver60 = pctOfTotal(b.over60, openTotal);
+
+  const whereNoEmail: TicketWhereInput = {
+    AND: [
+      whereOpen,
+      {
+        OR: [{ requesterEmail: null }, { requesterEmail: { equals: "" } }]
+      },
+      { requesterName: { not: null } },
+      { NOT: { requesterName: { equals: "" } } }
+    ]
+  };
+
+  const [byPartyRows, byStatusRows, byGroupRows, byEmailRows, byNameRows, oldestRaw] = await Promise.all([
+    prisma.ticket.groupBy({
+      by: ["waitingParty"],
+      where: whereOpen,
+      _count: { _all: true }
+    }),
+    prisma.ticket.groupBy({
+      by: ["status"],
+      where: whereOpen,
+      _count: { _all: true }
+    }),
+    prisma.ticket.groupBy({
+      by: ["contractGroupName"],
+      where: whereOpen,
+      _count: { _all: true }
+    }),
+    prisma.ticket.groupBy({
+      by: ["requesterEmail"],
+      where: whereOpen,
+      _count: { _all: true }
+    }),
+    prisma.ticket.groupBy({
+      by: ["requesterName"],
+      where: whereNoEmail,
+      _count: { _all: true }
+    }),
+    prisma.ticket.findMany({
+      where: whereOpen,
+      orderBy: [{ dateCreation: "asc" }, { glpiTicketId: "asc" }],
+      take: 12,
+      select: {
+        glpiTicketId: true,
+        title: true,
+        status: true,
+        contractGroupName: true,
+        dateCreation: true,
+        requesterName: true,
+        requesterEmail: true
+      }
+    })
+  ]);
+
+  const byWaitingParty: ChamadosRankRow[] = byPartyRows
+    .map((r) => ({ label: waitingPartyLabel(r.waitingParty), count: r._count._all }))
+    .sort((a, b) => b.count - a.count);
+
+  const byStatus: ChamadosRankRow[] = byStatusRows
+    .map((r) => ({ label: r.status?.trim() ? r.status! : "Sem status", count: r._count._all }))
+    .sort((a, b) => b.count - a.count);
+
+  const topGroups: ChamadosRankRow[] = byGroupRows
+    .map((r) => ({
+      label: r.contractGroupName?.trim() ? r.contractGroupName! : "Sem grupo (contrato)",
+      count: r._count._all
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 12);
+
+  const reqMap = new Map<string, number>();
+  for (const r of byEmailRows) {
+    const e = r.requesterEmail?.trim();
+    if (!e) continue;
+    reqMap.set(e, (reqMap.get(e) ?? 0) + r._count._all);
+  }
+  for (const r of byNameRows) {
+    const n = r.requesterName?.trim();
+    if (!n) continue;
+    const label = `Solicitante: ${n}`;
+    reqMap.set(label, (reqMap.get(label) ?? 0) + r._count._all);
+  }
+  const topRequesters: ChamadosRankRow[] = Array.from(reqMap.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 12);
+
+  const sortedGroupCounts = [...topGroups].sort((a, b) => b.count - a.count);
+  const top3Sum = sortedGroupCounts.slice(0, 3).reduce((s, x) => s + x.count, 0);
+  const concentrationTop3GroupsPct = openTotal > 0 ? pctOfTotal(top3Sum, openTotal) : null;
+
+  const now = new Date();
+  const oldestTickets: ChamadosOldestTicketRow[] = oldestRaw.map((t) => {
+    const daysOpen = Math.floor(openDaysApprox(t.dateCreation, now));
+    const req =
+      [t.requesterName?.trim(), t.requesterEmail?.trim()].filter(Boolean).join(" · ") || "—";
+    return {
+      glpiTicketId: t.glpiTicketId,
+      title: t.title,
+      status: t.status,
+      contractGroupName: t.contractGroupName,
+      dateCreation: t.dateCreation,
+      daysOpen: Number.isFinite(daysOpen) ? daysOpen : 0,
+      requesterLabel: req
+    };
+  });
+
+  return {
+    openTotal,
+    agePctOver30,
+    agePctOver60,
+    weightedDaysCapped90: operational.weightedDaysCapped90,
+    idleGlpiModDays7Plus: operational.idleGlpiModDays7Plus,
+    idleGlpiModDays14Plus: operational.idleGlpiModDays14Plus,
+    byWaitingParty,
+    byStatus,
+    topGroups,
+    topRequesters,
+    concentrationTop3GroupsPct,
+    oldestTickets
+  };
+}
+
 export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): KanbanBoardPayload {
   const q = (searchParams.get("q") || "").trim();
   const statusFilter = (searchParams.get("status") || "").trim();
@@ -176,7 +377,8 @@ export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): 
     ageBuckets: EMPTY_OPEN_AGE_BUCKETS,
     ageTotal: 0,
     statuses: [],
-    groups: []
+    groups: [],
+    operationsSummary: emptyOperationsSummary()
   };
 }
 
@@ -203,8 +405,8 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     getTicketSyncScope()
   ]);
 
-  const [ageBucketsResult, latestTicketRowsRaw, statusRows, groupRows] = await Promise.all([
-    getOpenTicketAgeBuckets(whereAge),
+  const [operationalMetrics, latestTicketRowsRaw, statusRows, groupRows] = await Promise.all([
+    getOpenTicketOperationalMetrics(whereAge),
     prisma.ticket.findMany({
       where,
       orderBy: [{ dateCreation: "asc" }, { glpiTicketId: "asc" }],
@@ -236,6 +438,8 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
       orderBy: { contractGroupName: "asc" }
     })
   ]);
+  const operationsSummary = await buildChamadosOperationsSummary(whereAge, operationalMetrics);
+  const ageBucketsResult = operationalMetrics.buckets;
   const latestTicketRows = latestTicketRowsRaw as KanbanTicketListRow[];
 
   const statuses = (statusRows as DistinctStatusRow[])
@@ -346,6 +550,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     ageBuckets: ageBucketsResult,
     ageTotal: sumOpenAgeBuckets(ageBucketsResult),
     statuses,
-    groups
+    groups,
+    operationsSummary
   };
 }

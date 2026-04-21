@@ -19,19 +19,29 @@ export type OpenAgeBuckets = {
 
 const DAY_MS = 86400000;
 
+export type OpenTicketOperationalMetrics = {
+  buckets: OpenAgeBuckets;
+  /** Somatório de min(dias_abertos, 90) por ticket com data de abertura válida. */
+  weightedDaysCapped90: number;
+  /** Última alteração no GLPI há ≥ 7 dias (usa `dateModification`; se inválida, usa abertura). */
+  idleGlpiModDays7Plus: number;
+  /** Idem, ≥ 14 dias. */
+  idleGlpiModDays14Plus: number;
+};
+
 /**
+ * Uma leitura à base: faixas de idade, peso–idade (soma cap 90) e inatividade pela última alteração GLPI.
  * @param filterWhere Critérios adicionais (ex.: mesmo `buildKanbanWhere` com `forceNonClosed: true`).
- *                    Se omitido, conta todos os abertos no cache.
  */
-export async function getOpenTicketAgeBuckets(filterWhere?: TicketWhereInput): Promise<OpenAgeBuckets> {
+export async function getOpenTicketOperationalMetrics(filterWhere?: TicketWhereInput): Promise<OpenTicketOperationalMetrics> {
   const where = filterWhere ?? ticketWhereNotClosed();
   const rows = await prisma.ticket.findMany({
     where,
-    select: { dateCreation: true }
+    select: { dateCreation: true, dateModification: true }
   });
 
   const now = Date.now();
-  const out: OpenAgeBuckets = {
+  const buckets: OpenAgeBuckets = {
     week: 0,
     days15: 0,
     days30: 0,
@@ -39,36 +49,61 @@ export async function getOpenTicketAgeBuckets(filterWhere?: TicketWhereInput): P
     over60: 0,
     noDate: 0
   };
+  let weightedDaysCapped90 = 0;
+  let idleGlpiModDays7Plus = 0;
+  let idleGlpiModDays14Plus = 0;
 
   for (const row of rows) {
     if (!row.dateCreation || !row.dateCreation.trim()) {
-      out.noDate += 1;
+      buckets.noDate += 1;
       continue;
     }
-    const t = Date.parse(row.dateCreation);
-    if (!Number.isFinite(t)) {
-      out.noDate += 1;
+    const tOpen = Date.parse(row.dateCreation);
+    if (!Number.isFinite(tOpen)) {
+      buckets.noDate += 1;
       continue;
     }
-    const days = Math.floor((now - t) / DAY_MS);
-    if (days < 0) {
-      out.noDate += 1;
+    const daysOpen = Math.floor((now - tOpen) / DAY_MS);
+    if (daysOpen < 0) {
+      buckets.noDate += 1;
       continue;
     }
-    if (days <= 7) {
-      out.week += 1;
-    } else if (days <= 15) {
-      out.days15 += 1;
-    } else if (days <= 30) {
-      out.days30 += 1;
-    } else if (days <= 60) {
-      out.days60 += 1;
+
+    weightedDaysCapped90 += Math.min(daysOpen, 90);
+    if (daysOpen <= 7) {
+      buckets.week += 1;
+    } else if (daysOpen <= 15) {
+      buckets.days15 += 1;
+    } else if (daysOpen <= 30) {
+      buckets.days30 += 1;
+    } else if (daysOpen <= 60) {
+      buckets.days60 += 1;
     } else {
-      out.over60 += 1;
+      buckets.over60 += 1;
+    }
+
+    const tModRaw = row.dateModification?.trim();
+    const tMod = tModRaw ? Date.parse(tModRaw) : NaN;
+    const idleStart = Number.isFinite(tMod) ? tMod : tOpen;
+    const idleDays = Math.floor((now - idleStart) / DAY_MS);
+    if (Number.isFinite(idleDays) && idleDays >= 7) {
+      idleGlpiModDays7Plus += 1;
+    }
+    if (Number.isFinite(idleDays) && idleDays >= 14) {
+      idleGlpiModDays14Plus += 1;
     }
   }
 
-  return out;
+  return { buckets, weightedDaysCapped90, idleGlpiModDays7Plus, idleGlpiModDays14Plus };
+}
+
+/**
+ * @param filterWhere Critérios adicionais (ex.: mesmo `buildKanbanWhere` com `forceNonClosed: true`).
+ *                    Se omitido, conta todos os abertos no cache.
+ */
+export async function getOpenTicketAgeBuckets(filterWhere?: TicketWhereInput): Promise<OpenAgeBuckets> {
+  const m = await getOpenTicketOperationalMetrics(filterWhere);
+  return m.buckets;
 }
 
 export function sumOpenAgeBuckets(b: OpenAgeBuckets): number {

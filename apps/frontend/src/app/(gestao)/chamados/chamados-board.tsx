@@ -12,6 +12,7 @@ import { sanitizeAndProxyTicketHtml } from "@/lib/glpi-ticket-html";
 import { TicketHtmlPreview } from "@/components/chamados/ticket-html-preview";
 import { TicketRichEditor } from "@/components/chamados/ticket-rich-editor";
 import { AgingOpenDashboard } from "./aging-open-dashboard";
+import { ChamadosOperationsPanel } from "./chamados-operations-panel";
 
 type TicketSidebarDto = {
   typeLabel: string | null;
@@ -415,12 +416,15 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
 
       <AgingOpenDashboard buckets={initial.ageBuckets} />
 
+      <ChamadosOperationsPanel summary={initial.operationsSummary} />
+
       <div className="kanban-filters-stack">
         <div className="filters-shell">
           <header className="filters-shell__head">
             <h2 className="filters-shell__title">Filtros do Kanban</h2>
             <p className="filters-shell__lede">
-              Aplicam ao quadro, ao painel de idade dos abertos e ao recálculo de pendência (até 200 cards por coluna)
+              Aplicam ao quadro, ao painel de idade, aos indicadores de operação (stock aberto) e ao recálculo de pendência
+              (até 200 cards por coluna)
             </p>
           </header>
           <div className="filters-shell__pills" aria-label="Filtros aplicados">
