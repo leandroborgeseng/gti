@@ -14,6 +14,37 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+/** Fundos suaves por cartão (claro / escuro). */
+const STAT_TONE: Record<
+  "projects" | "tasks" | "overdue" | "noDue",
+  { card: string; label: string; value: string; desc: string }
+> = {
+  projects: {
+    card: "border-sky-200/90 bg-gradient-to-br from-sky-50 via-white to-sky-100/70 shadow-sky-100/50 dark:border-sky-800/80 dark:from-sky-950/60 dark:via-neutral-950 dark:to-sky-950/40 dark:shadow-none",
+    label: "text-sky-800/90 dark:text-sky-200/90",
+    value: "text-sky-950 dark:text-sky-50",
+    desc: "text-sky-900/75 dark:text-sky-200/70"
+  },
+  tasks: {
+    card: "border-emerald-200/90 bg-gradient-to-br from-emerald-50 via-white to-teal-100/60 shadow-emerald-100/50 dark:border-emerald-800/80 dark:from-emerald-950/55 dark:via-neutral-950 dark:to-teal-950/35 dark:shadow-none",
+    label: "text-emerald-900/85 dark:text-emerald-200/85",
+    value: "text-emerald-950 dark:text-emerald-50",
+    desc: "text-emerald-900/75 dark:text-emerald-200/70"
+  },
+  overdue: {
+    card: "border-rose-200/90 bg-gradient-to-br from-rose-50 via-white to-amber-50/70 shadow-rose-100/40 dark:border-rose-900/70 dark:from-rose-950/50 dark:via-neutral-950 dark:to-amber-950/25 dark:shadow-none",
+    label: "text-rose-900/85 dark:text-rose-200/85",
+    value: "text-rose-950 dark:text-rose-50",
+    desc: "text-rose-900/75 dark:text-rose-200/70"
+  },
+  noDue: {
+    card: "border-violet-200/90 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50/65 shadow-violet-100/40 dark:border-violet-900/70 dark:from-violet-950/50 dark:via-neutral-950 dark:to-fuchsia-950/25 dark:shadow-none",
+    label: "text-violet-900/85 dark:text-violet-200/85",
+    value: "text-violet-950 dark:text-violet-50",
+    desc: "text-violet-900/75 dark:text-violet-200/70"
+  }
+};
+
 function tasksListHref(params: Record<string, string>): string {
   const sp = new URLSearchParams(params);
   const s = sp.toString();
@@ -79,46 +110,55 @@ function StatCard({
   title,
   value,
   description,
-  href
+  href,
+  tone
 }: {
   title: string;
   value: string | number;
   description?: string;
   href?: string;
+  tone: keyof typeof STAT_TONE;
 }): JSX.Element {
+  const t = STAT_TONE[tone];
   const body = (
     <Card
       className={cn(
-        "shadow-sm transition-shadow",
-        href && "cursor-pointer hover:border-primary/40 hover:shadow-md"
+        "flex h-full min-h-[148px] flex-col border-2 shadow-sm transition-shadow",
+        t.card,
+        href && "cursor-pointer hover:brightness-[1.02] hover:shadow-md dark:hover:brightness-110"
       )}
     >
-      <CardHeader className="space-y-1 p-4 pb-2">
-        <CardDescription className="text-xs font-medium uppercase tracking-wide">{title}</CardDescription>
-        <CardTitle className="text-2xl font-semibold tabular-nums">{value}</CardTitle>
+      <CardHeader className="flex flex-1 flex-col space-y-1 p-4 pb-2">
+        <CardDescription className={cn("text-xs font-medium uppercase tracking-wide", t.label)}>{title}</CardDescription>
+        <CardTitle className={cn("text-2xl font-semibold tabular-nums", t.value)}>{value}</CardTitle>
       </CardHeader>
-      {description ? (
-        <CardContent className="p-4 pt-0">
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </CardContent>
-      ) : null}
+      <CardContent className="mt-auto flex min-h-[3.25rem] flex-col justify-end p-4 pt-0">
+        {description ? (
+          <p className={cn("text-pretty text-xs leading-snug", t.desc)}>{description}</p>
+        ) : (
+          <span className="min-h-[3.25rem]" aria-hidden />
+        )}
+      </CardContent>
     </Card>
   );
   if (href) {
     return (
-      <Link href={href} className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Link
+        href={href}
+        className="flex h-full min-h-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         {body}
       </Link>
     );
   }
-  return body;
+  return <div className="flex h-full min-h-0">{body}</div>;
 }
 
 function DashboardSkeleton(): JSX.Element {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="h-24 animate-pulse rounded-xl border bg-muted/40" />
+        <div key={i} className="min-h-[148px] animate-pulse rounded-xl border bg-muted/40" />
       ))}
     </div>
   );
@@ -157,15 +197,22 @@ export function ProjectsOverviewDashboard(): JSX.Element {
         {" · "}
         Clique nos cartões ou na barra de cores para filtrar por atraso, sem data ou tipo de status.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Projetos" value={d.projectCount} description={`${d.groupCount} grupos (folhas Monday)`} />
+      <div className="grid auto-rows-fr items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
+          tone="projects"
+          title="Projetos"
+          value={d.projectCount}
+          description={`${d.groupCount} grupos (folhas Monday)`}
+        />
+        <StatCard
+          tone="tasks"
           title="Tarefas (total)"
           value={d.taskCount}
           description={`${d.rootTaskCount} raiz · ${d.subTaskCount} subtarefas`}
           href="/projetos/tarefas"
         />
         <StatCard
+          tone="overdue"
           title="Atrasadas (não concluídas)"
           value={d.overdueNotDoneCount}
           href={tasksListHref({ filter: "overdue" })}
@@ -176,6 +223,7 @@ export function ProjectsOverviewDashboard(): JSX.Element {
           }
         />
         <StatCard
+          tone="noDue"
           title="Sem data limite"
           value={d.tasksWithoutDueDateNotDone}
           href={tasksListHref({ filter: "no_due" })}
