@@ -434,6 +434,24 @@
   color: rgba(51, 65, 85, 0.92);
 }
 
+/**
+ * `aging-card--kpi-only` usa padding simétrico para cartões sem ícone (painel executivo).
+ * Com ícone (ex.: «Valor mensal» nos contratos), repõe-se o recuo à esquerda do layout base.
+ */
+.gti-exec-metric-dash .aging-card.aging-card--kpi-only:has(.aging-card__iconwrap) {
+  padding-left: 3.25rem;
+}
+
+.gti-exec-metric-dash .aging-card.aging-card--kpi-only:has(.aging-card__iconwrap) .aging-card__value-row {
+  align-items: flex-start;
+}
+
+.gti-exec-metric-dash .aging-card.aging-card--kpi-only:has(.aging-card__iconwrap) .aging-card__value {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 /* Painel executivo — «Indicadores consolidados»: 3 linhas × 4 cartões; valores e cartões maiores */
 .gti-exec-metric-dash .dashboard-exec-consolidated-kpis {
   display: flex;
