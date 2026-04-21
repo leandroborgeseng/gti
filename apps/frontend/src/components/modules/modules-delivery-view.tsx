@@ -108,9 +108,10 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
 
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Módulos e entrega</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Funcionalidades</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Por contrato: módulos e respetivos <strong className="font-medium text-foreground">itens</strong> (funcionalidades). Cada item
+          Por contrato: <strong className="font-medium text-foreground">módulos</strong> e respetivas{" "}
+          <strong className="font-medium text-foreground">funcionalidades</strong> (itens de entrega). Cada funcionalidade
           regista se a entrega está <strong className="font-medium text-foreground">não feita</strong>,{" "}
           <strong className="font-medium text-foreground">parcial</strong> ou <strong className="font-medium text-foreground">concluída</strong>,
           para acompanhar se o contrato está a ser prestado.

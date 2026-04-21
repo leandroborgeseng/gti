@@ -6,7 +6,7 @@ import {
   FileText,
   Flag,
   LayoutDashboard,
-  LayoutGrid,
+  ListChecks,
   Package,
   Shield,
   Target,
@@ -45,7 +45,7 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
     label: "Contratos e medição",
     items: [
       { href: "/contracts", label: "Contratos", icon: FileText },
-      { href: "/modulos", label: "Módulos", icon: LayoutGrid },
+      { href: "/modulos", label: "Funcionalidades", icon: ListChecks },
       { href: "/measurements", label: "Medições", icon: ClipboardList },
       { href: "/glosas", label: "Glosas", icon: Wallet }
     ]
