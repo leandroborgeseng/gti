@@ -211,7 +211,7 @@ export function AgingOpenDashboard({ buckets }: { buckets: OpenAgeBuckets }): JS
           </div>
         </div>
       </div>
-      <div className="aging-dash__grid" role="list">
+      <div className="aging-dash__grid aging-dash__grid--cols-5" role="list">
         <AgingCard
           tone="week"
           value={buckets.week}

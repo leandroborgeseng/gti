@@ -29,7 +29,7 @@ export default async function ChamadosPage({ searchParams }: { searchParams: Sea
   }
   const boardKey = sp.toString();
   return (
-    <div className="chamados-glpi-page">
+    <div className="chamados-glpi-page gti-exec-metric-dash">
       <header className="page-header">
         <p className="page-kicker">Operação · GLPI</p>
         <h1 className="page-title">Quadro de chamados</h1>

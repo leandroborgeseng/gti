@@ -11,42 +11,9 @@ import {
   STATUS_KIND_ORDER,
   type ProjectTaskStatusKind
 } from "@/lib/projects-task-status";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 
-/**
- * Paleta alinhada ao Monday.com (workspace / quadro do projeto).
- * Texto: #323338 / #676879; bordas: #e6e9ef; destaques: azul #579bfc, verde #00c875, vermelho #e44258, cinza #797e93.
- */
-const MONDAY_STAT: Record<
-  "projects" | "tasks" | "overdue" | "noDue",
-  { card: string; label: string; value: string; desc: string }
-> = {
-  projects: {
-    card: "border-0 border-l-[4px] border-l-[#579bfc] bg-white shadow-none dark:border-l-[#579bfc] dark:bg-neutral-950",
-    label: "text-[#676879] dark:text-[#a0a3b3]",
-    value: "text-[#323338] dark:text-[#f6f7fb]",
-    desc: "text-[#676879] dark:text-[#a0a3b3]"
-  },
-  tasks: {
-    card: "border-0 border-l-[4px] border-l-[#00c875] bg-white shadow-none dark:border-l-[#00c875] dark:bg-neutral-950",
-    label: "text-[#676879] dark:text-[#a0a3b3]",
-    value: "text-[#323338] dark:text-[#f6f7fb]",
-    desc: "text-[#676879] dark:text-[#a0a3b3]"
-  },
-  overdue: {
-    card: "border-0 border-l-[4px] border-l-[#e44258] bg-white shadow-none dark:border-l-[#e44258] dark:bg-neutral-950",
-    label: "text-[#676879] dark:text-[#a0a3b3]",
-    value: "text-[#323338] dark:text-[#f6f7fb]",
-    desc: "text-[#676879] dark:text-[#a0a3b3]"
-  },
-  noDue: {
-    card: "border-0 border-l-[4px] border-l-[#797e93] bg-white shadow-none dark:border-l-[#797e93] dark:bg-neutral-950",
-    label: "text-[#676879] dark:text-[#a0a3b3]",
-    value: "text-[#323338] dark:text-[#f6f7fb]",
-    desc: "text-[#676879] dark:text-[#a0a3b3]"
-  }
-};
+const MIN_SWEEP_FOR_LABEL = 0.42;
+const LABEL_RADIUS = 0.56;
 
 function tasksListHref(params: Record<string, string>): string {
   const sp = new URLSearchParams(params);
@@ -54,49 +21,202 @@ function tasksListHref(params: Record<string, string>): string {
   return s ? `/projetos/tarefas?${s}` : "/projetos/tarefas";
 }
 
-function MiniStatusBar({ breakdown }: { breakdown: ProjectsDashboardStats["statusBreakdown"] }): JSX.Element {
-  const total = STATUS_KIND_ORDER.reduce((s, k) => s + breakdown[k], 0);
-  if (total === 0) {
-    return <p className="text-xs text-[#676879] dark:text-[#a0a3b3]">Sem tarefas nos projetos.</p>;
+function formatPct(count: number, total: number): string {
+  if (total <= 0) {
+    return "—";
+  }
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 0 }).format(
+    (100 * count) / total
+  );
+}
+
+function sliceTitle(label: string, count: number, total: number): string {
+  const pct = formatPct(count, total);
+  return `${label}: ${count} (${pct}%)`;
+}
+
+function ProjectDashIcon({ children }: { children: React.ReactNode }): JSX.Element {
+  return (
+    <svg
+      className="aging-card__svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {children}
+    </svg>
+  );
+}
+
+function ProjectStatusPieSvg({ breakdown }: { breakdown: ProjectsDashboardStats["statusBreakdown"] }): JSX.Element {
+  const slices: { n: number; c: string; label: string }[] = STATUS_KIND_ORDER.map((kind) => ({
+    n: breakdown[kind],
+    c: STATUS_KIND_COLORS[kind].bg,
+    label: STATUS_KIND_LABEL[kind]
+  }));
+  const total = slices.reduce((s, x) => s + x.n, 0);
+  if (total <= 0) {
+    return (
+      <svg className="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Sem tarefas nos projetos">
+        <title>Sem tarefas nos projetos</title>
+        <circle cx="0" cy="0" r="1" fill="#e2e8f0" />
+      </svg>
+    );
+  }
+  const fullIdx = slices.findIndex((x) => x.n === total);
+  if (fullIdx >= 0) {
+    const s = slices[fullIdx]!;
+    const pctStr = `${formatPct(s.n, total)}%`;
+    return (
+      <svg className="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Todas as tarefas num unico tipo de status">
+        <circle cx="0" cy="0" r="1" fill={s.c}>
+          <title>{sliceTitle(s.label, s.n, total)}</title>
+        </circle>
+        <text x="0" y="0" className="aging-dash__pie-label" fontSize="0.38" textAnchor="middle" dominantBaseline="middle">
+          {pctStr}
+        </text>
+      </svg>
+    );
+  }
+  const r = 0.98;
+  type Seg = { n: number; c: string; label: string; sweep: number; mid: number; tip: string; pctStr: string };
+  const segs: Seg[] = [];
+  let angle = -Math.PI / 2;
+  for (const { n, c, label } of slices) {
+    if (n <= 0) continue;
+    const sweep = (n / total) * 2 * Math.PI;
+    segs.push({
+      n,
+      c,
+      label,
+      sweep,
+      mid: angle + sweep / 2,
+      tip: sliceTitle(label, n, total),
+      pctStr: `${formatPct(n, total)}%`
+    });
+    angle += sweep;
+  }
+  const paths: JSX.Element[] = [];
+  const labels: JSX.Element[] = [];
+  angle = -Math.PI / 2;
+  for (const seg of segs) {
+    const { sweep, c, tip } = seg;
+    const next = angle + sweep;
+    const x1 = r * Math.cos(angle);
+    const y1 = r * Math.sin(angle);
+    const x2 = r * Math.cos(next);
+    const y2 = r * Math.sin(next);
+    const largeArc = sweep > Math.PI ? 1 : 0;
+    paths.push(
+      <path
+        key={`${c}-${angle}`}
+        d={`M 0 0 L ${x1.toFixed(4)} ${y1.toFixed(4)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(4)} ${y2.toFixed(4)} Z`}
+        fill={c}
+      >
+        <title>{tip}</title>
+      </path>
+    );
+    if (sweep >= MIN_SWEEP_FOR_LABEL) {
+      const tx = LABEL_RADIUS * Math.cos(seg.mid);
+      const ty = LABEL_RADIUS * Math.sin(seg.mid);
+      labels.push(
+        <text
+          key={`l-${seg.mid}`}
+          x={tx.toFixed(3)}
+          y={ty.toFixed(3)}
+          className="aging-dash__pie-label"
+          fontSize="0.22"
+          textAnchor="middle"
+          dominantBaseline="middle"
+        >
+          {seg.pctStr}
+        </text>
+      );
+    }
+    angle = next;
   }
   return (
-    <div
-      className="flex h-3 w-full overflow-hidden rounded-sm bg-[#e6e9ef] dark:bg-neutral-800"
-      role="img"
-      aria-label={`Distribuição de ${total} tarefas por tipo de status`}
-    >
-      {STATUS_KIND_ORDER.map((kind) => {
-        const n = breakdown[kind];
-        if (n <= 0) return null;
-        const pct = (n / total) * 100;
-        return (
-          <Link
-            key={kind}
-            href={tasksListHref({ statusKind: kind })}
-            className="h-full min-w-[2px] transition-[flex-grow] duration-300 ease-out hover:brightness-110"
-            style={{ flex: `${n} 1 0%`, backgroundColor: STATUS_KIND_COLORS[kind].bg }}
-            title={`${STATUS_KIND_LABEL[kind]}: ${n} (${pct.toFixed(0)}%) — ver na lista`}
-          />
-        );
-      })}
+    <svg className="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Distribuicao de tarefas por tipo de status">
+      {paths}
+      {labels}
+    </svg>
+  );
+}
+
+type PrjTone = "prj-projects" | "prj-tasks" | "prj-overdue" | "prj-nodue";
+
+function ProjectMetricCard({
+  tone,
+  value,
+  title,
+  hint,
+  icon,
+  totalForPct,
+  href
+}: {
+  tone: PrjTone;
+  value: number;
+  title: string;
+  hint: string;
+  icon: JSX.Element;
+  totalForPct: number | null;
+  href?: string;
+}): JSX.Element {
+  const pct =
+    totalForPct !== null && totalForPct > 0 ? (
+      <span className="aging-card__pct" title="Percentual do total de tarefas">
+        {formatPct(value, totalForPct)}%
+      </span>
+    ) : null;
+  const pctLabel = totalForPct !== null && totalForPct > 0 ? formatPct(value, totalForPct) : "—";
+  const ariaLabel =
+    totalForPct !== null && totalForPct > 0 ? `${title}: ${value}, ${pctLabel} por cento das tarefas` : `${title}: ${value}`;
+  const inner = (
+    <>
+      <div className="aging-card__iconwrap">{icon}</div>
+      <div className="aging-card__value-row">
+        <span className="aging-card__value">{value}</span>
+        {pct}
+      </div>
+      <h3 className="aging-card__title">{title}</h3>
+      <p className="aging-card__hint">{hint}</p>
+    </>
+  );
+  const cls = `aging-card aging-card--${tone}`;
+  if (href) {
+    return (
+      <Link href={href} className={cls} role="listitem" aria-label={ariaLabel}>
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <div className={cls} role="listitem" aria-label={ariaLabel}>
+      {inner}
     </div>
   );
 }
 
-function Legend({ breakdown }: { breakdown: ProjectsDashboardStats["statusBreakdown"] }): JSX.Element {
+function StatusLegendLinks({ breakdown }: { breakdown: ProjectsDashboardStats["statusBreakdown"] }): JSX.Element {
   const parts: { kind: ProjectTaskStatusKind; n: number }[] = [];
   for (const kind of STATUS_KIND_ORDER) {
     const n = breakdown[kind];
     if (n > 0) parts.push({ kind, n });
   }
-  if (parts.length === 0) return <span className="text-xs text-[#676879] dark:text-[#a0a3b3]">—</span>;
+  if (parts.length === 0) {
+    return <span className="text-[0.8rem] text-[var(--ink-muted)]">Sem tarefas para mostrar na legenda.</span>;
+  }
   return (
-    <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#676879] dark:text-[#a0a3b3]">
+    <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[0.8rem] text-[var(--ink-muted)]">
       {parts.map(({ kind, n }) => (
         <li key={kind}>
           <Link
             href={tasksListHref({ statusKind: kind })}
-            className="inline-flex items-center gap-1.5 rounded-sm hover:text-[#323338] dark:hover:text-[#f6f7fb]"
+            className="inline-flex items-center gap-1.5 font-medium text-[var(--brand)] no-underline hover:underline"
           >
             <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: STATUS_KIND_COLORS[kind].bg }} />
             <span>
@@ -109,62 +229,10 @@ function Legend({ breakdown }: { breakdown: ProjectsDashboardStats["statusBreakd
   );
 }
 
-function StatCard({
-  title,
-  value,
-  description,
-  href,
-  tone
-}: {
-  title: string;
-  value: string | number;
-  description?: string;
-  href?: string;
-  tone: keyof typeof MONDAY_STAT;
-}): JSX.Element {
-  const t = MONDAY_STAT[tone];
-  const body = (
-    <Card
-      className={cn(
-        "flex h-full min-h-[148px] flex-col rounded-none border-0 shadow-none transition-colors",
-        t.card,
-        href && "cursor-pointer hover:bg-[#f6f7fb] dark:hover:bg-neutral-900/90"
-      )}
-    >
-      <CardHeader className="flex flex-1 flex-col space-y-1 p-4 pb-2">
-        <CardDescription className={cn("text-xs font-medium uppercase tracking-wide", t.label)}>{title}</CardDescription>
-        <CardTitle className={cn("text-2xl font-semibold tabular-nums", t.value)}>{value}</CardTitle>
-      </CardHeader>
-      <CardContent className="mt-auto flex min-h-[3.25rem] flex-col justify-end p-4 pt-0">
-        {description ? (
-          <p className={cn("text-pretty text-xs leading-snug", t.desc)}>{description}</p>
-        ) : (
-          <span className="min-h-[3.25rem]" aria-hidden />
-        )}
-      </CardContent>
-    </Card>
-  );
-  if (href) {
-    return (
-      <Link
-        href={href}
-        className="flex h-full min-h-0 min-w-0 rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#579bfc] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-950"
-      >
-        {body}
-      </Link>
-    );
-  }
-  return <div className="flex h-full min-h-0 min-w-0">{body}</div>;
-}
-
 function DashboardSkeleton(): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-lg border border-[#e6e9ef] dark:border-neutral-800">
-      <div className="grid auto-rows-fr grid-cols-2 divide-x divide-y divide-[#e6e9ef] bg-[#e6e9ef] dark:divide-neutral-800 dark:bg-neutral-800 lg:grid-cols-[1.15fr_1.15fr_0.85fr_0.85fr] lg:divide-y-0">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="min-h-[148px] animate-pulse bg-white dark:bg-neutral-950" />
-        ))}
-      </div>
+    <div className="gti-exec-metric-dash" aria-busy="true" aria-label="A carregar resumo dos projetos">
+      <div className="aging-dash-skel" />
     </div>
   );
 }
@@ -177,7 +245,7 @@ export function ProjectsOverviewDashboard(): JSX.Element {
 
   if (isPending && !data) {
     return (
-      <section aria-busy="true" aria-label="A carregar resumo dos projetos">
+      <section aria-label="Resumo geral dos projetos">
         <DashboardSkeleton />
       </section>
     );
@@ -192,64 +260,116 @@ export function ProjectsOverviewDashboard(): JSX.Element {
   }
 
   const d = data;
+  const taskTotal = d.taskCount;
+  const overdueLine =
+    taskTotal > 0 && d.projectsWithOverdueCount > 0 ? (
+      <span
+        className="aging-dash__delayed"
+        title="Projetos com pelo menos uma tarefa em atraso (data limite antes de hoje, UTC, excluindo concluídas)"
+      >
+        <span className="aging-dash__delayed-k">Projetos com atraso</span>{" "}
+        <span className="aging-dash__delayed-v">{d.projectsWithOverdueCount}</span>
+        {d.projectCount > 0 ? (
+          <span className="aging-dash__delayed-p">
+            {" "}
+            ({formatPct(d.projectsWithOverdueCount, d.projectCount)}% dos {d.projectCount} projetos)
+          </span>
+        ) : null}
+      </span>
+    ) : null;
 
   return (
-    <section className="space-y-4" aria-label="Resumo geral dos projetos">
-      <p className="text-sm text-muted-foreground">
-        <Link href="/projetos/tarefas" className="font-medium text-primary underline-offset-4 hover:underline">
-          Abrir vista de todas as tarefas com filtros
-        </Link>
-        {" · "}
-        Clique nos cartões ou na barra de cores para filtrar por atraso, sem data ou tipo de status.
-      </p>
-      <div className="overflow-hidden rounded-lg border border-[#e6e9ef] shadow-sm dark:border-neutral-800">
-        <div className="grid auto-rows-fr grid-cols-2 divide-x divide-y divide-[#e6e9ef] bg-[#e6e9ef] dark:divide-neutral-800 dark:bg-neutral-800 lg:grid-cols-[1.15fr_1.15fr_0.85fr_0.85fr] lg:divide-y-0 [&>*]:min-w-0">
-        <StatCard
-          tone="projects"
-          title="Projetos"
-          value={d.projectCount}
-          description={`${d.groupCount} grupos (folhas Monday)`}
-        />
-        <StatCard
-          tone="tasks"
-          title="Tarefas (total)"
-          value={d.taskCount}
-          description={`${d.rootTaskCount} raiz · ${d.subTaskCount} subtarefas`}
-          href="/projetos/tarefas"
-        />
-        <StatCard
-          tone="overdue"
-          title="Atrasadas (não concluídas)"
-          value={d.overdueNotDoneCount}
-          href={tasksListHref({ filter: "overdue" })}
-          description={
-            d.projectsWithOverdueCount > 0
-              ? `${d.projectsWithOverdueCount} projeto(s) com pelo menos uma em atraso (antes de hoje, UTC)`
-              : "Data limite anterior a hoje (UTC), excluindo feitas ou concluídas"
-          }
-        />
-        <StatCard
-          tone="noDue"
-          title="Sem data limite"
-          value={d.tasksWithoutDueDateNotDone}
-          href={tasksListHref({ filter: "no_due" })}
-          description="Tarefas não concluídas sem due date"
-        />
+    <div className="gti-exec-metric-dash">
+      <section className="aging-dash" aria-labelledby="projects-dash-title">
+        <div className="aging-dash__intro">
+          <h2 id="projects-dash-title" className="aging-dash__title">
+            Resumo executivo dos projetos
+          </h2>
+          <div className="aging-dash__total-row">
+            <p className="aging-dash__total">
+              <span className="aging-dash__total-num">{taskTotal}</span>
+              <span className="aging-dash__total-label"> tarefas em {d.projectCount} projetos</span>
+              <span className="text-[0.8rem] font-semibold text-slate-600">· {d.groupCount} grupos (folhas Monday)</span>
+              {overdueLine}
+            </p>
+            <div className="aging-dash__pie-wrap">
+              <ProjectStatusPieSvg breakdown={d.statusBreakdown} />
+            </div>
+          </div>
+          <p className="aging-dash__lede">
+            <Link href="/projetos/tarefas">Abrir todas as tarefas com filtros</Link>
+            {" · "}
+            Use os cartões abaixo para saltar para atrasadas, sem data ou lista completa. A pizza reflete a mesma
+            agregação por tipo de status do quadro.
+          </p>
         </div>
-      </div>
 
-      <Card className="rounded-lg border-[#e6e9ef] bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
-        <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-base text-[#323338] dark:text-[#f6f7fb]">Tarefas por tipo de status</CardTitle>
-          <CardDescription className="text-xs text-[#676879] dark:text-[#a0a3b3]">
-            Mesma lógica do quadro (Feito, Em progresso, Não iniciado, Bloqueado, …). Clique numa cor ou legenda para ver na lista.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          <MiniStatusBar breakdown={d.statusBreakdown} />
-          <Legend breakdown={d.statusBreakdown} />
-        </CardContent>
-      </Card>
-    </section>
+        <div className="aging-dash__grid aging-dash__grid--cols-4" role="list">
+          <ProjectMetricCard
+            tone="prj-projects"
+            value={d.projectCount}
+            title="Projetos"
+            hint={`${d.groupCount} grupos (folhas) no workspace`}
+            totalForPct={null}
+            icon={
+              <ProjectDashIcon>
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M3 10h18M8 6v-2M16 6v-2" />
+              </ProjectDashIcon>
+            }
+          />
+          <ProjectMetricCard
+            tone="prj-tasks"
+            value={d.taskCount}
+            title="Tarefas (total)"
+            hint={`${d.rootTaskCount} raiz · ${d.subTaskCount} subtarefas`}
+            totalForPct={null}
+            href="/projetos/tarefas"
+            icon={
+              <ProjectDashIcon>
+                <path d="M9 11H5a2 2 0 0 0-2 2v3c0 1.1.9 2 2 2h4" />
+                <path d="M15 11h4a2 2 0 0 1 2 2v3c0 1.1-.9 2-2 2h-4" />
+                <path d="M12 3v14" />
+                <path d="M8 7h8" />
+              </ProjectDashIcon>
+            }
+          />
+          <ProjectMetricCard
+            tone="prj-overdue"
+            value={d.overdueNotDoneCount}
+            title="Atrasadas (não concluídas)"
+            hint="Data limite anterior a hoje (UTC)"
+            totalForPct={taskTotal}
+            href={tasksListHref({ filter: "overdue" })}
+            icon={
+              <ProjectDashIcon>
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </ProjectDashIcon>
+            }
+          />
+          <ProjectMetricCard
+            tone="prj-nodue"
+            value={d.tasksWithoutDueDateNotDone}
+            title="Sem data limite"
+            hint="Não concluídas sem due date"
+            totalForPct={taskTotal}
+            href={tasksListHref({ filter: "no_due" })}
+            icon={
+              <ProjectDashIcon>
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M3 10h18" />
+                <path d="M8 14h.01M12 14h.01M16 14h.01" />
+              </ProjectDashIcon>
+            }
+          />
+        </div>
+
+        <div className="mt-4 border-t border-slate-200/80 pt-3">
+          <p className="m-0 mb-2 text-[0.78rem] font-semibold text-[var(--ink)]">Por tipo de status (lista filtrada)</p>
+          <StatusLegendLinks breakdown={d.statusBreakdown} />
+        </div>
+      </section>
+    </div>
   );
 }
