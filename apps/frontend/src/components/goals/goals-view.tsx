@@ -45,9 +45,13 @@ export function GoalsView({ goals: initialGoals, users = [], dataLoadErrors = []
       columnHelper.accessor("title", {
         header: "Meta",
         cell: (info) => (
-          <span className="max-w-[240px] truncate font-medium text-foreground" title={info.getValue()}>
+          <Link
+            href={`/goals/${info.row.original.id}` as Route}
+            className="block max-w-[min(100%,280px)] truncate font-semibold text-foreground hover:underline"
+            title={info.getValue()}
+          >
             {info.getValue()}
-          </span>
+          </Link>
         )
       }),
       columnHelper.accessor("year", {
@@ -84,23 +88,26 @@ export function GoalsView({ goals: initialGoals, users = [], dataLoadErrors = []
   );
 
   return (
-    <div className="space-y-6">
+    <div className="gti-exec-metric-dash gti-gestao-page space-y-6">
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Metas estratégicas</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Acompanhamento resumido do andamento. Use <strong className="font-medium text-foreground">Nova meta</strong> para cadastrar; o
-            detalhe e as ações ficam na página da meta.
-          </p>
+      <header className="page-header">
+        <p className="page-kicker">Planejamento · Metas</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="page-title">Metas estratégicas</h1>
+            <p className="page-lead">
+              Acompanhamento resumido do andamento. Use <strong>Nova meta</strong> para cadastrar; o detalhe e as ações
+              ficam na página da meta.
+            </p>
+          </div>
+          <Button type="button" className="shrink-0 gap-2 shadow-sm" onClick={() => setModalOpen(true)}>
+            <Target className="h-4 w-4" />
+            Nova meta
+          </Button>
         </div>
-        <Button type="button" className="shrink-0 gap-2" onClick={() => setModalOpen(true)}>
-          <Target className="h-4 w-4" />
-          Nova meta
-        </Button>
-      </div>
+      </header>
 
-      <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+      <section className="gestao-surface-card">
         <DataTable
           columns={columns}
           data={goals}
