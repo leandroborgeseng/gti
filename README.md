@@ -39,10 +39,10 @@ O **Kanban**, o login e a **API de gestão** (`/api/contracts`, `/api/measuremen
 
 Validação de tipos na raiz: `npm run typecheck` (requer dependências instaladas em `apps/frontend` e `apps/backend`, por exemplo `npm install` na raiz e `npm ci` em `apps/frontend` se o `tsc` reclamar de tipos React).
 
-**Importar quadro «Sistemas terceirizados atuais» (contratos de software):** após `prisma migrate deploy` e com `DATABASE_URL` apontando para a base desejada:
+**Importar quadro «Sistemas terceirizados atuais» (contratos de software):** após `prisma migrate deploy` e com `DATABASE_URL` apontando para a base desejada. Na **imagem Docker** o `docker-entrypoint.sh` corre este seed automaticamente após as migrações (pode desativar com `SKIP_SEED_OUTSOURCED=1`). Em local:
 
 ```bash
-cd apps/backend && npm run prisma:seed:outsourced
+npm run prisma:seed:outsourced
 ```
 
 Cria fornecedores, um fiscal técnico de importação e nove contratos (`ST-2026-001` … `ST-2026-009`) com valores, vigência e **órgão gestor** (`managingUnit`). Reexecutar não duplica (ignora números já existentes). Opcional: `SEED_CONTRACTING_PARTY`, `SEED_CONTRACTING_CNPJ` (14 dígitos).
@@ -70,7 +70,7 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 1. **PostgreSQL** (plugin Railway): copie `DATABASE_URL` para o serviço da app; se a ligação falhar, acrescente `?sslmode=require` (ou `&sslmode=require`) ao URL.
 2. **Variáveis** na app: todas as `GLPI_*` obrigatórias (ver `.env.example`), `DATABASE_URL`, `NODE_ENV=production`. A Railway define **`PORT`** automaticamente; o Next usa essa porta.
 3. **Build:** `npm run build` (na raiz do repo).
-4. **Start:** `npm start` — corre `prisma migrate deploy` e inicia o Next.
+4. **Start:** `npm start` — corre `prisma migrate deploy` e inicia o Next. **Imagem Docker / `docker-entrypoint.sh`:** após as migrações corre também `npm run prisma:seed:outsourced` (contratos ST-2026-001…009, idempotente). Para desativar: `SKIP_SEED_OUTSOURCED=1` no serviço.
 5. **Opcional:** segundo serviço com `npm run start:worker` e as mesmas variáveis (só sync GLPI).
 6. **Teste:** `GET /health` no domínio publicado.
 7. **Gestão contratual:** use o mesmo **`JWT_SECRET`** que o login Next (`/api/auth/login`). Opcional: `NEXT_PUBLIC_BACKEND_URL` só se a API estiver noutro domínio.
@@ -89,7 +89,7 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 | `prisma:generate` | Gera o cliente Prisma a partir de `apps/backend/prisma/schema.prisma` |
 | `prisma:migrate` | Cria/aplica migrações em desenvolvimento (Prisma Migrate) |
 | `prisma:deploy` | Aplica migrações pendentes em CI/produção |
-| `cd apps/backend && npm run prisma:seed:outsourced` | Importa contratos de software do quadro de sistemas terceirizados (idempotente) |
+| `npm run prisma:seed:outsourced` (raiz) ou `cd apps/backend && npm run prisma:seed:outsourced` | Importa contratos de software do quadro de sistemas terceirizados (idempotente) |
 
 ## Endpoints HTTP (resumo)
 

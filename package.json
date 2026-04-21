@@ -19,7 +19,8 @@
     "typecheck": "npm run prisma:generate && (cd apps/frontend && npm run typecheck) && (cd apps/backend && npm run typecheck)",
     "prisma:generate": "prisma generate --schema apps/backend/prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema apps/backend/prisma/schema.prisma",
-    "prisma:deploy": "prisma migrate deploy --schema apps/backend/prisma/schema.prisma"
+    "prisma:deploy": "prisma migrate deploy --schema apps/backend/prisma/schema.prisma",
+    "prisma:seed:outsourced": "tsx apps/backend/prisma/seed-outsourced-software.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
