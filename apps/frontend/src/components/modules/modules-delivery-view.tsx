@@ -6,6 +6,7 @@ import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ContractItemDeliveryStatus, ContractModulesDeliveryOverview } from "@/lib/api";
+import { formatBrl } from "@/lib/format-brl";
 import { getModulesDeliveryOverview, updateContractFeature } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { Badge } from "@/components/ui/badge";
@@ -133,6 +134,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
             const nNot = countByDelivery(contract.modules, "NOT_DELIVERED");
             const nPart = countByDelivery(contract.modules, "PARTIALLY_DELIVERED");
             const nOk = countByDelivery(contract.modules, "DELIVERED");
+            const prop = contract.featureImplantationProportion;
             const panelId = `modulos-contrato-${contract.id}`;
             return (
               <section
@@ -177,6 +179,14 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                     ) : (
                       <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">Sem módulos ou itens — configure na página do contrato.</p>
                     )}
+                    {prop?.applicable && prop.proportionalMonthlyValue && prop.ratioImplantedPercent ? (
+                      <p className="mt-1 text-xs font-medium text-sky-900 dark:text-sky-200">
+                        Proporcional ao valor mensal: {prop.ratioImplantedPercent}% → {formatBrl(prop.proportionalMonthlyValue)} (contrato{" "}
+                        {formatBrl(prop.contractMonthlyValue)}/mês)
+                      </p>
+                    ) : prop?.explanation ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{prop.explanation}</p>
+                    ) : null}
                   </div>
                   <Link
                     href={`/contracts/${contract.id}` as Route}

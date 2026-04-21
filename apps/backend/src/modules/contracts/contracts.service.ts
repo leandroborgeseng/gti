@@ -28,6 +28,83 @@ function dedupeGlpiGroupLinks(links: ContractGlpiGroupLinkDto[]): { glpiGroupId:
   return out;
 }
 
+export type FeatureImplantationProportionDto = {
+  applicable: boolean;
+  totalFeatures: number;
+  implantedCount: number;
+  partialCount: number;
+  notDeliveredCount: number;
+  /** 0–1 ou null se não aplicável */
+  ratioImplanted: number | null;
+  /** Percentagem formatada para UI (pt-BR) ou null */
+  ratioImplantedPercent: string | null;
+  contractMonthlyValue: string;
+  /** Valor mensal × (implantadas / total funcionalidades), duas casas decimais */
+  proportionalMonthlyValue: string | null;
+  explanation: string | null;
+};
+
+/**
+ * Proporção do valor mensal alinhada às funcionalidades **entregues** (implantadas):
+ * (nº com entrega «Entregue» / total de funcionalidades em módulos) × valor mensal do contrato.
+ * Parciais e não entregues entram só no total (denominador), não no numerador.
+ */
+function buildFeatureImplantationProportion(
+  monthlyValue: Prisma.Decimal,
+  modules: Array<{ features: Array<{ deliveryStatus: ContractItemDeliveryStatus }> }>
+): FeatureImplantationProportionDto {
+  let totalFeatures = 0;
+  let implantedCount = 0;
+  let partialCount = 0;
+  let notDeliveredCount = 0;
+  for (const m of modules) {
+    for (const f of m.features) {
+      totalFeatures++;
+      if (f.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) {
+        implantedCount++;
+      } else if (f.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) {
+        partialCount++;
+      } else {
+        notDeliveredCount++;
+      }
+    }
+  }
+  const monthly = new Prisma.Decimal(monthlyValue);
+  const contractMonthlyValue = monthly.toFixed(2);
+  if (totalFeatures === 0) {
+    return {
+      applicable: false,
+      totalFeatures: 0,
+      implantedCount: 0,
+      partialCount: 0,
+      notDeliveredCount: 0,
+      ratioImplanted: null,
+      ratioImplantedPercent: null,
+      contractMonthlyValue,
+      proportionalMonthlyValue: null,
+      explanation:
+        "Não existem funcionalidades em módulos; não é possível calcular o valor mensal proporcional à implantação."
+    };
+  }
+  const ratioDec = new Prisma.Decimal(implantedCount).div(new Prisma.Decimal(totalFeatures));
+  const proportional = monthly.mul(ratioDec).toDecimalPlaces(2);
+  const ratioNum = Number(ratioDec.toString());
+  return {
+    applicable: true,
+    totalFeatures,
+    implantedCount,
+    partialCount,
+    notDeliveredCount,
+    ratioImplanted: Number.isFinite(ratioNum) ? ratioNum : null,
+    ratioImplantedPercent: Number.isFinite(ratioNum)
+      ? (ratioNum * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2, minimumFractionDigits: 1 })
+      : null,
+    contractMonthlyValue,
+    proportionalMonthlyValue: proportional.toFixed(2),
+    explanation: null
+  };
+}
+
 @Injectable()
 export class ContractsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -81,7 +158,7 @@ export class ContractsService {
    * para a página global «Módulos».
    */
   async findModulesDeliveryOverview(): Promise<unknown> {
-    return this.prisma.contract.findMany({
+    const rows = await this.prisma.contract.findMany({
       where: {
         deletedAt: null,
         contractType: { in: [ContractType.SOFTWARE, ContractType.INFRA, ContractType.SERVICO] }
@@ -92,6 +169,7 @@ export class ContractsService {
         name: true,
         contractType: true,
         status: true,
+        monthlyValue: true,
         modules: {
           select: {
             id: true,
@@ -113,6 +191,10 @@ export class ContractsService {
       },
       orderBy: { number: "asc" }
     });
+    return rows.map((row) => ({
+      ...row,
+      featureImplantationProportion: buildFeatureImplantationProportion(row.monthlyValue, row.modules)
+    }));
   }
 
   async findAll(): Promise<unknown> {
@@ -143,7 +225,10 @@ export class ContractsService {
       }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");
-    return contract;
+    return {
+      ...contract,
+      featureImplantationProportion: buildFeatureImplantationProportion(contract.monthlyValue, contract.modules)
+    };
   }
 
   /**

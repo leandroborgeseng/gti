@@ -162,6 +162,20 @@ export type ContractGlpiGroup = {
 /** Estado de entrega do item (funcionalidade) para acompanhar a prestação do contrato. */
 export type ContractItemDeliveryStatus = "NOT_DELIVERED" | "PARTIALLY_DELIVERED" | "DELIVERED";
 
+/** Proporção do valor mensal com base em funcionalidades «Entregue» / total em módulos. */
+export type FeatureImplantationProportion = {
+  applicable: boolean;
+  totalFeatures: number;
+  implantedCount: number;
+  partialCount: number;
+  notDeliveredCount: number;
+  ratioImplanted: number | null;
+  ratioImplantedPercent: string | null;
+  contractMonthlyValue: string;
+  proportionalMonthlyValue: string | null;
+  explanation: string | null;
+};
+
 export type Contract = {
   id: string;
   number: string;
@@ -195,6 +209,8 @@ export type Contract = {
   amendments?: ContractAmendment[];
   /** Presente na listagem (`GET /contracts`) para indicar quantos aditivos existem. */
   _count?: { amendments: number };
+  /** Indicador: valor mensal × (funcionalidades entregues / total em módulos). */
+  featureImplantationProportion?: FeatureImplantationProportion;
 };
 
 export type GlpiAssignedGroupOption = {
@@ -213,6 +229,8 @@ export type ContractModulesDeliveryOverview = {
   name: string;
   contractType: string;
   status: string;
+  monthlyValue?: string;
+  featureImplantationProportion?: FeatureImplantationProportion;
   modules: Array<{
     id: string;
     name: string;

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractGlpiGroupsPanel } from "@/components/contracts/contract-glpi-groups-panel";
 import { ContractStatusControl } from "@/components/contracts/contract-status-control";
+import { ContractImplantationProportionPanel } from "@/components/contracts/contract-implantation-proportion-panel";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
@@ -165,6 +166,8 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           </div>
         </div>
       </Card>
+
+      <ContractImplantationProportionPanel data={contract.featureImplantationProportion} />
 
       <ContractGlpiGroupsPanel contractId={contract.id} initialGroups={contract.glpiGroups ?? []} />
 
