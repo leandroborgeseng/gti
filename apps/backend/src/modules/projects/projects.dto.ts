@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from "class-validator";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from "class-validator";
 
 /** Resposta de `GET /projects/dashboard` — métricas agregadas para a lista de projetos. */
 export interface ProjectsDashboardStats {
@@ -19,6 +19,55 @@ export interface ProjectsDashboardStats {
   overdueNotDoneCount: number;
   projectsWithOverdueCount: number;
   tasksWithoutDueDateNotDone: number;
+}
+
+/** Linha na listagem plana de tarefas (vários projetos). */
+export interface ProjectFlatTaskRow {
+  id: string;
+  projectId: string;
+  projectName: string;
+  groupId: string;
+  groupName: string;
+  parentTaskId: string | null;
+  title: string;
+  status: string;
+  statusKind: "done" | "progress" | "blocked" | "notStarted" | "other" | "empty";
+  assigneeExternal: string | null;
+  internalResponsible: string | null;
+  dueDate: string | null;
+  sortOrder: number;
+}
+
+export interface ProjectsTasksFlatResponse {
+  items: ProjectFlatTaskRow[];
+  total: number;
+  limit: number;
+  offset: number;
+  /** Indica que existem mais linhas na BD do que o limite interno de leitura. */
+  truncated: boolean;
+}
+
+export class BulkPatchProjectTasksItemDto {
+  @IsString()
+  @IsNotEmpty()
+  projectId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  taskId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  status!: string;
+}
+
+export class BulkPatchProjectTasksDto {
+  @ValidateNested({ each: true })
+  @Type(() => BulkPatchProjectTasksItemDto)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  items!: BulkPatchProjectTasksItemDto[];
 }
 
 /** Atualização parcial de uma tarefa de projeto (quadro Monday). */

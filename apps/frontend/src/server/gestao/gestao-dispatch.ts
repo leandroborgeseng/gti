@@ -348,6 +348,19 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 2 && seg[1] === "dashboard" && method === "GET") {
       return jsonOk(await gestaoProjects.dashboardStats());
     }
+    if (seg.length === 2 && seg[1] === "tasks" && method === "GET") {
+      const u = new URL(req.url);
+      return jsonOk(await gestaoProjects.findAllTasksFlat(Object.fromEntries(u.searchParams.entries())));
+    }
+    if (seg.length === 3 && seg[1] === "tasks" && seg[2] === "bulk" && method === "PATCH") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou em falta. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoProjects.bulkPatchTasks(body));
+    }
     if (seg.length === 2 && method === "GET") return jsonOk(await gestaoProjects.findOne(seg[1]));
     return jsonErr(404, "Não encontrado");
   }

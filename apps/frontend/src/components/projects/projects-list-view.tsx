@@ -47,6 +47,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
       toast.success("Projeto eliminado.");
       void qc.invalidateQueries({ queryKey: queryKeys.projects });
       void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
+      void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
       router.refresh();
     },
     onError: (e: unknown) => {
@@ -60,21 +61,52 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
     () => [
       columnHelper.accessor("name", {
         header: "Projeto",
+        enableSorting: true,
         cell: (info) => (
           <Link href={`/projetos/${info.row.original.id}`} className="font-semibold text-foreground hover:underline">
             {info.getValue()}
           </Link>
         )
       }),
+      columnHelper.accessor("updatedAt", {
+        id: "updatedAt",
+        header: "Atualizado",
+        enableSorting: true,
+        cell: (info) => (
+          <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+            {new Date(info.getValue()).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+          </span>
+        )
+      }),
       columnHelper.accessor((row) => row._count?.groups ?? 0, {
         id: "groups",
         header: "Grupos",
+        enableSorting: true,
         cell: (info) => <span className="tabular-nums text-muted-foreground">{info.getValue()}</span>
       }),
       columnHelper.accessor((row) => row._count?.tasks ?? 0, {
         id: "tasks",
         header: "Tarefas",
+        enableSorting: true,
         cell: (info) => <span className="tabular-nums text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor((row) => row._stats?.overdueNotDone ?? 0, {
+        id: "overdue",
+        header: "Atraso",
+        enableSorting: true,
+        cell: (info) => {
+          const n = info.getValue() as number;
+          const id = info.row.original.id;
+          if (n <= 0) return <span className="text-muted-foreground">—</span>;
+          return (
+            <Link
+              href={`/projetos/tarefas?filter=overdue&projectId=${id}`}
+              className="font-semibold tabular-nums text-destructive hover:underline"
+            >
+              {n}
+            </Link>
+          );
+        }
       }),
       columnHelper.display({
         id: "actions",
@@ -127,12 +159,17 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
             partir de «Subelementos».
           </p>
         </div>
-        {canImport ? (
-          <Button type="button" className="shrink-0 gap-2" onClick={() => setImportOpen(true)}>
-            <FileSpreadsheet className="h-4 w-4" />
-            Importar Excel (Monday)
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" className="gap-2" asChild>
+            <Link href="/projetos/tarefas">Todas as tarefas</Link>
           </Button>
-        ) : null}
+          {canImport ? (
+            <Button type="button" className="gap-2" onClick={() => setImportOpen(true)}>
+              <FileSpreadsheet className="h-4 w-4" />
+              Importar Excel (Monday)
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <ProjectsOverviewDashboard />
@@ -152,6 +189,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         onImported={() => {
           void qc.invalidateQueries({ queryKey: queryKeys.projects });
           void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
+          void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
           router.refresh();
         }}
       />

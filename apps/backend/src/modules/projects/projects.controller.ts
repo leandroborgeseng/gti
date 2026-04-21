@@ -8,6 +8,7 @@ import {
   ParseFilePipe,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -15,7 +16,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../../auth/roles-required.decorator";
-import { ImportProjectDto, UpdateProjectTaskDto } from "./projects.dto";
+import { BulkPatchProjectTasksDto, ImportProjectDto, UpdateProjectTaskDto } from "./projects.dto";
 import { ProjectsService } from "./projects.service";
 
 function uploadMaxBytes(): number {
@@ -37,11 +38,22 @@ export class ProjectsController {
     return this.service.dashboardStats();
   }
 
+  @Get("tasks")
+  listTasksFlat(@Query() query: Record<string, string | string[] | undefined>): Promise<unknown> {
+    return this.service.findAllTasksFlat(query);
+  }
+
   /** Segmento literal antes de `:id` para evitar ambiguidade com palavras reservadas em URLs. */
   @Post("monday-import")
   @Roles(UserRole.ADMIN, UserRole.EDITOR)
   importMonday(@Body() dto: ImportProjectDto): Promise<unknown> {
     return this.service.importFromMonday(dto as unknown);
+  }
+
+  @Patch("tasks/bulk")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  bulkPatchTasks(@Body() dto: BulkPatchProjectTasksDto): Promise<unknown> {
+    return this.service.bulkPatchTasks(dto);
   }
 
   @Delete(":id")

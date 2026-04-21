@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { MondayImportPayload } from "@/lib/monday-xlsx-import";
-import { countMondayImportRootTasks, parseMondayExportWorkbook } from "@/lib/monday-xlsx-import";
+import { buildMondayImportWarnings, countMondayImportRootTasks, parseMondayExportWorkbook } from "@/lib/monday-xlsx-import";
 import { importProjectMonday } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { FormField, PrimaryButton, SecondaryButton, formControlClass } from "@/components/ui/form-primitives";
@@ -78,6 +78,8 @@ export function MondayImportWizard({ open, onClose, onImported }: Props): JSX.El
     });
   }, []);
 
+  const importWarnings = useMemo(() => (payload ? buildMondayImportWarnings(payload) : []), [payload]);
+
   const confirmImport = useCallback(async () => {
     if (!payload) return;
     const nTasks = countMondayImportRootTasks(payload);
@@ -132,6 +134,16 @@ export function MondayImportWizard({ open, onClose, onImported }: Props): JSX.El
                 placeholder="Por omissão: nome do ficheiro sem extensão"
               />
             </FormField>
+            {importWarnings.length > 0 ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                <p className="font-semibold">Avisos antes de importar</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                  {importWarnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div className="max-h-[50vh] overflow-y-auto rounded-md border border-slate-200 bg-slate-50/80 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pré-visualização</p>
               <p className="mt-1 text-xs text-slate-600">

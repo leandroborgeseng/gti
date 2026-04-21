@@ -9,6 +9,26 @@ export function normStatus(s: string): string {
     .toLowerCase();
 }
 
+/** Início do dia corrente em UTC (comparação de prazos alinhada ao backend). */
+export function startOfUtcDay(d = new Date()): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+/** Tarefa não concluída com data limite antes de hoje (UTC). */
+export function isOverdueNotDoneUtc(dueDateIso: string | null, status: string): boolean {
+  if (!dueDateIso) return false;
+  if (classifyStatus(status) === "done") return false;
+  const t = new Date(dueDateIso);
+  if (Number.isNaN(t.getTime())) return false;
+  return t < startOfUtcDay();
+}
+
+/** Sem data limite e ainda não concluída. */
+export function isNoDueNotDoneUtc(dueDateIso: string | null, status: string): boolean {
+  if (dueDateIso) return false;
+  return classifyStatus(status) !== "done";
+}
+
 export function classifyStatus(status: string): ProjectTaskStatusKind {
   const raw = status.trim();
   if (!raw) return "empty";

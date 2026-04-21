@@ -326,6 +326,61 @@ export function countMondayImportRootTasks(payload: MondayImportPayload): number
   return payload.groups.reduce((n, g) => n + (g.tasks?.length ?? 0), 0);
 }
 
+/** Avisos não bloqueantes antes de confirmar a importação (duplicados, datas, status vazio). */
+export function buildMondayImportWarnings(payload: MondayImportPayload): string[] {
+  const warnings: string[] = [];
+  let emptyStatus = 0;
+  let invalidDates = 0;
+  const titleByGroup = new Map<string, Map<string, number>>();
+
+  function walk(nodes: MondayImportTaskNode[], groupName: string): void {
+    const gKey = groupName.trim().toLowerCase() || "—";
+    let titles = titleByGroup.get(gKey);
+    if (!titles) {
+      titles = new Map();
+      titleByGroup.set(gKey, titles);
+    }
+    for (const n of nodes) {
+      if (!(n.status ?? "").trim()) emptyStatus += 1;
+      const dd = n.dueDate;
+      if (dd != null && String(dd).trim() !== "") {
+        const t = new Date(String(dd));
+        if (Number.isNaN(t.getTime())) invalidDates += 1;
+      }
+      const tk = n.title.trim().toLowerCase();
+      if (tk) titles.set(tk, (titles.get(tk) ?? 0) + 1);
+      if (n.children?.length) walk(n.children, groupName);
+    }
+  }
+
+  for (const g of payload.groups) {
+    walk(g.tasks ?? [], g.name);
+  }
+
+  if (emptyStatus > 0) {
+    warnings.push(`${emptyStatus} tarefa(s) sem status — considere preencher no Monday para o quadro ficar mais claro.`);
+  }
+  if (invalidDates > 0) {
+    warnings.push(`${invalidDates} valor(es) de data inválido(s); serão gravados como sem data se a importação os rejeitar.`);
+  }
+
+  let dupRoots = 0;
+  for (const [, titles] of titleByGroup) {
+    for (const c of titles.values()) {
+      if (c > 1) dupRoots += c - 1;
+    }
+  }
+  if (dupRoots > 0) {
+    warnings.push(`${dupRoots} título(s) repetido(s) no mesmo grupo — verifique se não é erro de exportação.`);
+  }
+
+  if (countMondayImportRootTasks(payload) === 0) {
+    warnings.push("Nenhuma tarefa na raiz dos grupos: o servidor pode recusar a importação.");
+  }
+
+  return warnings;
+}
+
 export function parseMondayExportWorkbook(buffer: ArrayBuffer, fileName: string): MondayImportPayload {
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true, dense: false });
   const baseName = fileName.replace(/\.(xlsx|xls|xlsm)$/i, "").trim() || "Projeto importado";

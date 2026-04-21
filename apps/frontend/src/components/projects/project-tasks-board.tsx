@@ -2,12 +2,21 @@
 
 import { ChevronDown, ChevronRight, MessageSquare, Paperclip, Plus } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ProjectGroupWithTasks, ProjectTaskPatchPayload, ProjectTaskTree } from "@/lib/api";
 import { attachmentDownloadUrl, getAuthMe, patchProjectTask, uploadProjectTaskAttachment } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +29,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   aggregateStatusByKind,
   classifyStatus,
+  isNoDueNotDoneUtc,
+  isOverdueNotDoneUtc,
   normStatus,
   STATUS_KIND_COLORS,
   STATUS_KIND_LABEL,
@@ -188,6 +199,77 @@ function normalizeProjectGroups(groups: ProjectGroupWithTasks[]): ProjectGroupWi
     ...g,
     tasks: g.tasks.map(ensureTaskTree)
   }));
+}
+
+type BoardFilterState = {
+  overdueOnly: boolean;
+  noDueOnly: boolean;
+  statusKind: ProjectTaskStatusKind | "";
+};
+
+function boardFilterActive(f: BoardFilterState): boolean {
+  return f.overdueOnly || f.noDueOnly || Boolean(f.statusKind);
+}
+
+function taskSelfMatchesBoard(t: ProjectTaskTree, f: BoardFilterState): boolean {
+  if (f.statusKind && classifyStatus(t.status) !== f.statusKind) return false;
+  if (f.overdueOnly && !isOverdueNotDoneUtc(t.dueDate, t.status)) return false;
+  if (f.noDueOnly && !isNoDueNotDoneUtc(t.dueDate, t.status)) return false;
+  return true;
+}
+
+function filterBoardNode(t: ProjectTaskTree, f: BoardFilterState): ProjectTaskTree | null {
+  const kids = (t.children ?? []).map((c) => filterBoardNode(c, f)).filter((x): x is ProjectTaskTree => x != null);
+  const ok = taskSelfMatchesBoard(t, f);
+  if (ok || kids.length > 0) {
+    return { ...t, children: kids };
+  }
+  return null;
+}
+
+function filterBoardForest(roots: ProjectTaskTree[], f: BoardFilterState): ProjectTaskTree[] {
+  if (!boardFilterActive(f)) return roots;
+  return roots.map((r) => filterBoardNode(r, f)).filter((x): x is ProjectTaskTree => x != null);
+}
+
+type RootSortKey = "sortOrder" | "dueDate" | "title" | "status";
+
+function cmpTasksBySort(a: ProjectTaskTree, b: ProjectTaskTree, key: RootSortKey): number {
+  if (key === "sortOrder") return a.sortOrder - b.sortOrder;
+  if (key === "title") return a.title.localeCompare(b.title, "pt", { sensitivity: "base" });
+  if (key === "status") return a.status.localeCompare(b.status, "pt", { sensitivity: "base" });
+  const ta = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+  const tb = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+  if (ta !== tb) return ta - tb;
+  return a.sortOrder - b.sortOrder;
+}
+
+function sortTaskForest(roots: ProjectTaskTree[], key: RootSortKey): ProjectTaskTree[] {
+  const sorted = [...roots].sort((a, b) => cmpTasksBySort(a, b, key));
+  return sorted.map((t) => ({
+    ...t,
+    children: t.children?.length ? sortTaskForest(t.children, key) : []
+  }));
+}
+
+function countTasksInForest(roots: ProjectTaskTree[]): number {
+  let n = 0;
+  function walk(t: ProjectTaskTree): void {
+    n += 1;
+    t.children?.forEach(walk);
+  }
+  roots.forEach(walk);
+  return n;
+}
+
+function flattenTaskIds(roots: ProjectTaskTree[]): string[] {
+  const ids: string[] = [];
+  function walk(t: ProjectTaskTree): void {
+    ids.push(t.id);
+    t.children?.forEach(walk);
+  }
+  roots.forEach(walk);
+  return ids;
 }
 
 type FilesCellProps = {
@@ -754,21 +836,76 @@ function GroupBoard({
   );
 }
 
+function parseBoardSortKey(v: string | undefined): RootSortKey {
+  if (v === "dueDate" || v === "title" || v === "status") return v;
+  return "sortOrder";
+}
+
+function parseBoardStatusKind(v: string | undefined): ProjectTaskStatusKind | "" {
+  if (!v) return "";
+  const k = v as ProjectTaskStatusKind;
+  return STATUS_KIND_ORDER.includes(k) ? k : "";
+}
+
 type Props = {
   projectId: string;
   groups: ProjectGroupWithTasks[];
+  /** Filtros iniciais a partir da URL (`?filter=overdue`, `statusKind`, `sort`). */
+  boardQuery?: { filter?: string; statusKind?: string; sort?: string };
 };
 
-export function ProjectTasksBoard({ projectId, groups }: Props): JSX.Element {
+export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX.Element {
   const router = useRouter();
+  const pathname = usePathname();
+  const qc = useQueryClient();
   const [role, setRole] = useState<string | null | undefined>(undefined);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkStatusPick, setBulkStatusPick] = useState("Feito");
+
+  const [overdueOnly, setOverdueOnly] = useState(() => boardQuery?.filter === "overdue");
+  const [noDueOnly, setNoDueOnly] = useState(() => boardQuery?.filter === "no_due");
+  const [statusKind, setStatusKind] = useState<ProjectTaskStatusKind | "">(() =>
+    parseBoardStatusKind(boardQuery?.statusKind)
+  );
+  const [sortKey, setSortKey] = useState<RootSortKey>(() => parseBoardSortKey(boardQuery?.sort));
 
   useEffect(() => {
     void getAuthMe()
       .then((m) => setRole(m.role))
       .catch(() => setRole(null));
   }, []);
+
+  useEffect(() => {
+    setOverdueOnly(boardQuery?.filter === "overdue");
+    setNoDueOnly(boardQuery?.filter === "no_due");
+    setStatusKind(parseBoardStatusKind(boardQuery?.statusKind));
+    setSortKey(parseBoardSortKey(boardQuery?.sort));
+  }, [boardQuery?.filter, boardQuery?.sort, boardQuery?.statusKind]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams();
+    if (overdueOnly) sp.set("filter", "overdue");
+    else if (noDueOnly) sp.set("filter", "no_due");
+    if (statusKind) sp.set("statusKind", statusKind);
+    if (sortKey !== "sortOrder") sp.set("sort", sortKey);
+    const qs = sp.toString();
+    window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
+  }, [noDueOnly, overdueOnly, pathname, sortKey, statusKind]);
+
+  const clearFilters = useCallback(() => {
+    setOverdueOnly(false);
+    setNoDueOnly(false);
+    setStatusKind("");
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") clearFilters();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [clearFilters]);
 
   const canEdit = role === "ADMIN" || role === "EDITOR";
 
@@ -778,6 +915,8 @@ export function ProjectTasksBoard({ projectId, groups }: Props): JSX.Element {
       try {
         await patchProjectTask(projectId, taskId, payload);
         toast.success("Alterações guardadas.");
+        void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
+        void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
         router.refresh();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Falha ao guardar.");
@@ -785,7 +924,7 @@ export function ProjectTasksBoard({ projectId, groups }: Props): JSX.Element {
         setSavingTaskId(null);
       }
     },
-    [projectId, router]
+    [projectId, qc, router]
   );
 
   const onFilesUploaded = useCallback(() => {
@@ -794,12 +933,143 @@ export function ProjectTasksBoard({ projectId, groups }: Props): JSX.Element {
 
   const displayGroups = useMemo(() => normalizeProjectGroups(groups), [groups]);
 
+  const filterState: BoardFilterState = useMemo(
+    () => ({ overdueOnly, noDueOnly, statusKind }),
+    [noDueOnly, overdueOnly, statusKind]
+  );
+
+  const processedGroups = useMemo(() => {
+    return displayGroups.map((g) => {
+      const filtered = filterBoardForest(g.tasks, filterState);
+      const tasks = sortTaskForest(filtered, sortKey);
+      return { ...g, tasks };
+    });
+  }, [displayGroups, filterState, sortKey]);
+
+  const visibleCount = useMemo(
+    () => processedGroups.reduce((n, g) => n + countTasksInForest(g.tasks), 0),
+    [processedGroups]
+  );
+
+  const runBulkStatus = useCallback(async () => {
+    const ids = processedGroups.flatMap((g) => flattenTaskIds(g.tasks));
+    if (!ids.length || !canEdit) return;
+    if (!confirm(`Definir ${ids.length} tarefa(s) visível(is) como «${bulkStatusPick}»?`)) return;
+    setBulkBusy(true);
+    try {
+      for (let i = 0; i < ids.length; i += 12) {
+        const chunk = ids.slice(i, i + 12);
+        await Promise.all(chunk.map((id) => patchProjectTask(projectId, id, { status: bulkStatusPick })));
+      }
+      toast.success("Estado atualizado em massa.");
+      void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
+      void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha na operação em massa.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [bulkStatusPick, canEdit, processedGroups, projectId, qc, router]);
+
+  const filterActive = boardFilterActive(filterState);
+
   return (
     <div className="space-y-2 rounded-lg border border-[#e6e9ef] bg-[#f6f7fb] p-2 dark:border-neutral-800 dark:bg-neutral-950">
       {role === undefined ? (
         <p className="text-xs text-[#676879]">A carregar permissões…</p>
       ) : null}
-      {displayGroups.map((g, idx) => (
+      <div className="flex flex-col gap-2 rounded-md border border-[#e6e9ef] bg-white p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900/40">
+        <div className="flex flex-wrap items-center gap-2 text-[#676879]">
+          <span className="text-xs font-semibold uppercase tracking-wide">Filtros</span>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 rounded border-[#c5c7d0]"
+              checked={overdueOnly}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setOverdueOnly(on);
+                if (on) setNoDueOnly(false);
+              }}
+            />
+            Atrasadas
+          </label>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 rounded border-[#c5c7d0]"
+              checked={noDueOnly}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setNoDueOnly(on);
+                if (on) setOverdueOnly(false);
+              }}
+            />
+            Sem data
+          </label>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs">Status</span>
+            <Select
+              value={statusKind || "__any__"}
+              onValueChange={(v) => setStatusKind(v === "__any__" ? "" : (v as ProjectTaskStatusKind))}
+            >
+              <SelectTrigger className="h-8 w-[170px] text-xs">
+                <SelectValue placeholder="Qualquer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__any__">Qualquer</SelectItem>
+                {STATUS_KIND_ORDER.map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {STATUS_KIND_LABEL[k]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs">Ordenar</span>
+            <Select value={sortKey} onValueChange={(v) => setSortKey(v as RootSortKey)}>
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sortOrder">Ordem importada</SelectItem>
+                <SelectItem value="dueDate">Data limite</SelectItem>
+                <SelectItem value="title">Título</SelectItem>
+                <SelectItem value="status">Status</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {filterActive ? (
+            <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={clearFilters}>
+              Limpar filtros (Esc)
+            </Button>
+          ) : null}
+          <span className="ml-auto text-xs tabular-nums text-[#676879]">{visibleCount} visível(is)</span>
+        </div>
+        {canEdit && visibleCount > 0 ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-[#ececf0] pt-2 dark:border-neutral-800">
+            <span className="text-xs font-medium text-[#676879]">Em massa (linhas filtradas)</span>
+            <Select value={bulkStatusPick} onValueChange={setBulkStatusPick}>
+              <SelectTrigger className="h-8 w-[160px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_PRESETS.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" size="sm" className="h-8 text-xs" disabled={bulkBusy} onClick={() => void runBulkStatus()}>
+              {bulkBusy ? "A aplicar…" : `Aplicar às ${visibleCount} visíveis`}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      {processedGroups.map((g, idx) => (
         <GroupBoard
           key={g.id}
           projectId={projectId}

@@ -6,9 +6,13 @@ import {
   ImportProjectDto,
   ImportProjectGroupDto,
   ImportProjectTaskNodeDto,
+  type ProjectFlatTaskRow,
   type ProjectsDashboardStats,
+  type ProjectsTasksFlatResponse,
   UpdateProjectTaskDto
 } from "./projects.dto";
+
+const MAX_TASKS_FLAT_FETCH = 8000;
 
 @Injectable()
 export class ProjectsService {
@@ -89,12 +93,26 @@ export class ProjectsService {
   }
 
   async findAll(): Promise<unknown> {
-    return this.prisma.project.findMany({
+    const projects = await this.prisma.project.findMany({
       orderBy: { updatedAt: "desc" },
       include: {
         _count: { select: { groups: true, tasks: true } }
       }
     });
+    const meta = await this.prisma.projectTask.findMany({
+      select: { projectId: true, dueDate: true, status: true }
+    });
+    const sod = this.startOfUtcDay();
+    const overdueByProject = new Map<string, number>();
+    for (const t of meta) {
+      if (this.isOverdueNotDone(t.dueDate, t.status, sod)) {
+        overdueByProject.set(t.projectId, (overdueByProject.get(t.projectId) ?? 0) + 1);
+      }
+    }
+    return projects.map((p) => ({
+      ...p,
+      _stats: { overdueNotDone: overdueByProject.get(p.id) ?? 0 }
+    }));
   }
 
   /**
@@ -125,8 +143,7 @@ export class ProjectsService {
     let tasksWithoutDueDateNotDone = 0;
     const projectsWithOverdue = new Set<string>();
 
-    const now = new Date();
-    const startOfUtcDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const sod = this.startOfUtcDay();
 
     for (const t of tasks) {
       if (t.parentTaskId) subTaskCount += 1;
@@ -138,7 +155,7 @@ export class ProjectsService {
       const done = kind === "done";
       if (t.dueDate == null) {
         if (!done) tasksWithoutDueDateNotDone += 1;
-      } else if (t.dueDate < startOfUtcDay && !done) {
+      } else if (this.isOverdueNotDone(t.dueDate, t.status, sod)) {
         overdueNotDoneCount += 1;
         projectsWithOverdue.add(t.projectId);
       }
@@ -155,6 +172,17 @@ export class ProjectsService {
       projectsWithOverdueCount: projectsWithOverdue.size,
       tasksWithoutDueDateNotDone
     };
+  }
+
+  private startOfUtcDay(d = new Date()): Date {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  }
+
+  /** Tarefa com data limite antes do dia corrente (UTC) e não concluída. */
+  private isOverdueNotDone(dueDate: Date | null, status: string, sod: Date): boolean {
+    if (dueDate == null) return false;
+    if (this.classifyTaskStatusForDashboard(status) === "done") return false;
+    return dueDate < sod;
   }
 
   private normTaskStatusForDashboard(s: string): string {
@@ -176,6 +204,203 @@ export class ProjectsService {
     if (n.includes("parado") || n.includes("bloque") || n.includes("hold")) return "blocked";
     if (n.includes("nao") && n.includes("inici")) return "notStarted";
     return "other";
+  }
+
+  /**
+   * Lista plana de tarefas (todos os projetos) com filtros e paginação em memória
+   * após leitura limitada à BD (ver `truncated`).
+   */
+  async findAllTasksFlat(raw: Record<string, string | string[] | undefined>): Promise<ProjectsTasksFlatResponse> {
+    const pick = (key: string): string => {
+      const v = raw[key];
+      const s = Array.isArray(v) ? v[0] : v;
+      return String(s ?? "").trim();
+    };
+    const limit = Math.min(2000, Math.max(1, Number.parseInt(pick("limit") || "500", 10) || 500));
+    const offset = Math.max(0, Number.parseInt(pick("offset") || "0", 10) || 0);
+    const filter = pick("filter");
+    const statusKindRaw = pick("statusKind");
+    const projectId = pick("projectId");
+    const groupId = pick("groupId");
+    const assignee = pick("assignee");
+    const qTitle = pick("q");
+    const onlyRoot = pick("onlyRoot") === "1" || pick("onlyRoot") === "true";
+    const sort = pick("sort") || "dueDate";
+    const order = pick("order") === "desc" ? "desc" : "asc";
+
+    const validKinds = new Set(["done", "progress", "blocked", "notStarted", "other", "empty"]);
+    const statusKind = validKinds.has(statusKindRaw) ? statusKindRaw : "";
+
+    const where: Prisma.ProjectTaskWhereInput = {};
+    if (projectId) where.projectId = projectId;
+    if (groupId) where.groupId = groupId;
+    if (onlyRoot) where.parentTaskId = null;
+    if (assignee) where.assigneeExternal = { contains: assignee, mode: "insensitive" };
+    if (qTitle) where.title = { contains: qTitle, mode: "insensitive" };
+
+    const sod = this.startOfUtcDay();
+
+    const fetched = await this.prisma.projectTask.findMany({
+      where,
+      take: MAX_TASKS_FLAT_FETCH,
+      include: {
+        project: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true } }
+      },
+      orderBy: [{ projectId: "asc" }, { groupId: "asc" }, { sortOrder: "asc" }]
+    });
+
+    type Row = {
+      id: string;
+      projectId: string;
+      projectName: string;
+      groupId: string;
+      groupName: string;
+      parentTaskId: string | null;
+      title: string;
+      status: string;
+      statusKind: ProjectFlatTaskRow["statusKind"];
+      assigneeExternal: string | null;
+      internalResponsible: string | null;
+      dueDate: Date | null;
+      sortOrder: number;
+    };
+
+    let rows: Row[] = fetched.map((t) => ({
+      id: t.id,
+      projectId: t.projectId,
+      projectName: t.project.name,
+      groupId: t.groupId,
+      groupName: t.group.name,
+      parentTaskId: t.parentTaskId,
+      title: t.title,
+      status: t.status,
+      statusKind: this.classifyTaskStatusForDashboard(t.status),
+      assigneeExternal: t.assigneeExternal,
+      internalResponsible: t.internalResponsible,
+      dueDate: t.dueDate,
+      sortOrder: t.sortOrder
+    }));
+
+    if (filter === "overdue") {
+      rows = rows.filter((r) => this.isOverdueNotDone(r.dueDate, r.status, sod));
+    } else if (filter === "no_due") {
+      rows = rows.filter((r) => r.dueDate == null && this.classifyTaskStatusForDashboard(r.status) !== "done");
+    }
+
+    if (statusKind) {
+      rows = rows.filter((r) => r.statusKind === statusKind);
+    }
+
+    rows = this.sortFlatTaskRows(rows, sort, order);
+
+    const total = rows.length;
+    const truncated = fetched.length >= MAX_TASKS_FLAT_FETCH;
+    const slice = rows.slice(offset, offset + limit);
+
+    const items: ProjectFlatTaskRow[] = slice.map((r) => ({
+      id: r.id,
+      projectId: r.projectId,
+      projectName: r.projectName,
+      groupId: r.groupId,
+      groupName: r.groupName,
+      parentTaskId: r.parentTaskId,
+      title: r.title,
+      status: r.status,
+      statusKind: r.statusKind,
+      assigneeExternal: r.assigneeExternal,
+      internalResponsible: r.internalResponsible,
+      dueDate: r.dueDate ? r.dueDate.toISOString() : null,
+      sortOrder: r.sortOrder
+    }));
+
+    return { items, total, limit, offset, truncated };
+  }
+
+  private sortFlatTaskRows<
+    T extends {
+      dueDate: Date | null;
+      title: string;
+      status: string;
+      projectName: string;
+      groupName: string;
+      sortOrder: number;
+    }
+  >(rows: T[], sort: string, order: "asc" | "desc"): T[] {
+    const mul = order === "desc" ? -1 : 1;
+    const cmpStr = (a: string, b: string) => a.localeCompare(b, "pt", { sensitivity: "base" }) * mul;
+    const cmpNum = (a: number, b: number) => (a < b ? -mul : a > b ? mul : 0);
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      switch (sort) {
+        case "title":
+          return cmpStr(a.title, b.title);
+        case "status":
+          return cmpStr(a.status, b.status);
+        case "project":
+          return cmpStr(a.projectName, b.projectName);
+        case "group":
+          return cmpStr(a.groupName, b.groupName);
+        case "sortOrder":
+          return cmpNum(a.sortOrder, b.sortOrder);
+        case "dueDate":
+        default: {
+          const ta = a.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
+          const tb = b.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
+          if (ta === tb) return cmpStr(a.title, b.title);
+          return ta < tb ? -mul : ta > tb ? mul : 0;
+        }
+      }
+    });
+    return sorted;
+  }
+
+  async bulkPatchTasks(raw: unknown): Promise<{ updated: number; failed: { taskId: string; message: string }[] }> {
+    const items = this.parseBulkPatchItems(raw);
+    const failed: { taskId: string; message: string }[] = [];
+    let updated = 0;
+    for (const it of items) {
+      try {
+        await this.updateTask(it.projectId, it.taskId, { status: it.status });
+        updated += 1;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        failed.push({ taskId: it.taskId, message: msg });
+      }
+    }
+    return { updated, failed };
+  }
+
+  private parseBulkPatchItems(raw: unknown): { projectId: string; taskId: string; status: string }[] {
+    if (!raw || typeof raw !== "object") {
+      throw new BadRequestException("Corpo inválido.");
+    }
+    const items = (raw as { items?: unknown }).items;
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException("Indique items: array com pelo menos uma tarefa.");
+    }
+    if (items.length > 100) {
+      throw new BadRequestException("Máximo de 100 tarefas por operação em massa.");
+    }
+    const out: { projectId: string; taskId: string; status: string }[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || typeof it !== "object") {
+        throw new BadRequestException(`Item ${i + 1} inválido.`);
+      }
+      const o = it as Record<string, unknown>;
+      const projectId = String(o.projectId ?? "").trim();
+      const taskId = String(o.taskId ?? "").trim();
+      const status = String(o.status ?? "").trim();
+      if (!projectId || !taskId) {
+        throw new BadRequestException(`Item ${i + 1}: projectId e taskId são obrigatórios.`);
+      }
+      if (!status) {
+        throw new BadRequestException(`Item ${i + 1}: status não pode ficar vazio.`);
+      }
+      out.push({ projectId, taskId, status });
+    }
+    return out;
   }
 
   async findOne(id: string): Promise<unknown> {

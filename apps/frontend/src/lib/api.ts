@@ -704,6 +704,51 @@ export type ProjectListItem = {
   createdAt: string;
   updatedAt: string;
   _count?: { groups: number; tasks: number };
+  _stats?: { overdueNotDone: number };
+};
+
+/** Linha na vista plana multi-projeto. */
+export type ProjectFlatTaskRow = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  groupId: string;
+  groupName: string;
+  parentTaskId: string | null;
+  title: string;
+  status: string;
+  statusKind: "done" | "progress" | "blocked" | "notStarted" | "other" | "empty";
+  assigneeExternal: string | null;
+  internalResponsible: string | null;
+  dueDate: string | null;
+  sortOrder: number;
+};
+
+export type ProjectsTasksFlatResponse = {
+  items: ProjectFlatTaskRow[];
+  total: number;
+  limit: number;
+  offset: number;
+  truncated: boolean;
+};
+
+export type ProjectsTasksFlatParams = {
+  filter?: string;
+  statusKind?: string;
+  projectId?: string;
+  groupId?: string;
+  assignee?: string;
+  q?: string;
+  onlyRoot?: boolean;
+  sort?: string;
+  order?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+};
+
+export type BulkPatchProjectTasksResult = {
+  updated: number;
+  failed: { taskId: string; message: string }[];
 };
 
 /** Métricas agregadas de todos os projetos (lista / mini dashboard). */
@@ -788,6 +833,36 @@ export async function getProjects(): Promise<ProjectListItem[]> {
 
 export async function getProjectsDashboard(): Promise<ProjectsDashboardStats> {
   return request("/projects/dashboard");
+}
+
+function appendProjectsTasksParams(sp: URLSearchParams, p: ProjectsTasksFlatParams): void {
+  if (p.filter) sp.set("filter", p.filter);
+  if (p.statusKind) sp.set("statusKind", p.statusKind);
+  if (p.projectId) sp.set("projectId", p.projectId);
+  if (p.groupId) sp.set("groupId", p.groupId);
+  if (p.assignee) sp.set("assignee", p.assignee);
+  if (p.q) sp.set("q", p.q);
+  if (p.onlyRoot) sp.set("onlyRoot", "true");
+  if (p.sort) sp.set("sort", p.sort);
+  if (p.order) sp.set("order", p.order);
+  if (p.limit != null) sp.set("limit", String(p.limit));
+  if (p.offset != null) sp.set("offset", String(p.offset));
+}
+
+export async function getProjectsTasksFlat(params: ProjectsTasksFlatParams): Promise<ProjectsTasksFlatResponse> {
+  const sp = new URLSearchParams();
+  appendProjectsTasksParams(sp, params);
+  const qs = sp.toString();
+  return request(qs ? `/projects/tasks?${qs}` : "/projects/tasks");
+}
+
+export async function bulkPatchProjectTasks(payload: {
+  items: { projectId: string; taskId: string; status: string }[];
+}): Promise<BulkPatchProjectTasksResult> {
+  return request("/projects/tasks/bulk", {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function getProject(id: string): Promise<ProjectDetail> {

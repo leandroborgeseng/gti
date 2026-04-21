@@ -1,4 +1,4 @@
-import { ProjectDetailView } from "@/components/projects/project-detail-view";
+import { ProjectDetailView, type ProjectBoardQuery } from "@/components/projects/project-detail-view";
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { getProject } from "@/lib/api";
@@ -8,7 +8,23 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function ProjetoDetailPage({ params }: { params: { id: string } }): Promise<JSX.Element> {
+function firstSearchParam(v: string | string[] | undefined): string {
+  if (Array.isArray(v)) return v[0] ?? "";
+  return v ?? "";
+}
+
+export default async function ProjetoDetailPage({
+  params,
+  searchParams
+}: {
+  params: { id: string };
+  searchParams: Record<string, string | string[] | undefined>;
+}): Promise<JSX.Element> {
+  const boardQuery: ProjectBoardQuery = {
+    filter: firstSearchParam(searchParams.filter) || undefined,
+    statusKind: firstSearchParam(searchParams.statusKind) || undefined,
+    sort: firstSearchParam(searchParams.sort) || undefined
+  };
   const { data: project, error } = await safeLoadNullable(() => getProject(params.id));
   if (error) {
     return (
@@ -32,5 +48,5 @@ export default async function ProjetoDetailPage({ params }: { params: { id: stri
       </Card>
     );
   }
-  return <ProjectDetailView project={project} />;
+  return <ProjectDetailView project={project} boardQuery={boardQuery} />;
 }

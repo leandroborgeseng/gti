@@ -2,7 +2,15 @@ import Link from "next/link";
 import type { ProjectDetail } from "@/lib/api";
 import { ProjectTasksBoard } from "@/components/projects/project-tasks-board";
 
-export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.Element {
+export type ProjectBoardQuery = { filter?: string; statusKind?: string; sort?: string };
+
+export function ProjectDetailView({
+  project,
+  boardQuery
+}: {
+  project: ProjectDetail;
+  boardQuery?: ProjectBoardQuery;
+}): JSX.Element {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -11,6 +19,13 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
           className="font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
         >
           ← Voltar aos projetos
+        </Link>
+        <span className="text-slate-300">|</span>
+        <Link
+          href={`/projetos/tarefas?projectId=${project.id}`}
+          className="font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
+        >
+          Todas as tarefas deste projeto
         </Link>
       </div>
 
@@ -21,7 +36,7 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
         </p>
       </header>
 
-      <ProjectTasksBoard projectId={project.id} groups={project.groups} />
+      <ProjectTasksBoard projectId={project.id} groups={project.groups} boardQuery={boardQuery} />
     </div>
   );
 }
