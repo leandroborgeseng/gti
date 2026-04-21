@@ -1143,7 +1143,6 @@
   color: var(--ink-muted);
 }
 .chamados-glpi-page .chamados-ops__chart-surface { width: 100%; min-height: 280px; }
-.chamados-glpi-page .chamados-ops__chart-wrap--follow { margin-top: 1rem; }
 .chamados-glpi-page .chamados-ops__scope-hint {
   margin: 0;
   max-width: 72ch;

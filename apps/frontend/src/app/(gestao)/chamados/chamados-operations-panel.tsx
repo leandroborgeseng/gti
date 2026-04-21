@@ -3,10 +3,9 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   Bar,
-  BarChart,
   CartesianGrid,
   ComposedChart,
   Legend,
@@ -18,12 +17,57 @@ import {
 } from "recharts";
 import type {
   ChamadosClosingsByMonth,
+  ChamadosOpeningsByMonth,
   ChamadosOperationsSummary,
   ChamadosRankRow
 } from "@/glpi/kanban-load";
 import { cn } from "@/lib/utils";
 
 const OPS_EXPANDED_LS_KEY = "gti.chamados.opsExpanded";
+
+type TimelineRow = {
+  month: string;
+  label: string;
+  aberturas: number;
+  fechamentos: number;
+  fechamentosAcum: number;
+};
+
+function mergeAberturasFechamentosTimeline(
+  openings: ChamadosOpeningsByMonth[],
+  closings: ChamadosClosingsByMonth[]
+): TimelineRow[] {
+  const map = new Map<string, { aberturas: number; fechamentos: number; label: string }>();
+  for (const o of openings) {
+    const prev = map.get(o.month);
+    map.set(o.month, {
+      aberturas: o.count,
+      fechamentos: prev?.fechamentos ?? 0,
+      label: o.label
+    });
+  }
+  for (const c of closings) {
+    const prev = map.get(c.month);
+    map.set(c.month, {
+      aberturas: prev?.aberturas ?? 0,
+      fechamentos: c.count,
+      label: prev?.label || c.label
+    });
+  }
+  const months = Array.from(map.keys()).sort();
+  let cum = 0;
+  return months.map((month) => {
+    const cell = map.get(month)!;
+    cum += cell.fechamentos;
+    return {
+      month,
+      label: cell.label,
+      aberturas: cell.aberturas,
+      fechamentos: cell.fechamentos,
+      fechamentosAcum: cum
+    };
+  });
+}
 
 function MiniTable({ title, rows }: { title: string; rows: ChamadosRankRow[] }): JSX.Element {
   return (
@@ -53,48 +97,53 @@ function MiniTable({ title, rows }: { title: string; rows: ChamadosRankRow[] }):
   );
 }
 
-function ClosuresChart({
-  data,
+function AberturasFechamentosChart({
+  openings,
+  closings,
   ticketSyncScope
 }: {
-  data: ChamadosClosingsByMonth[];
+  openings: ChamadosOpeningsByMonth[];
+  closings: ChamadosClosingsByMonth[];
   ticketSyncScope: "open" | "all";
 }): JSX.Element {
-  if (ticketSyncScope === "open") {
-    return (
-      <div className="chamados-ops__chart-wrap chamados-ops__chart-wrap--follow">
-        <h3 className="chamados-ops__block-title">Fechamentos ao longo do tempo</h3>
-        <p className="chamados-ops__scope-hint">
-          Com a sincronização configurada para <strong>só chamados abertos</strong>, o cache local não guarda tickets
-          fechados. Altere o âmbito para <strong>todos os tickets</strong> (definições de sync GLPI) para ver o gráfico de
-          fechamentos e a linha acumulada.
-        </p>
-      </div>
-    );
-  }
+  const data = useMemo(
+    () => mergeAberturasFechamentosTimeline(openings, closings),
+    [openings, closings]
+  );
 
   if (data.length === 0) {
     return (
-      <div className="chamados-ops__chart-wrap chamados-ops__chart-wrap--follow">
-        <h3 className="chamados-ops__block-title">Fechamentos ao longo do tempo</h3>
+      <div className="chamados-ops__chart-wrap">
+        <h3 className="chamados-ops__block-title">Abertos e fechados ao longo do tempo</h3>
         <p className="chamados-ops__chart-empty">
-          Nenhum chamado <strong>fechado</strong> no cache para estes filtros, ou sem datas válidas para agrupar.
+          Não há datas válidas no cache para estes filtros (aberturas de stock aberto e/ou fechamentos).
         </p>
       </div>
     );
   }
 
   return (
-    <div className="chamados-ops__chart-wrap chamados-ops__chart-wrap--follow">
-      <h3 className="chamados-ops__block-title">Fechamentos ao longo do tempo</h3>
+    <div className="chamados-ops__chart-wrap">
+      <h3 className="chamados-ops__block-title">Abertos e fechados ao longo do tempo</h3>
+      {ticketSyncScope === "open" ? (
+        <p className="chamados-ops__scope-hint">
+          Sincronização só com <strong>chamados abertos</strong>: as barras de fechados ficam em zero e o acumulado não
+          evolui — o cache não guarda tickets fechados. Use <strong>todos os tickets</strong> nas definições de sync
+          para comparar fechamentos no mesmo gráfico.
+        </p>
+      ) : null}
       <p className="chamados-ops__chart-hint">
-        Barras: quantidade de chamados <strong>fechados</strong> por mês (mês da última alteração GLPI, ou da abertura
-        se faltar data de alteração). Linha: <strong>acumulado</strong> no período (burn-up: total fechado até cada
-        mês no intervalo mostrado).
+        <strong>Barras azuis</strong>: chamados <strong>ainda abertos</strong> por mês de abertura (América/São Paulo).
+        <strong> Barras verdes</strong>: chamados <strong>fechados</strong> no mês (última alteração GLPI, ou abertura se
+        faltar). <strong>Linha</strong>: acumulado de fechados no período exibido.
       </p>
-      <div className="chamados-ops__chart-surface" role="img" aria-label="Gráfico de fechamentos por mês e acumulado">
-        <ResponsiveContainer width="100%" height={300}>
-          <ComposedChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+      <div
+        className="chamados-ops__chart-surface"
+        role="img"
+        aria-label="Gráfico combinado de aberturas e fechamentos por mês"
+      >
+        <ResponsiveContainer width="100%" height={320}>
+          <ComposedChart data={data} margin={{ top: 8, right: 18, left: 0, bottom: 8 }} barCategoryGap="18%">
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
             <XAxis
               dataKey="label"
@@ -105,7 +154,7 @@ function ClosuresChart({
             <YAxis
               yAxisId="left"
               allowDecimals={false}
-              width={40}
+              width={42}
               tick={{ fontSize: 11, fill: "#64748b" }}
               label={{ value: "No mês", angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 11 }}
             />
@@ -113,16 +162,23 @@ function ClosuresChart({
               yAxisId="right"
               orientation="right"
               allowDecimals={false}
-              width={44}
+              width={46}
               tick={{ fontSize: 11, fill: "#0f766e" }}
-              label={{ value: "Acum.", angle: 90, position: "insideRight", fill: "#94a3b8", fontSize: 11 }}
+              label={{ value: "Acum. fech.", angle: 90, position: "insideRight", fill: "#94a3b8", fontSize: 11 }}
             />
             <Tooltip
-              cursor={{ fill: "rgba(5, 150, 105, 0.06)" }}
+              cursor={{ fill: "rgba(100, 116, 139, 0.06)" }}
               formatter={(value, name) => {
                 const n = typeof value === "number" ? value : Number(value);
                 const safe = Number.isFinite(n) ? n : 0;
-                const label = name === "count" ? "Fechados no mês" : name === "cumulative" ? "Acumulado no período" : String(name);
+                const label =
+                  name === "aberturas"
+                    ? "Abertos (abertura no mês)"
+                    : name === "fechamentos"
+                      ? "Fechados (no mês)"
+                      : name === "fechamentosAcum"
+                        ? "Acumulado fechados"
+                        : String(name);
                 return [`${safe}`, label];
               }}
               labelFormatter={(label, items) => {
@@ -135,77 +191,33 @@ function ClosuresChart({
                 fontSize: 13
               }}
             />
-            <Legend wrapperStyle={{ fontSize: "12px", paddingTop: 8 }} />
+            <Legend wrapperStyle={{ fontSize: "12px", paddingTop: 6 }} />
             <Bar
               yAxisId="left"
-              dataKey="count"
-              name="Fechados no mês"
+              dataKey="aberturas"
+              name="Abertos (no mês)"
+              fill="#2563eb"
+              radius={[4, 4, 0, 0]}
+              maxBarSize={44}
+            />
+            <Bar
+              yAxisId="left"
+              dataKey="fechamentos"
+              name="Fechados (no mês)"
               fill="#059669"
-              radius={[5, 5, 0, 0]}
-              maxBarSize={48}
+              radius={[4, 4, 0, 0]}
+              maxBarSize={44}
             />
             <Line
               yAxisId="right"
               type="monotone"
-              dataKey="cumulative"
-              name="Acumulado (período)"
+              dataKey="fechamentosAcum"
+              name="Acum. fechados (período)"
               stroke="#0f766e"
               strokeWidth={2.2}
               dot={false}
             />
           </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-function OpeningsChart({ data }: { data: { month: string; label: string; count: number }[] }): JSX.Element {
-  if (data.length === 0) {
-    return (
-      <p className="chamados-ops__chart-empty">
-        Não há datas de abertura válidas no stock filtrado para montar o gráfico.
-      </p>
-    );
-  }
-
-  return (
-    <div className="chamados-ops__chart-wrap">
-      <h3 className="chamados-ops__block-title">Aberturas ao longo do tempo</h3>
-      <p className="chamados-ops__chart-hint">
-        Contagem de chamados <strong>ainda não fechados</strong> por mês de abertura (calendário América/São Paulo),
-        com os mesmos filtros do quadro.
-      </p>
-      <div className="chamados-ops__chart-surface" role="img" aria-label="Gráfico de aberturas por mês">
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 11, fill: "#64748b" }}
-              interval="preserveStartEnd"
-              tickMargin={8}
-            />
-            <YAxis allowDecimals={false} width={36} tick={{ fontSize: 11, fill: "#64748b" }} />
-            <Tooltip
-              cursor={{ fill: "rgba(37, 99, 235, 0.06)" }}
-              formatter={(value) => {
-                const n = typeof value === "number" ? value : Number(value);
-                const safe = Number.isFinite(n) ? n : 0;
-                return [`${safe} chamado(s)`, "Aberturas"];
-              }}
-              labelFormatter={(label, items) => {
-                const row = items?.[0]?.payload as { month?: string } | undefined;
-                return row?.month ? `Mês ${row.month}` : String(label ?? "");
-              }}
-              contentStyle={{
-                borderRadius: 10,
-                border: "1px solid #e2e8f0",
-                fontSize: 13
-              }}
-            />
-            <Bar dataKey="count" name="Aberturas" fill="#2563eb" radius={[5, 5, 0, 0]} maxBarSize={56} />
-          </BarChart>
         </ResponsiveContainer>
       </div>
     </div>
@@ -285,9 +297,11 @@ export function ChamadosOperationsPanel({
             </p>
           </div>
 
-          <OpeningsChart data={summary.openingsByMonth} />
-
-          <ClosuresChart data={summary.closingsByMonth} ticketSyncScope={ticketSyncScope} />
+          <AberturasFechamentosChart
+            openings={summary.openingsByMonth}
+            closings={summary.closingsByMonth}
+            ticketSyncScope={ticketSyncScope}
+          />
 
           {summary.openTotal === 0 ? (
             <p className="chamados-ops__empty">Nenhum chamado aberto para estes filtros.</p>
