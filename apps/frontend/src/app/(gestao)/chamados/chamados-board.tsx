@@ -491,8 +491,10 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                 disabled={Boolean(busy)}
                 onChange={(e) => setSyncScopeDraft(e.target.value === "all" ? "all" : "open")}
               >
-                <option value="all">Todos os tickets (abertos + fechados) — recomendado</option>
-                <option value="open">Só abertos (cache menor; sem fechados para gráficos)</option>
+                <option value="all">
+                  Todos os tickets — recomendado (abertos a cada ciclo do cron; fechados na passagem diária)
+                </option>
+                <option value="open">Só abertos (cache menor; sem fechados / sem gráfico de fechamentos)</option>
               </select>
               <button type="submit" form="kanban-filters-form" className="btn-secondary" id="btn-filters-apply">
                 Aplicar

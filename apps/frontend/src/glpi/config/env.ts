@@ -82,6 +82,17 @@ export const env = {
   GLPI_TOKEN_URL: normalizeEnvValue(process.env.GLPI_TOKEN_URL) || "",
   PORT: Number(process.env.PORT || 3000),
   CRON_EXPRESSION: process.env.CRON_EXPRESSION || "*/5 * * * *",
+  /**
+   * Com escopo «todos os tickets», o cron principal só persiste **abertos**; este agenda a passagem só de
+   * **fechados** (estatística). Expressão node-cron (UTC do servidor). `none` = desativar.
+   */
+  GLPI_CRON_CLOSED_EXPRESSION: (() => {
+    const raw = normalizeEnvValue(process.env.GLPI_CRON_CLOSED_EXPRESSION);
+    if (raw && raw.toLowerCase() === "none") {
+      return "";
+    }
+    return raw || "30 4 * * *";
+  })(),
   HTTP_TIMEOUT_MS: Number(process.env.HTTP_TIMEOUT_MS || 20000),
   /** Quantidade de tickets por requisição ao GLPI (50–500). Padrão mais alto: menos voltas ao servidor. */
   GLPI_TICKETS_PAGE_SIZE: clampInt(process.env.GLPI_TICKETS_PAGE_SIZE, 50, 500, 300),

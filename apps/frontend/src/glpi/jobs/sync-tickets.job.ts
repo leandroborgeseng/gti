@@ -21,6 +21,13 @@ export interface SyncProgress extends SyncTicketsResult {
   page: number;
 }
 
+/**
+ * - `inherit`: comportamento clássico segundo `getTicketSyncScope()` (open = só abertos e apaga fechados; all = tudo).
+ * - `open`: só persiste não-fechados; **não** remove fechados já no cache (cron frequente com escopo «todos»).
+ * - `closed`: só persiste fechados (cron diário com escopo «todos»).
+ */
+export type SyncTicketsPersistFilter = "inherit" | "open" | "closed";
+
 interface SyncTicketsOptions {
   pageSize?: number;
   /** Páginas GLPI a buscar em paralelo (prefetch). */
@@ -28,6 +35,7 @@ interface SyncTicketsOptions {
   /** Tickets por página a persistir em paralelo na BD (sobrepor env). */
   persistConcurrency?: number;
   onProgress?: (progress: SyncProgress) => void;
+  persistFilter?: SyncTicketsPersistFilter;
 }
 
 type PersistTask = {
@@ -51,11 +59,16 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     logger.warn({ error: String(error) }, "Cache de usuários ativos indisponível; sync segue sem fallback de nome");
   });
   const syncScope = await getTicketSyncScope();
+  const persistFilter: SyncTicketsPersistFilter = options.persistFilter ?? "inherit";
   logger.info(
-    { syncScope },
-    syncScope === "all"
-      ? "Iniciando sincronizacao de tickets (cache completo: abertos e fechados)"
-      : "Iniciando sincronizacao de tickets (apenas abertos no cache local)"
+    { syncScope, persistFilter },
+    persistFilter === "closed"
+      ? "Iniciando sincronizacao de tickets (apenas fechados — passagem estatistica)"
+      : persistFilter === "open"
+        ? "Iniciando sincronizacao de tickets (apenas abertos — cache hibrido)"
+        : syncScope === "all"
+          ? "Iniciando sincronizacao de tickets (cache completo: abertos e fechados)"
+          : "Iniciando sincronizacao de tickets (apenas abertos no cache local)"
   );
 
   const pageSize = options.pageSize ?? env.GLPI_TICKETS_PAGE_SIZE;
@@ -95,7 +108,8 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     "Sincronizacao GLPI: tamanho de pagina, prefetch GLPI e persistencia na BD"
   );
 
-  if (syncScope === "open") {
+  const deleteAllClosedAtStart = persistFilter === "inherit" && syncScope === "open";
+  if (deleteAllClosedAtStart) {
     const removedClosed = await prisma.ticket.deleteMany({ where: ticketWhereClosed() });
     if (removedClosed.count > 0) {
       logger.info({ count: removedClosed.count }, "Removidos do cache tickets com status fechado");
@@ -179,19 +193,24 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
           : null;
 
       if (isTicketClosedStatus(normalized.status)) {
-        if (syncScope === "open") {
+        const persistClosed =
+          persistFilter === "closed" || (persistFilter === "inherit" && syncScope === "all");
+        if (persistClosed) {
+          persistQueue.push({ normalized, raw: rawTicket, requesterFallback: fb });
+        } else if (persistFilter === "inherit" && syncScope === "open") {
           openScopeClosedIds.push(normalized.id);
-          continue;
         }
-        persistQueue.push({ normalized, raw: rawTicket, requesterFallback: fb });
         continue;
       }
 
-      persistQueue.push({ normalized, raw: rawTicket, requesterFallback: fb });
+      const persistOpen = persistFilter !== "closed";
+      if (persistOpen) {
+        persistQueue.push({ normalized, raw: rawTicket, requesterFallback: fb });
+      }
     }
 
     let deleteClosedMs = 0;
-    if (syncScope === "open" && openScopeClosedIds.length > 0) {
+    if (persistFilter === "inherit" && syncScope === "open" && openScopeClosedIds.length > 0) {
       const uniqueClosed = [...new Set(openScopeClosedIds)];
       const tDel0 = performance.now();
       await prisma.ticket.deleteMany({ where: { glpiTicketId: { in: uniqueClosed } } });

@@ -1,7 +1,13 @@
 import cron from "node-cron";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
-import { syncTickets, type SyncProgress, type SyncTicketsResult } from "./jobs/sync-tickets.job";
+import {
+  syncTickets,
+  type SyncProgress,
+  type SyncTicketsPersistFilter,
+  type SyncTicketsResult
+} from "./jobs/sync-tickets.job";
+import { getTicketSyncScope } from "./utils/ticket-sync-scope";
 import { ensureSqliteSchema } from "./scripts/bootstrap-db";
 import { loadOpenApiSpec } from "./services/openapi.loader";
 import { getAccessToken } from "./services/auth.service";
@@ -84,13 +90,23 @@ function applySyncProgress(progress: SyncProgress): void {
   }
 }
 
-export async function runSyncWithGuard(): Promise<void> {
+export type RunGlpiSyncOptions = {
+  /** Omitir = `inherit` (comportamento clássico). O cron principal usa `open` quando o escopo é «todos». */
+  persistFilter?: SyncTicketsPersistFilter;
+  /** Após sync: enriquecer pendência inferida (só faz sentido com chamados abertos). */
+  enrichWaitingParty?: boolean;
+};
+
+export async function runSyncWithGuard(options: RunGlpiSyncOptions = {}): Promise<void> {
   await limparSyncOrfaNaBdSeNecessario();
   const store = getGlpiStore();
   if (store.isSyncRunning) {
     logger.warn("Sincronização anterior ainda em andamento, pulando execução");
     return;
   }
+
+  const persistFilter = options.persistFilter ?? "inherit";
+  const enrichWaitingParty = options.enrichWaitingParty ?? true;
 
   store.isSyncRunning = true;
   store.syncStatus.isRunning = true;
@@ -108,12 +124,15 @@ export async function runSyncWithGuard(): Promise<void> {
       logger.warn({ error: toErrorLog(error) }, "Falha ao atualizar doc OpenAPI, usando endpoint padrão");
     });
     const result: SyncTicketsResult = await syncTickets({
+      persistFilter: persistFilter === "inherit" ? undefined : persistFilter,
       onProgress: applySyncProgress
     });
     applySyncProgress({ page: store.syncStatus.lastPage || 1, ...result });
-    await enrichWaitingPartyBatch(35).catch((error) => {
-      logger.warn({ error: toErrorLog(error) }, "Enriquecimento waitingParty ignorado");
-    });
+    if (enrichWaitingParty) {
+      await enrichWaitingPartyBatch(35).catch((error) => {
+        logger.warn({ error: toErrorLog(error) }, "Enriquecimento waitingParty ignorado");
+      });
+    }
     store.syncStatus.lastSuccessAt = new Date().toISOString();
     store.syncStatus.lastError = null;
     logger.info(
@@ -121,7 +140,9 @@ export async function runSyncWithGuard(): Promise<void> {
         durationMs: Date.now() - startedMs,
         loaded: result.loaded,
         saved: result.saved,
-        failed: result.failed
+        failed: result.failed,
+        persistFilter,
+        enrichWaitingParty
       },
       "Sincronização GLPI concluída"
     );
@@ -140,6 +161,24 @@ export async function runSyncWithGuard(): Promise<void> {
   }
 }
 
+async function resolveMainCronPersistFilter(): Promise<SyncTicketsPersistFilter> {
+  const scope = await getTicketSyncScope();
+  if (scope === "all") {
+    return "open";
+  }
+  return "inherit";
+}
+
+/** Passagem só de fechados (agendada 1x/dia por defeito quando o escopo é «todos os tickets»). */
+export async function runClosedTicketsDailySync(): Promise<void> {
+  const scope = await getTicketSyncScope();
+  if (scope !== "all") {
+    logger.debug({ scope }, "Passagem diaria de fechados ignorada (escopo nao e todos os tickets)");
+    return;
+  }
+  await runSyncWithGuard({ persistFilter: "closed", enrichWaitingParty: false });
+}
+
 export function startGlpiSyncCron(): void {
   if (process.env.GLPI_CRON_DISABLED === "1") {
     logger.info("Cron GLPI desativado (GLPI_CRON_DISABLED=1)");
@@ -147,13 +186,41 @@ export function startGlpiSyncCron(): void {
   }
   try {
     cron.schedule(env.CRON_EXPRESSION, () => {
-      void runSyncWithGuard();
+      void resolveMainCronPersistFilter()
+        .then((pf) => runSyncWithGuard(pf === "inherit" ? {} : { persistFilter: pf }))
+        .catch((error) => {
+          logger.error({ error: toErrorLog(error) }, "Falha ao resolver ou executar cron principal de tickets GLPI");
+        });
     });
-    logger.info({ cron: env.CRON_EXPRESSION }, "Cron de sincronização GLPI iniciado");
+    logger.info({ cron: env.CRON_EXPRESSION }, "Cron de sincronização GLPI iniciado (abertos frequentes se escopo=todos)");
   } catch (error) {
     logger.error(
       { error: toErrorLog(error), cron: env.CRON_EXPRESSION },
       "Expressão de cron inválida ou falha ao agendar; a app continua sem agendamento"
+    );
+  }
+}
+
+export function startGlpiClosedTicketsCron(): void {
+  if (process.env.GLPI_CRON_DISABLED === "1") {
+    return;
+  }
+  const expr = env.GLPI_CRON_CLOSED_EXPRESSION.trim();
+  if (!expr) {
+    logger.info("Cron de fechados GLPI desativado (GLPI_CRON_CLOSED_EXPRESSION vazio ou none)");
+    return;
+  }
+  try {
+    cron.schedule(expr, () => {
+      void runClosedTicketsDailySync().catch((error) => {
+        logger.error({ error: toErrorLog(error) }, "Falha no cron diario de tickets fechados GLPI");
+      });
+    });
+    logger.info({ cron: expr }, "Cron diario de tickets fechados GLPI agendado");
+  } catch (error) {
+    logger.error(
+      { error: toErrorLog(error), cron: expr },
+      "Expressao do cron de fechados invalida; desative com GLPI_CRON_CLOSED_EXPRESSION=none se nao for usada"
     );
   }
 }
@@ -205,6 +272,7 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
   }
   /** Sempre agenda o cron para retentar sync/GLPI após falhas transitórias (Railway, rede, etc.). */
   startGlpiSyncCron();
+  startGlpiClosedTicketsCron();
   await recordGlpiBootstrapCheckpoint("after_cron");
   if (enableHmrGuard) {
     store.nextCronStarted = true;

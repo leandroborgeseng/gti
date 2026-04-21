@@ -137,6 +137,15 @@ function AberturasFechamentosChart({
         <strong>Barras azuis</strong>: chamados <strong>ainda abertos</strong> por mês de abertura (América/São Paulo).
         <strong> Barras verdes</strong>: chamados <strong>fechados</strong> no mês (última alteração GLPI, ou abertura se
         faltar). <strong>Linha</strong>: acumulado de fechados no período exibido.
+        {ticketSyncScope === "all" ? (
+          <>
+            {" "}
+            Com o escopo «todos os tickets», o servidor sincroniza <strong>abertos em cada ciclo</strong> do cron
+            principal e <strong>fechados na passagem diária</strong> (variável{" "}
+            <code className="chamados-ops__mono">GLPI_CRON_CLOSED_EXPRESSION</code>
+            ); até correr o diário, os fechados podem ficar ligeiramente desatualizados.
+          </>
+        ) : null}
       </p>
       <div
         className="chamados-ops__chart-surface"
