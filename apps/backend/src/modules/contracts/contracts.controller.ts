@@ -32,6 +32,12 @@ export class ContractsController {
     return this.service.findDistinctGlpiAssignedGroupOptions();
   }
 
+  /** Visão geral de módulos e itens (estado de entrega) para todos os contratos com estrutura modular. */
+  @Get("overview/modules-delivery")
+  modulesDeliveryOverview(): Promise<unknown> {
+    return this.service.findModulesDeliveryOverview();
+  }
+
   /** Rotas mais específicas antes de `:id` solto (evita ambiguidade em alguns casos). */
   @Post(":id/modules")
   createModule(@Param("id") contractId: string, @Body() dto: CreateContractModuleDto): Promise<unknown> {

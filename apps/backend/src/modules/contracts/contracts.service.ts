@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { getAuditActorId } from "../../common/audit-actor";
-import { ContractStatus, LawType, Prisma } from "@prisma/client";
+import { ContractFeatureStatus, ContractItemDeliveryStatus, ContractStatus, ContractType, LawType, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   CreateContractAmendmentDto,
@@ -74,6 +74,45 @@ export class ContractsService {
     return rows
       .filter((r): r is { contractGroupId: number; contractGroupName: string | null } => r.contractGroupId != null)
       .map((r) => ({ glpiGroupId: r.contractGroupId, glpiGroupName: r.contractGroupName ?? null }));
+  }
+
+  /**
+   * Contratos com estrutura de módulos (Software / Infra / Serviço) e itens com estado de entrega,
+   * para a página global «Módulos».
+   */
+  async findModulesDeliveryOverview(): Promise<unknown> {
+    return this.prisma.contract.findMany({
+      where: {
+        deletedAt: null,
+        contractType: { in: [ContractType.SOFTWARE, ContractType.INFRA, ContractType.SERVICO] }
+      },
+      select: {
+        id: true,
+        number: true,
+        name: true,
+        contractType: true,
+        status: true,
+        modules: {
+          select: {
+            id: true,
+            name: true,
+            weight: true,
+            features: {
+              select: {
+                id: true,
+                name: true,
+                weight: true,
+                status: true,
+                deliveryStatus: true
+              },
+              orderBy: { name: "asc" }
+            }
+          },
+          orderBy: { name: "asc" }
+        }
+      },
+      orderBy: { number: "asc" }
+    });
   }
 
   async findAll(): Promise<unknown> {
@@ -246,7 +285,8 @@ export class ContractsService {
         moduleId,
         name: dto.name,
         weight: new Prisma.Decimal(dto.weight),
-        status: dto.status
+        status: dto.status ?? ContractFeatureStatus.NOT_STARTED,
+        deliveryStatus: dto.deliveryStatus ?? ContractItemDeliveryStatus.NOT_DELIVERED
       }
     });
     await this.createAudit("ContractFeature", created.id, "CREATE", null, created);
@@ -266,7 +306,8 @@ export class ContractsService {
       data: {
         name: dto.name ?? undefined,
         weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : undefined,
-        status: dto.status ?? undefined
+        status: dto.status ?? undefined,
+        deliveryStatus: dto.deliveryStatus ?? undefined
       }
     });
     await this.createAudit("ContractFeature", featureId, "UPDATE", prev, updated);

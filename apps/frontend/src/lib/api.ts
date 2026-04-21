@@ -159,6 +159,9 @@ export type ContractGlpiGroup = {
   createdAt: string;
 };
 
+/** Estado de entrega do item (funcionalidade) para acompanhar a prestação do contrato. */
+export type ContractItemDeliveryStatus = "NOT_DELIVERED" | "PARTIALLY_DELIVERED" | "DELIVERED";
+
 export type Contract = {
   id: string;
   number: string;
@@ -182,7 +185,12 @@ export type Contract = {
   manager?: { id: string; name: string; email: string } | null;
   /** Grupos de trabalho GLPI associados ao contrato (métricas de SLA). */
   glpiGroups?: ContractGlpiGroup[];
-  modules?: Array<{ id: string; name: string; weight: string; features: Array<{ id: string; name: string; status: string; weight: string }> }>;
+  modules?: Array<{
+    id: string;
+    name: string;
+    weight: string;
+    features: Array<{ id: string; name: string; status: string; weight: string; deliveryStatus?: ContractItemDeliveryStatus }>;
+  }>;
   services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
   amendments?: ContractAmendment[];
   /** Presente na listagem (`GET /contracts`) para indicar quantos aditivos existem. */
@@ -196,6 +204,31 @@ export type GlpiAssignedGroupOption = {
 
 export async function getGlpiAssignedGroupsCatalog(): Promise<GlpiAssignedGroupOption[]> {
   return request("/contracts/catalog/glpi-assigned-groups");
+}
+
+/** Linha de visão geral da página «Módulos» (contratos com estrutura modular). */
+export type ContractModulesDeliveryOverview = {
+  id: string;
+  number: string;
+  name: string;
+  contractType: string;
+  status: string;
+  modules: Array<{
+    id: string;
+    name: string;
+    weight: unknown;
+    features: Array<{
+      id: string;
+      name: string;
+      weight: unknown;
+      status: string;
+      deliveryStatus: ContractItemDeliveryStatus;
+    }>;
+  }>;
+};
+
+export async function getModulesDeliveryOverview(): Promise<ContractModulesDeliveryOverview[]> {
+  return request("/contracts/overview/modules-delivery");
 }
 
 export type AttachmentRecord = {
@@ -390,7 +423,7 @@ export async function deleteContractModule(contractId: string, moduleId: string)
 export async function createContractFeature(
   contractId: string,
   moduleId: string,
-  payload: { name: string; weight: number; status?: ContractFeatureStatus }
+  payload: { name: string; weight: number; status?: ContractFeatureStatus; deliveryStatus?: ContractItemDeliveryStatus }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}/features`, { method: "POST", body: JSON.stringify(payload) });
 }
@@ -399,7 +432,7 @@ export async function updateContractFeature(
   contractId: string,
   moduleId: string,
   featureId: string,
-  payload: { name?: string; weight?: number; status?: ContractFeatureStatus }
+  payload: { name?: string; weight?: number; status?: ContractFeatureStatus; deliveryStatus?: ContractItemDeliveryStatus }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}/features/${featureId}`, {
     method: "PUT",

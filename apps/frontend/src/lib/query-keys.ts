@@ -4,6 +4,8 @@ export const queryKeys = {
   suppliers: ["gestao", "suppliers"] as const,
   fiscais: ["gestao", "fiscais"] as const,
   contracts: ["gestao", "contracts"] as const,
+  /** Visão geral de módulos e estado de entrega dos itens (`GET /contracts/overview/modules-delivery`). */
+  modulesDeliveryOverview: ["gestao", "modules-delivery-overview"] as const,
   /** Grupos GLPI distintos nos tickets em cache (catálogo para vínculo ao contrato). */
   glpiAssignedGroups: ["gestao", "glpi-assigned-groups"] as const,
   measurements: ["gestao", "measurements"] as const,

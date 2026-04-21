@@ -1,4 +1,10 @@
-import { ContractFeatureStatus, ContractStatus, ContractType, LawType } from "@prisma/client";
+import {
+  ContractFeatureStatus,
+  ContractItemDeliveryStatus,
+  ContractStatus,
+  ContractType,
+  LawType
+} from "@prisma/client";
 import { Type } from "class-transformer";
 import { IsArray, IsDateString, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from "class-validator";
 
@@ -51,6 +57,10 @@ export class CreateContractFeatureDto {
   @IsOptional()
   @IsEnum(ContractFeatureStatus)
   status?: ContractFeatureStatus;
+
+  @IsOptional()
+  @IsEnum(ContractItemDeliveryStatus)
+  deliveryStatus?: ContractItemDeliveryStatus;
 }
 
 export class UpdateContractFeatureDto {
@@ -68,6 +78,10 @@ export class UpdateContractFeatureDto {
   @IsOptional()
   @IsEnum(ContractFeatureStatus)
   status?: ContractFeatureStatus;
+
+  @IsOptional()
+  @IsEnum(ContractItemDeliveryStatus)
+  deliveryStatus?: ContractItemDeliveryStatus;
 }
 
 export class CreateContractServiceDto {

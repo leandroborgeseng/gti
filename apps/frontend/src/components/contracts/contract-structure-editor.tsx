@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import type { Contract } from "@/lib/api";
+import type { Contract, ContractItemDeliveryStatus } from "@/lib/api";
 import {
   createContractFeature,
   createContractModule,
@@ -33,6 +33,14 @@ const featureStatusLabels: Record<ContractFeatureStatus, string> = {
 };
 
 const featureStatuses: ContractFeatureStatus[] = ["NOT_STARTED", "IN_PROGRESS", "DELIVERED", "VALIDATED"];
+
+const itemDeliveryLabels: Record<ContractItemDeliveryStatus, string> = {
+  NOT_DELIVERED: "Entrega: não entregue",
+  PARTIALLY_DELIVERED: "Entrega: parcial",
+  DELIVERED: "Entrega: concluída"
+};
+
+const itemDeliveryOptions: ContractItemDeliveryStatus[] = ["NOT_DELIVERED", "PARTIALLY_DELIVERED", "DELIVERED"];
 
 function showsModules(contractType: string): boolean {
   return ["SOFTWARE", "INFRA", "SERVICO"].includes(contractType);
@@ -288,6 +296,7 @@ function ModuleBlock(props: {
   }, [mod.name, mod.weight]);
   const [fWeight, setFWeight] = useState("");
   const [fStatus, setFStatus] = useState<ContractFeatureStatus>("NOT_STARTED");
+  const [fDelivery, setFDelivery] = useState<ContractItemDeliveryStatus>("NOT_DELIVERED");
 
   async function exec(op: () => Promise<Contract>): Promise<void> {
     onError(null);
@@ -427,6 +436,18 @@ function ModuleBlock(props: {
               </option>
             ))}
           </select>
+          <select
+            className={`${formControlClass} text-sm`}
+            value={fDelivery}
+            onChange={(e) => setFDelivery(e.target.value as ContractItemDeliveryStatus)}
+            disabled={busy}
+          >
+            {itemDeliveryOptions.map((s) => (
+              <option key={s} value={s}>
+                {itemDeliveryLabels[s]}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             className="rounded bg-slate-700 px-2 py-1 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
@@ -445,11 +466,13 @@ function ModuleBlock(props: {
                 const c = await createContractFeature(contractId, mod.id, {
                   name: fName.trim(),
                   weight: w,
-                  status: fStatus
+                  status: fStatus,
+                  deliveryStatus: fDelivery
                 });
                 setFName("");
                 setFWeight("");
                 setFStatus("NOT_STARTED");
+                setFDelivery("NOT_DELIVERED");
                 return c;
               });
             }}
@@ -477,12 +500,16 @@ function FeatureRow(props: {
   const [name, setName] = useState(f.name);
   const [weight, setWeight] = useState(String(f.weight));
   const [status, setStatus] = useState<ContractFeatureStatus>(f.status as ContractFeatureStatus);
+  const [deliveryStatus, setDeliveryStatus] = useState<ContractItemDeliveryStatus>(
+    (f.deliveryStatus as ContractItemDeliveryStatus | undefined) ?? "NOT_DELIVERED"
+  );
 
   useEffect(() => {
     setName(f.name);
     setWeight(String(f.weight));
     setStatus(f.status as ContractFeatureStatus);
-  }, [f.name, f.weight, f.status]);
+    setDeliveryStatus((f.deliveryStatus as ContractItemDeliveryStatus | undefined) ?? "NOT_DELIVERED");
+  }, [f.name, f.weight, f.status, f.deliveryStatus]);
 
   async function exec(op: () => Promise<Contract>): Promise<void> {
     onError(null);
@@ -515,6 +542,18 @@ function FeatureRow(props: {
           </option>
         ))}
       </select>
+      <select
+        className={`${formControlClass} min-w-[10.5rem] py-1.5 text-xs`}
+        value={deliveryStatus}
+        onChange={(e) => setDeliveryStatus(e.target.value as ContractItemDeliveryStatus)}
+        disabled={busy}
+      >
+        {itemDeliveryOptions.map((s) => (
+          <option key={s} value={s}>
+            {itemDeliveryLabels[s]}
+          </option>
+        ))}
+      </select>
       <button
         type="button"
         className={`${buttonSmallClass} py-0.5 text-xs`}
@@ -533,7 +572,8 @@ function FeatureRow(props: {
             updateContractFeature(contractId, moduleId, f.id, {
               name: name.trim(),
               weight: w,
-              status
+              status,
+              deliveryStatus
             })
           );
         }}

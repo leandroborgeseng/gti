@@ -35,6 +35,13 @@ enum ContractFeatureStatus {
   VALIDATED
 }
 
+/// Estado de entrega do item (funcionalidade) para acompanhamento da prestação do contrato.
+enum ContractItemDeliveryStatus {
+  NOT_DELIVERED
+  PARTIALLY_DELIVERED
+  DELIVERED
+}
+
 enum MeasurementStatus {
   OPEN
   UNDER_REVIEW
@@ -221,12 +228,13 @@ model ContractModule {
 }
 
 model ContractFeature {
-  id        String                @id @default(uuid())
-  moduleId  String
-  name      String
-  weight    Decimal               @db.Decimal(8, 4)
-  status    ContractFeatureStatus @default(NOT_STARTED)
-  module    ContractModule        @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+  id             String                     @id @default(uuid())
+  moduleId       String
+  name           String
+  weight         Decimal                    @db.Decimal(8, 4)
+  status         ContractFeatureStatus      @default(NOT_STARTED)
+  deliveryStatus ContractItemDeliveryStatus @default(NOT_DELIVERED)
+  module         ContractModule             @relation(fields: [moduleId], references: [id], onDelete: Restrict)
 }
 
 model ContractService {

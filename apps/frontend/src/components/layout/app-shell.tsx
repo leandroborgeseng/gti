@@ -13,6 +13,7 @@ const titles: Record<string, string> = {
   "/dashboard": "Painel executivo",
   "/chamados": "Chamados GLPI",
   "/contracts": "Contratos",
+  "/modulos": "Módulos e entrega",
   "/measurements": "Medições",
   "/glosas": "Glosas",
   "/governance/tickets": "Governança de chamados",
