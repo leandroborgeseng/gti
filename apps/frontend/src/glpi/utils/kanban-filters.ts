@@ -1,5 +1,5 @@
 import type { TicketWhereInput } from "../types/ticket-where";
-import { ticketWhereNotClosed } from "./ticket-status";
+import { ticketWhereClosed, ticketWhereNotClosed } from "./ticket-status";
 
 export function pendenciaFilterWhere(raw: string): TicketWhereInput | null {
   const p = raw.trim().toLowerCase();
@@ -70,6 +70,32 @@ export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
       statusFilter ? { status: statusFilter } : {},
       groupFilter ? { contractGroupName: { contains: groupFilter } } : {},
       ...(enforceNotClosed ? [ticketWhereNotClosed()] : []),
+      ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
+    ]
+  };
+}
+
+/**
+ * Chamados com status de fechado no cache, com os mesmos filtros de texto/grupo/pendência
+ * que o Kanban (`onlyOpen` e `forceNonClosed` ignorados — o stock é sempre «fechados»).
+ */
+export function buildKanbanWhereClosed(input: KanbanFilterInput): TicketWhereInput {
+  const { q, statusFilter, groupFilter, pendenciaParam } = input;
+  const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
+  return {
+    AND: [
+      q
+        ? {
+            OR: [
+              { title: { contains: q } },
+              { content: { contains: q } },
+              { glpiTicketId: Number.isFinite(Number(q)) ? Number(q) : -1 }
+            ]
+          }
+        : {},
+      statusFilter ? { status: statusFilter } : {},
+      groupFilter ? { contractGroupName: { contains: groupFilter } } : {},
+      ticketWhereClosed(),
       ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
     ]
   };

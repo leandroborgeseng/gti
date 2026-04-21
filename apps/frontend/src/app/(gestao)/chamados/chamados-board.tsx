@@ -416,7 +416,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
 
       <AgingOpenDashboard buckets={initial.ageBuckets} />
 
-      <ChamadosOperationsPanel summary={initial.operationsSummary} />
+      <ChamadosOperationsPanel summary={initial.operationsSummary} ticketSyncScope={initial.ticketSyncScope} />
 
       <div className="kanban-filters-stack">
         <div className="filters-shell">

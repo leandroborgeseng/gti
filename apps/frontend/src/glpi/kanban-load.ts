@@ -1,7 +1,7 @@
 import { prisma } from "./config/prisma";
 import { getCachedUsersByIds } from "./services/glpi-users-cache.service";
 import type { TicketWhereInput } from "./types/ticket-where";
-import { buildKanbanWhere, pendenciaLabelForSummary } from "./utils/kanban-filters";
+import { buildKanbanWhere, buildKanbanWhereClosed, pendenciaLabelForSummary } from "./utils/kanban-filters";
 import {
   getOpenTicketOperationalMetrics,
   sumOpenAgeBuckets,
@@ -148,6 +148,114 @@ export type ChamadosOldestTicketRow = {
   requesterLabel: string;
 };
 
+/** Um mês civil (America/Sao_Paulo) para o gráfico de aberturas; `month` = `YYYY-MM` para ordenação. */
+export type ChamadosOpeningsByMonth = { month: string; label: string; count: number };
+
+const SP_TZ = "America/Sao_Paulo";
+const spYearMonthFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SP_TZ,
+  year: "numeric",
+  month: "2-digit"
+});
+
+function parseTicketDateCreation(raw: string | null): Date | null {
+  if (!raw || !String(raw).trim()) return null;
+  const s = String(raw).trim();
+  let t = Date.parse(s);
+  if (!Number.isFinite(t) && s.includes(" ") && !s.includes("T")) {
+    t = Date.parse(s.replace(" ", "T"));
+  }
+  if (!Number.isFinite(t)) return null;
+  return new Date(t);
+}
+
+function spYearMonthFromDate(d: Date): string {
+  return spYearMonthFmt.format(d);
+}
+
+function ymAddOne(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return ym;
+  if (m >= 12) return `${y + 1}-01`;
+  return `${y}-${String(m + 1).padStart(2, "0")}`;
+}
+
+function monthRangeInclusive(startYm: string, endYm: string): string[] {
+  if (startYm > endYm) return [];
+  const out: string[] = [];
+  let cur = startYm;
+  let guard = 0;
+  while (cur <= endYm && guard < 120) {
+    out.push(cur);
+    cur = ymAddOne(cur);
+    guard += 1;
+  }
+  return out;
+}
+
+function labelForYm(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return ym;
+  return new Intl.DateTimeFormat("pt-BR", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(new Date(Date.UTC(y, m - 1, 15)));
+}
+
+function monthlyBarsFromCounts(counts: Map<string, number>): ChamadosOpeningsByMonth[] {
+  if (counts.size === 0) return [];
+  const sortedKeys = Array.from(counts.keys()).sort((a, b) => a.localeCompare(b));
+  const startYm = sortedKeys[0]!;
+  const nowYm = spYearMonthFromDate(new Date());
+  const lastDataYm = sortedKeys[sortedKeys.length - 1]!;
+  const endYm = lastDataYm > nowYm ? lastDataYm : nowYm;
+  const full = monthRangeInclusive(startYm, endYm);
+  return full.map((month) => ({
+    month,
+    label: labelForYm(month),
+    count: counts.get(month) ?? 0
+  }));
+}
+
+function buildOpeningsByMonthFromRows(rows: { dateCreation: string | null }[]): ChamadosOpeningsByMonth[] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const d = parseTicketDateCreation(r.dateCreation);
+    if (!d) continue;
+    const ym = spYearMonthFromDate(d);
+    counts.set(ym, (counts.get(ym) ?? 0) + 1);
+  }
+  return monthlyBarsFromCounts(counts);
+}
+
+/** Fechamentos por mês + acumulado no período (proxy de mês: última alteração GLPI, senão abertura). */
+export type ChamadosClosingsByMonth = {
+  month: string;
+  label: string;
+  count: number;
+  cumulative: number;
+};
+
+function buildClosingsByMonthFromRows(
+  rows: { dateModification: string | null; dateCreation: string | null }[]
+): ChamadosClosingsByMonth[] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const d =
+      parseTicketDateCreation(r.dateModification) ?? parseTicketDateCreation(r.dateCreation);
+    if (!d) continue;
+    const ym = spYearMonthFromDate(d);
+    counts.set(ym, (counts.get(ym) ?? 0) + 1);
+  }
+  const bars = monthlyBarsFromCounts(counts);
+  let cumulative = 0;
+  return bars.map((row) => {
+    cumulative += row.count;
+    return { ...row, cumulative };
+  });
+}
+
 /** Agregados sobre chamados não fechados com o mesmo filtro do Kanban (`forceNonClosed`). */
 export type ChamadosOperationsSummary = {
   openTotal: number;
@@ -163,6 +271,10 @@ export type ChamadosOperationsSummary = {
   /** % do total aberto que está nos 3 grupos GLPI (contrato) com mais stock; null se total 0. */
   concentrationTop3GroupsPct: number | null;
   oldestTickets: ChamadosOldestTicketRow[];
+  /** Aberturas por mês (fuso São Paulo), stock actual com os mesmos filtros. */
+  openingsByMonth: ChamadosOpeningsByMonth[];
+  /** Fechados no cache (mesmos filtros), por mês + acumulado no período. */
+  closingsByMonth: ChamadosClosingsByMonth[];
 };
 
 export type KanbanBoardPayload = {
@@ -200,7 +312,9 @@ function emptyOperationsSummary(): ChamadosOperationsSummary {
     topGroups: [],
     topRequesters: [],
     concentrationTop3GroupsPct: null,
-    oldestTickets: []
+    oldestTickets: [],
+    openingsByMonth: [],
+    closingsByMonth: []
   };
 }
 
@@ -226,6 +340,7 @@ function waitingPartyLabel(value: string | null): string {
 
 async function buildChamadosOperationsSummary(
   whereOpen: TicketWhereInput,
+  whereClosed: TicketWhereInput,
   operational: OpenTicketOperationalMetrics
 ): Promise<ChamadosOperationsSummary> {
   const b = operational.buckets;
@@ -245,7 +360,8 @@ async function buildChamadosOperationsSummary(
     ]
   };
 
-  const [byPartyRows, byStatusRows, byGroupRows, byEmailRows, byNameRows, oldestRaw] = await Promise.all([
+  const [byPartyRows, byStatusRows, byGroupRows, byEmailRows, byNameRows, oldestRaw, openingsRows, closingsRows] =
+    await Promise.all([
     prisma.ticket.groupBy({
       by: ["waitingParty"],
       where: whereOpen,
@@ -284,8 +400,19 @@ async function buildChamadosOperationsSummary(
         requesterName: true,
         requesterEmail: true
       }
+    }),
+    prisma.ticket.findMany({
+      where: whereOpen,
+      select: { dateCreation: true }
+    }),
+    prisma.ticket.findMany({
+      where: whereClosed,
+      select: { dateModification: true, dateCreation: true }
     })
   ]);
+
+  const openingsByMonth = buildOpeningsByMonthFromRows(openingsRows);
+  const closingsByMonth = buildClosingsByMonthFromRows(closingsRows);
 
   const byWaitingParty: ChamadosRankRow[] = byPartyRows
     .map((r) => ({ label: waitingPartyLabel(r.waitingParty), count: r._count._all }))
@@ -352,7 +479,9 @@ async function buildChamadosOperationsSummary(
     topGroups,
     topRequesters,
     concentrationTop3GroupsPct,
-    oldestTickets
+    oldestTickets,
+    openingsByMonth,
+    closingsByMonth
   };
 }
 
@@ -398,6 +527,13 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     pendenciaParam,
     forceNonClosed: true
   });
+  const whereClosed = buildKanbanWhereClosed({
+    q,
+    statusFilter,
+    groupFilter,
+    onlyOpen,
+    pendenciaParam
+  });
 
   const [totalFiltered, kanbanStored, scope] = await Promise.all([
     prisma.ticket.count({ where }),
@@ -438,7 +574,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
       orderBy: { contractGroupName: "asc" }
     })
   ]);
-  const operationsSummary = await buildChamadosOperationsSummary(whereAge, operationalMetrics);
+  const operationsSummary = await buildChamadosOperationsSummary(whereAge, whereClosed, operationalMetrics);
   const ageBucketsResult = operationalMetrics.buckets;
   const latestTicketRows = latestTicketRowsRaw as KanbanTicketListRow[];
 

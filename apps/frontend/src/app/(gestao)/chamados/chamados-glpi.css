@@ -1072,19 +1072,93 @@
 /* Painel de indicadores de operação (stock aberto no filtro) */
 .chamados-glpi-page .chamados-ops {
   margin: 0 0 1.35rem 0;
-  padding: 1.15rem 1.2rem 1.25rem;
+  padding: 0;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
 }
-.chamados-glpi-page .chamados-ops__intro { margin-bottom: 1rem; }
-.chamados-glpi-page .chamados-ops__title {
-  margin: 0 0 0.35rem 0;
+.chamados-glpi-page .chamados-ops__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 1rem 1.15rem;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.chamados-glpi-page .chamados-ops__header:hover { background: rgba(248, 250, 252, 0.85); }
+.chamados-glpi-page .chamados-ops__header:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.chamados-glpi-page .chamados-ops__header-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+.chamados-glpi-page .chamados-ops__chevron {
+  flex-shrink: 0;
+  color: #64748b;
+  transition: transform 0.2s ease;
+}
+.chamados-glpi-page .chamados-ops__chevron--collapsed { transform: rotate(-90deg); }
+.chamados-glpi-page .chamados-ops__header-title {
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--ink);
+}
+.chamados-glpi-page .chamados-ops__header-meta {
+  flex-shrink: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.chamados-glpi-page .chamados-ops__body {
+  padding: 0 1.15rem 1.2rem;
+  border-top: 1px solid #e2e8f0;
+}
+.chamados-glpi-page .chamados-ops__intro { margin: 1rem 0 1rem; }
+.chamados-glpi-page .chamados-ops__chart-wrap {
+  margin-bottom: 1.1rem;
+  padding: 0.75rem 0.85rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+.chamados-glpi-page .chamados-ops__chart-hint {
+  margin: 0 0 0.65rem 0;
+  max-width: 72ch;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.chamados-glpi-page .chamados-ops__chart-surface { width: 100%; min-height: 280px; }
+.chamados-glpi-page .chamados-ops__chart-wrap--follow { margin-top: 1rem; }
+.chamados-glpi-page .chamados-ops__scope-hint {
+  margin: 0;
+  max-width: 72ch;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+.chamados-glpi-page .chamados-ops__chart-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
 }
 .chamados-glpi-page .chamados-ops__lede {
   margin: 0;
