@@ -135,7 +135,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/modulos", label: "Funcionalidades" },
-          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. Use esta área para acompanhar o que foi pactuado versus o reportado."
+          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. Por contrato, cada módulo tem uma sanfona (lista fechada por defeito) com contagens de entregues / parciais / não entregues no cabeçalho. Pode alterar o estado de entrega no menu, usar o lápis para editar nome, peso e estados num diálogo, ou o ícone de eliminar para remover a linha (com confirmação e validação da soma dos pesos do módulo)."
         ]
       }
     ]
