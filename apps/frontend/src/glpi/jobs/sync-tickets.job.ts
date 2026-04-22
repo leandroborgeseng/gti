@@ -5,7 +5,7 @@ import { logger } from "../config/logger";
 import { normalizeTicket } from "../normalizers/ticket.normalizer";
 import type { NormalizedTicket } from "../types/glpi.types";
 import { ensureActiveUsersCacheFresh, getCachedUsersByIds } from "../services/glpi-users-cache.service";
-import { persistNormalizedTicket } from "../services/ticket-persist.service";
+import { backfillAssignedUserFromCachedRaw, persistNormalizedTicket } from "../services/ticket-persist.service";
 import { getTicketsPage, type TicketsPageResult } from "../services/tickets.service";
 import type { RequesterContact } from "../utils/ticket-requester";
 import { getTicketSyncScope } from "../utils/ticket-sync-scope";
@@ -58,6 +58,13 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
   await ensureActiveUsersCacheFresh().catch((error) => {
     logger.warn({ error: String(error) }, "Cache de usuários ativos indisponível; sync segue sem fallback de nome");
   });
+  const backfillAssigned = await backfillAssignedUserFromCachedRaw({ limit: 200 }).catch((e) => {
+    logger.warn({ err: String(e) }, "Backfill de técnico a partir do rawJson falhou; sync segue");
+    return { scanned: 0, updated: 0 };
+  });
+  if (backfillAssigned.updated > 0) {
+    logger.info({ ...backfillAssigned }, "Backfill: técnico atribuído a partir de rawJson em cache (sem re-fetch GLPI)");
+  }
   const syncScope = await getTicketSyncScope();
   const persistFilter: SyncTicketsPersistFilter = options.persistFilter ?? "inherit";
   logger.info(
@@ -148,7 +155,20 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
     const tPrep0 = performance.now();
     const normalizedPage = rawTickets.map((r) => normalizeTicket(r));
     const requesterIds = normalizedPage.map((n) => n.requester_user_id).filter((id): id is number => typeof id === "number" && id > 0);
-    const requesterFallbackMap = await getCachedUsersByIds(requesterIds).catch(() => new Map<number, RequesterContact>());
+    const assigneeIds = normalizedPage
+      .map((n) => n.assigned_user_id)
+      .filter((id): id is number => typeof id === "number" && id > 0);
+    const allUserIds = [...new Set([...requesterIds, ...assigneeIds])];
+    const userFallbackMap = await getCachedUsersByIds(allUserIds).catch(() => new Map<number, RequesterContact>());
+    for (const n of normalizedPage) {
+      if (n.assigned_user_id && n.assigned_user_id > 0) {
+        const c = userFallbackMap.get(n.assigned_user_id);
+        if (c?.displayName) {
+          n.assigned_user_name = c.displayName;
+        }
+      }
+    }
+    const requesterFallbackMap = userFallbackMap;
     const prepMs = performance.now() - tPrep0;
 
     let dbStateMs = 0;

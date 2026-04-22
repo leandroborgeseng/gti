@@ -70,26 +70,104 @@ function extractFromTeam(teamValue: unknown): { id: number | null; name: string 
   return { id: null, name: null };
 }
 
+function idFromUserTeamEntry(o: JsonObject): number | null {
+  const n =
+    asNumber(o.id) ??
+    asNumber(o.items_id) ??
+    asNumber(o.user_id) ??
+    asNumber(o.users_id) ??
+    null;
+  if (n != null && n > 0) {
+    return n;
+  }
+  const href = asString(o.href);
+  if (href) {
+    const m = /[?&]id=(\d+)/.exec(href) || /user\.form\.php\?id=(\d+)/i.exec(href) || /\/User\/(\d+)/i.exec(href);
+    if (m) {
+      const p = asNumber(m[1]);
+      return p != null && p > 0 ? p : null;
+    }
+  }
+  return null;
+}
+
+function isGroupTeamEntry(o: JsonObject): boolean {
+  const t = (asString(o.type) ?? asString(o.itemtype) ?? "").toLowerCase();
+  if (t.includes("group")) {
+    return true;
+  }
+  const href = (asString(o.href) ?? "").toLowerCase();
+  return href.includes("/group.form.php");
+}
+
 /**
- * Utilizador técnico atribuído (`users_id_tec`) e rótulo legível (equipa GLPI ou fallback).
+ * Técnico atribuído: `users_id_tech` na tabela GLPI, mas a API v2 de listagem costuma omitir
+ * ou povoar só a equipa (`team`). Tenta vários noms de campo e a lista `team`.
  */
 function extractAssignedUser(ticket: JsonObject): { id: number | null; name: string | null } {
-  const rawTech = asNumber(ticket.users_id_tech);
-  const techId = rawTech != null && rawTech > 0 ? rawTech : null;
+  const userTechObj = asObject(ticket.user_tech);
+  const rawTech =
+    asNumber(ticket.users_id_tech) ??
+    asNumber(ticket.users_id_tec) /* typo em alguns payloads */ ??
+    asNumber(userTechObj.id) ??
+    asNumber(ticket.user_tech) /* escalar v2 */ ??
+    null;
+  let techId = rawTech != null && rawTech > 0 ? rawTech : null;
   let name: string | null = null;
 
   if (Array.isArray(ticket.team)) {
+    // 1) Preferir papel "assigned" / atribuído a utilizador (não grupo)
     for (const item of ticket.team) {
       const o = asObject(item);
+      if (isGroupTeamEntry(o)) {
+        continue;
+      }
       const role = (asString(o.role) ?? "").toLowerCase();
-      const type = (asString(o.type) ?? "").toLowerCase();
-      const href = (asString(o.href) ?? "").toLowerCase();
-      const isGroup = type === "group" || Boolean(href && href.includes("/group.form.php"));
-      if (isGroup) continue;
-      if (role.includes("assign") || role.includes("tech") || role.includes("tecnico")) {
-        const n = asString(o.display_name ?? o.realname ?? o.name ?? o.user_name);
+      if (role === "requester" || role === "observer" || role === "watcher" || role === "observers") {
+        continue;
+      }
+      if (
+        role === "assigned" ||
+        role.includes("assign") ||
+        role.includes("tech") ||
+        role.includes("tecnico")
+      ) {
+        const id = idFromUserTeamEntry(o);
+        if (id != null) {
+          techId = techId ?? id;
+        }
+        const n = asString(o.display_name ?? o.name ?? o.realname ?? o.user_name ?? o.firstname);
         if (n) {
           name = n;
+        }
+        if (techId != null && n) {
+          break;
+        }
+      }
+    }
+
+    // 2) Ainda sem ID: primeiro utilizador na equipa que não seja grupo nem requerente
+    if (techId == null || !name) {
+      for (const item of ticket.team) {
+        const o = asObject(item);
+        if (isGroupTeamEntry(o)) {
+          continue;
+        }
+        const role = (asString(o.role) ?? "").toLowerCase();
+        if (role === "requester" || role === "observer" || role === "watcher") {
+          continue;
+        }
+        const id = idFromUserTeamEntry(o);
+        if (techId == null && id != null) {
+          techId = id;
+        }
+        if (!name) {
+          const n = asString(o.display_name ?? o.name ?? o.realname ?? o.user_name);
+          if (n) {
+            name = n;
+          }
+        }
+        if (techId != null) {
           break;
         }
       }
