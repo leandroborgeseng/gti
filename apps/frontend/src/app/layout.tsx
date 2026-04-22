@@ -22,8 +22,8 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: metadataBaseUrl(),
   applicationName: "GTI",
-  title: { default: "GTI — Gestão contratual", template: "%s · GTI" },
-  description: "Controlo contratual, medição, glosas e integração com chamados GLPI.",
+  title: { default: "GTI — Gestão de Operações de TI", template: "%s · GTI" },
+  description: "Gestão de operações de TI, contratos, medições, glosas e integração com chamados GLPI.",
   appleWebApp: {
     capable: true,
     title: "GTI",

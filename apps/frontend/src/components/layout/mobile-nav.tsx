@@ -24,7 +24,13 @@ export function MobileNav({ groups }: Props): JSX.Element {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="flex w-[min(100%,20rem)] max-w-none flex-col p-0">
           <SheetHeader className="border-b border-white/15 bg-brand-blue px-4 py-4 text-left text-white">
-            <Link href="/dashboard" className="mb-1 block" onClick={() => setOpen(false)}>
+            <Link
+              href="https://www.bluebeaver.com.br"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-1 block"
+              onClick={() => setOpen(false)}
+            >
               <Image
                 src="/brand/bluebeaver-logo.png"
                 alt="BlueBeaver"
@@ -34,7 +40,7 @@ export function MobileNav({ groups }: Props): JSX.Element {
                 priority
               />
             </Link>
-            <p className="text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">GTI — Gestão contratual</p>
+            <p className="text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">GTI — Gestão de Operações de TI</p>
             <SheetTitle className="sr-only">Navegação GTI</SheetTitle>
             <SheetDescription className="sr-only">Menu principal da aplicação</SheetDescription>
           </SheetHeader>

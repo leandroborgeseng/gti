@@ -1,13 +1,16 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import { ChevronsRight, LogOut } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { PropsWithChildren, useEffect, useMemo, useState } from "react";
+import { PropsWithChildren, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { getAuthMe } from "@/lib/api";
 import { PageTransition } from "@/components/layout/page-transition";
+import { Button } from "@/components/ui/button";
 import { filterMainNavGroups, MAIN_NAV_GROUPS } from "./main-nav-data";
 import { MobileNav } from "./mobile-nav";
 import { Sidebar } from "./sidebar";
+
+const SIDEBAR_STORAGE_KEY = "gti-sidebar-collapsed";
 
 const titles: Record<string, string> = {
   "/dashboard": "Painel executivo",
@@ -31,11 +34,32 @@ const titles: Record<string, string> = {
 export function AppShell({ children }: PropsWithChildren): JSX.Element {
   const pathname = usePathname();
   const [role, setRole] = useState<string | null | undefined>(undefined);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const persistSidebarCollapsed = useCallback((collapsed: boolean) => {
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* localStorage indisponível */
+    }
+    setSidebarCollapsed(collapsed);
+  }, []);
+
+  const collapseSidebar = useCallback(() => persistSidebarCollapsed(true), [persistSidebarCollapsed]);
+  const expandSidebar = useCallback(() => persistSidebarCollapsed(false), [persistSidebarCollapsed]);
 
   useEffect(() => {
     void getAuthMe()
       .then((m) => setRole(m.role))
       .catch(() => setRole(null));
+  }, []);
+
+  useLayoutEffect(() => {
+    try {
+      setSidebarCollapsed(localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1");
+    } catch {
+      setSidebarCollapsed(false);
+    }
   }, []);
 
   const visibleNavGroups = useMemo(() => filterMainNavGroups(MAIN_NAV_GROUPS, role), [role]);
@@ -56,15 +80,28 @@ export function AppShell({ children }: PropsWithChildren): JSX.Element {
                 ? "Detalhe da meta"
                 : pathname?.startsWith("/reports/")
                   ? "Relatórios"
-                  : "Gestão contratual");
+                  : "Gestão de Operações de TI");
 
   return (
     <div className="flex min-h-screen bg-muted/30">
-      <Sidebar groups={visibleNavGroups} />
+      {!sidebarCollapsed ? <Sidebar groups={visibleNavGroups} onCollapse={collapseSidebar} /> : null}
       <main className="min-w-0 flex-1">
         <header className="sticky top-0 z-10 border-b-2 border-primary/90 bg-background/90 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 md:px-6 md:py-3.5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              {sidebarCollapsed ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="hidden h-9 w-9 shrink-0 md:inline-flex"
+                  title="Abrir menu"
+                  aria-label="Abrir menu de navegação"
+                  onClick={expandSidebar}
+                >
+                  <ChevronsRight className="h-4 w-4" aria-hidden />
+                </Button>
+              ) : null}
               <MobileNav groups={visibleNavGroups} />
               <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight text-primary">{title}</h2>
             </div>

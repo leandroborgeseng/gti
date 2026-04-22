@@ -58,7 +58,7 @@ function LoginForm(): JSX.Element {
         <Card className="p-0">
           <CardHeader>
             <CardTitle className="text-xl">Iniciar sessão</CardTitle>
-            <CardDescription>Gestão contratual (API protegida por JWT).</CardDescription>
+            <CardDescription>Gestão de Operações de TI (API protegida por JWT).</CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>

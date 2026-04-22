@@ -5,9 +5,9 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "GTI — Gestão contratual e GLPI",
+    name: "GTI — Gestão de Operações de TI",
     short_name: "GTI",
-    description: "Gestão de contratos públicos, medições, glosas e acompanhamento de chamados GLPI.",
+    description: "Gestão de operações de TI, contratos, medições, glosas e acompanhamento de chamados GLPI.",
     start_url: "/dashboard",
     scope: "/",
     display: "standalone",
