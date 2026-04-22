@@ -295,6 +295,18 @@ export type ChamadosOperationsSummary = {
   openingsByMonth: ChamadosOpeningsByMonth[];
   /** Fechados no cache (mesmos filtros), por mês + acumulado no período. */
   closingsByMonth: ChamadosClosingsByMonth[];
+  /** Distribuição de carga: abertos e fechados (cache) por técnico atribuído. */
+  assigneeWorkload: ChamadosAssigneeWorkloadRow[];
+};
+
+export type ChamadosAssigneeWorkloadRow = {
+  assigneeId: number | null;
+  label: string;
+  openCount: number;
+  closedCount: number;
+  totalCount: number;
+  /** Filtrar o Kanban por este técnico (quando houver `assigneeId`). */
+  filterHrefPatch?: Record<string, string | undefined>;
 };
 
 export type KanbanBoardPayload = {
@@ -323,6 +335,8 @@ export type KanbanBoardPayload = {
   groupNull: boolean;
   /** ID GLPI do técnico atribuído (`users_id_tech`); `null` = todos. */
   assignedUserId: number | null;
+  /** Filtro `noAssignee=1` — só chamados sem técnico no cache. */
+  noAssignee: boolean;
   /** Opções para o filtro «Atribuído» (distintos no cache). */
   assignedUsers: Array<{ id: number; label: string }>;
 };
@@ -347,7 +361,8 @@ function emptyOperationsSummary(): ChamadosOperationsSummary {
     concentrationTop3GroupNames: [],
     oldestTickets: [],
     openingsByMonth: [],
-    closingsByMonth: []
+    closingsByMonth: [],
+    assigneeWorkload: []
   };
 }
 
@@ -400,7 +415,8 @@ const OPS_TABLE_LINK_PATCH: Record<string, string | undefined> = {
   idleMin: "",
   groupInJson: "",
   groupNull: "",
-  assignedUserId: ""
+  assignedUserId: "",
+  noAssignee: ""
 };
 
 function readChamadosFilterParts(sp: URLSearchParams): {
@@ -415,6 +431,7 @@ function readChamadosFilterParts(sp: URLSearchParams): {
   idleMinRaw: string;
   groupInJson: string;
   groupNull: boolean;
+  noAssignee: boolean;
   assignedUserId: number | undefined;
   cohort: ReturnType<typeof parseOpsCohortParam>;
   idleMinDays: number | undefined;
@@ -427,10 +444,15 @@ function readChamadosFilterParts(sp: URLSearchParams): {
   const groupFilter = (sp.get("group") || "").trim();
   const requesterEmail = (sp.get("requesterEmail") || "").trim();
   const requesterName = (sp.get("requesterName") || "").trim();
+  const noAssignee = sp.get("noAssignee") === "1";
   const assignedUserIdRaw = (sp.get("assignedUserId") || "").trim();
   const assignedParsed = assignedUserIdRaw ? Number.parseInt(assignedUserIdRaw, 10) : NaN;
   const assignedUserId =
-    Number.isFinite(assignedParsed) && assignedParsed > 0 ? assignedParsed : undefined;
+    noAssignee
+      ? undefined
+      : Number.isFinite(assignedParsed) && assignedParsed > 0
+        ? assignedParsed
+        : undefined;
   const onlyOpenRaw = sp.get("open") === "1";
   const pendenciaParam = (sp.get("pendencia") || "").trim();
   const cohortParam = (sp.get("cohort") || "").trim();
@@ -456,6 +478,7 @@ function readChamadosFilterParts(sp: URLSearchParams): {
     pendenciaParam,
     requesterEmail,
     requesterName,
+    ...(noAssignee ? { unassignedTech: true } : {}),
     ...(assignedUserId !== undefined ? { assignedUserId } : {}),
     groupInNames: groupInNames && groupInNames.length > 0 ? groupInNames : undefined,
     groupNullOnly:
@@ -468,6 +491,7 @@ function readChamadosFilterParts(sp: URLSearchParams): {
     groupFilter,
     requesterEmail,
     requesterName,
+    noAssignee,
     assignedUserId,
     onlyOpenRaw,
     pendenciaParam,
@@ -520,7 +544,7 @@ async function buildChamadosOperationsSummary(
     ]
   };
 
-  const [byPartyRows, byStatusRows, byGroupRows, byAssigneeRows, byEmailRows, byNameRows, oldestRaw, openingsRows, closingsRows] =
+  const [byPartyRows, byStatusRows, byGroupRows, byAssigneeRows, byAssigneeClosedRows, byEmailRows, byNameRows, oldestRaw, openingsRows, closingsRows] =
     await Promise.all([
     prisma.ticket.groupBy({
       by: ["waitingParty"],
@@ -540,6 +564,11 @@ async function buildChamadosOperationsSummary(
     prisma.ticket.groupBy({
       by: ["assignedUserId"],
       where: whereOpen,
+      _count: { _all: true }
+    }),
+    prisma.ticket.groupBy({
+      by: ["assignedUserId"],
+      where: whereClosed,
       _count: { _all: true }
     }),
     prisma.ticket.groupBy({
@@ -643,9 +672,13 @@ async function buildChamadosOperationsSummary(
     .sort((a, b) => b.count - a.count)
     .slice(0, 12);
 
-  const assigneeIds = byAssigneeRows
-    .map((r) => r.assignedUserId)
-    .filter((id): id is number => typeof id === "number" && id > 0);
+  const assigneeIds = [
+    ...new Set(
+      [...byAssigneeRows, ...byAssigneeClosedRows]
+        .map((r) => r.assignedUserId)
+        .filter((id): id is number => typeof id === "number" && id > 0)
+    )
+  ];
   const assigneeNameRows =
     assigneeIds.length > 0
       ? await prisma.ticket.findMany({
@@ -671,7 +704,7 @@ async function buildChamadosOperationsSummary(
         return {
           label: "Sem técnico atribuído (cache)",
           count,
-          filterHrefPatch: undefined
+          filterHrefPatch: { ...OPS_TABLE_LINK_PATCH, noAssignee: "1" }
         };
       }
       const label = assigneeNameById.get(id) ?? `Utilizador #${id}`;
@@ -686,6 +719,53 @@ async function buildChamadosOperationsSummary(
     })
     .sort((a, b) => b.count - a.count)
     .slice(0, 20);
+
+  const openCountByAssignee = new Map<number | "none", number>();
+  for (const r of byAssigneeRows) {
+    const k: number | "none" =
+      r.assignedUserId != null && r.assignedUserId > 0 ? r.assignedUserId : "none";
+    openCountByAssignee.set(k, r._count._all);
+  }
+  const closedCountByAssignee = new Map<number | "none", number>();
+  for (const r of byAssigneeClosedRows) {
+    const k: number | "none" =
+      r.assignedUserId != null && r.assignedUserId > 0 ? r.assignedUserId : "none";
+    closedCountByAssignee.set(k, r._count._all);
+  }
+  const workloadKeys = new Set<number | "none">([
+    ...openCountByAssignee.keys(),
+    ...closedCountByAssignee.keys()
+  ]);
+  const assigneeWorkload: ChamadosAssigneeWorkloadRow[] = Array.from(workloadKeys)
+    .map((k) => {
+      const openCount = openCountByAssignee.get(k) ?? 0;
+      const closedCount = closedCountByAssignee.get(k) ?? 0;
+      const totalCount = openCount + closedCount;
+      if (k === "none") {
+        return {
+          assigneeId: null,
+          label: "Sem técnico (cache)",
+          openCount,
+          closedCount,
+          totalCount,
+          filterHrefPatch: { ...OPS_TABLE_LINK_PATCH, noAssignee: "1" }
+        } satisfies ChamadosAssigneeWorkloadRow;
+      }
+      return {
+        assigneeId: k,
+        label: assigneeNameById.get(k) ?? `Utilizador #${k}`,
+        openCount,
+        closedCount,
+        totalCount,
+        filterHrefPatch: { ...OPS_TABLE_LINK_PATCH, assignedUserId: String(k) }
+      } satisfies ChamadosAssigneeWorkloadRow;
+    })
+    .filter((r) => r.totalCount > 0)
+    .sort(
+      (a, b) =>
+        b.openCount - a.openCount || b.totalCount - a.totalCount || a.label.localeCompare(b.label, "pt-BR")
+    )
+    .slice(0, 50);
 
   const byGroupForConc = [...byGroupRows].sort((a, b) => b._count._all - a._count._all);
   const top3GroupsForConc = byGroupForConc.slice(0, 3);
@@ -723,6 +803,7 @@ async function buildChamadosOperationsSummary(
     topGroups,
     topRequesters,
     topAssignees,
+    assigneeWorkload,
     concentrationTop3GroupsPct,
     concentrationTop3GroupNames,
     oldestTickets,
@@ -757,6 +838,7 @@ export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): 
     groupInJson: p.groupInJson,
     groupNull: p.groupNull,
     assignedUserId: p.assignedUserId ?? null,
+    noAssignee: p.noAssignee,
     assignedUsers: []
   };
 }
@@ -958,6 +1040,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     groupInJson: p.groupInJson,
     groupNull: p.groupNull,
     assignedUserId: p.assignedUserId ?? null,
+    noAssignee: p.noAssignee,
     assignedUsers
   };
 }

@@ -350,6 +350,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
           ...(initial.assignedUserId != null && initial.assignedUserId > 0
             ? { assignedUserId: initial.assignedUserId }
             : {}),
+          ...(initial.noAssignee ? { noAssignee: true } : {}),
           cohort: initial.cohortParam,
           idleMin: initial.idleMin,
           groupInJson: initial.groupInJson,
@@ -399,6 +400,9 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     if (initial.assignedUserId != null && initial.assignedUserId > 0) {
       sp.set("assignedUserId", String(initial.assignedUserId));
     }
+    if (initial.noAssignee) {
+      sp.set("noAssignee", "1");
+    }
     if (initial.cohortParam) sp.set("cohort", initial.cohortParam);
     if (initial.idleMin) sp.set("idleMin", initial.idleMin);
     if (initial.groupInJson?.trim()) sp.set("groupInJson", initial.groupInJson);
@@ -413,6 +417,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     initial.requesterEmail,
     initial.requesterName,
     initial.assignedUserId,
+    initial.noAssignee,
     initial.cohortParam,
     initial.idleMin,
     initial.groupInJson,
@@ -430,6 +435,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
   const chamadosHrefWithoutAssigned = useMemo(() => {
     const sp = new URLSearchParams(kanbanHrefQuery);
     sp.delete("assignedUserId");
+    sp.delete("noAssignee");
     const qs = sp.toString();
     return (qs ? `/chamados?${qs}` : "/chamados") as Route;
   }, [kanbanHrefQuery]);
@@ -458,8 +464,9 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     const idlePill = initial.idleMin ? `Inatividade GLPI ≥ ${initial.idleMin} d` : "";
     const groupInPill = initial.groupInJson?.trim() ? "Top 3 grupos (concentração)" : "";
     const groupNullPill = initial.groupNull ? "Sem grupo (contrato)" : "";
-    const assigneePill =
-      initial.assignedUserId != null && initial.assignedUserId > 0
+    const assigneePill = initial.noAssignee
+      ? "Só sem técnico (cache)"
+      : initial.assignedUserId != null && initial.assignedUserId > 0
         ? initial.assignedUsers.find((u) => u.id === initial.assignedUserId)?.label ||
           `ID ${initial.assignedUserId}`
         : "";
@@ -478,7 +485,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       pill("Abertos", openLabel, !initial.onlyOpen),
       pill("Pendência", pendenciaLabelForSummary(initial.pendenciaParam), initial.pendenciaParam === ""),
       pill("Solicitante", solicitante || "—", !solicitante),
-      pill("Atribuído", assigneePill || "Todos", !assigneePill),
+      pill("Atribuído", assigneePill || "Todos", !assigneePill && !initial.noAssignee),
       pill("Coorte idade", cohortPill || "—", !cohortPill),
       pill("Inatividade", idlePill || "—", !idlePill),
       pill("Grupos (IN)", groupInPill || "—", !groupInPill),
@@ -536,10 +543,12 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
               </Link>
             </p>
           ) : null}
-          {initial.assignedUserId != null && initial.assignedUserId > 0 ? (
+          {initial.noAssignee || (initial.assignedUserId != null && initial.assignedUserId > 0) ? (
             <p className="filters-shell__requester-clear">
               <Link href={chamadosHrefWithoutAssigned} className="filters-shell__requester-clear-link">
-                Remover filtro de técnico atribuído
+                {initial.noAssignee
+                  ? "Remover filtro «só sem técnico» / técnico atribuído"
+                  : "Remover filtro de técnico atribuído"}
               </Link>
             </p>
           ) : null}
@@ -582,8 +591,15 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
               Atribuído (técnico)
               <select
                 name="assignedUserId"
-                defaultValue={initial.assignedUserId != null && initial.assignedUserId > 0 ? String(initial.assignedUserId) : ""}
+                defaultValue={
+                  initial.noAssignee
+                    ? ""
+                    : initial.assignedUserId != null && initial.assignedUserId > 0
+                      ? String(initial.assignedUserId)
+                      : ""
+                }
                 title="Filtra por técnico GLPI gravado no cache (users_id_tech)"
+                disabled={initial.noAssignee}
               >
                 <option value="">Todos</option>
                 {initial.assignedUserId != null &&
@@ -599,6 +615,15 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="filters-grid__checkbox">
+              <input
+                type="checkbox"
+                name="noAssignee"
+                value="1"
+                defaultChecked={initial.noAssignee}
+              />{" "}
+              Só sem técnico atribuído (cache)
             </label>
             <label>
               Pendência

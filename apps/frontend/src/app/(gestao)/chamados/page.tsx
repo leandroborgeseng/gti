@@ -17,6 +17,7 @@ function buildSearchParams(raw: Search): URLSearchParams {
     "requesterEmail",
     "requesterName",
     "assignedUserId",
+    "noAssignee",
     "cohort",
     "idleMin",
     "groupInJson",

@@ -94,8 +94,13 @@ export type KanbanFilterInput = {
   groupInNames?: string[];
   /** Sem `contractGroupName` — query `groupNull=1`. */
   groupNullOnly?: boolean;
-  /** GLPI `users_id_tec` persistido no cache — query `assignedUserId`. */
+  /** GLPI `users_id_tec` persistido no cache — query `assignedUserId`. Incompatível com `unassignedTech`. */
   assignedUserId?: number;
+  /**
+   * Apenas chamados com `assignedUserId` nulo (sem técnico no cache) — query `noAssignee=1`.
+   * Quando ativo, ignora `assignedUserId`.
+   */
+  unassignedTech?: boolean;
   /**
    * Se true, restringe a tickets não fechados mesmo com onlyOpen=false.
    * Usado no painel «Idade dos chamados abertos» (sempre só abertos + filtros).
@@ -112,16 +117,22 @@ export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
     forceNonClosed,
     requesterEmail: requesterEmailRaw,
     requesterName: requesterNameRaw,
-    assignedUserId: assignedUserIdRaw
+    assignedUserId: assignedUserIdRaw,
+    unassignedTech
   } = input;
   const requesterEmail = (requesterEmailRaw ?? "").trim();
   const requesterName = (requesterNameRaw ?? "").trim();
+  const unassigned = Boolean(unassignedTech);
   const assignedUserId =
-    assignedUserIdRaw != null && Number.isFinite(assignedUserIdRaw) && assignedUserIdRaw > 0
+    !unassigned &&
+    assignedUserIdRaw != null &&
+    Number.isFinite(assignedUserIdRaw) &&
+    assignedUserIdRaw > 0
       ? assignedUserIdRaw
       : null;
   const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
   const enforceNotClosed = onlyOpen || Boolean(forceNonClosed);
+  const onlyNoAssignee: TicketWhereInput = { assignedUserId: null };
 
   return {
     AND: [
@@ -138,6 +149,7 @@ export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
       groupWhereClause(input),
       ...(requesterEmail ? [{ requesterEmail: { equals: requesterEmail } }] : []),
       ...(requesterName ? [{ requesterName: { equals: requesterName } }] : []),
+      ...(unassigned ? [onlyNoAssignee] : []),
       ...(assignedUserId ? [{ assignedUserId: { equals: assignedUserId } }] : []),
       ...(enforceNotClosed ? [ticketWhereNotClosed()] : []),
       ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
@@ -150,11 +162,21 @@ export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
  * que o Kanban (`onlyOpen` e `forceNonClosed` ignorados — o stock é sempre «fechados»).
  */
 export function buildKanbanWhereClosed(input: KanbanFilterInput): TicketWhereInput {
-  const { q, statusFilter, pendenciaParam, requesterEmail: reRaw, requesterName: rnRaw, assignedUserId: aidRaw } = input;
+  const {
+    q,
+    statusFilter,
+    pendenciaParam,
+    requesterEmail: reRaw,
+    requesterName: rnRaw,
+    assignedUserId: aidRaw,
+    unassignedTech
+  } = input;
   const requesterEmail = (reRaw ?? "").trim();
   const requesterName = (rnRaw ?? "").trim();
+  const unassigned = Boolean(unassignedTech);
   const assignedUserId =
-    aidRaw != null && Number.isFinite(aidRaw) && aidRaw > 0 ? aidRaw : null;
+    !unassigned && aidRaw != null && Number.isFinite(aidRaw) && aidRaw > 0 ? aidRaw : null;
+  const onlyNoAssignee: TicketWhereInput = { assignedUserId: null };
   const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
   return {
     AND: [
@@ -171,6 +193,7 @@ export function buildKanbanWhereClosed(input: KanbanFilterInput): TicketWhereInp
       groupWhereClause(input),
       ...(requesterEmail ? [{ requesterEmail: { equals: requesterEmail } }] : []),
       ...(requesterName ? [{ requesterName: { equals: requesterName } }] : []),
+      ...(unassigned ? [onlyNoAssignee] : []),
       ...(assignedUserId ? [{ assignedUserId: { equals: assignedUserId } }] : []),
       ticketWhereClosed(),
       ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])

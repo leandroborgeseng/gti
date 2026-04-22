@@ -17,6 +17,7 @@ import {
   YAxis
 } from "recharts";
 import type {
+  ChamadosAssigneeWorkloadRow,
   ChamadosClosingsByMonth,
   ChamadosOpeningsByMonth,
   ChamadosOperationsSummary,
@@ -114,6 +115,80 @@ function OpsKpiLink({
 
 function OpsKpiStatic({ className, children }: { className?: string; children: ReactNode }): JSX.Element {
   return <div className={cn("chamados-ops__kpi", "chamados-ops__kpi--static", className)} role="listitem">{children}</div>;
+}
+
+function AssigneeWorkloadTable({
+  rows,
+  kanbanHrefQuery,
+  ticketSyncScope
+}: {
+  rows: ChamadosAssigneeWorkloadRow[];
+  kanbanHrefQuery: string;
+  ticketSyncScope: "open" | "all";
+}): JSX.Element {
+  if (rows.length === 0) {
+    return (
+      <div className="chamados-ops__block">
+        <h3 className="chamados-ops__block-title">Carga por técnico (abertos e fechados)</h3>
+        <p className="chamados-ops__table-hint">Sem dados (técnico no cache) para estes filtros.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="chamados-ops__block">
+      <h3 className="chamados-ops__block-title">Carga por técnico (abertos e fechados)</h3>
+      <p className="chamados-ops__table-hint">
+        Stock no cache, com os mesmos filtros do Kanban. <strong>Abertos</strong> = ainda não classificados como
+        fechado (heurística de estado). <strong>Fechados</strong> = estado fechado no cache.{" "}
+        {ticketSyncScope === "open" ? (
+          <span>
+            O escopo de cache está <strong>«só abertos»</strong> — a coluna Fechados fica 0; use escopo «todos os
+            tickets» e espere a sincronização de fechados.
+          </span>
+        ) : null}{" "}
+        Clique num técnico (com link) para abrir o quadro filtrado. Ordenação: mais abertos primeiro.
+      </p>
+      <div className="chamados-ops__table-wrap">
+        <table className="chamados-ops__table chamados-ops__table--wide">
+          <thead>
+            <tr>
+              <th scope="col">Técnico (atribuído no cache)</th>
+              <th scope="col" className="chamados-ops__th-num">
+                Abertos
+              </th>
+              <th scope="col" className="chamados-ops__th-num">
+                Fechados
+              </th>
+              <th scope="col" className="chamados-ops__th-num">
+                Total
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const href = r.filterHrefPatch ? mergeChamadosHref(kanbanHrefQuery, r.filterHrefPatch) : null;
+              return (
+                <tr key={r.label === "Sem técnico (cache)" ? "none" : `w-${r.assigneeId}`}>
+                  <td className="chamados-ops__clip">
+                    {href ? (
+                      <Link href={href} className="chamados-ops__row-filter">
+                        {r.label}
+                      </Link>
+                    ) : (
+                      r.label
+                    )}
+                  </td>
+                  <td className="chamados-ops__td-num">{r.openCount}</td>
+                  <td className="chamados-ops__td-num">{r.closedCount}</td>
+                  <td className="chamados-ops__td-num">{r.totalCount}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function TopRequestersTable({
@@ -533,6 +608,28 @@ export function ChamadosOperationsPanel({
                     <span className="chamados-ops__kpi-l">% dos abertos nos 3 grupos (contrato) com mais chamados</span>
                   </OpsKpiStatic>
                 )}
+                {(() => {
+                  const row = summary.assigneeWorkload.find((r) => r.assigneeId == null);
+                  if (!row || row.openCount < 1) {
+                    return null;
+                  }
+                  return (
+                    <OpsKpiLink
+                      href={mergeChamadosHref(kanbanHrefQuery, {
+                        open: "1",
+                        noAssignee: "1",
+                        assignedUserId: "",
+                        cohort: "",
+                        idleMin: "",
+                        groupInJson: "",
+                        groupNull: ""
+                      })}
+                    >
+                      <span className="chamados-ops__kpi-v">{row.openCount}</span>
+                      <span className="chamados-ops__kpi-l">Abertos sem técnico (no cache)</span>
+                    </OpsKpiLink>
+                  );
+                })()}
               </div>
 
               <div className="chamados-ops__grid">
@@ -558,7 +655,7 @@ export function ChamadosOperationsPanel({
                   title="Por técnico atribuído"
                   rows={summary.topAssignees}
                   kanbanHrefQuery={kanbanHrefQuery}
-                  hint="Chamados abertos (nestes filtros) por técnico GLPI no cache. Clique num técnico para filtrar o quadro; «sem técnico» só mostra a contagem."
+                  hint="Chamados abertos (nestes filtros) por técnico GLPI no cache. Clique numa linha para filtrar o quadro. «Sem técnico» abre o filtro de só sem técnico (no cache)."
                 />
               </div>
 
@@ -608,6 +705,16 @@ export function ChamadosOperationsPanel({
               </div>
             </>
           )}
+
+          {summary.assigneeWorkload.length > 0 ? (
+            <div className="chamados-ops__grid chamados-ops__grid--single">
+              <AssigneeWorkloadTable
+                rows={summary.assigneeWorkload}
+                kanbanHrefQuery={kanbanHrefQuery}
+                ticketSyncScope={ticketSyncScope}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

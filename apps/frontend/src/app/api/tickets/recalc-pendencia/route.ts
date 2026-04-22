@@ -25,8 +25,13 @@ export async function POST(req: Request): Promise<NextResponse> {
         : typeof assignedUserIdRaw === "string"
           ? Number.parseInt(assignedUserIdRaw.trim(), 10)
           : NaN;
+    const noAssignee = body.noAssignee === true || body.noAssignee === 1 || body.noAssignee === "1";
     const assignedUserId =
-      Number.isFinite(assignedParsed) && assignedParsed > 0 ? assignedParsed : undefined;
+      noAssignee
+        ? undefined
+        : Number.isFinite(assignedParsed) && assignedParsed > 0
+          ? assignedParsed
+          : undefined;
     const onlyOpenRaw = body.open === true || body.open === 1 || body.open === "1";
     const cohortParam = typeof body.cohort === "string" ? body.cohort : "";
     const idleMinRaw = typeof body.idleMin === "string" ? body.idleMin : "";
@@ -57,6 +62,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       pendenciaParam,
       requesterEmail: requesterEmail || undefined,
       requesterName: requesterName || undefined,
+      ...(noAssignee ? { unassignedTech: true } : {}),
       ...(assignedUserId !== undefined ? { assignedUserId } : {}),
       groupInNames: groupInNames && groupInNames.length > 0 ? groupInNames : undefined,
       groupNullOnly:
