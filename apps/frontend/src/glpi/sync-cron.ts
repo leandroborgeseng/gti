@@ -7,6 +7,8 @@ import {
   type SyncTicketsPersistFilter,
   type SyncTicketsResult
 } from "./jobs/sync-tickets.job";
+import { prisma } from "./config/prisma";
+import { GLPI_INITIAL_FULL_SYNC_DONE_KEY } from "./glpi-sync-state-keys";
 import { getTicketSyncScope } from "./utils/ticket-sync-scope";
 import { ensureSqliteSchema } from "./scripts/bootstrap-db";
 import { loadOpenApiSpec } from "./services/openapi.loader";
@@ -135,6 +137,28 @@ export async function runSyncWithGuard(options: RunGlpiSyncOptions = {}): Promis
     }
     store.syncStatus.lastSuccessAt = new Date().toISOString();
     store.syncStatus.lastError = null;
+
+    const scopeAfter = await getTicketSyncScope();
+    if (persistFilter === "inherit" && scopeAfter === "all") {
+      const hadMarker = await prisma.syncState.findUnique({ where: { key: GLPI_INITIAL_FULL_SYNC_DONE_KEY } });
+      const already = (hadMarker?.value ?? "").trim() === "1";
+      await prisma.syncState
+        .upsert({
+          where: { key: GLPI_INITIAL_FULL_SYNC_DONE_KEY },
+          update: { value: "1" },
+          create: { key: GLPI_INITIAL_FULL_SYNC_DONE_KEY, value: "1" }
+        })
+        .catch((err) => {
+          logger.warn({ error: toErrorLog(err) }, "Nao foi possivel gravar marcador de sync inicial completa");
+        });
+      if (!already) {
+        logger.info(
+          {},
+          "Sync inicial completa (abertos+fechados) concluida: cron principal passa a sincronizar so abertos entre passagens diarias de fechados"
+        );
+      }
+    }
+
     logger.info(
       {
         durationMs: Date.now() - startedMs,
@@ -163,9 +187,14 @@ export async function runSyncWithGuard(options: RunGlpiSyncOptions = {}): Promis
 
 async function resolveMainCronPersistFilter(): Promise<SyncTicketsPersistFilter> {
   const scope = await getTicketSyncScope();
-  if (scope === "all") {
+  if (scope !== "all") {
+    return "inherit";
+  }
+  const row = await prisma.syncState.findUnique({ where: { key: GLPI_INITIAL_FULL_SYNC_DONE_KEY } });
+  if ((row?.value ?? "").trim() === "1") {
     return "open";
   }
+  /** Primeira vez (ou após limpar o marcador): sync completa abertos+fechados antes do modo híbrido. */
   return "inherit";
 }
 
