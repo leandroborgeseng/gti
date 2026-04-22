@@ -347,6 +347,9 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
           pendencia: initial.pendenciaParam,
           requesterEmail: initial.requesterEmail,
           requesterName: initial.requesterName,
+          ...(initial.assignedUserId != null && initial.assignedUserId > 0
+            ? { assignedUserId: initial.assignedUserId }
+            : {}),
           cohort: initial.cohortParam,
           idleMin: initial.idleMin,
           groupInJson: initial.groupInJson,
@@ -393,6 +396,9 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     if (initial.onlyOpen) sp.set("open", "1");
     if (initial.requesterEmail) sp.set("requesterEmail", initial.requesterEmail);
     if (initial.requesterName) sp.set("requesterName", initial.requesterName);
+    if (initial.assignedUserId != null && initial.assignedUserId > 0) {
+      sp.set("assignedUserId", String(initial.assignedUserId));
+    }
     if (initial.cohortParam) sp.set("cohort", initial.cohortParam);
     if (initial.idleMin) sp.set("idleMin", initial.idleMin);
     if (initial.groupInJson?.trim()) sp.set("groupInJson", initial.groupInJson);
@@ -406,6 +412,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     initial.onlyOpen,
     initial.requesterEmail,
     initial.requesterName,
+    initial.assignedUserId,
     initial.cohortParam,
     initial.idleMin,
     initial.groupInJson,
@@ -416,6 +423,13 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     const sp = new URLSearchParams(kanbanHrefQuery);
     sp.delete("requesterEmail");
     sp.delete("requesterName");
+    const qs = sp.toString();
+    return (qs ? `/chamados?${qs}` : "/chamados") as Route;
+  }, [kanbanHrefQuery]);
+
+  const chamadosHrefWithoutAssigned = useMemo(() => {
+    const sp = new URLSearchParams(kanbanHrefQuery);
+    sp.delete("assignedUserId");
     const qs = sp.toString();
     return (qs ? `/chamados?${qs}` : "/chamados") as Route;
   }, [kanbanHrefQuery]);
@@ -444,6 +458,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     const idlePill = initial.idleMin ? `Inatividade GLPI ≥ ${initial.idleMin} d` : "";
     const groupInPill = initial.groupInJson?.trim() ? "Top 3 grupos (concentração)" : "";
     const groupNullPill = initial.groupNull ? "Sem grupo (contrato)" : "";
+    const assigneePill =
+      initial.assignedUserId != null && initial.assignedUserId > 0
+        ? initial.assignedUsers.find((u) => u.id === initial.assignedUserId)?.label ||
+          `ID ${initial.assignedUserId}`
+        : "";
     const statusPill =
       initial.statusFilter === "__NULL__" ? "Sem status" : initial.statusFilter || "Todos";
     const pill = (k: string, v: string, muted: boolean) => (
@@ -459,6 +478,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       pill("Abertos", openLabel, !initial.onlyOpen),
       pill("Pendência", pendenciaLabelForSummary(initial.pendenciaParam), initial.pendenciaParam === ""),
       pill("Solicitante", solicitante || "—", !solicitante),
+      pill("Atribuído", assigneePill || "Todos", !assigneePill),
       pill("Coorte idade", cohortPill || "—", !cohortPill),
       pill("Inatividade", idlePill || "—", !idlePill),
       pill("Grupos (IN)", groupInPill || "—", !groupInPill),
@@ -516,6 +536,13 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
               </Link>
             </p>
           ) : null}
+          {initial.assignedUserId != null && initial.assignedUserId > 0 ? (
+            <p className="filters-shell__requester-clear">
+              <Link href={chamadosHrefWithoutAssigned} className="filters-shell__requester-clear-link">
+                Remover filtro de técnico atribuído
+              </Link>
+            </p>
+          ) : null}
           {initial.cohortParam || initial.idleMin || initial.groupInJson?.trim() || initial.groupNull ? (
             <p className="filters-shell__requester-clear">
               <Link href={chamadosHrefClearOpsDrill} className="filters-shell__requester-clear-link">
@@ -547,6 +574,28 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                 {initial.groups.map((g) => (
                   <option key={g} value={g}>
                     {g}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Atribuído (técnico)
+              <select
+                name="assignedUserId"
+                defaultValue={initial.assignedUserId != null && initial.assignedUserId > 0 ? String(initial.assignedUserId) : ""}
+                title="Filtra por técnico GLPI gravado no cache (users_id_tech)"
+              >
+                <option value="">Todos</option>
+                {initial.assignedUserId != null &&
+                initial.assignedUserId > 0 &&
+                !initial.assignedUsers.some((u) => u.id === initial.assignedUserId) ? (
+                  <option value={String(initial.assignedUserId)}>
+                    Utilizador #{initial.assignedUserId}
+                  </option>
+                ) : null}
+                {initial.assignedUsers.map((u) => (
+                  <option key={u.id} value={String(u.id)}>
+                    {u.label}
                   </option>
                 ))}
               </select>
@@ -738,6 +787,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                         <div className="card-title">{card.title || "(sem título)"}</div>
                         <span className={pendBadgeClass(card.pendClass)}>{card.pendLabel}</span>
                         <div className="card-meta">Grupo: {card.contractGroupName || "—"}</div>
+                        {card.assigneeLabel ? (
+                          <div className="card-meta">
+                            Atribuído: <strong>{card.assigneeLabel}</strong>
+                          </div>
+                        ) : null}
                         <div className="card-meta">
                           Solicitante: <strong>{card.requesterName}</strong>
                           {card.requesterEmail ? (

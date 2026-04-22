@@ -199,10 +199,10 @@ function RankFilterTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {rows.map((r, idx) => {
               const href = r.filterHrefPatch ? mergeChamadosHref(kanbanHrefQuery, r.filterHrefPatch) : null;
               return (
-                <tr key={`${title}-${r.label}`}>
+                <tr key={`${title}-${idx}-${r.label}`}>
                   <td>
                     {href ? (
                       <Link href={href} className="chamados-ops__row-filter">
@@ -553,6 +553,12 @@ export function ChamadosOperationsPanel({
                   rows={summary.topGroups}
                   kanbanHrefQuery={kanbanHrefQuery}
                   hint="Clique numa linha para filtrar por grupo (contrato) ou «sem grupo»."
+                />
+                <RankFilterTable
+                  title="Por técnico atribuído"
+                  rows={summary.topAssignees}
+                  kanbanHrefQuery={kanbanHrefQuery}
+                  hint="Chamados abertos (nestes filtros) por técnico GLPI no cache. Clique num técnico para filtrar o quadro; «sem técnico» só mostra a contagem."
                 />
               </div>
 

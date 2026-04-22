@@ -46,6 +46,8 @@ type KanbanTicketListRow = {
   requesterName: string | null;
   requesterEmail: string | null;
   requesterUserId: number | null;
+  assignedUserId: number | null;
+  assignedUserName: string | null;
 };
 
 function formatDateTime(value: string | Date | null | undefined): string {
@@ -136,6 +138,8 @@ export type KanbanCardDto = {
   pendClass: string;
   requesterName: string;
   requesterEmail: string;
+  /** Rótulo do técnico atribuído (GLPI), quando existir no cache. */
+  assigneeLabel: string | null;
   openFor: string;
   idleFor: string;
   syncStale: boolean;
@@ -280,6 +284,8 @@ export type ChamadosOperationsSummary = {
   byStatus: ChamadosRankRow[];
   topGroups: ChamadosRankRow[];
   topRequesters: ChamadosRankRow[];
+  /** Abertos por técnico atribuído no cache (`assignedUserId`); linha sem técnico pode existir sem link de filtro. */
+  topAssignees: ChamadosRankRow[];
   /** % do total aberto que está nos 3 grupos GLPI (contrato) com mais stock; null se total 0. */
   concentrationTop3GroupsPct: number | null;
   /** Nomes de `contractGroupName` dos 3 grupos com mais stock (`""` = sem grupo), para filtro «concentração». */
@@ -315,6 +321,10 @@ export type KanbanBoardPayload = {
   idleMin: string;
   groupInJson: string;
   groupNull: boolean;
+  /** ID GLPI do técnico atribuído (`users_id_tech`); `null` = todos. */
+  assignedUserId: number | null;
+  /** Opções para o filtro «Atribuído» (distintos no cache). */
+  assignedUsers: Array<{ id: number; label: string }>;
 };
 
 /**
@@ -332,6 +342,7 @@ function emptyOperationsSummary(): ChamadosOperationsSummary {
     byStatus: [],
     topGroups: [],
     topRequesters: [],
+    topAssignees: [],
     concentrationTop3GroupsPct: null,
     concentrationTop3GroupNames: [],
     oldestTickets: [],
@@ -388,7 +399,8 @@ const OPS_TABLE_LINK_PATCH: Record<string, string | undefined> = {
   cohort: "",
   idleMin: "",
   groupInJson: "",
-  groupNull: ""
+  groupNull: "",
+  assignedUserId: ""
 };
 
 function readChamadosFilterParts(sp: URLSearchParams): {
@@ -403,6 +415,7 @@ function readChamadosFilterParts(sp: URLSearchParams): {
   idleMinRaw: string;
   groupInJson: string;
   groupNull: boolean;
+  assignedUserId: number | undefined;
   cohort: ReturnType<typeof parseOpsCohortParam>;
   idleMinDays: number | undefined;
   groupInNames: string[] | undefined;
@@ -414,6 +427,10 @@ function readChamadosFilterParts(sp: URLSearchParams): {
   const groupFilter = (sp.get("group") || "").trim();
   const requesterEmail = (sp.get("requesterEmail") || "").trim();
   const requesterName = (sp.get("requesterName") || "").trim();
+  const assignedUserIdRaw = (sp.get("assignedUserId") || "").trim();
+  const assignedParsed = assignedUserIdRaw ? Number.parseInt(assignedUserIdRaw, 10) : NaN;
+  const assignedUserId =
+    Number.isFinite(assignedParsed) && assignedParsed > 0 ? assignedParsed : undefined;
   const onlyOpenRaw = sp.get("open") === "1";
   const pendenciaParam = (sp.get("pendencia") || "").trim();
   const cohortParam = (sp.get("cohort") || "").trim();
@@ -439,6 +456,7 @@ function readChamadosFilterParts(sp: URLSearchParams): {
     pendenciaParam,
     requesterEmail,
     requesterName,
+    ...(assignedUserId !== undefined ? { assignedUserId } : {}),
     groupInNames: groupInNames && groupInNames.length > 0 ? groupInNames : undefined,
     groupNullOnly:
       groupInNames && groupInNames.length > 0 ? undefined : groupNull ? true : undefined
@@ -450,6 +468,7 @@ function readChamadosFilterParts(sp: URLSearchParams): {
     groupFilter,
     requesterEmail,
     requesterName,
+    assignedUserId,
     onlyOpenRaw,
     pendenciaParam,
     cohortParam,
@@ -501,7 +520,7 @@ async function buildChamadosOperationsSummary(
     ]
   };
 
-  const [byPartyRows, byStatusRows, byGroupRows, byEmailRows, byNameRows, oldestRaw, openingsRows, closingsRows] =
+  const [byPartyRows, byStatusRows, byGroupRows, byAssigneeRows, byEmailRows, byNameRows, oldestRaw, openingsRows, closingsRows] =
     await Promise.all([
     prisma.ticket.groupBy({
       by: ["waitingParty"],
@@ -515,6 +534,11 @@ async function buildChamadosOperationsSummary(
     }),
     prisma.ticket.groupBy({
       by: ["contractGroupName"],
+      where: whereOpen,
+      _count: { _all: true }
+    }),
+    prisma.ticket.groupBy({
+      by: ["assignedUserId"],
       where: whereOpen,
       _count: { _all: true }
     }),
@@ -619,6 +643,50 @@ async function buildChamadosOperationsSummary(
     .sort((a, b) => b.count - a.count)
     .slice(0, 12);
 
+  const assigneeIds = byAssigneeRows
+    .map((r) => r.assignedUserId)
+    .filter((id): id is number => typeof id === "number" && id > 0);
+  const assigneeNameRows =
+    assigneeIds.length > 0
+      ? await prisma.ticket.findMany({
+          where: { assignedUserId: { in: assigneeIds } },
+          distinct: ["assignedUserId"],
+          select: { assignedUserId: true, assignedUserName: true }
+        })
+      : [];
+  const assigneeNameById = new Map<number, string>(
+    assigneeNameRows
+      .filter((r) => r.assignedUserId != null && r.assignedUserId > 0)
+      .map((r) => [
+        r.assignedUserId as number,
+        r.assignedUserName?.trim() || `Utilizador #${r.assignedUserId}`
+      ])
+  );
+
+  const topAssignees: ChamadosRankRow[] = byAssigneeRows
+    .map((r) => {
+      const id = r.assignedUserId;
+      const count = r._count._all;
+      if (id == null || id <= 0) {
+        return {
+          label: "Sem técnico atribuído (cache)",
+          count,
+          filterHrefPatch: undefined
+        };
+      }
+      const label = assigneeNameById.get(id) ?? `Utilizador #${id}`;
+      return {
+        label,
+        count,
+        filterHrefPatch: {
+          ...OPS_TABLE_LINK_PATCH,
+          assignedUserId: String(id)
+        }
+      };
+    })
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+
   const byGroupForConc = [...byGroupRows].sort((a, b) => b._count._all - a._count._all);
   const top3GroupsForConc = byGroupForConc.slice(0, 3);
   const concentrationTop3GroupNames = top3GroupsForConc.map((r) =>
@@ -654,6 +722,7 @@ async function buildChamadosOperationsSummary(
     byStatus,
     topGroups,
     topRequesters,
+    topAssignees,
     concentrationTop3GroupsPct,
     concentrationTop3GroupNames,
     oldestTickets,
@@ -686,7 +755,9 @@ export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): 
     cohortParam: p.cohortParam,
     idleMin: p.idleMinRaw,
     groupInJson: p.groupInJson,
-    groupNull: p.groupNull
+    groupNull: p.groupNull,
+    assignedUserId: p.assignedUserId ?? null,
+    assignedUsers: []
   };
 }
 
@@ -713,7 +784,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     getTicketSyncScope()
   ]);
 
-  const [operationalMetrics, latestTicketRowsRaw, statusRows, groupRows] = await Promise.all([
+  const [operationalMetrics, latestTicketRowsRaw, statusRows, groupRows, assigneeRowsRaw] = await Promise.all([
     getOpenTicketOperationalMetrics(whereAge),
     prisma.ticket.findMany({
       where,
@@ -730,7 +801,9 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
         updatedAt: true,
         requesterName: true,
         requesterEmail: true,
-        requesterUserId: true
+        requesterUserId: true,
+        assignedUserId: true,
+        assignedUserName: true
       }
     }),
     prisma.ticket.findMany({
@@ -744,11 +817,25 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
       distinct: ["contractGroupName"],
       select: { contractGroupName: true },
       orderBy: { contractGroupName: "asc" }
+    }),
+    prisma.ticket.findMany({
+      where: { assignedUserId: { not: null } },
+      distinct: ["assignedUserId"],
+      select: { assignedUserId: true, assignedUserName: true },
+      orderBy: { assignedUserName: "asc" },
+      take: 200
     })
   ]);
   const operationsSummary = await buildChamadosOperationsSummary(whereAge, whereClosed, operationalMetrics);
   const ageBucketsResult = operationalMetrics.buckets;
   const latestTicketRows = latestTicketRowsRaw as KanbanTicketListRow[];
+
+  const assignedUsers = (assigneeRowsRaw as { assignedUserId: number | null; assignedUserName: string | null }[])
+    .filter((r): r is { assignedUserId: number; assignedUserName: string | null } => r.assignedUserId != null && r.assignedUserId > 0)
+    .map((r) => ({
+      id: r.assignedUserId,
+      label: r.assignedUserName?.trim() || `Utilizador #${r.assignedUserId}`
+    }));
 
   const statuses = (statusRows as DistinctStatusRow[])
     .map((row) => row.status)
@@ -824,6 +911,9 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
       const syncAgeMs = now.getTime() - updAt.getTime();
       const syncStale = !Number.isFinite(syncAgeMs) || syncAgeMs > KANBAN_SYNC_STALE_MS;
       const daysOpen = openDaysApprox(ticket.dateCreation, now);
+      const aid = ticket.assignedUserId;
+      const assigneeLabel =
+        aid != null && aid > 0 ? ticket.assignedUserName?.trim() || `Utilizador #${aid}` : null;
       return {
         glpiTicketId: ticket.glpiTicketId,
         title: ticket.title,
@@ -833,6 +923,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
         pendClass,
         requesterName: reqName || "—",
         requesterEmail: reqEmail || "",
+        assigneeLabel,
         openFor: formatTicketAge(ticket.dateCreation, now),
         idleFor: formatTicketAge(ticket.dateModification || ticket.dateCreation, now),
         syncStale,
@@ -865,6 +956,8 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     cohortParam: p.cohortParam,
     idleMin: p.idleMinRaw,
     groupInJson: p.groupInJson,
-    groupNull: p.groupNull
+    groupNull: p.groupNull,
+    assignedUserId: p.assignedUserId ?? null,
+    assignedUsers
   };
 }

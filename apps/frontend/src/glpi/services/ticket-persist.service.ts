@@ -46,6 +46,8 @@ export async function persistNormalizedTicket(
         requesterName,
         requesterEmail,
         requesterUserId,
+        assignedUserId: normalized.assigned_user_id ?? null,
+        assignedUserName: normalized.assigned_user_name ?? null,
         rawJson: normalized.raw
       },
       create: {
@@ -61,6 +63,8 @@ export async function persistNormalizedTicket(
         requesterName,
         requesterEmail,
         requesterUserId,
+        assignedUserId: normalized.assigned_user_id ?? null,
+        assignedUserName: normalized.assigned_user_name ?? null,
         rawJson: normalized.raw
       },
       select: {

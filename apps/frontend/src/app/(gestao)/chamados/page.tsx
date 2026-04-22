@@ -16,6 +16,7 @@ function buildSearchParams(raw: Search): URLSearchParams {
     "pendencia",
     "requesterEmail",
     "requesterName",
+    "assignedUserId",
     "cohort",
     "idleMin",
     "groupInJson",

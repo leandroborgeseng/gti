@@ -70,6 +70,36 @@ function extractFromTeam(teamValue: unknown): { id: number | null; name: string 
   return { id: null, name: null };
 }
 
+/**
+ * Utilizador técnico atribuído (`users_id_tec`) e rótulo legível (equipa GLPI ou fallback).
+ */
+function extractAssignedUser(ticket: JsonObject): { id: number | null; name: string | null } {
+  const rawTech = asNumber(ticket.users_id_tech);
+  const techId = rawTech != null && rawTech > 0 ? rawTech : null;
+  let name: string | null = null;
+
+  if (Array.isArray(ticket.team)) {
+    for (const item of ticket.team) {
+      const o = asObject(item);
+      const role = (asString(o.role) ?? "").toLowerCase();
+      const type = (asString(o.type) ?? "").toLowerCase();
+      const href = (asString(o.href) ?? "").toLowerCase();
+      const isGroup = type === "group" || Boolean(href && href.includes("/group.form.php"));
+      if (isGroup) continue;
+      if (role.includes("assign") || role.includes("tech") || role.includes("tecnico")) {
+        const n = asString(o.display_name ?? o.realname ?? o.name ?? o.user_name);
+        if (n) {
+          name = n;
+          break;
+        }
+      }
+    }
+  }
+
+  const fallback = techId ? `Utilizador #${techId}` : null;
+  return { id: techId, name: name ?? fallback };
+}
+
 function extractFromAssignedGroups(value: unknown): { id: number | null; name: string | null } {
   if (!Array.isArray(value) || value.length === 0) {
     return { id: null, name: null };
@@ -111,6 +141,7 @@ export function normalizeTicket(raw: unknown): NormalizedTicket {
   }
 
   const reqContact = extractRequesterContact(raw);
+  const assigned = extractAssignedUser(ticket);
 
   return {
     id: ticketId || 0,
@@ -125,6 +156,8 @@ export function normalizeTicket(raw: unknown): NormalizedTicket {
     requester_name: reqContact.displayName,
     requester_email: reqContact.email,
     requester_user_id: reqContact.userId,
+    assigned_user_id: assigned.id,
+    assigned_user_name: assigned.name,
     raw: ticket as InputJsonValue
   };
 }

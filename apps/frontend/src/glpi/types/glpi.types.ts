@@ -19,5 +19,8 @@ export interface NormalizedTicket {
   requester_name: string | null;
   requester_email: string | null;
   requester_user_id: number | null;
+  /** GLPI `users_id_tec` / técnico atribuído (cache). */
+  assigned_user_id: number | null;
+  assigned_user_name: string | null;
   raw: InputJsonValue;
 }
