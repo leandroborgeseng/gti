@@ -13,7 +13,7 @@ function metadataBaseUrl(): URL {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#0f172a",
+  themeColor: "#0066B3",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5

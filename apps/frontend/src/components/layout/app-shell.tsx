@@ -62,11 +62,11 @@ export function AppShell({ children }: PropsWithChildren): JSX.Element {
     <div className="flex min-h-screen bg-muted/30">
       <Sidebar groups={visibleNavGroups} />
       <main className="min-w-0 flex-1">
-        <header className="sticky top-0 z-10 border-b border-border bg-background/90 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 md:px-6 md:py-3.5">
+        <header className="sticky top-0 z-10 border-b-2 border-primary/90 bg-background/90 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 md:px-6 md:py-3.5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="flex min-w-0 items-center gap-3">
               <MobileNav groups={visibleNavGroups} />
-              <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight text-foreground">{title}</h2>
+              <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight text-primary">{title}</h2>
             </div>
             <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
               <span className="hidden sm:inline">Área autenticada</span>

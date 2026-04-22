@@ -1,6 +1,8 @@
 "use client";
 
 import { Menu } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -21,11 +23,19 @@ export function MobileNav({ groups }: Props): JSX.Element {
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="flex w-[min(100%,20rem)] max-w-none flex-col p-0">
-          <SheetHeader className="border-b border-border px-4 py-4 text-left">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">GTI</p>
-            <SheetTitle className="mt-0.5 text-left text-[15px] font-semibold leading-tight tracking-tight text-foreground">
-              Gestão contratual
-            </SheetTitle>
+          <SheetHeader className="border-b border-white/15 bg-brand-blue px-4 py-4 text-left text-white">
+            <Link href="/dashboard" className="mb-1 block" onClick={() => setOpen(false)}>
+              <Image
+                src="/brand/bluebeaver-logo.png"
+                alt="BlueBeaver"
+                width={200}
+                height={58}
+                className="h-10 w-auto max-w-full object-contain object-left"
+                priority
+              />
+            </Link>
+            <p className="text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">GTI — Gestão contratual</p>
+            <SheetTitle className="sr-only">Navegação GTI</SheetTitle>
             <SheetDescription className="sr-only">Menu principal da aplicação</SheetDescription>
           </SheetHeader>
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3" aria-label="Navegação principal">
