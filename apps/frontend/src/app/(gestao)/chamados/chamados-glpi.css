@@ -1197,6 +1197,24 @@
   background: #fff;
 }
 .chamados-glpi-page .chamados-ops__kpi--wide { flex: 2 1 14rem; }
+.chamados-glpi-page .chamados-ops__kpi--link {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.chamados-glpi-page .chamados-ops__kpi--link:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 1px 8px rgba(37, 99, 235, 0.12);
+}
+.chamados-glpi-page .chamados-ops__kpi--link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.chamados-glpi-page .chamados-ops__kpi--static {
+  cursor: default;
+  opacity: 0.92;
+}
 .chamados-glpi-page .chamados-ops__kpi-v {
   display: block;
   font-size: 1.25rem;

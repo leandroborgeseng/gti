@@ -19,6 +19,45 @@ export type OpenAgeBuckets = {
 
 const DAY_MS = 86400000;
 
+/** Dias inteiros de abertura (piso) ou null se não houver data utilizável. */
+export function ticketDaysOpenFloor(dateCreation: string | null | undefined, refMs: number): number | null {
+  if (!dateCreation?.trim()) return null;
+  const tOpen = Date.parse(dateCreation.trim());
+  if (!Number.isFinite(tOpen)) return null;
+  const daysOpen = Math.floor((refMs - tOpen) / DAY_MS);
+  if (daysOpen < 0) return null;
+  return daysOpen;
+}
+
+/** Dias desde a última alteração GLPI (ou abertura se inválida), piso — mesma regra das métricas de operação. */
+export function ticketIdleDaysFloor(
+  dateCreation: string | null | undefined,
+  dateModification: string | null | undefined,
+  refMs: number
+): number | null {
+  const tOpenStr = dateCreation?.trim();
+  if (!tOpenStr) return null;
+  const tOpen = Date.parse(tOpenStr);
+  if (!Number.isFinite(tOpen)) return null;
+  const tModRaw = dateModification?.trim();
+  const tMod = tModRaw ? Date.parse(tModRaw) : NaN;
+  const idleStart = Number.isFinite(tMod) ? tMod : tOpen;
+  const idleDays = Math.floor((refMs - idleStart) / DAY_MS);
+  return Number.isFinite(idleDays) ? idleDays : null;
+}
+
+/** Coorte do KPI «% com mais de 30 dias» (soma das faixas 16–30, 31–60 e >60 dias). */
+export function ticketInOpsOver30PctCohort(dateCreation: string | null | undefined, refMs: number): boolean {
+  const d = ticketDaysOpenFloor(dateCreation, refMs);
+  return d != null && d >= 16;
+}
+
+/** Coorte do KPI «% com mais de 60 dias» (apenas stock > 60 dias). */
+export function ticketInOpsOver60PctCohort(dateCreation: string | null | undefined, refMs: number): boolean {
+  const d = ticketDaysOpenFloor(dateCreation, refMs);
+  return d != null && d > 60;
+}
+
 export type OpenTicketOperationalMetrics = {
   buckets: OpenAgeBuckets;
   /** Somatório de min(dias_abertos, 90) por ticket com data de abertura válida. */
@@ -54,17 +93,8 @@ export async function getOpenTicketOperationalMetrics(filterWhere?: TicketWhereI
   let idleGlpiModDays14Plus = 0;
 
   for (const row of rows) {
-    if (!row.dateCreation || !row.dateCreation.trim()) {
-      buckets.noDate += 1;
-      continue;
-    }
-    const tOpen = Date.parse(row.dateCreation);
-    if (!Number.isFinite(tOpen)) {
-      buckets.noDate += 1;
-      continue;
-    }
-    const daysOpen = Math.floor((now - tOpen) / DAY_MS);
-    if (daysOpen < 0) {
+    const daysOpen = ticketDaysOpenFloor(row.dateCreation, now);
+    if (daysOpen == null) {
       buckets.noDate += 1;
       continue;
     }
@@ -82,14 +112,11 @@ export async function getOpenTicketOperationalMetrics(filterWhere?: TicketWhereI
       buckets.over60 += 1;
     }
 
-    const tModRaw = row.dateModification?.trim();
-    const tMod = tModRaw ? Date.parse(tModRaw) : NaN;
-    const idleStart = Number.isFinite(tMod) ? tMod : tOpen;
-    const idleDays = Math.floor((now - idleStart) / DAY_MS);
-    if (Number.isFinite(idleDays) && idleDays >= 7) {
+    const idleDays = ticketIdleDaysFloor(row.dateCreation, row.dateModification, now);
+    if (idleDays != null && idleDays >= 7) {
       idleGlpiModDays7Plus += 1;
     }
-    if (Number.isFinite(idleDays) && idleDays >= 14) {
+    if (idleDays != null && idleDays >= 14) {
       idleGlpiModDays14Plus += 1;
     }
   }

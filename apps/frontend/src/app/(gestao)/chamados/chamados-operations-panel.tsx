@@ -3,6 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   Bar,
@@ -95,6 +96,26 @@ function mergeChamadosHref(kanbanHrefQuery: string, patch: Record<string, string
   return (qs ? `/chamados?${qs}` : "/chamados") as Route;
 }
 
+function OpsKpiLink({
+  href,
+  className,
+  children
+}: {
+  href: Route;
+  className?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <Link href={href} className={cn("chamados-ops__kpi", "chamados-ops__kpi--link", className)} role="listitem">
+      {children}
+    </Link>
+  );
+}
+
+function OpsKpiStatic({ className, children }: { className?: string; children: ReactNode }): JSX.Element {
+  return <div className={cn("chamados-ops__kpi", "chamados-ops__kpi--static", className)} role="listitem">{children}</div>;
+}
+
 function TopRequestersTable({
   rows,
   kanbanHrefQuery
@@ -118,14 +139,18 @@ function TopRequestersTable({
           </thead>
           <tbody>
             {rows.map((r) => {
-              const { requesterEmail, requesterName } = requesterParamsFromTopRequesterLabel(r.label);
-              const canLink = Boolean(requesterEmail || requesterName);
-              const href = canLink
-                ? mergeChamadosHref(kanbanHrefQuery, {
-                    requesterEmail: requesterEmail ?? "",
-                    requesterName: requesterName ?? ""
-                  })
-                : null;
+              const href = r.filterHrefPatch
+                ? mergeChamadosHref(kanbanHrefQuery, r.filterHrefPatch)
+                : (() => {
+                    const { requesterEmail, requesterName } = requesterParamsFromTopRequesterLabel(r.label);
+                    const canLink = Boolean(requesterEmail || requesterName);
+                    return canLink
+                      ? mergeChamadosHref(kanbanHrefQuery, {
+                          requesterEmail: requesterEmail ?? "",
+                          requesterName: requesterName ?? ""
+                        })
+                      : null;
+                  })();
               return (
                 <tr key={`top-req-${r.label}`}>
                   <td>
@@ -148,10 +173,21 @@ function TopRequestersTable({
   );
 }
 
-function MiniTable({ title, rows }: { title: string; rows: ChamadosRankRow[] }): JSX.Element {
+function RankFilterTable({
+  title,
+  rows,
+  kanbanHrefQuery,
+  hint
+}: {
+  title: string;
+  rows: ChamadosRankRow[];
+  kanbanHrefQuery: string;
+  hint?: string;
+}): JSX.Element {
   return (
     <div className="chamados-ops__block">
       <h3 className="chamados-ops__block-title">{title}</h3>
+      {hint ? <p className="chamados-ops__table-hint">{hint}</p> : null}
       <div className="chamados-ops__table-wrap">
         <table className="chamados-ops__table">
           <thead>
@@ -163,12 +199,23 @@ function MiniTable({ title, rows }: { title: string; rows: ChamadosRankRow[] }):
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={`${title}-${r.label}`}>
-                <td>{r.label}</td>
-                <td className="chamados-ops__td-num">{r.count}</td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const href = r.filterHrefPatch ? mergeChamadosHref(kanbanHrefQuery, r.filterHrefPatch) : null;
+              return (
+                <tr key={`${title}-${r.label}`}>
+                  <td>
+                    {href ? (
+                      <Link href={href} className="chamados-ops__row-filter">
+                        {r.label}
+                      </Link>
+                    ) : (
+                      r.label
+                    )}
+                  </td>
+                  <td className="chamados-ops__td-num">{r.count}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -385,7 +432,8 @@ export function ChamadosOperationsPanel({
           <div className="chamados-ops__intro">
             <p className="chamados-ops__lede">
               Mesmos filtros do Kanban e do painel de idade: apenas chamados <strong>não fechados</strong> no cache.
-              Útil para priorizar stock antigo, grupos (GLPI/contrato) e solicitantes.
+              Clique nos <strong>KPIs</strong> ou nas <strong>linhas das tabelas</strong> para aplicar o filtro correspondente
+              no quadro (abre com «Só abertos» quando necessário).
             </p>
           </div>
 
@@ -400,40 +448,112 @@ export function ChamadosOperationsPanel({
           ) : (
             <>
               <div className="chamados-ops__kpis" role="list">
-                <div className="chamados-ops__kpi" role="listitem">
+                <OpsKpiLink
+                  href={mergeChamadosHref(kanbanHrefQuery, {
+                    open: "1",
+                    cohort: "",
+                    idleMin: "",
+                    groupInJson: "",
+                    groupNull: ""
+                  })}
+                >
                   <span className="chamados-ops__kpi-v">{summary.openTotal}</span>
                   <span className="chamados-ops__kpi-l">Abertos (filtro)</span>
-                </div>
-                <div className="chamados-ops__kpi" role="listitem">
+                </OpsKpiLink>
+                <OpsKpiLink
+                  href={mergeChamadosHref(kanbanHrefQuery, {
+                    open: "1",
+                    cohort: "ops_over30",
+                    idleMin: "",
+                    groupInJson: "",
+                    groupNull: ""
+                  })}
+                >
                   <span className="chamados-ops__kpi-v">{summary.agePctOver30}%</span>
                   <span className="chamados-ops__kpi-l">Com mais de 30 dias</span>
-                </div>
-                <div className="chamados-ops__kpi" role="listitem">
+                </OpsKpiLink>
+                <OpsKpiLink
+                  href={mergeChamadosHref(kanbanHrefQuery, {
+                    open: "1",
+                    cohort: "ops_over60",
+                    idleMin: "",
+                    groupInJson: "",
+                    groupNull: ""
+                  })}
+                >
                   <span className="chamados-ops__kpi-v">{summary.agePctOver60}%</span>
                   <span className="chamados-ops__kpi-l">Com mais de 60 dias</span>
-                </div>
-                <div className="chamados-ops__kpi" role="listitem">
+                </OpsKpiLink>
+                <OpsKpiStatic>
                   <span className="chamados-ops__kpi-v">{summary.weightedDaysCapped90}</span>
                   <span className="chamados-ops__kpi-l">Índice peso–idade (Σ min(dias,90))</span>
-                </div>
-                <div className="chamados-ops__kpi" role="listitem">
+                </OpsKpiStatic>
+                <OpsKpiLink
+                  href={mergeChamadosHref(kanbanHrefQuery, {
+                    open: "1",
+                    cohort: "",
+                    idleMin: "7",
+                    groupInJson: "",
+                    groupNull: ""
+                  })}
+                >
                   <span className="chamados-ops__kpi-v">{summary.idleGlpiModDays7Plus}</span>
                   <span className="chamados-ops__kpi-l">Sem alteração GLPI há ≥ 7 d</span>
-                </div>
-                <div className="chamados-ops__kpi" role="listitem">
+                </OpsKpiLink>
+                <OpsKpiLink
+                  href={mergeChamadosHref(kanbanHrefQuery, {
+                    open: "1",
+                    cohort: "",
+                    idleMin: "14",
+                    groupInJson: "",
+                    groupNull: ""
+                  })}
+                >
                   <span className="chamados-ops__kpi-v">{summary.idleGlpiModDays14Plus}</span>
                   <span className="chamados-ops__kpi-l">Sem alteração GLPI há ≥ 14 d</span>
-                </div>
-                <div className="chamados-ops__kpi chamados-ops__kpi--wide" role="listitem">
-                  <span className="chamados-ops__kpi-v">{conc}</span>
-                  <span className="chamados-ops__kpi-l">% dos abertos nos 3 grupos (contrato) com mais chamados</span>
-                </div>
+                </OpsKpiLink>
+                {summary.concentrationTop3GroupNames.length > 0 ? (
+                  <OpsKpiLink
+                    className="chamados-ops__kpi--wide"
+                    href={mergeChamadosHref(kanbanHrefQuery, {
+                      open: "1",
+                      groupInJson: JSON.stringify(summary.concentrationTop3GroupNames),
+                      group: "",
+                      groupNull: "",
+                      cohort: "",
+                      idleMin: ""
+                    })}
+                  >
+                    <span className="chamados-ops__kpi-v">{conc}</span>
+                    <span className="chamados-ops__kpi-l">% dos abertos nos 3 grupos (contrato) com mais chamados</span>
+                  </OpsKpiLink>
+                ) : (
+                  <OpsKpiStatic className="chamados-ops__kpi--wide">
+                    <span className="chamados-ops__kpi-v">{conc}</span>
+                    <span className="chamados-ops__kpi-l">% dos abertos nos 3 grupos (contrato) com mais chamados</span>
+                  </OpsKpiStatic>
+                )}
               </div>
 
               <div className="chamados-ops__grid">
-                <MiniTable title="Pendência inferida" rows={summary.byWaitingParty} />
-                <MiniTable title="Por estado (status)" rows={summary.byStatus} />
-                <MiniTable title="Top grupos (contrato / GLPI)" rows={summary.topGroups} />
+                <RankFilterTable
+                  title="Pendência inferida"
+                  rows={summary.byWaitingParty}
+                  kanbanHrefQuery={kanbanHrefQuery}
+                  hint="Clique numa linha para filtrar por pendência inferida (mantém os outros filtros)."
+                />
+                <RankFilterTable
+                  title="Por estado (status)"
+                  rows={summary.byStatus}
+                  kanbanHrefQuery={kanbanHrefQuery}
+                  hint="Clique numa linha para filtrar por estado GLPI exacto."
+                />
+                <RankFilterTable
+                  title="Top grupos (contrato / GLPI)"
+                  rows={summary.topGroups}
+                  kanbanHrefQuery={kanbanHrefQuery}
+                  hint="Clique numa linha para filtrar por grupo (contrato) ou «sem grupo»."
+                />
               </div>
 
               <div className="chamados-ops__grid chamados-ops__grid--single">

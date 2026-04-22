@@ -346,7 +346,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
           open: initial.onlyOpen,
           pendencia: initial.pendenciaParam,
           requesterEmail: initial.requesterEmail,
-          requesterName: initial.requesterName
+          requesterName: initial.requesterName,
+          cohort: initial.cohortParam,
+          idleMin: initial.idleMin,
+          groupInJson: initial.groupInJson,
+          groupNull: initial.groupNull
         })
       });
       const data = (await res.json()) as { error?: string; updated?: number };
@@ -389,6 +393,10 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     if (initial.onlyOpen) sp.set("open", "1");
     if (initial.requesterEmail) sp.set("requesterEmail", initial.requesterEmail);
     if (initial.requesterName) sp.set("requesterName", initial.requesterName);
+    if (initial.cohortParam) sp.set("cohort", initial.cohortParam);
+    if (initial.idleMin) sp.set("idleMin", initial.idleMin);
+    if (initial.groupInJson?.trim()) sp.set("groupInJson", initial.groupInJson);
+    if (initial.groupNull) sp.set("groupNull", "1");
     return sp.toString();
   }, [
     initial.q,
@@ -397,7 +405,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     initial.pendenciaParam,
     initial.onlyOpen,
     initial.requesterEmail,
-    initial.requesterName
+    initial.requesterName,
+    initial.cohortParam,
+    initial.idleMin,
+    initial.groupInJson,
+    initial.groupNull
   ]);
 
   const chamadosHrefWithoutRequester = useMemo(() => {
@@ -408,11 +420,32 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     return (qs ? `/chamados?${qs}` : "/chamados") as Route;
   }, [kanbanHrefQuery]);
 
+  const chamadosHrefClearOpsDrill = useMemo(() => {
+    const sp = new URLSearchParams(kanbanHrefQuery);
+    sp.delete("cohort");
+    sp.delete("idleMin");
+    sp.delete("groupInJson");
+    sp.delete("groupNull");
+    const qs = sp.toString();
+    return (qs ? `/chamados?${qs}` : "/chamados") as Route;
+  }, [kanbanHrefQuery]);
+
   const filterPills = useMemo(() => {
     const openLabel = initial.onlyOpen ? "Sim" : "Não";
     const solicitante =
       initial.requesterEmail?.trim() ||
       (initial.requesterName?.trim() ? `Nome: ${initial.requesterName.trim()}` : "");
+    const cohortPill =
+      initial.cohortParam === "ops_over30"
+        ? "Coorte KPI >30d (16+ dias)"
+        : initial.cohortParam === "ops_over60"
+          ? "Coorte KPI >60d"
+          : "";
+    const idlePill = initial.idleMin ? `Inatividade GLPI ≥ ${initial.idleMin} d` : "";
+    const groupInPill = initial.groupInJson?.trim() ? "Top 3 grupos (concentração)" : "";
+    const groupNullPill = initial.groupNull ? "Sem grupo (contrato)" : "";
+    const statusPill =
+      initial.statusFilter === "__NULL__" ? "Sem status" : initial.statusFilter || "Todos";
     const pill = (k: string, v: string, muted: boolean) => (
       <span key={k} className={`filter-pill${muted ? " filter-pill--muted" : ""}`}>
         <span className="filter-pill__k">{k}</span>
@@ -421,11 +454,15 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     );
     return [
       pill("Busca", initial.q || "—", !initial.q),
-      pill("Status", initial.statusFilter || "Todos", !initial.statusFilter),
+      pill("Status", statusPill, !initial.statusFilter),
       pill("Grupo", initial.groupFilter || "Todos", !initial.groupFilter),
       pill("Abertos", openLabel, !initial.onlyOpen),
       pill("Pendência", pendenciaLabelForSummary(initial.pendenciaParam), initial.pendenciaParam === ""),
       pill("Solicitante", solicitante || "—", !solicitante),
+      pill("Coorte idade", cohortPill || "—", !cohortPill),
+      pill("Inatividade", idlePill || "—", !idlePill),
+      pill("Grupos (IN)", groupInPill || "—", !groupInPill),
+      pill("Sem grupo", groupNullPill || "—", !groupNullPill),
       pill(
         "Sync cache",
         initial.ticketSyncScope === "all" ? "Todos os tickets" : "Só abertos (cache reduzido)",
@@ -479,6 +516,13 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
               </Link>
             </p>
           ) : null}
+          {initial.cohortParam || initial.idleMin || initial.groupInJson?.trim() || initial.groupNull ? (
+            <p className="filters-shell__requester-clear">
+              <Link href={chamadosHrefClearOpsDrill} className="filters-shell__requester-clear-link">
+                Remover coorte / inatividade / top 3 grupos
+              </Link>
+            </p>
+          ) : null}
           <form id="kanban-filters-form" className="filters-grid" method="get" action="/chamados">
             <label>
               Busca
@@ -488,6 +532,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
               Status
               <select name="status" defaultValue={initial.statusFilter}>
                 <option value="">Todos</option>
+                <option value="__NULL__">Sem status</option>
                 {initial.statuses.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -514,6 +559,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                 <option value="empresa">Empresa</option>
                 <option value="desconhecido">Indefinido</option>
                 <option value="na">Encerrado</option>
+                <option value="nao_inferido">Não inferido</option>
               </select>
             </label>
             <label>
@@ -525,6 +571,12 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
             </label>
             {initial.requesterEmail ? <input type="hidden" name="requesterEmail" value={initial.requesterEmail} /> : null}
             {initial.requesterName ? <input type="hidden" name="requesterName" value={initial.requesterName} /> : null}
+            {initial.cohortParam ? <input type="hidden" name="cohort" value={initial.cohortParam} /> : null}
+            {initial.idleMin ? <input type="hidden" name="idleMin" value={initial.idleMin} /> : null}
+            {initial.groupInJson?.trim() ? (
+              <input type="hidden" name="groupInJson" value={initial.groupInJson} />
+            ) : null}
+            {initial.groupNull ? <input type="hidden" name="groupNull" value="1" /> : null}
           </form>
           <footer className="filters-shell__sync">
             <div className="filters-shell__sync-row">

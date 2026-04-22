@@ -1,8 +1,12 @@
 "use client";
 
+import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Modal } from "@/components/ui/modal";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Contract, ContractItemDeliveryStatus } from "@/lib/api";
 import {
   createContractFeature,
@@ -27,6 +31,7 @@ import {
   weightSumMatchesTarget
 } from "@/lib/contract-weights";
 import { buttonSmallClass, buttonSmallPrimaryClass, formControlClass } from "@/components/ui/form-primitives";
+import { cn } from "@/lib/utils";
 
 const featureStatusLabels: Record<ContractFeatureStatus, string> = {
   NOT_STARTED: "Não iniciada",
@@ -105,8 +110,16 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
     }
   }
 
-  const [newModName, setNewModName] = useState("");
-  const [newModWeight, setNewModWeight] = useState("");
+  const [structureModalOpen, setStructureModalOpen] = useState(false);
+  const [structureModalKind, setStructureModalKind] = useState<"module" | "feature">("module");
+  const [modalModName, setModalModName] = useState("");
+  const [modalModWeight, setModalModWeight] = useState("");
+  const [modalFeatModuleId, setModalFeatModuleId] = useState("");
+  const [modalFeatName, setModalFeatName] = useState("");
+  const [modalFeatWeight, setModalFeatWeight] = useState("");
+  const [modalFeatStatus, setModalFeatStatus] = useState<ContractFeatureStatus>("NOT_STARTED");
+  const [modalFeatDelivery, setModalFeatDelivery] = useState<ContractItemDeliveryStatus>("NOT_DELIVERED");
+
   const [replaceOnImport, setReplaceOnImport] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const fileImportRef = useRef<HTMLInputElement>(null);
@@ -118,6 +131,22 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const modules = contract.modules ?? [];
   const services = contract.services ?? [];
 
+  function openStructureModal(): void {
+    setModalModName("");
+    setModalModWeight("");
+    setModalFeatName("");
+    setModalFeatWeight("");
+    setModalFeatStatus("NOT_STARTED");
+    setModalFeatDelivery("NOT_DELIVERED");
+    setModalFeatModuleId(modules[0]?.id ?? "");
+    setStructureModalKind(modules.length > 0 ? "feature" : "module");
+    setStructureModalOpen(true);
+  }
+
+  function closeStructureModal(): void {
+    setStructureModalOpen(false);
+  }
+
   return (
     <div className="space-y-4">
       {error ? (
@@ -128,167 +157,342 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
       {busy ? <p className="text-xs text-slate-500">A gravar…</p> : null}
 
       {showsModules(contract.contractType) ? (
-        <Card>
-          <h4 className="mb-3 font-medium text-slate-900">Módulos e funcionalidades</h4>
-          <p className="mb-3 text-xs text-slate-500">
+        <Card className="p-5">
+          <h4 className="mb-2 font-medium text-slate-900">Módulos e funcionalidades</h4>
+          <p className="mb-4 text-xs text-slate-500">
             Pesos são decimais (use ponto ou vírgula). A soma dos pesos dos módulos e, em cada módulo, a soma das funcionalidades deve ser{" "}
             <strong>1</strong> (tolerância numérica para arredondamentos).
           </p>
           <ModuleWeightsSummary modules={modules} />
 
-          <div className="mb-6 rounded-md border border-sky-200/80 bg-sky-50/50 px-3 py-3 text-sm text-slate-800">
-            <p className="font-medium text-slate-900">Planilha (.xlsx)</p>
-            <p className="mt-1 text-xs text-slate-600">
-              Descarregue o modelo, preencha a folha «Dados» e importe para criar módulos e funcionalidades de uma vez. Leia as instruções na
-              folha «Instrucoes».
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className={buttonSmallPrimaryClass}
-                disabled={busy}
-                onClick={() => {
-                  void (async () => {
-                    setError(null);
-                    setBusy(true);
-                    try {
-                      const blob = await fetchContractStructureTemplateBlob(cid);
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `modelo-modulos-funcionalidades-${contract.number.replace(/[^\w.-]+/g, "_")}.xlsx`;
-                      a.rel = "noopener";
-                      document.body.appendChild(a);
-                      a.click();
-                      a.remove();
-                      URL.revokeObjectURL(url);
-                    } catch (e) {
-                      setError(e instanceof Error ? e.message : "Erro ao descarregar o modelo");
-                    } finally {
-                      setBusy(false);
-                    }
-                  })();
-                }}
-              >
-                Descarregar modelo
-              </button>
-              <input
-                ref={fileImportRef}
-                type="file"
-                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                className="hidden"
-                disabled={busy}
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  setImportFile(f);
-                }}
-              />
-              <button
-                type="button"
-                className={buttonSmallClass}
-                disabled={busy}
-                onClick={() => fileImportRef.current?.click()}
-              >
-                Escolher ficheiro…
-              </button>
-              <button
-                type="button"
-                className={buttonSmallPrimaryClass}
-                disabled={busy || !importFile}
-                onClick={() => {
-                  if (!importFile) return;
-                  void run(async () => {
-                    const next = await importContractStructureFromXlsx(cid, importFile, replaceOnImport);
-                    setImportFile(null);
-                    setReplaceOnImport(false);
-                    if (fileImportRef.current) fileImportRef.current.value = "";
-                    return next;
-                  });
-                }}
-              >
-                Importar
-              </button>
-            </div>
-            {importFile ? (
-              <p className="mt-2 text-xs text-slate-600">
-                Seleccionado: <span className="font-mono">{importFile.name}</span>
+          <Tabs defaultValue="funcionalidades" className="w-full">
+            <TabsList className="mb-1 h-auto flex-wrap justify-start gap-1">
+              <TabsTrigger value="importacao">Importação (planilha)</TabsTrigger>
+              <TabsTrigger value="funcionalidades">Funcionalidades</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="importacao" className="mt-3 rounded-md border border-sky-200/80 bg-sky-50/50 px-3 py-3 text-sm text-slate-800">
+              <p className="font-medium text-slate-900">Planilha (.xlsx)</p>
+              <p className="mt-1 text-xs text-slate-600">
+                Descarregue o modelo, preencha a folha «Dados» e importe para criar módulos e funcionalidades de uma vez. Leia as instruções na
+                folha «Instrucoes».
               </p>
-            ) : null}
-            <div className="mt-3 flex items-start gap-2">
-              <Checkbox
-                id="replace-structure-import"
-                checked={replaceOnImport}
-                onCheckedChange={(v) => setReplaceOnImport(v === true)}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={buttonSmallPrimaryClass}
+                  disabled={busy}
+                  onClick={() => {
+                    void (async () => {
+                      setError(null);
+                      setBusy(true);
+                      try {
+                        const blob = await fetchContractStructureTemplateBlob(cid);
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `modelo-modulos-funcionalidades-${contract.number.replace(/[^\w.-]+/g, "_")}.xlsx`;
+                        a.rel = "noopener";
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : "Erro ao descarregar o modelo");
+                      } finally {
+                        setBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  Descarregar modelo
+                </button>
+                <input
+                  ref={fileImportRef}
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  disabled={busy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setImportFile(f);
+                  }}
+                />
+                <button type="button" className={buttonSmallClass} disabled={busy} onClick={() => fileImportRef.current?.click()}>
+                  Escolher ficheiro…
+                </button>
+                <button
+                  type="button"
+                  className={buttonSmallPrimaryClass}
+                  disabled={busy || !importFile}
+                  onClick={() => {
+                    if (!importFile) return;
+                    void run(async () => {
+                      const next = await importContractStructureFromXlsx(cid, importFile, replaceOnImport);
+                      setImportFile(null);
+                      setReplaceOnImport(false);
+                      if (fileImportRef.current) fileImportRef.current.value = "";
+                      return next;
+                    });
+                  }}
+                >
+                  Importar
+                </button>
+              </div>
+              {importFile ? (
+                <p className="mt-2 text-xs text-slate-600">
+                  Seleccionado: <span className="font-mono">{importFile.name}</span>
+                </p>
+              ) : null}
+              <div className="mt-3 flex items-start gap-2">
+                <Checkbox
+                  id="replace-structure-import"
+                  checked={replaceOnImport}
+                  onCheckedChange={(v) => setReplaceOnImport(v === true)}
+                  disabled={busy}
+                  className="mt-0.5"
+                />
+                <label htmlFor="replace-structure-import" className="cursor-pointer text-xs leading-snug text-slate-700">
+                  Substituir módulos e funcionalidades existentes (remove os actuais deste contrato antes de importar).
+                </label>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="funcionalidades" className="mt-3">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                <p className="max-w-xl text-xs text-slate-600">
+                  Edite módulos e funcionalidades abaixo ou use o botão para abrir o cadastro rápido num modal.
+                </p>
+                <Button type="button" size="sm" disabled={busy} onClick={openStructureModal} className="shrink-0 gap-1.5">
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Novo módulo ou funcionalidade
+                </Button>
+              </div>
+              <div className="space-y-6">
+                {modules.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    Nenhum módulo ainda. Use «Novo módulo ou funcionalidade» para criar o primeiro módulo ou importe uma planilha na aba
+                    Importação.
+                  </p>
+                ) : null}
+                {modules.map((mod) => (
+                  <ModuleBlock
+                    key={mod.id}
+                    contractId={cid}
+                    module={mod}
+                    allModules={modules}
+                    busy={busy}
+                    onError={setError}
+                    onBusy={setBusy}
+                    onUpdated={setContract}
+                  />
+                ))}
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <Modal
+            open={structureModalOpen}
+            onClose={closeStructureModal}
+            title="Cadastrar módulo ou funcionalidade"
+            description="Escolha o tipo de registo. Os pesos seguem as mesmas regras do restante do ecrã (soma ≈ 1 por nível)."
+            contentClassName="max-w-lg"
+          >
+            <div className="mb-5 flex gap-2">
+              <button
+                type="button"
+                className={cn(
+                  "flex-1 rounded-md border px-3 py-2 text-sm font-medium transition",
+                  structureModalKind === "module"
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                )}
                 disabled={busy}
-                className="mt-0.5"
-              />
-              <label htmlFor="replace-structure-import" className="cursor-pointer text-xs leading-snug text-slate-700">
-                Substituir módulos e funcionalidades existentes (remove os actuais deste contrato antes de importar).
-              </label>
+                onClick={() => setStructureModalKind("module")}
+              >
+                Novo módulo
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  "flex-1 rounded-md border px-3 py-2 text-sm font-medium transition",
+                  structureModalKind === "feature"
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                )}
+                disabled={busy || modules.length === 0}
+                onClick={() => setStructureModalKind("feature")}
+              >
+                Nova funcionalidade
+              </button>
             </div>
-          </div>
 
-          <div className="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-4">
-            <input
-              className={`min-w-[12rem] ${formControlClass}`}
-              placeholder="Nome do módulo"
-              value={newModName}
-              onChange={(e) => setNewModName(e.target.value)}
-              disabled={busy}
-            />
-            <input
-              className={`w-28 ${formControlClass}`}
-              placeholder="Peso"
-              type="number"
-              step="0.0001"
-              min={0}
-              value={newModWeight}
-              onChange={(e) => setNewModWeight(e.target.value)}
-              disabled={busy}
-            />
-            <button
-              type="button"
-              className={buttonSmallPrimaryClass}
-              disabled={busy || !newModName.trim()}
-              onClick={() => {
-                const w = parseContractWeight(newModWeight);
-                if (!Number.isFinite(w)) {
-                  setError("Indique um peso numérico válido.");
-                  return;
-                }
-                const projected = projectContractModulesSum(modules) + w;
-                if (!confirmWeightSumDeviation(projected, "Pesos dos módulos (após incluir este módulo)")) {
-                  return;
-                }
-                void run(async () => {
-                  const c = await createContractModule(cid, { name: newModName.trim(), weight: w });
-                  setNewModName("");
-                  setNewModWeight("");
-                  return c;
-                });
-              }}
-            >
-              Adicionar módulo
-            </button>
-          </div>
-
-          <div className="space-y-6">
-            {modules.length === 0 ? (
-              <p className="text-sm text-slate-500">Nenhum módulo. Adicione o primeiro acima.</p>
-            ) : null}
-            {modules.map((mod) => (
-              <ModuleBlock
-                key={mod.id}
-                contractId={cid}
-                module={mod}
-                allModules={modules}
-                busy={busy}
-                onError={setError}
-                onBusy={setBusy}
-                onUpdated={setContract}
-              />
-            ))}
-          </div>
+            {structureModalKind === "module" ? (
+              <div className="space-y-4">
+                <label className="block text-xs font-medium text-slate-700">
+                  Nome do módulo
+                  <input
+                    className={`mt-1 w-full ${formControlClass}`}
+                    placeholder="Ex.: Módulo financeiro"
+                    value={modalModName}
+                    onChange={(e) => setModalModName(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Peso
+                  <input
+                    className={`mt-1 w-full max-w-[12rem] ${formControlClass}`}
+                    placeholder="0 a 1"
+                    type="number"
+                    step="0.0001"
+                    min={0}
+                    value={modalModWeight}
+                    onChange={(e) => setModalModWeight(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" size="sm" disabled={busy} onClick={closeStructureModal}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busy || !modalModName.trim()}
+                    onClick={() => {
+                      const w = parseContractWeight(modalModWeight);
+                      if (!Number.isFinite(w)) {
+                        setError("Indique um peso numérico válido.");
+                        return;
+                      }
+                      const projected = projectContractModulesSum(modules) + w;
+                      if (!confirmWeightSumDeviation(projected, "Pesos dos módulos (após incluir este módulo)")) {
+                        return;
+                      }
+                      void run(async () => {
+                        const c = await createContractModule(cid, { name: modalModName.trim(), weight: w });
+                        closeStructureModal();
+                        return c;
+                      });
+                    }}
+                  >
+                    Guardar módulo
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <label className="block text-xs font-medium text-slate-700">
+                  Módulo
+                  <select
+                    className={`mt-1 w-full ${formControlClass}`}
+                    value={modalFeatModuleId}
+                    onChange={(e) => setModalFeatModuleId(e.target.value)}
+                    disabled={busy || modules.length === 0}
+                  >
+                    {modules.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Nome da funcionalidade
+                  <input
+                    className={`mt-1 w-full ${formControlClass}`}
+                    placeholder="Descrição curta"
+                    value={modalFeatName}
+                    onChange={(e) => setModalFeatName(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Peso
+                  <input
+                    className={`mt-1 w-full max-w-[12rem] ${formControlClass}`}
+                    type="number"
+                    step="0.0001"
+                    min={0}
+                    value={modalFeatWeight}
+                    onChange={(e) => setModalFeatWeight(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-xs font-medium text-slate-700">
+                    Estado
+                    <select
+                      className={`mt-1 w-full ${formControlClass}`}
+                      value={modalFeatStatus}
+                      onChange={(e) => setModalFeatStatus(e.target.value as ContractFeatureStatus)}
+                      disabled={busy}
+                    >
+                      {featureStatuses.map((s) => (
+                        <option key={s} value={s}>
+                          {featureStatusLabels[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-xs font-medium text-slate-700">
+                    Entrega
+                    <select
+                      className={`mt-1 w-full ${formControlClass}`}
+                      value={modalFeatDelivery}
+                      onChange={(e) => setModalFeatDelivery(e.target.value as ContractItemDeliveryStatus)}
+                      disabled={busy}
+                    >
+                      {itemDeliveryOptions.map((s) => (
+                        <option key={s} value={s}>
+                          {itemDeliveryLabels[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" size="sm" disabled={busy} onClick={closeStructureModal}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busy || !modalFeatName.trim() || !modalFeatModuleId}
+                    onClick={() => {
+                      const mod = modules.find((m) => m.id === modalFeatModuleId);
+                      if (!mod) {
+                        setError("Seleccione um módulo válido.");
+                        return;
+                      }
+                      const w = parseContractWeight(modalFeatWeight);
+                      if (!Number.isFinite(w)) {
+                        setError("Peso da funcionalidade inválido.");
+                        return;
+                      }
+                      const projected = projectModuleFeaturesSum(mod.features) + w;
+                      if (!confirmWeightSumDeviation(projected, `Funcionalidades do módulo «${mod.name}»`)) {
+                        return;
+                      }
+                      void run(async () => {
+                        const c = await createContractFeature(cid, mod.id, {
+                          name: modalFeatName.trim(),
+                          weight: w,
+                          status: modalFeatStatus,
+                          deliveryStatus: modalFeatDelivery
+                        });
+                        closeStructureModal();
+                        return c;
+                      });
+                    }}
+                  >
+                    Guardar funcionalidade
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Modal>
         </Card>
       ) : null}
 

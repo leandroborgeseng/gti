@@ -1,7 +1,14 @@
 import { prisma } from "./config/prisma";
 import { getCachedUsersByIds } from "./services/glpi-users-cache.service";
 import type { TicketWhereInput } from "./types/ticket-where";
-import { buildKanbanWhere, buildKanbanWhereClosed, pendenciaLabelForSummary } from "./utils/kanban-filters";
+import {
+  buildKanbanWhere,
+  buildKanbanWhereClosed,
+  pendenciaLabelForSummary,
+  parseOpsCohortParam,
+  type KanbanFilterInput
+} from "./utils/kanban-filters";
+import { narrowTicketWhereByComputedOpts } from "./utils/kanban-narrow-computed";
 import {
   getOpenTicketOperationalMetrics,
   sumOpenAgeBuckets,
@@ -136,7 +143,12 @@ export type KanbanCardDto = {
   cardStyle: string;
 };
 
-export type ChamadosRankRow = { label: string; count: number };
+export type ChamadosRankRow = {
+  label: string;
+  count: number;
+  /** Mescla na query do quadro para filtrar como esta linha (chaves vazias removem o parâmetro). */
+  filterHrefPatch?: Record<string, string | undefined>;
+};
 
 export type ChamadosOldestTicketRow = {
   glpiTicketId: number;
@@ -270,6 +282,8 @@ export type ChamadosOperationsSummary = {
   topRequesters: ChamadosRankRow[];
   /** % do total aberto que está nos 3 grupos GLPI (contrato) com mais stock; null se total 0. */
   concentrationTop3GroupsPct: number | null;
+  /** Nomes de `contractGroupName` dos 3 grupos com mais stock (`""` = sem grupo), para filtro «concentração». */
+  concentrationTop3GroupNames: string[];
   oldestTickets: ChamadosOldestTicketRow[];
   /** Aberturas por mês (fuso São Paulo), stock actual com os mesmos filtros. */
   openingsByMonth: ChamadosOpeningsByMonth[];
@@ -296,6 +310,11 @@ export type KanbanBoardPayload = {
   statuses: string[];
   groups: string[];
   operationsSummary: ChamadosOperationsSummary;
+  /** Eco da URL / estado derivado para o formulário e links. */
+  cohortParam: string;
+  idleMin: string;
+  groupInJson: string;
+  groupNull: boolean;
 };
 
 /**
@@ -314,6 +333,7 @@ function emptyOperationsSummary(): ChamadosOperationsSummary {
     topGroups: [],
     topRequesters: [],
     concentrationTop3GroupsPct: null,
+    concentrationTop3GroupNames: [],
     oldestTickets: [],
     openingsByMonth: [],
     closingsByMonth: []
@@ -323,6 +343,125 @@ function emptyOperationsSummary(): ChamadosOperationsSummary {
 function pctOfTotal(part: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((1000 * part) / total) / 10;
+}
+
+function parseGroupInJsonParam(raw: string): string[] | undefined {
+  const t = raw.trim();
+  if (!t) return undefined;
+  try {
+    const v = JSON.parse(t) as unknown;
+    if (!Array.isArray(v) || v.length === 0) return undefined;
+    return v.map((x) => String(x));
+  } catch {
+    return undefined;
+  }
+}
+
+function parseIdleMinParam(raw: string): number | undefined {
+  const n = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(n) || n < 1) return undefined;
+  return n;
+}
+
+function pendenciaParamFromWaitingParty(raw: string | null): string {
+  if (raw == null || raw === "") return "nao_inferido";
+  if (raw === "cliente") return "cliente";
+  if (raw === "empresa") return "empresa";
+  if (raw === "na") return "na";
+  if (raw === "unknown") return "desconhecido";
+  return "nao_inferido";
+}
+
+function requesterPatchFromTopRequesterLabel(label: string): { requesterEmail?: string; requesterName?: string } {
+  const t = label.trim();
+  if (t.includes("@")) return { requesterEmail: t, requesterName: "" };
+  const p = "Solicitante: ";
+  if (t.startsWith(p)) {
+    const name = t.slice(p.length).trim();
+    return { requesterEmail: "", requesterName: name };
+  }
+  return {};
+}
+
+const OPS_TABLE_LINK_PATCH: Record<string, string | undefined> = {
+  open: "1",
+  cohort: "",
+  idleMin: "",
+  groupInJson: "",
+  groupNull: ""
+};
+
+function readChamadosFilterParts(sp: URLSearchParams): {
+  q: string;
+  statusFilter: string;
+  groupFilter: string;
+  requesterEmail: string;
+  requesterName: string;
+  onlyOpenRaw: boolean;
+  pendenciaParam: string;
+  cohortParam: string;
+  idleMinRaw: string;
+  groupInJson: string;
+  groupNull: boolean;
+  cohort: ReturnType<typeof parseOpsCohortParam>;
+  idleMinDays: number | undefined;
+  groupInNames: string[] | undefined;
+  onlyOpenEffective: boolean;
+  filterBase: KanbanFilterInput;
+} {
+  const q = (sp.get("q") || "").trim();
+  const statusFilter = (sp.get("status") || "").trim();
+  const groupFilter = (sp.get("group") || "").trim();
+  const requesterEmail = (sp.get("requesterEmail") || "").trim();
+  const requesterName = (sp.get("requesterName") || "").trim();
+  const onlyOpenRaw = sp.get("open") === "1";
+  const pendenciaParam = (sp.get("pendencia") || "").trim();
+  const cohortParam = (sp.get("cohort") || "").trim();
+  const idleMinRaw = (sp.get("idleMin") || "").trim();
+  const groupInJson = (sp.get("groupInJson") || "").trim();
+  const groupNull = sp.get("groupNull") === "1";
+  const cohort = parseOpsCohortParam(cohortParam);
+  const idleMinDays = parseIdleMinParam(idleMinRaw);
+  const groupInNames = parseGroupInJsonParam(groupInJson);
+  const drillSlice = Boolean(
+    cohort ||
+      idleMinDays ||
+      (groupInNames && groupInNames.length > 0) ||
+      (groupNull && !(groupInNames && groupInNames.length > 0))
+  );
+  const onlyOpenEffective = onlyOpenRaw || drillSlice;
+
+  const filterBase: KanbanFilterInput = {
+    q,
+    statusFilter,
+    groupFilter,
+    onlyOpen: onlyOpenEffective,
+    pendenciaParam,
+    requesterEmail,
+    requesterName,
+    groupInNames: groupInNames && groupInNames.length > 0 ? groupInNames : undefined,
+    groupNullOnly:
+      groupInNames && groupInNames.length > 0 ? undefined : groupNull ? true : undefined
+  };
+
+  return {
+    q,
+    statusFilter,
+    groupFilter,
+    requesterEmail,
+    requesterName,
+    onlyOpenRaw,
+    pendenciaParam,
+    cohortParam,
+    idleMinRaw,
+    groupInJson,
+    groupNull,
+    cohort,
+    idleMinDays,
+    groupInNames,
+    onlyOpenEffective,
+    filterBase
+  };
 }
 
 function waitingPartyLabel(value: string | null): string {
@@ -417,18 +556,35 @@ async function buildChamadosOperationsSummary(
   const closingsByMonth = buildClosingsByMonthFromRows(closingsRows);
 
   const byWaitingParty: ChamadosRankRow[] = byPartyRows
-    .map((r) => ({ label: waitingPartyLabel(r.waitingParty), count: r._count._all }))
+    .map((r) => ({
+      label: waitingPartyLabel(r.waitingParty),
+      count: r._count._all,
+      filterHrefPatch: {
+        ...OPS_TABLE_LINK_PATCH,
+        pendencia: pendenciaParamFromWaitingParty(r.waitingParty)
+      }
+    }))
     .sort((a, b) => b.count - a.count);
 
   const byStatus: ChamadosRankRow[] = byStatusRows
-    .map((r) => ({ label: r.status?.trim() ? r.status! : "Sem status", count: r._count._all }))
+    .map((r) => ({
+      label: r.status?.trim() ? r.status! : "Sem status",
+      count: r._count._all,
+      filterHrefPatch: {
+        ...OPS_TABLE_LINK_PATCH,
+        status: r.status?.trim() ? r.status! : "__NULL__"
+      }
+    }))
     .sort((a, b) => b.count - a.count);
 
   const topGroups: ChamadosRankRow[] = byGroupRows
-    .map((r) => ({
-      label: r.contractGroupName?.trim() ? r.contractGroupName! : "Sem grupo (contrato)",
-      count: r._count._all
-    }))
+    .map((r) => {
+      const label = r.contractGroupName?.trim() ? r.contractGroupName! : "Sem grupo (contrato)";
+      const filterHrefPatch = r.contractGroupName?.trim()
+        ? { ...OPS_TABLE_LINK_PATCH, group: r.contractGroupName.trim(), groupNull: "" }
+        : { ...OPS_TABLE_LINK_PATCH, group: "", groupNull: "1" };
+      return { label, count: r._count._all, filterHrefPatch };
+    })
     .sort((a, b) => b.count - a.count)
     .slice(0, 12);
 
@@ -445,12 +601,30 @@ async function buildChamadosOperationsSummary(
     reqMap.set(label, (reqMap.get(label) ?? 0) + r._count._all);
   }
   const topRequesters: ChamadosRankRow[] = Array.from(reqMap.entries())
-    .map(([label, count]) => ({ label, count }))
+    .map(([label, count]) => {
+      const req = requesterPatchFromTopRequesterLabel(label);
+      const has = Boolean(req.requesterEmail || req.requesterName);
+      return {
+        label,
+        count,
+        filterHrefPatch: has
+          ? {
+              ...OPS_TABLE_LINK_PATCH,
+              requesterEmail: req.requesterEmail ?? "",
+              requesterName: req.requesterName ?? ""
+            }
+          : undefined
+      };
+    })
     .sort((a, b) => b.count - a.count)
     .slice(0, 12);
 
-  const sortedGroupCounts = [...topGroups].sort((a, b) => b.count - a.count);
-  const top3Sum = sortedGroupCounts.slice(0, 3).reduce((s, x) => s + x.count, 0);
+  const byGroupForConc = [...byGroupRows].sort((a, b) => b._count._all - a._count._all);
+  const top3GroupsForConc = byGroupForConc.slice(0, 3);
+  const concentrationTop3GroupNames = top3GroupsForConc.map((r) =>
+    r.contractGroupName?.trim() ? r.contractGroupName.trim() : ""
+  );
+  const top3Sum = top3GroupsForConc.reduce((s, x) => s + x._count._all, 0);
   const concentrationTop3GroupsPct = openTotal > 0 ? pctOfTotal(top3Sum, openTotal) : null;
 
   const now = new Date();
@@ -481,6 +655,7 @@ async function buildChamadosOperationsSummary(
     topGroups,
     topRequesters,
     concentrationTop3GroupsPct,
+    concentrationTop3GroupNames,
     oldestTickets,
     openingsByMonth,
     closingsByMonth
@@ -488,22 +663,16 @@ async function buildChamadosOperationsSummary(
 }
 
 export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): KanbanBoardPayload {
-  const q = (searchParams.get("q") || "").trim();
-  const statusFilter = (searchParams.get("status") || "").trim();
-  const groupFilter = (searchParams.get("group") || "").trim();
-  const requesterEmail = (searchParams.get("requesterEmail") || "").trim();
-  const requesterName = (searchParams.get("requesterName") || "").trim();
-  const onlyOpen = searchParams.get("open") === "1";
-  const pendenciaParam = (searchParams.get("pendencia") || "").trim();
+  const p = readChamadosFilterParts(searchParams);
   return {
-    q,
-    statusFilter,
-    groupFilter,
-    requesterEmail,
-    requesterName,
-    onlyOpen,
-    pendenciaParam,
-    pendenciaSummary: pendenciaLabelForSummary(pendenciaParam),
+    q: p.q,
+    statusFilter: p.statusFilter,
+    groupFilter: p.groupFilter,
+    requesterEmail: p.requesterEmail,
+    requesterName: p.requesterName,
+    onlyOpen: p.onlyOpenEffective,
+    pendenciaParam: p.pendenciaParam,
+    pendenciaSummary: pendenciaLabelForSummary(p.pendenciaParam),
     filteredTotal: 0,
     ticketSyncScope: "all",
     kanbanSettings: {},
@@ -513,34 +682,29 @@ export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): 
     ageTotal: 0,
     statuses: [],
     groups: [],
-    operationsSummary: emptyOperationsSummary()
+    operationsSummary: emptyOperationsSummary(),
+    cohortParam: p.cohortParam,
+    idleMin: p.idleMinRaw,
+    groupInJson: p.groupInJson,
+    groupNull: p.groupNull
   };
 }
 
 export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Promise<KanbanBoardPayload> {
-  const q = (searchParams.get("q") || "").trim();
-  const statusFilter = (searchParams.get("status") || "").trim();
-  const groupFilter = (searchParams.get("group") || "").trim();
-  const requesterEmail = (searchParams.get("requesterEmail") || "").trim();
-  const requesterName = (searchParams.get("requesterName") || "").trim();
-  const onlyOpen = searchParams.get("open") === "1";
-  const pendenciaParam = (searchParams.get("pendencia") || "").trim();
+  const p = readChamadosFilterParts(searchParams);
+  const { q, statusFilter, groupFilter, requesterEmail, requesterName, pendenciaParam, filterBase } = p;
 
-  const filterBase = {
-    q,
-    statusFilter,
-    groupFilter,
-    onlyOpen,
-    pendenciaParam,
-    requesterEmail,
-    requesterName
+  const narrowOpts = {
+    cohort: p.cohort ?? undefined,
+    idleMinDays: p.idleMinDays
   };
 
-  const where = buildKanbanWhere(filterBase);
-  const whereAge = buildKanbanWhere({
-    ...filterBase,
-    forceNonClosed: true
-  });
+  let where = buildKanbanWhere(filterBase);
+  where = await narrowTicketWhereByComputedOpts(where, narrowOpts);
+
+  let whereAge = buildKanbanWhere({ ...filterBase, forceNonClosed: true });
+  whereAge = await narrowTicketWhereByComputedOpts(whereAge, narrowOpts);
+
   const whereClosed = buildKanbanWhereClosed(filterBase);
 
   const [totalFiltered, kanbanStored, scope] = await Promise.all([
@@ -685,7 +849,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     groupFilter,
     requesterEmail,
     requesterName,
-    onlyOpen,
+    onlyOpen: p.onlyOpenEffective,
     pendenciaParam,
     pendenciaSummary: pendenciaLabelForSummary(pendenciaParam),
     filteredTotal: totalFiltered,
@@ -697,6 +861,10 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     ageTotal: sumOpenAgeBuckets(ageBucketsResult),
     statuses,
     groups,
-    operationsSummary
+    operationsSummary,
+    cohortParam: p.cohortParam,
+    idleMin: p.idleMinRaw,
+    groupInJson: p.groupInJson,
+    groupNull: p.groupNull
   };
 }

@@ -6,6 +6,9 @@ export function pendenciaFilterWhere(raw: string): TicketWhereInput | null {
   if (!p) {
     return null;
   }
+  if (p === "nao_inferido") {
+    return { OR: [{ waitingParty: null }, { waitingParty: "" }] };
+  }
   if (p === "cliente") {
     return { waitingParty: "cliente" };
   }
@@ -35,7 +38,46 @@ export function pendenciaLabelForSummary(value: string): string {
   if (p === "desconhecido" || p === "unknown") {
     return "Pendencia indefinida (cache)";
   }
+  if (p === "nao_inferido") {
+    return "Pendência não inferida (cache)";
+  }
   return "(todas)";
+}
+
+/** Coorte de idade alinhada aos KPIs do painel de operação (query `cohort`). */
+export function parseOpsCohortParam(raw: string | undefined | null): "ops_over30" | "ops_over60" | null {
+  const t = (raw ?? "").trim();
+  if (t === "ops_over30" || t === "ops_over60") return t;
+  return null;
+}
+
+function statusWhereClause(statusFilter: string): TicketWhereInput {
+  const s = statusFilter.trim();
+  if (!s) return {};
+  if (s === "__NULL__") {
+    return { OR: [{ status: null }, { status: "" }] };
+  }
+  return { status: s };
+}
+
+function groupWhereClause(input: KanbanFilterInput): TicketWhereInput {
+  const names = input.groupInNames?.filter((x) => x !== undefined) ?? [];
+  const trimmed = names.map((x) => String(x).trim());
+  if (trimmed.length > 0) {
+    const parts: TicketWhereInput[] = trimmed.map((g) => {
+      if (g === "" || g === "__EMPTY__") {
+        return { OR: [{ contractGroupName: null }, { contractGroupName: "" }] };
+      }
+      return { contractGroupName: { equals: g } };
+    });
+    return parts.length === 1 ? parts[0]! : { OR: parts };
+  }
+  if (input.groupNullOnly) {
+    return { OR: [{ contractGroupName: null }, { contractGroupName: "" }] };
+  }
+  const gf = (input.groupFilter ?? "").trim();
+  if (gf) return { contractGroupName: { contains: gf } };
+  return {};
 }
 
 export type KanbanFilterInput = {
@@ -48,6 +90,10 @@ export type KanbanFilterInput = {
   requesterEmail?: string;
   /** Filtro exacto por nome do requerente (query `requesterName`). */
   requesterName?: string;
+  /** Vários grupos (contrato) em disjunção — query `groupInJson` (JSON array de strings; vazio = sem grupo). */
+  groupInNames?: string[];
+  /** Sem `contractGroupName` — query `groupNull=1`. */
+  groupNullOnly?: boolean;
   /**
    * Se true, restringe a tickets não fechados mesmo com onlyOpen=false.
    * Usado no painel «Idade dos chamados abertos» (sempre só abertos + filtros).
@@ -59,7 +105,6 @@ export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
   const {
     q,
     statusFilter,
-    groupFilter,
     onlyOpen,
     pendenciaParam,
     forceNonClosed,
@@ -82,8 +127,8 @@ export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
             ]
           }
         : {},
-      statusFilter ? { status: statusFilter } : {},
-      groupFilter ? { contractGroupName: { contains: groupFilter } } : {},
+      statusWhereClause(statusFilter),
+      groupWhereClause(input),
       ...(requesterEmail ? [{ requesterEmail: { equals: requesterEmail } }] : []),
       ...(requesterName ? [{ requesterName: { equals: requesterName } }] : []),
       ...(enforceNotClosed ? [ticketWhereNotClosed()] : []),
@@ -97,7 +142,7 @@ export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
  * que o Kanban (`onlyOpen` e `forceNonClosed` ignorados — o stock é sempre «fechados»).
  */
 export function buildKanbanWhereClosed(input: KanbanFilterInput): TicketWhereInput {
-  const { q, statusFilter, groupFilter, pendenciaParam, requesterEmail: reRaw, requesterName: rnRaw } = input;
+  const { q, statusFilter, pendenciaParam, requesterEmail: reRaw, requesterName: rnRaw } = input;
   const requesterEmail = (reRaw ?? "").trim();
   const requesterName = (rnRaw ?? "").trim();
   const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
@@ -112,8 +157,8 @@ export function buildKanbanWhereClosed(input: KanbanFilterInput): TicketWhereInp
             ]
           }
         : {},
-      statusFilter ? { status: statusFilter } : {},
-      groupFilter ? { contractGroupName: { contains: groupFilter } } : {},
+      statusWhereClause(statusFilter),
+      groupWhereClause(input),
       ...(requesterEmail ? [{ requesterEmail: { equals: requesterEmail } }] : []),
       ...(requesterName ? [{ requesterName: { equals: requesterName } }] : []),
       ticketWhereClosed(),
