@@ -21,12 +21,12 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: metadataBaseUrl(),
-  applicationName: "GTI",
-  title: { default: "GTI — Gestão de Operações de TI", template: "%s · GTI" },
+  applicationName: "Gestão de Operações de TI",
+  title: { default: "Gestão de Operações de TI", template: "%s · Gestão de Operações de TI" },
   description: "Gestão de operações de TI, contratos, medições, glosas e integração com chamados GLPI.",
   appleWebApp: {
     capable: true,
-    title: "GTI",
+    title: "Gestão de Operações de TI",
     statusBarStyle: "default"
   },
   formatDetection: { telephone: false },

@@ -121,7 +121,7 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
     }
   });
 
-  /** Registo de governança no GTI (opcional): `ticketId` no cadastro costuma ser o ID numérico GLPI. */
+  /** Registo de governança na plataforma (opcional): `ticketId` no cadastro costuma ser o ID numérico GLPI. */
   let governance: Record<string, unknown> | null = null;
   try {
     const gov = await prisma.ticketGovernance.findFirst({
@@ -151,7 +151,7 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
       };
     }
   } catch (error) {
-    logger.warn({ glpiId, error: toErrorLog(error) }, "Não foi possível carregar governança GTI para o modal (ignorado)");
+    logger.warn({ glpiId, error: toErrorLog(error) }, "Não foi possível carregar governança na plataforma para o modal (ignorado)");
   }
 
   return {

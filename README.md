@@ -1,4 +1,4 @@
-# GTI — Quadro e sincronização GLPI
+# Gestão de Operações de TI — quadro e sincronização GLPI
 
 Serviço em **Node.js + TypeScript** que sincroniza chamados do **GLPI** para **PostgreSQL** (Prisma, mesma base que o backend Nest em `apps/backend`). O **quadro Kanban** e as APIs HTTP vivem na app **Next** (`apps/frontend`, rota `/chamados`). Na raiz, **`npm start`** aplica migrações Prisma e sobe o **Next** na `PORT` (API de gestão contratual nas Route Handlers `app/api/[...path]`). **`npm run start:worker`** é opcional (só cron + sync GLPI).
 

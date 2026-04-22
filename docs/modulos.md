@@ -1,4 +1,4 @@
-# Mapa de módulos (GTI)
+# Mapa de módulos (Gestão de Operações de TI)
 
 | Área | Localização | Notas |
 |------|-------------|--------|

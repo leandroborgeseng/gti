@@ -40,8 +40,8 @@ export function MobileNav({ groups }: Props): JSX.Element {
                 priority
               />
             </Link>
-            <p className="text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">GTI — Gestão de Operações de TI</p>
-            <SheetTitle className="sr-only">Navegação GTI</SheetTitle>
+            <p className="text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">Gestão de Operações de TI</p>
+            <SheetTitle className="sr-only">Navegação</SheetTitle>
             <SheetDescription className="sr-only">Menu principal da aplicação</SheetDescription>
           </SheetHeader>
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3" aria-label="Navegação principal">

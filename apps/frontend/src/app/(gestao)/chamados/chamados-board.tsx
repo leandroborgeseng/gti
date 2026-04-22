@@ -1136,8 +1136,8 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                       <span className="glpi-aside-kv__v">{detail.contractGroupName || "—"}</span>
                     </div>
 
-                    <div className="glpi-governance-card" aria-label="Governança no módulo GTI">
-                      <h4 className="ticket-glpi-aside__subtitle">Governança (GTI)</h4>
+                    <div className="glpi-governance-card" aria-label="Governança de chamados (sistema)">
+                      <h4 className="ticket-glpi-aside__subtitle">Governança (sistema)</h4>
                       {detail.governance ? (
                         <>
                           <p className="glpi-governance-card__status">

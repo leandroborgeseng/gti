@@ -32,7 +32,7 @@ export function Sidebar({ groups, onCollapse }: Props): JSX.Element {
                 priority
               />
             </Link>
-            <p className="mt-2.5 text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">GTI — Gestão de Operações de TI</p>
+            <p className="mt-2.5 text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">Gestão de Operações de TI</p>
           </div>
           <button
             type="button"

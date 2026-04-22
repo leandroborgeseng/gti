@@ -26,7 +26,7 @@ export default async function UsersPage(): Promise<JSX.Element> {
         <h1 className="text-lg font-semibold text-slate-900">Utilizadores</h1>
         <p className="mt-2 text-sm text-slate-600">
           Esta área é reservada a perfis <strong className="font-medium text-slate-800">ADMIN</strong>. Inicie sessão com uma
-          conta de administrador ou peça acesso à equipa GTI.
+          conta de administrador ou peça acesso à equipa de suporte.
         </p>
       </Card>
     );
