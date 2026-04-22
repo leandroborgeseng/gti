@@ -15,13 +15,17 @@ export async function POST(req: Request): Promise<NextResponse> {
     const statusFilter = typeof body.status === "string" ? body.status : "";
     const groupFilter = typeof body.group === "string" ? body.group : "";
     const pendenciaParam = typeof body.pendencia === "string" ? body.pendencia : "";
+    const requesterEmail = typeof body.requesterEmail === "string" ? body.requesterEmail.trim() : "";
+    const requesterName = typeof body.requesterName === "string" ? body.requesterName.trim() : "";
     const onlyOpen = body.open === true || body.open === 1 || body.open === "1";
     const where = buildKanbanWhere({
       q,
       statusFilter,
       groupFilter,
       onlyOpen,
-      pendenciaParam
+      pendenciaParam,
+      requesterEmail: requesterEmail || undefined,
+      requesterName: requesterName || undefined
     });
     const rows = await prisma.ticket.findMany({
       where,

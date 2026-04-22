@@ -44,6 +44,10 @@ export type KanbanFilterInput = {
   groupFilter: string;
   onlyOpen: boolean;
   pendenciaParam: string;
+  /** Filtro exacto por e-mail do requerente (query `requesterEmail`). */
+  requesterEmail?: string;
+  /** Filtro exacto por nome do requerente (query `requesterName`). */
+  requesterName?: string;
   /**
    * Se true, restringe a tickets não fechados mesmo com onlyOpen=false.
    * Usado no painel «Idade dos chamados abertos» (sempre só abertos + filtros).
@@ -52,7 +56,18 @@ export type KanbanFilterInput = {
 };
 
 export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
-  const { q, statusFilter, groupFilter, onlyOpen, pendenciaParam, forceNonClosed } = input;
+  const {
+    q,
+    statusFilter,
+    groupFilter,
+    onlyOpen,
+    pendenciaParam,
+    forceNonClosed,
+    requesterEmail: requesterEmailRaw,
+    requesterName: requesterNameRaw
+  } = input;
+  const requesterEmail = (requesterEmailRaw ?? "").trim();
+  const requesterName = (requesterNameRaw ?? "").trim();
   const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
   const enforceNotClosed = onlyOpen || Boolean(forceNonClosed);
 
@@ -69,6 +84,8 @@ export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
         : {},
       statusFilter ? { status: statusFilter } : {},
       groupFilter ? { contractGroupName: { contains: groupFilter } } : {},
+      ...(requesterEmail ? [{ requesterEmail: { equals: requesterEmail } }] : []),
+      ...(requesterName ? [{ requesterName: { equals: requesterName } }] : []),
       ...(enforceNotClosed ? [ticketWhereNotClosed()] : []),
       ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
     ]
@@ -80,7 +97,9 @@ export function buildKanbanWhere(input: KanbanFilterInput): TicketWhereInput {
  * que o Kanban (`onlyOpen` e `forceNonClosed` ignorados — o stock é sempre «fechados»).
  */
 export function buildKanbanWhereClosed(input: KanbanFilterInput): TicketWhereInput {
-  const { q, statusFilter, groupFilter, pendenciaParam } = input;
+  const { q, statusFilter, groupFilter, pendenciaParam, requesterEmail: reRaw, requesterName: rnRaw } = input;
+  const requesterEmail = (reRaw ?? "").trim();
+  const requesterName = (rnRaw ?? "").trim();
   const pendenciaWhereClause = pendenciaFilterWhere(pendenciaParam);
   return {
     AND: [
@@ -95,6 +114,8 @@ export function buildKanbanWhereClosed(input: KanbanFilterInput): TicketWhereInp
         : {},
       statusFilter ? { status: statusFilter } : {},
       groupFilter ? { contractGroupName: { contains: groupFilter } } : {},
+      ...(requesterEmail ? [{ requesterEmail: { equals: requesterEmail } }] : []),
+      ...(requesterName ? [{ requesterName: { equals: requesterName } }] : []),
       ticketWhereClosed(),
       ...(pendenciaWhereClause ? [pendenciaWhereClause] : [])
     ]

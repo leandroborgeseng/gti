@@ -69,6 +69,85 @@ function mergeAberturasFechamentosTimeline(
   });
 }
 
+const SOLICITANTE_PREFIX = "Solicitante: ";
+
+/** Interpreta o rótulo do «Top solicitantes» (e-mail literal ou «Solicitante: Nome»). */
+function requesterParamsFromTopRequesterLabel(label: string): { requesterEmail?: string; requesterName?: string } {
+  const t = label.trim();
+  if (!t) return {};
+  if (t.includes("@")) {
+    return { requesterEmail: t };
+  }
+  if (t.startsWith(SOLICITANTE_PREFIX)) {
+    const name = t.slice(SOLICITANTE_PREFIX.length).trim();
+    return name ? { requesterName: name } : {};
+  }
+  return {};
+}
+
+function mergeChamadosHref(kanbanHrefQuery: string, patch: Record<string, string | undefined>): Route {
+  const sp = new URLSearchParams(kanbanHrefQuery);
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined || v === "") sp.delete(k);
+    else sp.set(k, v);
+  }
+  const qs = sp.toString();
+  return (qs ? `/chamados?${qs}` : "/chamados") as Route;
+}
+
+function TopRequestersTable({
+  rows,
+  kanbanHrefQuery
+}: {
+  rows: ChamadosRankRow[];
+  kanbanHrefQuery: string;
+}): JSX.Element {
+  return (
+    <div className="chamados-ops__block">
+      <h3 className="chamados-ops__block-title">Top solicitantes (e-mail ou nome)</h3>
+      <p className="chamados-ops__table-hint">Clique numa linha para filtrar o Kanban por esse solicitante.</p>
+      <div className="chamados-ops__table-wrap">
+        <table className="chamados-ops__table">
+          <thead>
+            <tr>
+              <th scope="col">Item</th>
+              <th scope="col" className="chamados-ops__th-num">
+                Qtd
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const { requesterEmail, requesterName } = requesterParamsFromTopRequesterLabel(r.label);
+              const canLink = Boolean(requesterEmail || requesterName);
+              const href = canLink
+                ? mergeChamadosHref(kanbanHrefQuery, {
+                    requesterEmail: requesterEmail ?? "",
+                    requesterName: requesterName ?? ""
+                  })
+                : null;
+              return (
+                <tr key={`top-req-${r.label}`}>
+                  <td>
+                    {href ? (
+                      <Link href={href} className="chamados-ops__row-filter">
+                        {r.label}
+                      </Link>
+                    ) : (
+                      r.label
+                    )}
+                  </td>
+                  <td className="chamados-ops__td-num">{r.count}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function MiniTable({ title, rows }: { title: string; rows: ChamadosRankRow[] }): JSX.Element {
   return (
     <div className="chamados-ops__block">
@@ -236,10 +315,13 @@ function AberturasFechamentosChart({
 
 export function ChamadosOperationsPanel({
   summary,
-  ticketSyncScope
+  ticketSyncScope,
+  kanbanHrefQuery
 }: {
   summary: ChamadosOperationsSummary;
   ticketSyncScope: "open" | "all";
+  /** Query string dos filtros do Kanban (sem `?`), para preservar ao filtrar por solicitante. */
+  kanbanHrefQuery: string;
 }): JSX.Element {
   const panelBodyId = useId();
   const [expanded, setExpanded] = useState(true);
@@ -355,7 +437,7 @@ export function ChamadosOperationsPanel({
               </div>
 
               <div className="chamados-ops__grid chamados-ops__grid--single">
-                <MiniTable title="Top solicitantes (e-mail ou nome)" rows={summary.topRequesters} />
+                <TopRequestersTable rows={summary.topRequesters} kanbanHrefQuery={kanbanHrefQuery} />
               </div>
 
               <div className="chamados-ops__block">

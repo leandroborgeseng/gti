@@ -281,6 +281,8 @@ export type KanbanBoardPayload = {
   q: string;
   statusFilter: string;
   groupFilter: string;
+  requesterEmail: string;
+  requesterName: string;
   onlyOpen: boolean;
   pendenciaParam: string;
   pendenciaSummary: string;
@@ -489,12 +491,16 @@ export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): 
   const q = (searchParams.get("q") || "").trim();
   const statusFilter = (searchParams.get("status") || "").trim();
   const groupFilter = (searchParams.get("group") || "").trim();
+  const requesterEmail = (searchParams.get("requesterEmail") || "").trim();
+  const requesterName = (searchParams.get("requesterName") || "").trim();
   const onlyOpen = searchParams.get("open") === "1";
   const pendenciaParam = (searchParams.get("pendencia") || "").trim();
   return {
     q,
     statusFilter,
     groupFilter,
+    requesterEmail,
+    requesterName,
     onlyOpen,
     pendenciaParam,
     pendenciaSummary: pendenciaLabelForSummary(pendenciaParam),
@@ -515,25 +521,27 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
   const q = (searchParams.get("q") || "").trim();
   const statusFilter = (searchParams.get("status") || "").trim();
   const groupFilter = (searchParams.get("group") || "").trim();
+  const requesterEmail = (searchParams.get("requesterEmail") || "").trim();
+  const requesterName = (searchParams.get("requesterName") || "").trim();
   const onlyOpen = searchParams.get("open") === "1";
   const pendenciaParam = (searchParams.get("pendencia") || "").trim();
 
-  const where = buildKanbanWhere({ q, statusFilter, groupFilter, onlyOpen, pendenciaParam });
-  const whereAge = buildKanbanWhere({
+  const filterBase = {
     q,
     statusFilter,
     groupFilter,
     onlyOpen,
     pendenciaParam,
+    requesterEmail,
+    requesterName
+  };
+
+  const where = buildKanbanWhere(filterBase);
+  const whereAge = buildKanbanWhere({
+    ...filterBase,
     forceNonClosed: true
   });
-  const whereClosed = buildKanbanWhereClosed({
-    q,
-    statusFilter,
-    groupFilter,
-    onlyOpen,
-    pendenciaParam
-  });
+  const whereClosed = buildKanbanWhereClosed(filterBase);
 
   const [totalFiltered, kanbanStored, scope] = await Promise.all([
     prisma.ticket.count({ where }),
@@ -675,6 +683,8 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     q,
     statusFilter,
     groupFilter,
+    requesterEmail,
+    requesterName,
     onlyOpen,
     pendenciaParam,
     pendenciaSummary: pendenciaLabelForSummary(pendenciaParam),

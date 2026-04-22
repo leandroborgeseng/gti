@@ -344,7 +344,9 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
           status: initial.statusFilter,
           group: initial.groupFilter,
           open: initial.onlyOpen,
-          pendencia: initial.pendenciaParam
+          pendencia: initial.pendenciaParam,
+          requesterEmail: initial.requesterEmail,
+          requesterName: initial.requesterName
         })
       });
       const data = (await res.json()) as { error?: string; updated?: number };
@@ -378,8 +380,39 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
 
+  const kanbanHrefQuery = useMemo(() => {
+    const sp = new URLSearchParams();
+    if (initial.q) sp.set("q", initial.q);
+    if (initial.statusFilter) sp.set("status", initial.statusFilter);
+    if (initial.groupFilter) sp.set("group", initial.groupFilter);
+    if (initial.pendenciaParam) sp.set("pendencia", initial.pendenciaParam);
+    if (initial.onlyOpen) sp.set("open", "1");
+    if (initial.requesterEmail) sp.set("requesterEmail", initial.requesterEmail);
+    if (initial.requesterName) sp.set("requesterName", initial.requesterName);
+    return sp.toString();
+  }, [
+    initial.q,
+    initial.statusFilter,
+    initial.groupFilter,
+    initial.pendenciaParam,
+    initial.onlyOpen,
+    initial.requesterEmail,
+    initial.requesterName
+  ]);
+
+  const chamadosHrefWithoutRequester = useMemo(() => {
+    const sp = new URLSearchParams(kanbanHrefQuery);
+    sp.delete("requesterEmail");
+    sp.delete("requesterName");
+    const qs = sp.toString();
+    return (qs ? `/chamados?${qs}` : "/chamados") as Route;
+  }, [kanbanHrefQuery]);
+
   const filterPills = useMemo(() => {
     const openLabel = initial.onlyOpen ? "Sim" : "Não";
+    const solicitante =
+      initial.requesterEmail?.trim() ||
+      (initial.requesterName?.trim() ? `Nome: ${initial.requesterName.trim()}` : "");
     const pill = (k: string, v: string, muted: boolean) => (
       <span key={k} className={`filter-pill${muted ? " filter-pill--muted" : ""}`}>
         <span className="filter-pill__k">{k}</span>
@@ -392,6 +425,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       pill("Grupo", initial.groupFilter || "Todos", !initial.groupFilter),
       pill("Abertos", openLabel, !initial.onlyOpen),
       pill("Pendência", pendenciaLabelForSummary(initial.pendenciaParam), initial.pendenciaParam === ""),
+      pill("Solicitante", solicitante || "—", !solicitante),
       pill(
         "Sync cache",
         initial.ticketSyncScope === "all" ? "Todos os tickets" : "Só abertos (cache reduzido)",
@@ -420,7 +454,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
 
       <AgingOpenDashboard buckets={initial.ageBuckets} />
 
-      <ChamadosOperationsPanel summary={initial.operationsSummary} ticketSyncScope={initial.ticketSyncScope} />
+      <ChamadosOperationsPanel
+        summary={initial.operationsSummary}
+        ticketSyncScope={initial.ticketSyncScope}
+        kanbanHrefQuery={kanbanHrefQuery}
+      />
 
       <div className="kanban-filters-stack">
         <div className="filters-shell">
@@ -434,6 +472,13 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
           <div className="filters-shell__pills" aria-label="Filtros aplicados">
             {filterPills}
           </div>
+          {initial.requesterEmail || initial.requesterName ? (
+            <p className="filters-shell__requester-clear">
+              <Link href={chamadosHrefWithoutRequester} className="filters-shell__requester-clear-link">
+                Remover filtro de solicitante
+              </Link>
+            </p>
+          ) : null}
           <form id="kanban-filters-form" className="filters-grid" method="get" action="/chamados">
             <label>
               Busca
@@ -478,6 +523,8 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                 <option value="1">Sim</option>
               </select>
             </label>
+            {initial.requesterEmail ? <input type="hidden" name="requesterEmail" value={initial.requesterEmail} /> : null}
+            {initial.requesterName ? <input type="hidden" name="requesterName" value={initial.requesterName} /> : null}
           </form>
           <footer className="filters-shell__sync">
             <div className="filters-shell__sync-row">

@@ -8,7 +8,7 @@ type Search = Record<string, string | string[] | undefined>;
 
 function buildSearchParams(raw: Search): URLSearchParams {
   const sp = new URLSearchParams();
-  const keys = ["q", "status", "group", "open", "pendencia"] as const;
+  const keys = ["q", "status", "group", "open", "pendencia", "requesterEmail", "requesterName"] as const;
   for (const key of keys) {
     const v = raw[key];
     if (v === undefined) continue;
