@@ -49,6 +49,41 @@ function toNullableString(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Papel de ator em chamados GLPI: na UI costuma ser string, na API / serialização
+ * muitas vezes vem **número** (1 requerente, 2 atribuído, 3 observador — CommonITILActor).
+ * Sem isto, `role === 2` falha e ignoramos o técnico com grupo + user na `team`.
+ */
+function itilActorRoleKey(raw: unknown): "requester" | "assigned" | "observer" | "other" {
+  if (raw === 1) {
+    return "requester";
+  }
+  if (raw === 2) {
+    return "assigned";
+  }
+  if (raw === 3) {
+    return "observer";
+  }
+  const s = (typeof raw === "string" ? raw : String(raw ?? "")).toLowerCase();
+  if (s.includes("requisi") || s.includes("requester") || s.includes("requerente") || s.includes("recipient")) {
+    return "requester";
+  }
+  if (
+    s === "assign" ||
+    s === "assigned" ||
+    s.includes("assign") ||
+    s.includes("atribu") ||
+    s.includes("tecnico") ||
+    s.includes("tech")
+  ) {
+    return "assigned";
+  }
+  if (s.includes("observ") || s.includes("watcher")) {
+    return "observer";
+  }
+  return "other";
+}
+
 function extractFromTeam(teamValue: unknown): { id: number | null; name: string | null } {
   if (!Array.isArray(teamValue)) {
     return { id: null, name: null };
@@ -56,11 +91,11 @@ function extractFromTeam(teamValue: unknown): { id: number | null; name: string 
 
   for (const item of teamValue) {
     const teamItem = asObject(item);
-    const role = asString(teamItem.role)?.toLowerCase();
+    const roleKey = itilActorRoleKey(teamItem.role);
     const type = asString(teamItem.type)?.toLowerCase();
     const href = asString(teamItem.href)?.toLowerCase();
     const isGroupType = type === "group" || Boolean(href && href.includes("/group.form.php"));
-    if (role === "assigned" && isGroupType) {
+    if (roleKey === "assigned" && isGroupType) {
       const id = asNumber(teamItem.id ?? teamItem.group_id ?? teamItem.groups_id);
       const name = asString(teamItem.display_name ?? teamItem.name ?? teamItem.group_name ?? teamItem.completename);
       return { id, name };
@@ -100,10 +135,71 @@ function isGroupTeamEntry(o: JsonObject): boolean {
   return href.includes("/group.form.php");
 }
 
+function isSupplierTeamEntry(o: JsonObject): boolean {
+  const t = (asString(o.type) ?? asString(o.itemtype) ?? "").toLowerCase();
+  return t.includes("supplier") || t.includes("fornecedor");
+}
+
 /**
- * Técnico atribuído: `users_id_tech` na tabela GLPI, mas a API v2 de listagem costuma omitir
- * ou povoar só a equipa (`team`). Tenta vários noms de campo e a lista `team`.
+ * Técnico (utilizador) do chamado. O GLPI permite **grupo técnico** + **utilizador** e várias entradas na
+ * `team` / `actors`. Grupos e fornecedores na lista são ignorados para o ID (só procuramos User).
+ * Se `users_id_tech` existir, **não** é substituído por outro id encontrado na equipa — só procuramos o nome.
  */
+function pickAssignedUserFromMemberList(
+  list: unknown[] | undefined,
+  preferTechId: number | null
+): { id: number | null; name: string | null } {
+  if (!Array.isArray(list) || list.length === 0) {
+    return { id: null, name: null };
+  }
+  const rows = list.map((x) => asObject(x));
+  if (preferTechId != null && preferTechId > 0) {
+    for (const o of rows) {
+      if (isGroupTeamEntry(o) || isSupplierTeamEntry(o)) {
+        continue;
+      }
+      const id = idFromUserTeamEntry(o);
+      if (id === preferTechId) {
+        const n = asString(o.display_name ?? o.name ?? o.realname ?? o.user_name ?? o.firstname);
+        return { id: preferTechId, name: n };
+      }
+    }
+    return { id: preferTechId, name: null };
+  }
+
+  for (const o of rows) {
+    if (isGroupTeamEntry(o) || isSupplierTeamEntry(o)) {
+      continue;
+    }
+    const roleKey = itilActorRoleKey(o.role);
+    if (roleKey === "requester" || roleKey === "observer") {
+      continue;
+    }
+    if (roleKey === "assigned") {
+      const id = idFromUserTeamEntry(o);
+      if (id != null && id > 0) {
+        const n = asString(o.display_name ?? o.name ?? o.realname ?? o.user_name ?? o.firstname);
+        return { id, name: n };
+      }
+    }
+  }
+  for (const o of rows) {
+    if (isGroupTeamEntry(o) || isSupplierTeamEntry(o)) {
+      continue;
+    }
+    const roleKey = itilActorRoleKey(o.role);
+    if (roleKey === "requester" || roleKey === "observer") {
+      continue;
+    }
+    const id = idFromUserTeamEntry(o);
+    if (id != null && id > 0) {
+      const n = asString(o.display_name ?? o.name ?? o.realname ?? o.user_name);
+      return { id, name: n };
+    }
+  }
+  return { id: null, name: null };
+}
+
 function extractAssignedUser(ticket: JsonObject): { id: number | null; name: string | null } {
   const userTechObj = asObject(ticket.user_tech);
   const rawTech =
@@ -113,69 +209,20 @@ function extractAssignedUser(ticket: JsonObject): { id: number | null; name: str
     asNumber(ticket.user_tech) /* escalar v2 */ ??
     null;
   let techId = rawTech != null && rawTech > 0 ? rawTech : null;
-  let name: string | null = null;
-
-  if (Array.isArray(ticket.team)) {
-    // 1) Preferir papel "assigned" / atribuído a utilizador (não grupo)
-    for (const item of ticket.team) {
-      const o = asObject(item);
-      if (isGroupTeamEntry(o)) {
-        continue;
-      }
-      const role = (asString(o.role) ?? "").toLowerCase();
-      if (role === "requester" || role === "observer" || role === "watcher" || role === "observers") {
-        continue;
-      }
-      if (
-        role === "assigned" ||
-        role.includes("assign") ||
-        role.includes("tech") ||
-        role.includes("tecnico")
-      ) {
-        const id = idFromUserTeamEntry(o);
-        if (id != null) {
-          techId = techId ?? id;
-        }
-        const n = asString(o.display_name ?? o.name ?? o.realname ?? o.user_name ?? o.firstname);
-        if (n) {
-          name = n;
-        }
-        if (techId != null && n) {
-          break;
-        }
-      }
-    }
-
-    // 2) Ainda sem ID: primeiro utilizador na equipa que não seja grupo nem requerente
-    if (techId == null || !name) {
-      for (const item of ticket.team) {
-        const o = asObject(item);
-        if (isGroupTeamEntry(o)) {
-          continue;
-        }
-        const role = (asString(o.role) ?? "").toLowerCase();
-        if (role === "requester" || role === "observer" || role === "watcher") {
-          continue;
-        }
-        const id = idFromUserTeamEntry(o);
-        if (techId == null && id != null) {
-          techId = id;
-        }
-        if (!name) {
-          const n = asString(o.display_name ?? o.name ?? o.realname ?? o.user_name);
-          if (n) {
-            name = n;
-          }
-        }
-        if (techId != null) {
-          break;
-        }
-      }
-    }
+  const team = Array.isArray(ticket.team) ? (ticket.team as unknown[]) : [];
+  const actors = Array.isArray(ticket.actors)
+    ? (ticket.actors as unknown[])
+    : Array.isArray(ticket._actors)
+      ? (ticket._actors as unknown[])
+      : [];
+  const members: unknown[] = [...team, ...actors];
+  const first = pickAssignedUserFromMemberList(members, techId);
+  if (techId == null) {
+    techId = first.id;
   }
-
+  const again = pickAssignedUserFromMemberList(members, techId);
   const fallback = techId ? `Utilizador #${techId}` : null;
-  return { id: techId, name: name ?? fallback };
+  return { id: techId, name: again.name ?? first.name ?? fallback };
 }
 
 function extractFromAssignedGroups(value: unknown): { id: number | null; name: string | null } {
