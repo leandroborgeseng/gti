@@ -4,6 +4,13 @@ import { ProjectTasksBoard } from "@/components/projects/project-tasks-board";
 
 export type ProjectBoardQuery = { filter?: string; statusKind?: string; sort?: string };
 
+function formatProjectDate(value?: string | null): string {
+  if (!value) return "não definida";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "não definida";
+  return date.toLocaleDateString("pt-BR");
+}
+
 export function ProjectDetailView({
   project,
   boardQuery
@@ -39,6 +46,9 @@ export function ProjectDetailView({
         ) : (
           <p className="mt-1 text-xs text-slate-500">Supervisor do projeto: não definido</p>
         )}
+        <p className="mt-1 text-xs text-slate-500">
+          Planejamento: início {formatProjectDate(project.startDate)} · fim planejado {formatProjectDate(project.plannedEndDate)}
+        </p>
         <p className="mt-1 text-xs text-slate-500">
           Atualizado em {new Date(project.updatedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
         </p>

@@ -62,6 +62,14 @@ export class CreateProjectDto {
 
   @IsOptional()
   @IsString()
+  startDate?: string | null;
+
+  @IsOptional()
+  @IsString()
+  plannedEndDate?: string | null;
+
+  @IsOptional()
+  @IsString()
   projectCollectionId?: string | null;
 }
 
@@ -77,6 +85,14 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsString()
   supervisorId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string | null;
+
+  @IsOptional()
+  @IsString()
+  plannedEndDate?: string | null;
 
   @IsOptional()
   @IsString()

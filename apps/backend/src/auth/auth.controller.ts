@@ -18,6 +18,6 @@ export class AuthController {
   @Get("me")
   me(@Req() req: Request): unknown {
     const u = req.user as JwtPayload;
-    return { id: u.sub, email: u.email, role: u.role };
+    return { id: u.sub, email: u.email, role: u.role, mustChangePassword: u.mustChangePassword === true };
   }
 }

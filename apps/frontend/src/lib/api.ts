@@ -686,7 +686,7 @@ export async function createFiscal(payload: { name: string; email: string; phone
   return request("/fiscais", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export type AuthMe = { id: string; email: string; role: string };
+export type AuthMe = { id: string; email: string; role: string; mustChangePassword?: boolean };
 
 export async function getAuthMe(): Promise<AuthMe> {
   return request("/auth/me");
@@ -696,6 +696,7 @@ export type UserRecord = {
   id: string;
   email: string;
   role: string;
+  mustChangePassword?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -907,6 +908,8 @@ export type ProjectListItem = {
   context?: string | null;
   supervisorId?: string | null;
   supervisor?: ProjectSupervisor | null;
+  startDate?: string | null;
+  plannedEndDate?: string | null;
   projectCollectionId?: string | null;
   projectCollection?: { id: string; name: string } | null;
   createdAt: string;
@@ -1052,6 +1055,8 @@ export type ProjectDetail = {
   context?: string | null;
   supervisorId?: string | null;
   supervisor?: ProjectSupervisor | null;
+  startDate?: string | null;
+  plannedEndDate?: string | null;
   projectCollectionId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1087,6 +1092,8 @@ export async function createProject(payload: {
   name: string;
   context?: string | null;
   supervisorId?: string | null;
+  startDate?: string | null;
+  plannedEndDate?: string | null;
   projectCollectionId?: string | null;
 }): Promise<ProjectListItem> {
   return request("/projects", { method: "POST", body: JSON.stringify(payload) });
@@ -1094,7 +1101,14 @@ export async function createProject(payload: {
 
 export async function updateProject(
   id: string,
-  payload: { name: string; context?: string | null; supervisorId?: string | null; projectCollectionId?: string | null }
+  payload: {
+    name: string;
+    context?: string | null;
+    supervisorId?: string | null;
+    startDate?: string | null;
+    plannedEndDate?: string | null;
+    projectCollectionId?: string | null;
+  }
 ): Promise<ProjectListItem> {
   return request(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }

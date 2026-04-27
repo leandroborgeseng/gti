@@ -19,6 +19,17 @@ import {
 
 const MAX_TASKS_FLAT_FETCH = 8000;
 
+function parseProjectDate(value: string | null | undefined, fieldLabel: string): Date | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? new Date(`${trimmed}T00:00:00.000Z`) : new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    throw new BadRequestException(`${fieldLabel} inválida.`);
+  }
+  return date;
+}
+
 @Injectable()
 export class ProjectsService {
   constructor(
@@ -37,12 +48,17 @@ export class ProjectsService {
       if (!group) throw new NotFoundException("Grupo de projetos não encontrado.");
     }
     const context = typeof dto.context === "string" ? dto.context.trim() || null : null;
+    const startDate = parseProjectDate(dto.startDate, "Data de início");
+    const plannedEndDate = parseProjectDate(dto.plannedEndDate, "Data de fim planejada");
+    if (startDate && plannedEndDate && startDate > plannedEndDate) {
+      throw new BadRequestException("A data de início não pode ser posterior à data de fim planejada.");
+    }
     const supervisorId = typeof dto.supervisorId === "string" ? dto.supervisorId.trim() || null : null;
     if (supervisorId) {
       const supervisor = await this.prisma.user.findUnique({ where: { id: supervisorId }, select: { id: true } });
       if (!supervisor) throw new NotFoundException("Supervisor do projeto não encontrado.");
     }
-    const created = await this.prisma.project.create({ data: { name, context, supervisorId, projectCollectionId } });
+    const created = await this.prisma.project.create({ data: { name, context, startDate, plannedEndDate, supervisorId, projectCollectionId } });
     return created;
   }
 
@@ -51,12 +67,23 @@ export class ProjectsService {
     if (!name) {
       throw new BadRequestException("O nome do projeto é obrigatório.");
     }
-    const exists = await this.prisma.project.findUnique({ where: { id }, select: { id: true } });
+    const exists = await this.prisma.project.findUnique({ where: { id }, select: { id: true, startDate: true, plannedEndDate: true } });
     if (!exists) throw new NotFoundException("Projeto não encontrado.");
     const data: Prisma.ProjectUpdateInput = { name };
     if (dto.context !== undefined) {
       const context = typeof dto.context === "string" ? dto.context.trim() : "";
       data.context = context || null;
+    }
+    if (dto.startDate !== undefined) {
+      data.startDate = parseProjectDate(dto.startDate, "Data de início");
+    }
+    if (dto.plannedEndDate !== undefined) {
+      data.plannedEndDate = parseProjectDate(dto.plannedEndDate, "Data de fim planejada");
+    }
+    const nextStartDate = data.startDate !== undefined ? (data.startDate as Date | null) : exists.startDate;
+    const nextPlannedEndDate = data.plannedEndDate !== undefined ? (data.plannedEndDate as Date | null) : exists.plannedEndDate;
+    if (nextStartDate && nextPlannedEndDate && nextStartDate > nextPlannedEndDate) {
+      throw new BadRequestException("A data de início não pode ser posterior à data de fim planejada.");
     }
     if (dto.supervisorId !== undefined) {
       const supervisorId = typeof dto.supervisorId === "string" ? dto.supervisorId.trim() : "";
@@ -103,6 +130,8 @@ export class ProjectsService {
           select: {
             id: true,
             name: true,
+            startDate: true,
+            plannedEndDate: true,
             supervisorId: true,
             supervisor: { select: { id: true, email: true, role: true } },
             createdAt: true,
@@ -672,6 +701,8 @@ export class ProjectsService {
               select: {
                 id: true,
                 name: true,
+                startDate: true,
+                plannedEndDate: true,
                 supervisorId: true,
                 supervisor: { select: { id: true, email: true, role: true } },
                 createdAt: true,

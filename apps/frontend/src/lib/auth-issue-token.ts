@@ -6,8 +6,28 @@ import { jwtExpiresIn, jwtSecretBytes } from "@/lib/jwt-config";
 export type LoginSuccess = {
   access_token: string;
   expires_in: string;
-  user: { email: string; role: string };
+  user: { email: string; role: string; mustChangePassword: boolean };
 };
+
+export async function issueAuthToken(user: {
+  id: string;
+  email: string;
+  role: string;
+  mustChangePassword: boolean;
+}): Promise<{ access_token: string; expires_in: string }> {
+  const exp = jwtExpiresIn();
+  const access_token = await new SignJWT({
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    mustChangePassword: user.mustChangePassword
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime(exp)
+    .sign(jwtSecretBytes());
+
+  return { access_token, expires_in: exp };
+}
 
 /**
  * Autenticação local (PostgreSQL + bcrypt + JWT), sem serviço Nest.
@@ -23,19 +43,11 @@ export async function loginWithDatabase(email: string, password: string): Promis
   if (!ok) {
     throw new Error("CREDENTIALS");
   }
-  const exp = jwtExpiresIn();
-  const access_token = await new SignJWT({
-    sub: user.id,
-    email: user.email,
-    role: user.role
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime(exp)
-    .sign(jwtSecretBytes());
+  const { access_token, expires_in } = await issueAuthToken(user);
 
   return {
     access_token,
-    expires_in: exp,
-    user: { email: user.email, role: user.role }
+    expires_in,
+    user: { email: user.email, role: user.role, mustChangePassword: user.mustChangePassword }
   };
 }

@@ -12,7 +12,7 @@ export class AuthService {
     private readonly jwt: JwtService
   ) {}
 
-  async login(dto: LoginDto): Promise<{ access_token: string; expires_in: string; user: { email: string; role: string } }> {
+  async login(dto: LoginDto): Promise<{ access_token: string; expires_in: string; user: { email: string; role: string; mustChangePassword: boolean } }> {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
@@ -22,12 +22,12 @@ export class AuthService {
     if (!ok) {
       throw new UnauthorizedException("Credenciais inválidas");
     }
-    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
+    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword };
     const access_token = await this.jwt.signAsync(payload);
     return {
       access_token,
       expires_in: process.env.JWT_EXPIRES_IN ?? "7d",
-      user: { email: user.email, role: user.role }
+      user: { email: user.email, role: user.role, mustChangePassword: user.mustChangePassword }
     };
   }
 }

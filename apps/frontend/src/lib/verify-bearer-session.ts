@@ -1,7 +1,7 @@
 import { jwtVerify } from "jose";
 import { jwtSecretBytes } from "@/lib/jwt-config";
 
-export type SessionPayload = { sub: string; email: string; role: string };
+export type SessionPayload = { sub: string; email: string; role: string; mustChangePassword: boolean };
 
 /** Valida JWT HS256 emitido por este Next ou pelo Nest (mesmo segredo). */
 export async function verifyBearerToken(token: string): Promise<SessionPayload> {
@@ -9,8 +9,9 @@ export async function verifyBearerToken(token: string): Promise<SessionPayload> 
   const sub = typeof payload.sub === "string" ? payload.sub : "";
   const email = typeof payload.email === "string" ? payload.email : "";
   const role = typeof payload.role === "string" ? payload.role : "";
+  const mustChangePassword = payload.mustChangePassword === true;
   if (!sub || !email) {
     throw new Error("INVALID_SESSION");
   }
-  return { sub, email, role };
+  return { sub, email, role, mustChangePassword };
 }

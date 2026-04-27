@@ -3,7 +3,7 @@ import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { PrismaService } from "../prisma/prisma.service";
 
-export type JwtPayload = { sub: string; email: string; role: string };
+export type JwtPayload = { sub: string; email: string; role: string; mustChangePassword?: boolean };
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
@@ -20,6 +20,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
     if (!user || user.email !== payload.email) {
       throw new UnauthorizedException("Sessão inválida");
     }
-    return { sub: user.id, email: user.email, role: user.role };
+    return { sub: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword };
   }
 }

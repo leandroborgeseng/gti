@@ -19,7 +19,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   try {
     await ensureBootstrapAdminIfNoUsers();
     const { access_token, expires_in, user } = await loginWithDatabase(email, password);
-    const res = NextResponse.json({ ok: true, expires_in, user });
+    const redirectTo = user.mustChangePassword ? "/trocar-senha" : null;
+    const res = NextResponse.json({ ok: true, expires_in, user, redirectTo });
     res.cookies.set(GTI_TOKEN_COOKIE, access_token, {
       path: "/",
       maxAge: 60 * 60 * 24 * 7,

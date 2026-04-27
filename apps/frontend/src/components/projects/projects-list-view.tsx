@@ -39,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 const columnHelper = createColumnHelper<ProjectListItem>();
+const groupAccentColors = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#dc2626", "#0891b2"];
 
 const MondayImportWizard = dynamic(
   async () => (await import("@/components/projects/monday-import-wizard")).MondayImportWizard,
@@ -141,6 +142,49 @@ function MiniExecutionChart({ stats, compact = false }: { stats?: ProjectExecuti
   );
 }
 
+function toDateInputValue(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function formatProjectDate(value?: string | null): string {
+  if (!value) return "Não definida";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Não definida";
+  return date.toLocaleDateString("pt-BR");
+}
+
+function ProjectScheduleSummary({ project }: { project: ProjectListItem }): JSX.Element {
+  const start = project.startDate ? new Date(project.startDate) : null;
+  const end = project.plannedEndDate ? new Date(project.plannedEndDate) : null;
+  const now = new Date();
+  const hasValidRange = start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start <= end;
+  const elapsedPercent = hasValidRange
+    ? Math.min(100, Math.max(0, Math.round(((now.getTime() - start.getTime()) / Math.max(end.getTime() - start.getTime(), 1)) * 100)))
+    : 0;
+  const statusLabel = !start && !end ? "Sem planejamento" : hasValidRange && now > end ? "Fim planejado vencido" : hasValidRange && now >= start ? "Em execução planejada" : "Ainda não iniciado";
+  const statusClass = hasValidRange && now > end ? "bg-destructive" : hasValidRange && now >= start ? "bg-sky-500" : "bg-slate-400";
+
+  return (
+    <div className="min-w-48 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span>
+          Início: <strong className="font-medium text-foreground">{formatProjectDate(project.startDate)}</strong>
+        </span>
+        <span>
+          Fim planejado: <strong className="font-medium text-foreground">{formatProjectDate(project.plannedEndDate)}</strong>
+        </span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <span className={`block h-full ${statusClass}`} style={{ width: hasValidRange ? `${Math.max(elapsedPercent, 4)}%` : "100%" }} />
+      </div>
+      <p className="text-xs text-muted-foreground">{hasValidRange ? `${elapsedPercent}% do prazo planejado decorrido` : statusLabel}</p>
+    </div>
+  );
+}
+
 export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
   const qc = useQueryClient();
@@ -151,6 +195,8 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
   const [projectName, setProjectName] = useState("");
   const [projectContext, setProjectContext] = useState("");
   const [projectSupervisorId, setProjectSupervisorId] = useState("");
+  const [projectStartDate, setProjectStartDate] = useState("");
+  const [projectPlannedEndDate, setProjectPlannedEndDate] = useState("");
   const [projectCollectionId, setProjectCollectionId] = useState("");
   const [collectionDialogOpen, setCollectionDialogOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState<ProjectCollection | null>(null);
@@ -208,6 +254,8 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
       setProjectName("");
       setProjectContext("");
       setProjectSupervisorId("");
+      setProjectStartDate("");
+      setProjectPlannedEndDate("");
       setProjectCollectionId("");
       refreshProjects();
     },
@@ -222,20 +270,34 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
       name,
       context,
       supervisorId,
+      startDate,
+      plannedEndDate,
       collectionId
     }: {
       id: string;
       name: string;
       context: string;
       supervisorId: string;
+      startDate: string;
+      plannedEndDate: string;
       collectionId: string;
-    }) => updateProject(id, { name, context: context || null, supervisorId: supervisorId || null, projectCollectionId: collectionId || null }),
+    }) =>
+      updateProject(id, {
+        name,
+        context: context || null,
+        supervisorId: supervisorId || null,
+        startDate: startDate || null,
+        plannedEndDate: plannedEndDate || null,
+        projectCollectionId: collectionId || null
+      }),
     onSuccess: () => {
       toast.success("Projeto atualizado.");
       setEditingProject(null);
       setProjectName("");
       setProjectContext("");
       setProjectSupervisorId("");
+      setProjectStartDate("");
+      setProjectPlannedEndDate("");
       setProjectCollectionId("");
       refreshProjects();
     },
@@ -291,11 +353,17 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
     }
     return map;
   }, [projects]);
+  const projectsWithoutCollection = useMemo(
+    () => projects.filter((project) => !(project.projectCollectionId ?? project.projectCollection?.id)),
+    [projects]
+  );
 
   function openCreateDialog(): void {
     setProjectName("");
     setProjectContext("");
     setProjectSupervisorId("");
+    setProjectStartDate("");
+    setProjectPlannedEndDate("");
     setProjectCollectionId("");
     setCreateOpen(true);
   }
@@ -304,6 +372,8 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
     setProjectName(project.name);
     setProjectContext(project.context ?? "");
     setProjectSupervisorId(project.supervisorId ?? project.supervisor?.id ?? "");
+    setProjectStartDate(toDateInputValue(project.startDate));
+    setProjectPlannedEndDate(toDateInputValue(project.plannedEndDate));
     setProjectCollectionId(project.projectCollectionId ?? project.projectCollection?.id ?? "");
     setEditingProject(project);
   }
@@ -329,12 +399,22 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
     }
     const context = projectContext.trim();
     if (editingProject) {
-      updateMut.mutate({ id: editingProject.id, name, context, supervisorId: projectSupervisorId, collectionId: projectCollectionId });
+      updateMut.mutate({
+        id: editingProject.id,
+        name,
+        context,
+        supervisorId: projectSupervisorId,
+        startDate: projectStartDate,
+        plannedEndDate: projectPlannedEndDate,
+        collectionId: projectCollectionId
+      });
     } else {
       createMut.mutate({
         name,
         context: context || null,
         supervisorId: projectSupervisorId || null,
+        startDate: projectStartDate || null,
+        plannedEndDate: projectPlannedEndDate || null,
         projectCollectionId: projectCollectionId || null
       });
     }
@@ -364,6 +444,12 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
             {info.getValue()}
           </Link>
         )
+      }),
+      columnHelper.display({
+        id: "schedule",
+        header: "Início / fim planejado",
+        enableSorting: false,
+        cell: (info) => <ProjectScheduleSummary project={info.row.original} />
       }),
       columnHelper.accessor("updatedAt", {
         id: "updatedAt",
@@ -579,7 +665,78 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         )}
       </section>
 
+      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-foreground">Lista agrupada por grupos</h2>
+          <p className="text-sm text-muted-foreground">Use as sanfonas para acompanhar datas, execução e responsáveis por grupo de projetos.</p>
+        </div>
+        <div className="space-y-3">
+          {projectCollections.map((collection, index) => {
+            const collectionProjects = projectsByCollectionId.get(collection.id) ?? [];
+            const accentColor = groupAccentColors[index % groupAccentColors.length];
+            return (
+              <details key={collection.id} className="overflow-hidden rounded-lg border bg-background shadow-sm" open>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border-l-4 px-4 py-3" style={{ borderLeftColor: accentColor }}>
+                  <span>
+                    <span className="block text-sm font-semibold text-foreground">{collection.name}</span>
+                    <span className="text-xs text-muted-foreground">{collectionProjects.length} projeto(s)</span>
+                  </span>
+                  <MiniExecutionChart stats={aggregateExecutionStats(collectionProjects)} compact />
+                </summary>
+                <div className="divide-y">
+                  {collectionProjects.length ? (
+                    collectionProjects.map((project) => (
+                      <div key={project.id} className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(180px,1.2fr)_minmax(260px,1.5fr)_minmax(180px,1fr)_minmax(180px,1fr)] lg:items-center">
+                        <Link href={`/projetos/${project.id}`} className="font-medium text-foreground hover:underline">
+                          {project.name}
+                        </Link>
+                        <ProjectScheduleSummary project={project} />
+                        <MiniExecutionChart stats={project._stats} compact />
+                        <span className="text-xs text-muted-foreground">
+                          Supervisor: <strong className="font-medium text-foreground">{project.supervisor?.email ?? "não definido"}</strong>
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="px-4 py-3 text-sm text-muted-foreground">Nenhum projeto neste grupo.</p>
+                  )}
+                </div>
+              </details>
+            );
+          })}
+          {projectsWithoutCollection.length ? (
+            <details className="overflow-hidden rounded-lg border bg-background shadow-sm" open>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border-l-4 px-4 py-3" style={{ borderLeftColor: "#64748b" }}>
+                <span>
+                  <span className="block text-sm font-semibold text-foreground">Sem grupo</span>
+                  <span className="text-xs text-muted-foreground">{projectsWithoutCollection.length} projeto(s)</span>
+                </span>
+                <MiniExecutionChart stats={aggregateExecutionStats(projectsWithoutCollection)} compact />
+              </summary>
+              <div className="divide-y">
+                {projectsWithoutCollection.map((project) => (
+                  <div key={project.id} className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(180px,1.2fr)_minmax(260px,1.5fr)_minmax(180px,1fr)_minmax(180px,1fr)] lg:items-center">
+                    <Link href={`/projetos/${project.id}`} className="font-medium text-foreground hover:underline">
+                      {project.name}
+                    </Link>
+                    <ProjectScheduleSummary project={project} />
+                    <MiniExecutionChart stats={project._stats} compact />
+                    <span className="text-xs text-muted-foreground">
+                      Supervisor: <strong className="font-medium text-foreground">{project.supervisor?.email ?? "não definido"}</strong>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
+        </div>
+      </section>
+
       <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-foreground">Lista geral</h2>
+          <p className="text-sm text-muted-foreground">Tabela completa para pesquisar e ordenar todos os projetos.</p>
+        </div>
         <DataTable
           columns={columns}
           data={projects}
@@ -610,6 +767,8 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
             setProjectName("");
             setProjectContext("");
             setProjectSupervisorId("");
+            setProjectStartDate("");
+            setProjectPlannedEndDate("");
             setProjectCollectionId("");
           }
         }}
@@ -620,7 +779,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
               <DialogTitle>{editingProject ? "Editar projeto" : "Novo projeto"}</DialogTitle>
               <DialogDescription>
                 {editingProject
-                  ? "Altere o nome, o contexto, o supervisor e o grupo do projeto cadastrado."
+                  ? "Altere o nome, o contexto, o supervisor, as datas planejadas e o grupo do projeto cadastrado."
                   : "Cadastre um projeto vazio com uma apresentação inicial; as tarefas podem ser criadas manualmente ou importadas depois."}
               </DialogDescription>
             </DialogHeader>
@@ -644,6 +803,26 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                 disabled={createMut.isPending || updateMut.isPending}
               />
             </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm font-medium">
+                <span>Data de início</span>
+                <Input
+                  type="date"
+                  value={projectStartDate}
+                  onChange={(event) => setProjectStartDate(event.target.value)}
+                  disabled={createMut.isPending || updateMut.isPending}
+                />
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                <span>Fim planejado</span>
+                <Input
+                  type="date"
+                  value={projectPlannedEndDate}
+                  onChange={(event) => setProjectPlannedEndDate(event.target.value)}
+                  disabled={createMut.isPending || updateMut.isPending}
+                />
+              </label>
+            </div>
             <label className="space-y-2 text-sm font-medium">
               <span>Supervisor do projeto</span>
               <select
@@ -689,6 +868,8 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                   setProjectName("");
                   setProjectContext("");
                   setProjectSupervisorId("");
+                  setProjectStartDate("");
+                  setProjectPlannedEndDate("");
                   setProjectCollectionId("");
                 }}
               >

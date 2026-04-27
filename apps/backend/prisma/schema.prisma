@@ -126,6 +126,7 @@ model User {
   id                  String               @id @default(uuid())
   email               String               @unique
   passwordHash        String
+  mustChangePassword  Boolean              @default(false)
   role                UserRole             @default(EDITOR)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -452,6 +453,8 @@ model Project {
   context             String?            @db.Text
   supervisorId        String?
   projectCollectionId String?
+  startDate           DateTime?
+  plannedEndDate      DateTime?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   supervisor          User?              @relation("ProjectSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)

@@ -18,7 +18,7 @@ export async function ensureBootstrapAdminIfNoUsers(): Promise<void> {
   const passwordHash = await bcrypt.hash(plain, 10);
   try {
     await prisma.user.create({
-      data: { email, passwordHash, role: "ADMIN" }
+      data: { email, passwordHash, mustChangePassword: true, role: "ADMIN" }
     });
   } catch (e) {
     if (isUniqueConstraintError(e)) {

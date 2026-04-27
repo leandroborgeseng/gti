@@ -31,15 +31,22 @@ function LoginForm(): JSX.Element {
         body: JSON.stringify({ email: values.email.trim(), password: values.password })
       });
       const text = await r.text();
-      if (!r.ok) {
-        throw new Error(text || "Credenciais inválidas");
+      let payload: { error?: string; redirectTo?: string | null } = {};
+      try {
+        payload = text ? (JSON.parse(text) as typeof payload) : {};
+      } catch {
+        payload = { error: text };
       }
+      if (!r.ok) {
+        throw new Error(payload.error || "Credenciais inválidas");
+      }
+      return payload;
     },
-    onSuccess: () => {
+    onSuccess: (payload) => {
       toast.success("Sessão iniciada.");
       const raw = searchParams.get("returnUrl") ?? "/dashboard";
       const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/dashboard";
-      router.replace(next);
+      router.replace(payload.redirectTo ? `${payload.redirectTo}?returnUrl=${encodeURIComponent(next)}` : next);
       router.refresh();
     },
     onError: (e) => {

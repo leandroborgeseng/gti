@@ -12,16 +12,28 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait-primary",
-    background_color: "#f8fafc",
-    theme_color: "#0f172a",
+    background_color: "#ffffff",
+    theme_color: "#1faa00",
     lang: "pt-BR",
     categories: ["business", "productivity"],
     icons: [
       {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
         purpose: "any"
+      },
+      {
+        src: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any"
+      },
+      {
+        src: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable"
       }
     ]
   };

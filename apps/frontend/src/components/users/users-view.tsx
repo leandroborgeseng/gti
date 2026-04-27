@@ -140,6 +140,16 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): 
         header: "Papel",
         cell: (info) => <span>{roleLabel[info.getValue()] ?? info.getValue()}</span>
       }),
+      columnHelper.accessor((row) => row.mustChangePassword === true, {
+        id: "mustChangePassword",
+        header: "Senha",
+        cell: (info) =>
+          info.getValue() ? (
+            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">Troca obrigatória</span>
+          ) : (
+            <span className="text-muted-foreground">Definida</span>
+          )
+      }),
       columnHelper.accessor("createdAt", {
         header: "Criado em",
         cell: (info) => (
@@ -180,7 +190,7 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): 
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Utilizadores</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Gestão de contas e papéis. Apenas administradores podem criar ou alterar utilizadores.
+            Gestão de contas, papéis e troca obrigatória de senha no primeiro acesso.
           </p>
         </div>
         <Button type="button" className="shrink-0 gap-2" onClick={() => setCreateOpen(true)}>
@@ -193,7 +203,7 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): 
         <DataTable columns={columns} data={users} searchPlaceholder="Pesquisar por e-mail, papel…" />
       </section>
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Novo utilizador" description="E-mail único no sistema e palavra-passe com pelo menos 8 caracteres.">
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Novo utilizador" description="E-mail único no sistema e senha inicial com pelo menos 8 caracteres. No primeiro acesso, o usuário será obrigado a trocar essa senha.">
         <UserForm
           onSuccess={() => {
             setCreateOpen(false);

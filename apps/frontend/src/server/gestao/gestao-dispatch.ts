@@ -22,7 +22,7 @@ import {
 } from "./gestao-services";
 import { loadContractGlpiGroupCatalog } from "./contract-glpi-groups-catalog";
 
-type JwtUser = { sub: string; email: string; role: UserRole };
+type JwtUser = { sub: string; email: string; role: UserRole; mustChangePassword: boolean };
 
 async function readJsonBody(req: Request): Promise<unknown> {
   const m = req.method.toUpperCase();
@@ -60,7 +60,7 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
     const { prisma } = await import("@/glpi/config/prisma");
     const user = await prisma.user.findUnique({ where: { id: sub } });
     if (!user || user.email !== email) return null;
-    return { sub: user.id, email: user.email, role: user.role as UserRole };
+    return { sub: user.id, email: user.email, role: user.role as UserRole, mustChangePassword: user.mustChangePassword };
   } catch {
     return null;
   }
@@ -130,7 +130,7 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
   if (seg[0] === "auth" && seg[1] === "me" && method === "GET") {
     const user = await requireUser(req);
     if (!user) return jsonErr(401, "Não autenticado");
-    return jsonOk({ id: user.sub, email: user.email, role: user.role });
+    return jsonOk({ id: user.sub, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword });
   }
 
   const user = await requireUser(req);

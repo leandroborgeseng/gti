@@ -35,7 +35,7 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador
         role: values.role
       }),
     onSuccess: (created) => {
-      toast.success("Utilizador criado. Se o Resend estiver configurado, o link de acesso será enviado por e-mail.");
+      toast.success("Utilizador criado. No primeiro acesso, será obrigado a trocar a senha.");
       void qc.invalidateQueries({ queryKey: queryKeys.users });
       form.reset({ email: "", password: "", role: "EDITOR" });
       onCreated?.(created);
@@ -54,7 +54,10 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador
           mutation.mutate(values);
         })}
       >
-        <FormSection title="Credenciais e papel" description="E-mail único no sistema. Palavra-passe com pelo menos 8 caracteres.">
+        <FormSection
+          title="Credenciais e papel"
+          description="E-mail único no sistema. Senha inicial com pelo menos 8 caracteres; o usuário deverá trocá-la no primeiro acesso."
+        >
           <FormField
             control={form.control}
             name="email"

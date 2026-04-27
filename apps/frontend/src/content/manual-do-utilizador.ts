@@ -215,7 +215,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/projetos", label: "Projetos" },
-          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor e grupo dos projetos existentes, criar tarefas manualmente ou importar tarefas por Excel do Monday.com. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios e atrasos. Pode existir uma vista de ",
+          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor, data de início, fim planejado e grupo dos projetos existentes, criar tarefas manualmente ou importar tarefas por Excel do Monday.com. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios, atrasos e uma visualização do prazo planejado. A lista agrupada por sanfonas ajuda a acompanhar os projetos por grupo. Pode existir uma vista de ",
           { href: "/projetos/tarefas", label: "tarefas" },
           " para trabalho transversal. Abra um projeto para ver contexto, fases, tarefas e informação associada."
         ]
@@ -276,13 +276,14 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/users", label: "Utilizadores" },
-          " — Gestão de contas, papéis e envio de link de acesso. Visível apenas para administradores."
+          " — Gestão de contas, papéis e senha inicial. Visível apenas para administradores."
         ]
       },
       {
         kind: "ul",
         items: [
-          "Ao criar uma conta, o sistema pode enviar um e-mail de boas-vindas com link para definição de senha, quando o envio por Resend estiver configurado.",
+          "Ao criar uma conta ou redefinir a senha de um usuário pela administração, o sistema exige que a pessoa troque a senha no primeiro acesso antes de usar as demais telas.",
+          "Ao criar uma conta, o sistema pode enviar um e-mail de boas-vindas com link para definição de senha, quando o envio por Resend estiver configurado. Se a senha for definida por esse link, a troca obrigatória é considerada concluída.",
           "Na tela de login, a opção «Esqueci a minha senha» envia um link de redefinição para o e-mail cadastrado. O link expira em 60 minutos."
         ]
       },
