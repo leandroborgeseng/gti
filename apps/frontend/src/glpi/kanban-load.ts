@@ -11,7 +11,9 @@ import {
 import { narrowTicketWhereByComputedOpts } from "./utils/kanban-narrow-computed";
 import {
   getOpenTicketOperationalMetrics,
+  parseOpenAgeBucketParam,
   sumOpenAgeBuckets,
+  type OpenAgeBucketKey,
   type OpenAgeBuckets,
   type OpenTicketOperationalMetrics
 } from "./utils/open-ticket-aging";
@@ -330,6 +332,7 @@ export type KanbanBoardPayload = {
   operationsSummary: ChamadosOperationsSummary;
   /** Eco da URL / estado derivado para o formulário e links. */
   cohortParam: string;
+  ageBucketParam: string;
   idleMin: string;
   groupInJson: string;
   groupNull: boolean;
@@ -431,9 +434,11 @@ function readChamadosFilterParts(sp: URLSearchParams): {
   idleMinRaw: string;
   groupInJson: string;
   groupNull: boolean;
+  ageBucketParam: string;
   noAssignee: boolean;
   assignedUserId: number | undefined;
   cohort: ReturnType<typeof parseOpsCohortParam>;
+  ageBucket: OpenAgeBucketKey | null;
   idleMinDays: number | undefined;
   groupInNames: string[] | undefined;
   onlyOpenEffective: boolean;
@@ -459,11 +464,14 @@ function readChamadosFilterParts(sp: URLSearchParams): {
   const idleMinRaw = (sp.get("idleMin") || "").trim();
   const groupInJson = (sp.get("groupInJson") || "").trim();
   const groupNull = sp.get("groupNull") === "1";
+  const ageBucketParam = (sp.get("ageBucket") || "").trim();
   const cohort = parseOpsCohortParam(cohortParam);
+  const ageBucket = parseOpenAgeBucketParam(ageBucketParam);
   const idleMinDays = parseIdleMinParam(idleMinRaw);
   const groupInNames = parseGroupInJsonParam(groupInJson);
   const drillSlice = Boolean(
     cohort ||
+      ageBucket ||
       idleMinDays ||
       (groupInNames && groupInNames.length > 0) ||
       (groupNull && !(groupInNames && groupInNames.length > 0))
@@ -499,7 +507,9 @@ function readChamadosFilterParts(sp: URLSearchParams): {
     idleMinRaw,
     groupInJson,
     groupNull,
+    ageBucketParam,
     cohort,
+    ageBucket,
     idleMinDays,
     groupInNames,
     onlyOpenEffective,
@@ -834,6 +844,7 @@ export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): 
     groups: [],
     operationsSummary: emptyOperationsSummary(),
     cohortParam: p.cohortParam,
+    ageBucketParam: p.ageBucketParam,
     idleMin: p.idleMinRaw,
     groupInJson: p.groupInJson,
     groupNull: p.groupNull,
@@ -849,6 +860,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
 
   const narrowOpts = {
     cohort: p.cohort ?? undefined,
+    ageBucket: p.ageBucket ?? undefined,
     idleMinDays: p.idleMinDays
   };
 
@@ -1036,6 +1048,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     groups,
     operationsSummary,
     cohortParam: p.cohortParam,
+    ageBucketParam: p.ageBucketParam,
     idleMin: p.idleMinRaw,
     groupInJson: p.groupInJson,
     groupNull: p.groupNull,

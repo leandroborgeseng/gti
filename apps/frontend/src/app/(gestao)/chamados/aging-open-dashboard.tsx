@@ -134,6 +134,7 @@ function OpenAgePieSvg({ b }: { b: OpenAgeBuckets }): JSX.Element {
 }
 
 type AgingTone = "week" | "d15" | "d30" | "d60" | "over";
+type AgingBucketKey = "week" | "days15" | "days30" | "days60" | "over60";
 
 function AgingCard({
   tone,
@@ -141,7 +142,9 @@ function AgingCard({
   title,
   hint,
   icon,
-  total
+  total,
+  href,
+  active
 }: {
   tone: AgingTone;
   value: number;
@@ -149,6 +152,8 @@ function AgingCard({
   hint: string;
   icon: JSX.Element;
   total: number;
+  href: string;
+  active: boolean;
 }): JSX.Element {
   const pct = formatAgingPercentOfTotal(value, total);
   const pctHtml =
@@ -158,8 +163,9 @@ function AgingCard({
       </span>
     ) : null;
   const ariaLabel = total > 0 ? `${title}: ${value}, ${pct} por cento do total` : `${title}: ${value}`;
-  return (
-    <div className={`aging-card aging-card--${tone}`} role="listitem" aria-label={ariaLabel}>
+  const className = `aging-card aging-card--${tone}${active ? " is-active" : ""}`;
+  const content = (
+    <>
       <div className="aging-card__iconwrap">{icon}</div>
       <div className="aging-card__value-row">
         <span className="aging-card__value">{value}</span>
@@ -167,11 +173,32 @@ function AgingCard({
       </div>
       <h3 className="aging-card__title">{title}</h3>
       <p className="aging-card__hint">{hint}</p>
-    </div>
+    </>
+  );
+  return (
+    <a className={className} href={href} role="listitem" aria-label={`${ariaLabel}. Filtrar por esta faixa de idade.`}>
+      {content}
+    </a>
   );
 }
 
-export function AgingOpenDashboard({ buckets }: { buckets: OpenAgeBuckets }): JSX.Element {
+function ageBucketHref(currentQuery: string, bucket: AgingBucketKey): string {
+  const sp = new URLSearchParams(currentQuery);
+  sp.set("open", "1");
+  sp.set("ageBucket", bucket);
+  const qs = sp.toString();
+  return qs ? `/chamados?${qs}` : "/chamados";
+}
+
+export function AgingOpenDashboard({
+  buckets,
+  kanbanHrefQuery,
+  activeAgeBucket
+}: {
+  buckets: OpenAgeBuckets;
+  kanbanHrefQuery: string;
+  activeAgeBucket: string;
+}): JSX.Element {
   const total = sumOpenAgeBuckets(buckets);
   const delayedCount = buckets.days15 + buckets.days30 + buckets.days60 + buckets.over60;
   const delayedPctLabel = total > 0 ? formatAgingPercentOfTotal(delayedCount, total) : "—";
@@ -218,6 +245,8 @@ export function AgingOpenDashboard({ buckets }: { buckets: OpenAgeBuckets }): JS
           title="Esta semana"
           hint="Abertos ha ate 7 dias"
           total={total}
+          href={ageBucketHref(kanbanHrefQuery, "week")}
+          active={activeAgeBucket === "week"}
           icon={
             <AgingDashIcon>
               <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -231,6 +260,8 @@ export function AgingOpenDashboard({ buckets }: { buckets: OpenAgeBuckets }): JS
           title="A 15 dias"
           hint="Entre 8 e 15 dias abertos"
           total={total}
+          href={ageBucketHref(kanbanHrefQuery, "days15")}
+          active={activeAgeBucket === "days15"}
           icon={
             <AgingDashIcon>
               <circle cx="12" cy="12" r="10" />
@@ -244,6 +275,8 @@ export function AgingOpenDashboard({ buckets }: { buckets: OpenAgeBuckets }): JS
           title="A 30 dias"
           hint="Entre 16 e 30 dias abertos"
           total={total}
+          href={ageBucketHref(kanbanHrefQuery, "days30")}
+          active={activeAgeBucket === "days30"}
           icon={
             <AgingDashIcon>
               <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -258,6 +291,8 @@ export function AgingOpenDashboard({ buckets }: { buckets: OpenAgeBuckets }): JS
           title="A 60 dias"
           hint="Entre 31 e 60 dias abertos"
           total={total}
+          href={ageBucketHref(kanbanHrefQuery, "days60")}
+          active={activeAgeBucket === "days60"}
           icon={
             <AgingDashIcon>
               <path d="M18 20V10M12 20V4M6 20v-6" />
@@ -271,6 +306,8 @@ export function AgingOpenDashboard({ buckets }: { buckets: OpenAgeBuckets }): JS
           title="Mais de 60 dias"
           hint="Envelhecidos — priorizar revisao"
           total={total}
+          href={ageBucketHref(kanbanHrefQuery, "over60")}
+          active={activeAgeBucket === "over60"}
           icon={
             <AgingDashIcon>
               <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />

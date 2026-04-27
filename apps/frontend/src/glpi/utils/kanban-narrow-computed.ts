@@ -1,13 +1,16 @@
 import { prisma } from "../config/prisma";
 import type { TicketWhereInput } from "../types/ticket-where";
 import {
+  type OpenAgeBucketKey,
   ticketIdleDaysFloor,
+  ticketInOpenAgeBucket,
   ticketInOpsOver30PctCohort,
   ticketInOpsOver60PctCohort
 } from "./open-ticket-aging";
 
 export type KanbanComputedNarrowOpts = {
   cohort?: "ops_over30" | "ops_over60";
+  ageBucket?: OpenAgeBucketKey;
   idleMinDays?: number;
 };
 
@@ -21,6 +24,9 @@ function rowMatchesComputed(
     ok = ok && ticketInOpsOver30PctCohort(row.dateCreation, refMs);
   } else if (opts.cohort === "ops_over60") {
     ok = ok && ticketInOpsOver60PctCohort(row.dateCreation, refMs);
+  }
+  if (opts.ageBucket) {
+    ok = ok && ticketInOpenAgeBucket(row.dateCreation, refMs, opts.ageBucket);
   }
   if (opts.idleMinDays != null && opts.idleMinDays > 0) {
     const idle = ticketIdleDaysFloor(row.dateCreation, row.dateModification, refMs);
@@ -37,7 +43,7 @@ export async function narrowTicketWhereByComputedOpts(
   baseWhere: TicketWhereInput,
   opts: KanbanComputedNarrowOpts
 ): Promise<TicketWhereInput> {
-  if (!opts.cohort && (opts.idleMinDays == null || opts.idleMinDays <= 0)) {
+  if (!opts.cohort && !opts.ageBucket && (opts.idleMinDays == null || opts.idleMinDays <= 0)) {
     return baseWhere;
   }
   const refMs = Date.now();

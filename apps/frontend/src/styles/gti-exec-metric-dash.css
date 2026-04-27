@@ -216,6 +216,11 @@
   cursor: pointer;
 }
 
+.gti-exec-metric-dash a.aging-card.is-active {
+  border-color: rgba(29, 78, 216, 0.45);
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.14), 0 12px 28px rgba(15, 23, 42, 0.1);
+}
+
 .gti-exec-metric-dash .aging-card__iconwrap {
   position: absolute;
   left: 0.75rem;

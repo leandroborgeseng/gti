@@ -17,7 +17,17 @@ export type OpenAgeBuckets = {
   noDate: number;
 };
 
+export type OpenAgeBucketKey = keyof OpenAgeBuckets;
+
 const DAY_MS = 86400000;
+
+export function parseOpenAgeBucketParam(raw: string | undefined | null): OpenAgeBucketKey | null {
+  const t = (raw ?? "").trim();
+  if (t === "week" || t === "days15" || t === "days30" || t === "days60" || t === "over60" || t === "noDate") {
+    return t;
+  }
+  return null;
+}
 
 /** Dias inteiros de abertura (piso) ou null se não houver data utilizável. */
 export function ticketDaysOpenFloor(dateCreation: string | null | undefined, refMs: number): number | null {
@@ -56,6 +66,20 @@ export function ticketInOpsOver30PctCohort(dateCreation: string | null | undefin
 export function ticketInOpsOver60PctCohort(dateCreation: string | null | undefined, refMs: number): boolean {
   const d = ticketDaysOpenFloor(dateCreation, refMs);
   return d != null && d > 60;
+}
+
+export function ticketInOpenAgeBucket(
+  dateCreation: string | null | undefined,
+  refMs: number,
+  bucket: OpenAgeBucketKey
+): boolean {
+  const d = ticketDaysOpenFloor(dateCreation, refMs);
+  if (d == null) return bucket === "noDate";
+  if (bucket === "week") return d <= 7;
+  if (bucket === "days15") return d >= 8 && d <= 15;
+  if (bucket === "days30") return d >= 16 && d <= 30;
+  if (bucket === "days60") return d >= 31 && d <= 60;
+  return d > 60;
 }
 
 export type OpenTicketOperationalMetrics = {

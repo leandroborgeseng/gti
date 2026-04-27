@@ -404,6 +404,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       sp.set("noAssignee", "1");
     }
     if (initial.cohortParam) sp.set("cohort", initial.cohortParam);
+    if (initial.ageBucketParam) sp.set("ageBucket", initial.ageBucketParam);
     if (initial.idleMin) sp.set("idleMin", initial.idleMin);
     if (initial.groupInJson?.trim()) sp.set("groupInJson", initial.groupInJson);
     if (initial.groupNull) sp.set("groupNull", "1");
@@ -419,6 +420,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     initial.assignedUserId,
     initial.noAssignee,
     initial.cohortParam,
+    initial.ageBucketParam,
     initial.idleMin,
     initial.groupInJson,
     initial.groupNull
@@ -443,6 +445,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
   const chamadosHrefClearOpsDrill = useMemo(() => {
     const sp = new URLSearchParams(kanbanHrefQuery);
     sp.delete("cohort");
+    sp.delete("ageBucket");
     sp.delete("idleMin");
     sp.delete("groupInJson");
     sp.delete("groupNull");
@@ -461,6 +464,20 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
         : initial.cohortParam === "ops_over60"
           ? "Coorte KPI >60d"
           : "";
+    const ageBucketPill =
+      initial.ageBucketParam === "week"
+        ? "Esta semana (até 7 dias)"
+        : initial.ageBucketParam === "days15"
+          ? "8 a 15 dias"
+          : initial.ageBucketParam === "days30"
+            ? "16 a 30 dias"
+            : initial.ageBucketParam === "days60"
+              ? "31 a 60 dias"
+              : initial.ageBucketParam === "over60"
+                ? "Mais de 60 dias"
+                : initial.ageBucketParam === "noDate"
+                  ? "Sem data de abertura"
+                  : "";
     const idlePill = initial.idleMin ? `Inatividade GLPI ≥ ${initial.idleMin} d` : "";
     const groupInPill = initial.groupInJson?.trim() ? "Top 3 grupos (concentração)" : "";
     const groupNullPill = initial.groupNull ? "Sem grupo (contrato)" : "";
@@ -487,6 +504,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       pill("Solicitante", solicitante || "—", !solicitante),
       pill("Atribuído", assigneePill || "Todos", !assigneePill && !initial.noAssignee),
       pill("Coorte idade", cohortPill || "—", !cohortPill),
+      pill("Faixa de idade", ageBucketPill || "—", !ageBucketPill),
       pill("Inatividade", idlePill || "—", !idlePill),
       pill("Grupos (IN)", groupInPill || "—", !groupInPill),
       pill("Sem grupo", groupNullPill || "—", !groupNullPill),
@@ -516,7 +534,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
         </p>
       ) : null}
 
-      <AgingOpenDashboard buckets={initial.ageBuckets} />
+      <AgingOpenDashboard
+        buckets={initial.ageBuckets}
+        kanbanHrefQuery={kanbanHrefQuery}
+        activeAgeBucket={initial.ageBucketParam}
+      />
 
       <ChamadosOperationsPanel
         summary={initial.operationsSummary}
@@ -552,10 +574,10 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
               </Link>
             </p>
           ) : null}
-          {initial.cohortParam || initial.idleMin || initial.groupInJson?.trim() || initial.groupNull ? (
+          {initial.cohortParam || initial.ageBucketParam || initial.idleMin || initial.groupInJson?.trim() || initial.groupNull ? (
             <p className="filters-shell__requester-clear">
               <Link href={chamadosHrefClearOpsDrill} className="filters-shell__requester-clear-link">
-                Remover coorte / inatividade / top 3 grupos
+                Remover coorte / faixa de idade / inatividade / top 3 grupos
               </Link>
             </p>
           ) : null}
@@ -646,6 +668,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
             {initial.requesterEmail ? <input type="hidden" name="requesterEmail" value={initial.requesterEmail} /> : null}
             {initial.requesterName ? <input type="hidden" name="requesterName" value={initial.requesterName} /> : null}
             {initial.cohortParam ? <input type="hidden" name="cohort" value={initial.cohortParam} /> : null}
+            {initial.ageBucketParam ? <input type="hidden" name="ageBucket" value={initial.ageBucketParam} /> : null}
             {initial.idleMin ? <input type="hidden" name="idleMin" value={initial.idleMin} /> : null}
             {initial.groupInJson?.trim() ? (
               <input type="hidden" name="groupInJson" value={initial.groupInJson} />

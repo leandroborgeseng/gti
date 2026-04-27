@@ -19,6 +19,7 @@ function buildSearchParams(raw: Search): URLSearchParams {
     "assignedUserId",
     "noAssignee",
     "cohort",
+    "ageBucket",
     "idleMin",
     "groupInJson",
     "groupNull"
