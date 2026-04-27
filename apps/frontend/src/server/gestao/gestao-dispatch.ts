@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client";
 import { jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 import { jwtSecretBytes } from "@/lib/jwt-config";
+import { sendWelcomePasswordEmail } from "@/lib/password-reset";
 import { requestActorStore } from "@gestao/common/audit-actor";
 import {
   ensureGoalsBootstrapped,
@@ -336,7 +337,11 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoUsers.findAll());
     if (seg.length === 1 && method === "POST") {
       assertMutation(user, method);
-      return jsonOk(await gestaoUsers.create((await readJsonBody(req)) as never));
+      const created = await gestaoUsers.create((await readJsonBody(req)) as never);
+      sendWelcomePasswordEmail(created).catch((e) => {
+        console.error("[users] falha ao enviar e-mail de boas-vindas", e);
+      });
+      return jsonOk(created);
     }
     if (seg.length === 2 && method === "PATCH") {
       assertMutation(user, method);

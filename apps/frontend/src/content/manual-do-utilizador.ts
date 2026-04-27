@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-04-19";
+export const MANUAL_LAST_UPDATED = "2026-04-27";
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -276,7 +276,14 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/users", label: "Utilizadores" },
-          " — Gestão de contas (convites, papéis, estado). Visível apenas para administradores."
+          " — Gestão de contas, papéis e envio de link de acesso. Visível apenas para administradores."
+        ]
+      },
+      {
+        kind: "ul",
+        items: [
+          "Ao criar uma conta, o sistema pode enviar um e-mail de boas-vindas com link para definição de senha, quando o envio por Resend estiver configurado.",
+          "Na tela de login, a opção «Esqueci a minha senha» envia um link de redefinição para o e-mail cadastrado. O link expira em 60 minutos."
         ]
       },
       {

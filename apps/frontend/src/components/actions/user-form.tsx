@@ -35,7 +35,7 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador
         role: values.role
       }),
     onSuccess: (created) => {
-      toast.success("Utilizador criado.");
+      toast.success("Utilizador criado. Se o Resend estiver configurado, o link de acesso será enviado por e-mail.");
       void qc.invalidateQueries({ queryKey: queryKeys.users });
       form.reset({ email: "", password: "", role: "EDITOR" });
       onCreated?.(created);

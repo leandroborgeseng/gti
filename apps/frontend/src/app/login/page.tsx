@@ -92,6 +92,11 @@ function LoginForm(): JSX.Element {
                 <Button type="submit" className="w-full" disabled={login.isPending}>
                   {login.isPending ? "A entrar…" : "Entrar"}
                 </Button>
+                <p className="text-center text-sm text-muted-foreground">
+                  <Link href={"/recuperar-senha" as Route} className="underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground">
+                    Esqueci a minha senha
+                  </Link>
+                </p>
               </form>
             </Form>
           </CardContent>
