@@ -382,6 +382,15 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
 
   if (root === "projects") {
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoProjects.findAll());
+    if (seg.length === 1 && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou em falta. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoProjects.create(body as never));
+    }
     if (seg.length === 2 && seg[1] === "monday-import" && method === "POST") {
       assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
       assertMutation(user, method);
@@ -413,6 +422,15 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
       assertMutation(user, method);
       return jsonOk(await gestaoProjects.delete(seg[1]));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou em falta. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoProjects.update(seg[1], body as never));
     }
     if (seg.length === 2 && seg[1] === "dashboard" && method === "GET") {
       return jsonOk(await gestaoProjects.dashboardStats());

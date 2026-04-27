@@ -3,12 +3,14 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { StorageService } from "../../storage/storage.service";
 import {
+  CreateProjectDto,
   ImportProjectDto,
   ImportProjectGroupDto,
   ImportProjectTaskNodeDto,
   type ProjectFlatTaskRow,
   type ProjectsDashboardStats,
   type ProjectsTasksFlatResponse,
+  UpdateProjectDto,
   UpdateProjectTaskDto
 } from "./projects.dto";
 
@@ -20,6 +22,25 @@ export class ProjectsService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService
   ) {}
+
+  async create(dto: CreateProjectDto): Promise<unknown> {
+    const name = dto.name.trim();
+    if (!name) {
+      throw new BadRequestException("O nome do projeto é obrigatório.");
+    }
+    const created = await this.prisma.project.create({ data: { name } });
+    return created;
+  }
+
+  async update(id: string, dto: UpdateProjectDto): Promise<unknown> {
+    const name = dto.name.trim();
+    if (!name) {
+      throw new BadRequestException("O nome do projeto é obrigatório.");
+    }
+    const exists = await this.prisma.project.findUnique({ where: { id }, select: { id: true } });
+    if (!exists) throw new NotFoundException("Projeto não encontrado.");
+    return this.prisma.project.update({ where: { id }, data: { name } });
+  }
 
   async delete(id: string): Promise<{ ok: true; id: string }> {
     const exists = await this.prisma.project.findUnique({ where: { id }, select: { id: true } });

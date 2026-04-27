@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { KanbanBoardPayload, KanbanCardDto } from "@/glpi/kanban-load";
 import { pendenciaLabelForSummary } from "@/glpi/utils/kanban-filters";
 import type { HistoryTimelineItemDto, TicketHistoryBundleDto } from "@/glpi/services/glpi-ticket-history.service";
@@ -176,6 +176,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
   const [followupPrivate, setFollowupPrivate] = useState(false);
   const [modalSection, setModalSection] = useState<"chamado" | "historico">("chamado");
   const [syncScopeDraft, setSyncScopeDraft] = useState<"open" | "all">(initial.ticketSyncScope);
+  const [isClearingFilters, startClearingFiltersTransition] = useTransition();
 
   useEffect(() => {
     setSyncScopeDraft(initial.ticketSyncScope);
@@ -453,6 +454,14 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     return (qs ? `/chamados?${qs}` : "/chamados") as Route;
   }, [kanbanHrefQuery]);
 
+  const hasActiveFilters = Boolean(kanbanHrefQuery);
+
+  const clearKanbanFilters = useCallback(() => {
+    startClearingFiltersTransition(() => {
+      router.replace("/chamados" as Route);
+    });
+  }, [router, startClearingFiltersTransition]);
+
   const filterPills = useMemo(() => {
     const openLabel = initial.onlyOpen ? "Sim" : "Não";
     const solicitante =
@@ -694,6 +703,15 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
               </select>
               <button type="submit" form="kanban-filters-form" className="btn-secondary" id="btn-filters-apply">
                 Aplicar
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                id="btn-filters-clear"
+                disabled={!hasActiveFilters || isClearingFilters}
+                onClick={clearKanbanFilters}
+              >
+                {isClearingFilters ? "A limpar…" : "Limpar filtros"}
               </button>
               <button
                 type="button"

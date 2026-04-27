@@ -47,6 +47,18 @@ export interface ProjectsTasksFlatResponse {
   truncated: boolean;
 }
 
+export class CreateProjectDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+}
+
+export class UpdateProjectDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+}
+
 export class BulkPatchProjectTasksItemDto {
   @IsString()
   @IsNotEmpty()

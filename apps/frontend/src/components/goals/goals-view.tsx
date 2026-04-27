@@ -45,13 +45,20 @@ export function GoalsView({ goals: initialGoals, users = [], dataLoadErrors = []
       columnHelper.accessor("title", {
         header: "Meta",
         cell: (info) => (
-          <Link
-            href={`/goals/${info.row.original.id}` as Route}
-            className="block max-w-[min(100%,280px)] truncate font-semibold text-foreground hover:underline"
-            title={info.getValue()}
-          >
-            {info.getValue()}
-          </Link>
+          <div className="max-w-[min(100%,520px)] space-y-1">
+            <Link
+              href={`/goals/${info.row.original.id}` as Route}
+              className="block whitespace-normal break-words font-semibold leading-snug text-foreground hover:underline"
+              title={info.getValue()}
+            >
+              {info.getValue()}
+            </Link>
+            {info.row.original.description?.trim() ? (
+              <p className="m-0 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+                {info.row.original.description}
+              </p>
+            ) : null}
+          </div>
         )
       }),
       columnHelper.accessor("year", {

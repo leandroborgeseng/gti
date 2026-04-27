@@ -16,7 +16,13 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../../auth/roles-required.decorator";
-import { BulkPatchProjectTasksDto, ImportProjectDto, UpdateProjectTaskDto } from "./projects.dto";
+import {
+  BulkPatchProjectTasksDto,
+  CreateProjectDto,
+  ImportProjectDto,
+  UpdateProjectDto,
+  UpdateProjectTaskDto
+} from "./projects.dto";
 import { ProjectsService } from "./projects.service";
 
 function uploadMaxBytes(): number {
@@ -31,6 +37,12 @@ export class ProjectsController {
   @Get()
   findAll(): Promise<unknown> {
     return this.service.findAll();
+  }
+
+  @Post()
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  create(@Body() dto: CreateProjectDto): Promise<unknown> {
+    return this.service.create(dto);
   }
 
   @Get("dashboard")
@@ -60,6 +72,12 @@ export class ProjectsController {
   @Roles(UserRole.ADMIN, UserRole.EDITOR)
   delete(@Param("id") id: string): Promise<unknown> {
     return this.service.delete(id);
+  }
+
+  @Patch(":id")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  update(@Param("id") id: string, @Body() dto: UpdateProjectDto): Promise<unknown> {
+    return this.service.update(id, dto);
   }
 
   @Patch(":id/tasks/:taskId")

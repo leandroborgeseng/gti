@@ -215,7 +215,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/projetos", label: "Projetos" },
-          " — Projetos e iniciativas. Pode existir uma vista de ",
+          " — Projetos e iniciativas. Administradores e editores podem cadastrar projetos vazios, editar o nome dos projetos existentes ou importar tarefas por Excel do Monday.com. Pode existir uma vista de ",
           { href: "/projetos/tarefas", label: "tarefas" },
           " para trabalho transversal. Abra um projeto para ver fases, tarefas e informação associada."
         ]

@@ -2,19 +2,29 @@
 
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileSpreadsheet, Trash2 } from "lucide-react";
+import { FileSpreadsheet, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { ProjectListItem } from "@/lib/api";
-import { deleteProject, getAuthMe, getProjects } from "@/lib/api";
+import { createProject, deleteProject, getAuthMe, getProjects, updateProject } from "@/lib/api";
 import { ProjectsOverviewDashboard } from "@/components/projects/projects-overview-dashboard";
 import { queryKeys } from "@/lib/query-keys";
 import { MondayImportWizard } from "@/components/projects/monday-import-wizard";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 const columnHelper = createColumnHelper<ProjectListItem>();
 
@@ -28,6 +38,9 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
   const qc = useQueryClient();
   const [role, setRole] = useState<string | null | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<ProjectListItem | null>(null);
+  const [projectName, setProjectName] = useState("");
 
   useEffect(() => {
     void getAuthMe()
@@ -55,7 +68,64 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
     }
   });
 
+  const refreshProjects = (): void => {
+    void qc.invalidateQueries({ queryKey: queryKeys.projects });
+    void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
+    void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
+    router.refresh();
+  };
+
+  const createMut = useMutation({
+    mutationFn: createProject,
+    onSuccess: () => {
+      toast.success("Projeto criado.");
+      setCreateOpen(false);
+      setProjectName("");
+      refreshProjects();
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Não foi possível criar o projeto.");
+    }
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => updateProject(id, { name }),
+    onSuccess: () => {
+      toast.success("Projeto atualizado.");
+      setEditingProject(null);
+      setProjectName("");
+      refreshProjects();
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Não foi possível atualizar o projeto.");
+    }
+  });
+
   const canImport = role === "ADMIN" || role === "EDITOR";
+
+  function openCreateDialog(): void {
+    setProjectName("");
+    setCreateOpen(true);
+  }
+
+  function openEditDialog(project: ProjectListItem): void {
+    setProjectName(project.name);
+    setEditingProject(project);
+  }
+
+  function submitProjectForm(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const name = projectName.trim();
+    if (!name) {
+      toast.error("Informe o nome do projeto.");
+      return;
+    }
+    if (editingProject) {
+      updateMut.mutate({ id: editingProject.id, name });
+    } else {
+      createMut.mutate({ name });
+    }
+  }
 
   const columns = useMemo<ColumnDef<ProjectListItem, any>[]>(
     () => [
@@ -118,27 +188,40 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
               <Link href={`/projetos/${ctx.row.original.id}`}>Abrir</Link>
             </Button>
             {canImport ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-destructive hover:text-destructive"
-                title="Eliminar projeto"
-                disabled={deleteMut.isPending}
-                onClick={() => {
-                  if (
-                    !confirm(
-                      `Eliminar o projeto «${ctx.row.original.name}» e todas as tarefas? Esta ação não pode ser anulada.`
-                    )
-                  ) {
-                    return;
-                  }
-                  deleteMut.mutate(ctx.row.original.id);
-                }}
-                aria-label="Eliminar projeto"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  title="Editar projeto"
+                  onClick={() => openEditDialog(ctx.row.original)}
+                  aria-label="Editar projeto"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:text-destructive"
+                  title="Eliminar projeto"
+                  disabled={deleteMut.isPending}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        `Eliminar o projeto «${ctx.row.original.name}» e todas as tarefas? Esta ação não pode ser anulada.`
+                      )
+                    ) {
+                      return;
+                    }
+                    deleteMut.mutate(ctx.row.original.id);
+                  }}
+                  aria-label="Eliminar projeto"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
             ) : null}
           </div>
         )
@@ -164,10 +247,16 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
             <Link href="/projetos/tarefas">Todas as tarefas</Link>
           </Button>
           {canImport ? (
-            <Button type="button" className="gap-2" onClick={() => setImportOpen(true)}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Importar Excel (Monday)
-            </Button>
+            <>
+              <Button type="button" className="gap-2" onClick={openCreateDialog}>
+                <Plus className="h-4 w-4" />
+                Novo projeto
+              </Button>
+              <Button type="button" className="gap-2" onClick={() => setImportOpen(true)}>
+                <FileSpreadsheet className="h-4 w-4" />
+                Importar Excel (Monday)
+              </Button>
+            </>
           ) : null}
         </div>
       </div>
@@ -193,6 +282,56 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
           router.refresh();
         }}
       />
+
+      <Dialog
+        open={createOpen || editingProject != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreateOpen(false);
+            setEditingProject(null);
+            setProjectName("");
+          }
+        }}
+      >
+        <DialogContent>
+          <form onSubmit={submitProjectForm} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>{editingProject ? "Editar projeto" : "Novo projeto"}</DialogTitle>
+              <DialogDescription>
+                {editingProject
+                  ? "Altere o nome do projeto cadastrado."
+                  : "Cadastre um projeto vazio; as tarefas podem ser importadas pelo Excel do Monday depois."}
+              </DialogDescription>
+            </DialogHeader>
+            <label className="space-y-2 text-sm font-medium">
+              <span>Nome do projeto</span>
+              <Input
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+                placeholder="Ex.: Implantação do sistema"
+                autoFocus
+                disabled={createMut.isPending || updateMut.isPending}
+              />
+            </label>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setCreateOpen(false);
+                  setEditingProject(null);
+                  setProjectName("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={createMut.isPending || updateMut.isPending}>
+                {createMut.isPending || updateMut.isPending ? "A guardar…" : "Guardar"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

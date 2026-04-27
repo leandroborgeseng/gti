@@ -1028,6 +1028,14 @@ export async function getProjects(): Promise<ProjectListItem[]> {
   return request("/projects");
 }
 
+export async function createProject(payload: { name: string }): Promise<ProjectListItem> {
+  return request("/projects", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateProject(id: string, payload: { name: string }): Promise<ProjectListItem> {
+  return request(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
 export async function getProjectsDashboard(): Promise<ProjectsDashboardStats> {
   return request("/projects/dashboard");
 }
