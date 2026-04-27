@@ -45,7 +45,7 @@ const MondayImportWizard = dynamic(
   async () => (await import("@/components/projects/monday-import-wizard")).MondayImportWizard,
   {
     ssr: false,
-    loading: () => <p className="text-sm text-muted-foreground">A carregar importador Excel…</p>
+    loading: () => <p className="text-sm text-muted-foreground">Carregando importador Excel…</p>
   }
 );
 
@@ -234,7 +234,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
       router.refresh();
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof Error ? e.message : "Não foi possível eliminar o projeto.");
+      toast.error(e instanceof Error ? e.message : "Não foi possível excluir o projeto.");
     }
   });
 
@@ -542,19 +542,19 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-destructive hover:text-destructive"
-                  title="Eliminar projeto"
+                  title="Excluir projeto"
                   disabled={deleteMut.isPending}
                   onClick={() => {
                     if (
                       !confirm(
-                        `Eliminar o projeto «${ctx.row.original.name}» e todas as tarefas? Esta ação não pode ser anulada.`
+                        `Excluir o projeto «${ctx.row.original.name}» e todas as tarefas? Esta ação não pode ser anulada.`
                       )
                     ) {
                       return;
                     }
                     deleteMut.mutate(ctx.row.original.id);
                   }}
-                  aria-label="Eliminar projeto"
+                  aria-label="Excluir projeto"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -876,7 +876,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                 Cancelar
               </Button>
               <Button type="submit" disabled={createMut.isPending || updateMut.isPending}>
-                {createMut.isPending || updateMut.isPending ? "A guardar…" : "Guardar"}
+                {createMut.isPending || updateMut.isPending ? "Salvando…" : "Salvar"}
               </Button>
             </DialogFooter>
           </form>
@@ -914,7 +914,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                 Cancelar
               </Button>
               <Button type="submit" disabled={createCollectionMut.isPending || updateCollectionMut.isPending}>
-                {createCollectionMut.isPending || updateCollectionMut.isPending ? "A guardar…" : "Guardar"}
+                {createCollectionMut.isPending || updateCollectionMut.isPending ? "Salvando…" : "Salvar"}
               </Button>
             </DialogFooter>
           </form>

@@ -78,7 +78,7 @@ function ChangePasswordForm(): JSX.Element {
         required
       />
       <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "A guardar…" : "Alterar senha"}
+        {isSubmitting ? "Salvando…" : "Alterar senha"}
       </Button>
       <p className="text-center text-xs text-muted-foreground">
         Esta etapa é obrigatória no primeiro acesso ou quando um administrador redefine a sua senha.
@@ -96,7 +96,7 @@ export default function TrocarSenhaPage(): JSX.Element {
           <CardDescription>Antes de continuar, defina uma senha própria com pelo menos 8 caracteres.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Suspense fallback={<p className="text-sm text-muted-foreground">A carregar…</p>}>
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando…</p>}>
             <ChangePasswordForm />
           </Suspense>
           <p className="mt-4 text-center text-sm text-muted-foreground">

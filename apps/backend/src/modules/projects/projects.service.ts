@@ -491,7 +491,7 @@ export class ProjectsService {
 
   /**
    * Lista plana de tarefas (todos os projetos) com filtros e paginação em memória
-   * após leitura limitada à BD (ver `truncated`).
+   * após leitura limitada à banco de dados (ver `truncated`).
    */
   async findAllTasksFlat(raw: Record<string, string | string[] | undefined>): Promise<ProjectsTasksFlatResponse> {
     const pick = (key: string): string => {
@@ -853,6 +853,18 @@ export class ProjectsService {
     };
   }
 
+  async deleteTask(projectId: string, taskId: string): Promise<{ ok: true; id: string }> {
+    const exists = await this.prisma.projectTask.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true }
+    });
+    if (!exists) {
+      throw new NotFoundException("Tarefa não encontrada neste projeto.");
+    }
+    await this.prisma.projectTask.delete({ where: { id: taskId } });
+    return { ok: true, id: taskId };
+  }
+
   async addTaskAttachment(projectId: string, taskId: string, file: Express.Multer.File): Promise<unknown> {
     const task = await this.prisma.projectTask.findFirst({
       where: { id: taskId, projectId },
@@ -862,7 +874,7 @@ export class ProjectsService {
       throw new NotFoundException("Tarefa não encontrada neste projeto.");
     }
     if (!file.buffer?.length) {
-      throw new BadRequestException("Ficheiro vazio.");
+      throw new BadRequestException("Arquivo vazio.");
     }
     const { filePath } = await this.storage.saveProjectTaskFile(taskId, file.buffer, file.originalname, file.mimetype);
     const attachment = await this.prisma.attachment.create({
@@ -887,11 +899,11 @@ export class ProjectsService {
     const totalTasks = dto.groups.reduce((n, g) => n + (g.tasks?.length ?? 0), 0);
     if (totalTasks === 0) {
       throw new BadRequestException(
-        "Nenhuma tarefa válida no payload. Confirme a pré-visualização no assistente ou reexporte o Excel do Monday (cabeçalhos Name, Status, …)."
+        "Nenhuma tarefa válida no payload. Confirme a prévia no assistente ou reexporte o Excel do Monday (cabeçalhos Name, Status, …)."
       );
     }
 
-    /** Importações Monday podem ter centenas de linhas; o timeout por defeito (~5s) cancela a transacção a meio. */
+    /** Importações Monday podem ter centenas de linhas; o timeout por padrão (~5s) cancela a transacção a meio. */
     const created = await this.prisma.$transaction(
       async (tx) => {
         const project = await tx.project.create({

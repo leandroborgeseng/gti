@@ -83,7 +83,7 @@ export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = []
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title="Novo fornecedor"
-        description="Nome e CNPJ são obrigatórios. O registro passa a aparecer na lista após guardar."
+        description="Nome e CNPJ são obrigatórios. O registro passa a aparecer na lista após salvar."
       >
         <SupplierForm
           onSuccess={() => {

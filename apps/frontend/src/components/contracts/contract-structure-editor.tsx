@@ -83,7 +83,7 @@ function ModuleWeightsSummary(props: { modules: ModuleRow[] }): JSX.Element {
         <span className="ml-2 text-emerald-900">— alinhado à meta 1</span>
       ) : (
         <span className="ml-2">
-          — fora da meta (esperado ≈ 1). Ajuste os pesos ou confirme ao gravar; o sistema pedirá confirmação se a soma continuar desalinhada.
+          — fora da meta (esperado ≈ 1). Ajuste os pesos ou confirme ao salvar; o sistema pedirá confirmação se a soma continuar desalinhada.
         </span>
       )}
     </div>
@@ -154,7 +154,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
           {error}
         </p>
       ) : null}
-      {busy ? <p className="text-xs text-slate-500">A gravar…</p> : null}
+      {busy ? <p className="text-xs text-slate-500">Salvando…</p> : null}
 
       {showsModules(contract.contractType) ? (
         <Card className="p-5">
@@ -174,8 +174,8 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
             <TabsContent value="importacao" className="mt-3 rounded-md border border-sky-200/80 bg-sky-50/50 px-3 py-3 text-sm text-slate-800">
               <p className="font-medium text-slate-900">Planilha (.xlsx)</p>
               <p className="mt-1 text-xs text-slate-600">
-                Descarregue o modelo, preencha a folha «Dados» e importe para criar módulos e funcionalidades de uma vez. Leia as instruções na
-                folha «Instrucoes».
+                Baixe o modelo, preencha a aba «Dados» e importe para criar módulos e funcionalidades de uma vez. Leia as instruções na
+                aba «Instrucoes».
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
@@ -198,14 +198,14 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                         a.remove();
                         URL.revokeObjectURL(url);
                       } catch (e) {
-                        setError(e instanceof Error ? e.message : "Erro ao descarregar o modelo");
+                        setError(e instanceof Error ? e.message : "Erro ao baixar o modelo");
                       } finally {
                         setBusy(false);
                       }
                     })();
                   }}
                 >
-                  Descarregar modelo
+                  Baixar modelo
                 </button>
                 <input
                   ref={fileImportRef}
@@ -219,7 +219,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                   }}
                 />
                 <button type="button" className={buttonSmallClass} disabled={busy} onClick={() => fileImportRef.current?.click()}>
-                  Escolher ficheiro…
+                  Escolher arquivo…
                 </button>
                 <button
                   type="button"
@@ -241,7 +241,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
               </div>
               {importFile ? (
                 <p className="mt-2 text-xs text-slate-600">
-                  Seleccionado: <span className="font-mono">{importFile.name}</span>
+                  Selecionado: <span className="font-mono">{importFile.name}</span>
                 </p>
               ) : null}
               <div className="mt-3 flex items-start gap-2">
@@ -253,7 +253,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                   className="mt-0.5"
                 />
                 <label htmlFor="replace-structure-import" className="cursor-pointer text-xs leading-snug text-slate-700">
-                  Substituir módulos e funcionalidades existentes (remove os actuais deste contrato antes de importar).
+                  Substituir módulos e funcionalidades existentes (remove os atuais deste contrato antes de importar).
                 </label>
               </div>
             </TabsContent>
@@ -261,7 +261,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
             <TabsContent value="funcionalidades" className="mt-3">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
                 <p className="max-w-xl text-xs text-slate-600">
-                  Edite módulos e funcionalidades abaixo ou use o botão para abrir o cadastro rápido num modal.
+                  Edite módulos e funcionalidades abaixo ou use o botão para abrir o cadastro rápido em um modal.
                 </p>
                 <Button type="button" size="sm" disabled={busy} onClick={openStructureModal} className="shrink-0 gap-1.5">
                   <Plus className="h-4 w-4" aria-hidden />
@@ -295,7 +295,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
             open={structureModalOpen}
             onClose={closeStructureModal}
             title="Cadastrar módulo ou funcionalidade"
-            description="Escolha o tipo de registo. Os pesos seguem as mesmas regras do restante do ecrã (soma ≈ 1 por nível)."
+            description="Escolha o tipo de registro. Os pesos seguem as mesmas regras do restante da tela (soma ≈ 1 por nível)."
             contentClassName="max-w-lg"
           >
             <div className="mb-5 flex gap-2">
@@ -377,7 +377,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                       });
                     }}
                   >
-                    Guardar módulo
+                    Salvar módulo
                   </Button>
                 </div>
               </div>
@@ -487,7 +487,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                       });
                     }}
                   >
-                    Guardar funcionalidade
+                    Salvar funcionalidade
                   </Button>
                 </div>
               </div>
@@ -571,7 +571,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 
       {!showsModules(contract.contractType) && !showsServices(contract.contractType) ? (
         <p className="text-sm text-slate-500">
-          O tipo deste contrato não inclui edição de módulos/serviços neste ecrã.
+          O tipo deste contrato não inclui edição de módulos/serviços neste tela.
         </p>
       ) : null}
     </div>
@@ -660,7 +660,7 @@ function ModuleBlock(props: {
             void exec(async () => updateContractModule(contractId, mod.id, { name: name.trim(), weight: w }));
           }}
         >
-          Guardar módulo
+          Salvar módulo
         </button>
         <button
           type="button"
@@ -683,9 +683,9 @@ function ModuleBlock(props: {
         <p className="mb-2 text-xs font-medium text-slate-700">Funcionalidades</p>
         {mod.features.length > 0 ? (
           <p className={`mb-2 text-xs ${featuresSumAlert ? "font-medium text-amber-900" : "text-slate-600"}`}>
-            Soma dos pesos das funcionalidades (gravada):{" "}
+            Soma dos pesos das funcionalidades (salva):{" "}
             <span className="tabular-nums">{formatWeightPt(featureSumSaved)}</span>
-            {weightSumMatchesTarget(featureSumSaved) ? " — alinhado à meta 1" : " — ajuste para somar 1 ou confirme ao gravar"}
+            {weightSumMatchesTarget(featureSumSaved) ? " — alinhado à meta 1" : " — ajuste para somar 1 ou confirme ao salvar"}
           </p>
         ) : (
           <p className="mb-2 text-xs text-slate-500">
@@ -880,7 +880,7 @@ function FeatureRow(props: {
           );
         }}
       >
-        Guardar
+        Salvar
       </button>
       <button
         type="button"
@@ -959,7 +959,7 @@ function ServiceRow(props: {
           })
         }
       >
-        Guardar
+        Salvar
       </button>
       <button
         type="button"

@@ -43,7 +43,7 @@ export interface ProjectsTasksFlatResponse {
   total: number;
   limit: number;
   offset: number;
-  /** Indica que existem mais linhas na BD do que o limite interno de leitura. */
+  /** Indica que existem mais linhas no banco de dados do que o limite interno de leitura. */
   truncated: boolean;
 }
 

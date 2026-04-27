@@ -84,7 +84,7 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
     <>
       <Form {...form}>
         <form className="space-y-6" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
-          <FormSection title="Meta" description="Título, ano e estado inicial. O responsável deve ser um utilizador do sistema.">
+          <FormSection title="Meta" description="Título, ano e estado inicial. O responsável deve ser um usuário do sistema.">
             <FormField
               control={form.control}
               name="title"
@@ -161,7 +161,7 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
             />
           </FormSection>
 
-          <FormSection title="Responsável" description="Quem acompanha a meta no sistema. Pode criar utilizador sem sair desta página.">
+          <FormSection title="Responsável" description="Quem acompanha a meta no sistema. Pode criar usuário sem sair desta página.">
             <div className="sm:col-span-2">
               <Controller
                 control={form.control}
@@ -169,13 +169,13 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
                 render={({ field, fieldState }) => (
                   <EntitySelectWithCreate
                     id="goal-responsible"
-                    label="Utilizador responsável"
+                    label="Usuário responsável"
                     required
                     value={field.value}
                     onChange={field.onChange}
                     options={userOptions}
                     placeholder="Selecione…"
-                    addNewLabel="+ Novo utilizador"
+                    addNewLabel="+ Novo usuário"
                     onAddNew={() => setUserModalOpen(true)}
                     error={fieldState.error?.message}
                   />
@@ -185,7 +185,7 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
           </FormSection>
 
           <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "A guardar…" : "Cadastrar meta"}
+            {mutation.isPending ? "Salvando…" : "Cadastrar meta"}
           </Button>
         </form>
       </Form>
@@ -193,8 +193,8 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
       <Modal
         open={userModalOpen}
         onClose={() => setUserModalOpen(false)}
-        title="Novo utilizador"
-        description="Após criar, o utilizador fica selecionado como responsável desta meta."
+        title="Novo usuário"
+        description="Após criar, o usuário fica selecionado como responsável desta meta."
       >
         <UserForm
           onCreated={(u) => {

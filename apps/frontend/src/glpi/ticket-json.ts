@@ -69,7 +69,7 @@ export function extractTicketContext(rawUnknown: unknown): {
   const usersIdTech = raw.users_id_tech;
   if (usersIdTech !== undefined && usersIdTech !== null) {
     const id = toPositiveInt(usersIdTech);
-    if (id) pushUnique(assignees, `Utilizador #${id}`);
+    if (id) pushUnique(assignees, `Usuário #${id}`);
   }
 
   return {

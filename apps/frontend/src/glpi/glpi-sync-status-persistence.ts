@@ -68,7 +68,7 @@ export async function recordGlpiBootstrapCheckpoint(phase: string): Promise<void
   } catch (error) {
     logger.warn(
       { error: toErrorLog(error), phase },
-      "Não foi possível gravar o checkpoint de arranque GLPI em SyncState"
+      "Não foi possível salvar o checkpoint de inicialização GLPI em SyncState"
     );
   }
 }
@@ -85,7 +85,7 @@ export async function readGlpiBootstrapLastCheckpoint(): Promise<GlpiBootstrapCh
 }
 
 /**
- * Espera até existir checkpoint de arranque na BD (ou timeout).
+ * Espera até existir checkpoint de inicialização no banco de dados (ou timeout).
  * Evita corrida em `/api/glpi/status`: o bootstrap começa com `void` e o primeiro `upsert` é assíncrono.
  */
 export async function waitForBootstrapCheckpointVisible(timeoutMs = 5000): Promise<boolean> {
@@ -117,7 +117,7 @@ export async function recordGlpiBootstrapDoneMarker(): Promise<void> {
       update: { value: at }
     });
   } catch (error) {
-    logger.warn({ error: toErrorLog(error) }, "Não foi possível gravar o marcador de bootstrap concluído");
+    logger.warn({ error: toErrorLog(error) }, "Não foi possível salvar o marcador de bootstrap concluído");
   }
 }
 
@@ -150,8 +150,8 @@ export async function readGlpiBootstrapDoneAtWorker(): Promise<string | null> {
 }
 
 /**
- * Se a BD indica sync em curso sem `lastFinishedAt` há mais de `GLPI_SYNC_ORPHAN_MS` ms, normaliza
- * (reinício do contentor / réplica morta a meio da sync).
+ * Se a banco de dados indica sync em curso sem `lastFinishedAt` há mais de `GLPI_SYNC_ORPHAN_MS` ms, normaliza
+ * (reinício do contêiner / réplica morta a meio da sync).
  */
 export async function limparSyncOrfaNaBdSeNecessario(): Promise<void> {
   try {
@@ -174,10 +174,10 @@ export async function limparSyncOrfaNaBdSeNecessario(): Promise<void> {
     });
     logger.warn(
       { lastStartedAt: snap.lastStartedAt, limiteMs },
-      "Estado de sync órfão na BD normalizado antes de nova execução"
+      "Estado de sync órfão no banco de dados normalizado antes de nova execução"
     );
   } catch (error) {
-    logger.warn({ error: toErrorLog(error) }, "Não foi possível normalizar estado de sync órfão na BD");
+    logger.warn({ error: toErrorLog(error) }, "Não foi possível normalizar estado de sync órfão no banco de dados");
   }
 }
 
@@ -192,7 +192,7 @@ export type GlpiSyncStatusSnapshot = {
   lastSaved: number;
   lastFailed: number;
   lastPage: number;
-  /** Quando este registo foi gravado na base (ISO). */
+  /** Quando este registro foi salvo no banco de dados (ISO). */
   persistedAt: string;
 };
 
@@ -311,7 +311,7 @@ export async function persistGlpiSyncStatusSafe(
 }
 
 /**
- * Combina o estado em memória (processo atual) com o último registo na BD
+ * Combina o estado em memória (processo atual) com o último registro no banco de dados
  * (outro processo / worker / réplica).
  */
 export function mergeGlpiSyncStatusForApi(

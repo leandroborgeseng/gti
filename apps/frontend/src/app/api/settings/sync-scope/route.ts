@@ -24,7 +24,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       });
     return NextResponse.json({ ok: true, scope });
   } catch (error) {
-    logger.error({ error: toErrorLog(error) }, "Falha ao guardar escopo de sincronização");
-    return NextResponse.json({ error: "Falha ao guardar escopo de sincronização" }, { status: 500 });
+    logger.error({ error: toErrorLog(error) }, "Falha ao salvar escopo de sincronização");
+    return NextResponse.json({ error: "Falha ao salvar escopo de sincronização" }, { status: 500 });
   }
 }

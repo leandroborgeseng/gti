@@ -44,9 +44,9 @@ async function parseForcedSyncMode(req: NextRequest): Promise<ForcedSyncMode> {
  * ou para diagnóstico). Requer `GLPI_SYNC_TRIGGER_SECRET` e o mesmo valor no cabeçalho HTTP.
  *
  * Modos (query `?mode=` ou JSON `{ "mode": "..." }` / `{ "modo": "..." }`):
- * - omitido / `full` / `completo`: igual à primeira sync — abertos e fechados (conforme escopo na BD).
+ * - omitido / `full` / `completo`: igual à primeira sync — abertos e fechados (conforme escopo no banco de dados).
  * - `abertos` / `open`: só persiste chamados **não fechados** (útil com escopo «todos» para refrescar o Kanban).
- * - `fechados` / `closed`: só persiste **fechados** (exige escopo «todos os tickets» na BD).
+ * - `fechados` / `closed`: só persiste **fechados** (exige escopo «todos os tickets» no banco de dados).
  *
  * Exemplos:
  * - `curl -X POST -H "x-gti-glpi-sync-secret: SEU_SEGREDO" "https://host/api/glpi/sync?mode=fechados"`
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         {
           ok: false,
           message:
-            "Para forçar o carregamento de fechados, o escopo na BD tem de ser «todos os tickets» (Cache no quadro de chamados → Guardar escopo). Com «só abertos», o cache não guarda fechados."
+            "Para forçar o carregamento de fechados, o escopo no banco de dados deve ser «todos os tickets» (Cache no quadro de chamados → Salvar escopo). Com «só abertos», o cache não guarda fechados."
         },
         { status: 400 }
       );
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({
         ok: true,
         mode: "fechados",
-        message: "Passagem só de chamados fechados executada (percorre o GLPI e grava fechados no cache)."
+        message: "Passagem só de chamados fechados executada (percorre o GLPI e salva fechados no cache)."
       });
     }
 

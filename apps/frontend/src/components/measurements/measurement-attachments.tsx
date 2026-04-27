@@ -22,7 +22,7 @@ export function MeasurementAttachments(props: { measurementId: string; attachmen
       await uploadMeasurementAttachment(props.measurementId, file);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha no envio do ficheiro");
+      setError(err instanceof Error ? err.message : "Falha no envio do arquivo");
     } finally {
       setUploading(false);
     }

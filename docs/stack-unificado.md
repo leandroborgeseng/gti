@@ -4,7 +4,7 @@
 
 A interface de **gestão contratual** e o **Kanban GLPI** estão em **`apps/frontend`**: rota **`/chamados`**, APIs em **`src/app/api/...`**, sincronização e cron em **`instrumentation.ts`**, lógica GLPI em **`src/glpi/`** e **PostgreSQL** partilhado com o Nest (`apps/backend/prisma/schema.prisma` + migrações).
 
-## Situação actual
+## Situação atual
 
 | Processo | O quê |
 |----------|--------|

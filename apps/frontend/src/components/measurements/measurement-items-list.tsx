@@ -69,7 +69,7 @@ export function MeasurementItemsList(props: Props): JSX.Element | null {
       const updated = await patchMeasurementItemQuantity(props.measurementId, itemId, q);
       if (props.onMeasurementUpdate) {
         props.onMeasurementUpdate(updated);
-        setSyncMsg("Quantidade guardada. Utilize Calcular para atualizar o valor medido no resumo.");
+        setSyncMsg("Quantidade salva. Utilize Calcular para atualizar o valor medido no resumo.");
       } else {
         router.refresh();
       }
@@ -118,7 +118,7 @@ export function MeasurementItemsList(props: Props): JSX.Element | null {
                     disabled={busyId === item.id}
                     className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
                   >
-                    {busyId === item.id ? "A guardar…" : "Guardar quantidade"}
+                    {busyId === item.id ? "Salvando…" : "Salvar quantidade"}
                   </button>
                 </form>
               ) : (

@@ -36,10 +36,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   try {
     abs = resolveAttachmentAbsolute(att.filePath);
   } catch {
-    return new NextResponse("Caminho de ficheiro inválido", { status: 400 });
+    return new NextResponse("Caminho de arquivo inválido", { status: 400 });
   }
   if (!existsSync(abs)) {
-    return new NextResponse("Ficheiro não existe no armazenamento", { status: 404 });
+    return new NextResponse("Arquivo não existe no armazenamento", { status: 404 });
   }
   const buf = await readFile(abs);
   const res = new NextResponse(buf, { status: 200 });

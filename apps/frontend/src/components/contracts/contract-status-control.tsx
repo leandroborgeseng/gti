@@ -32,7 +32,7 @@ function confirmationCopy(
   if (next === "SUSPENDED") {
     return {
       title: "Suspender contrato?",
-      description: `Enquanto estiver suspenso, não será possível registar novos aditivos neste fluxo. Estado atual: ${prevLeg}.`
+      description: `Enquanto estiver suspenso, não será possível registrar novos aditivos neste fluxo. Estado atual: ${prevLeg}.`
     };
   }
   return {
@@ -104,7 +104,7 @@ export function ContractStatusControl(props: Props): JSX.Element | null {
     pendingNext != null ? confirmationCopy(props.status, pendingNext) : { title: "", description: "" };
 
   if (role === undefined) {
-    return <span className="text-xs text-slate-400">A carregar…</span>;
+    return <span className="text-xs text-slate-400">Carregando…</span>;
   }
   if (!canEdit) {
     return null;
@@ -136,7 +136,7 @@ export function ContractStatusControl(props: Props): JSX.Element | null {
           onClick={() => openConfirm()}
           className="rounded-md bg-slate-800 px-2 py-1 text-xs font-medium text-white hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Guardar
+          Salvar
         </button>
         {msg ? (
           <span className="text-xs text-red-600" role="alert">
@@ -166,7 +166,7 @@ export function ContractStatusControl(props: Props): JSX.Element | null {
             onClick={() => void applyStatusChange()}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
           >
-            {busy ? "A gravar…" : "Confirmar"}
+            {busy ? "Salvando…" : "Confirmar"}
           </button>
         </div>
       </Modal>

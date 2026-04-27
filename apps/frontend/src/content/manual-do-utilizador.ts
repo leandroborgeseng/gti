@@ -1,6 +1,6 @@
 /**
- * Manual do utilizador (texto apresentado em `/manual`).
- * Ao alterar menus, fluxos ou permissões da interface, atualize este ficheiro
+ * Manual do usuário (texto apresentado em `/manual`).
+ * Ao alterar menus, fluxos ou permissões da interface, atualize este arquivo
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
@@ -30,18 +30,18 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "p",
         parts: [
-          "A plataforma de Gestão de Operações de TI reúne a gestão contratual, medições financeiras, glosas, ligação a chamados GLPI, governança de SLA, metas, projetos e relatórios. O objetivo é dar visibilidade à operação e ao cumprimento contratual num único painel."
+          "A plataforma de Gestão de Operações de TI reúne a gestão contratual, medições financeiras, glosas, ligação a chamados GLPI, governança de SLA, metas, projetos e relatórios. O objetivo é dar visibilidade à operação e ao cumprimento contratual em um único painel."
         ]
       },
       {
         kind: "p",
         parts: [
-          "Utilize o menu lateral (ou o menu móvel) para mudar de área. Em várias listagens existe pesquisa e filtros; nas páginas de detalhe, ligações de regresso à lista aparecem no topo."
+          "Utilize o menu lateral (ou o menu móvel) para mudar de área. Em várias listagens existe pesquisa e filtros; nas páginas de detalhe, links de retorno à lista aparecem no topo."
         ]
       },
       {
         kind: "tip",
-        text: "Se algo não carregar, verifique a sessão (voltar a iniciar sessão) e, em caso de erro persistente, contacte a equipa de suporte com o texto do erro apresentado no ecrã."
+        text: "Se algo não carregar, verifique a sessão (voltar a entrar) e, em caso de erro persistente, contate a equipe de suporte com o texto do erro apresentado na tela."
       }
     ]
   },
@@ -52,14 +52,14 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "p",
         parts: [
-          "Existem três papéis: administrador, editor e leitor. O administrador gere utilizadores (ver ",
-          { href: "/users", label: "Utilizadores" },
-          " abaixo) e tem acesso total. O editor regista e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis."
+          "Existem três papéis: administrador, editor e leitor. O administrador gerencia usuários (ver ",
+          { href: "/users", label: "Usuários" },
+          " abaixo) e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis."
         ]
       },
       {
         kind: "roles",
-        text: "A página de exportações CSV e algumas acções de escrita podem estar restritas a administrador e editor; o leitor não vê a opção de exportações no menu."
+        text: "A página de exportações CSV e algumas ações de escrita podem estar restritas a administrador e editor; o leitor não vê a opção de exportações no menu."
       }
     ]
   },
@@ -91,7 +91,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       },
       {
         kind: "tip",
-        text: "A sincronização com o GLPI depende da configuração do servidor e da base de dados; se o quadro estiver vazio ou com erro, o problema é técnico de ligação, não da sua conta."
+        text: "A sincronização com o GLPI depende da configuração do servidor e da banco de dados; se o quadro estiver vazio ou com erro, o problema é técnico de ligação, não da sua conta."
       }
     ]
   },
@@ -103,7 +103,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/contracts", label: "Contratos" },
-          " — Lista dos contratos. Abra um contrato para ver dados cadastrais (vigência, valores, fornecedor, fiscal, gestor, legislação, tipo), alterar estado quando permitido, e gerir blocos específicos."
+          " — Lista dos contratos. Abra um contrato para ver dados cadastrais (vigência, valores, fornecedor, fiscal, gestor, legislação, tipo), alterar estado quando permitido, e gerenciar blocos específicos."
         ]
       },
       {
@@ -113,14 +113,14 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Snapshots financeiros: histórico de valores acordados ao longo do tempo, para leitura e conferência.",
           "Proporção de implantação por funcionalidade: repartição do valor de implantação alinhada às funcionalidades do contrato.",
           "Grupos GLPI: associação de grupos do GLPI ao contrato, para contagem de chamados nos relatórios.",
-          "Aditivos: registo de alterações contratuais.",
+          "Aditivos: registro de alterações contratuais.",
           "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir."
         ]
       },
       {
         kind: "p",
         parts: [
-          "A partir do detalhe, pode saltar para ",
+          "A partir do detalhe, pode ir para ",
           { href: "/measurements", label: "Medições" },
           " já filtradas por esse contrato."
         ]
@@ -135,7 +135,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/modulos", label: "Funcionalidades" },
-          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. Cada contrato e cada módulo têm sanfona (fechados por defeito); no cabeçalho do módulo vê contagens de entregues / parciais / não entregues. Dentro do módulo, use o estado de entrega, o botão de editar (lápis) ou eliminar (caixote), com confirmação e validação da soma dos pesos ao eliminar ou ao gravar edição."
+          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. Cada contrato e cada módulo têm sanfona (fechados por padrão); no cabeçalho do módulo você vê contagens de entregues / parciais / não entregues. Dentro do módulo, use o estado de entrega, o botão de editar (lápis) ou excluir (lixeira), com confirmação e validação da soma dos pesos ao excluir ou ao salvar edição."
         ]
       }
     ]
@@ -148,13 +148,13 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/measurements", label: "Medições" },
-          " — Uma medição por contrato e por competência (mês/ano). Cada registo percorre estados: Aberta → Em revisão ou Glosada → Aprovada. O valor aprovado consolida o que conta como medição aprovada para relatórios."
+          " — Uma medição por contrato e por competência (mês/ano). Cada registro percorre estados: Aberta → Em revisão ou Glosada → Aprovada. O valor aprovado consolida o que conta como medição aprovada para relatórios."
         ]
       },
       {
         kind: "ul",
         items: [
-          "Utilize «Nova medição» para abrir o mês seguinte ou a competência em falta.",
+          "Utilize «Nova medição» para abrir o mês seguinte ou a competência ausente.",
           "Na página da medição, calcule e finalize o fluxo conforme o processo interno (revisão, glosa, aprovação)."
         ]
       },
@@ -176,7 +176,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/glosas", label: "Glosas" },
-          " — Gestão de glosas associadas ao acompanhamento financeiro e contratual. Consulte a lista e abra cada registo para ver detalhe, histórico e acções disponíveis para o seu papel."
+          " — Gestão de glosas associadas ao acompanhamento financeiro e contratual. Consulte a lista e abra cada registro para ver detalhe, histórico e ações disponíveis para o seu papel."
         ]
       }
     ]
@@ -215,7 +215,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/projetos", label: "Projetos" },
-          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor, data de início, fim planejado e grupo dos projetos existentes, criar tarefas manualmente ou importar tarefas por Excel do Monday.com. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios, atrasos e uma visualização do prazo planejado. A lista agrupada por sanfonas ajuda a acompanhar os projetos por grupo. Pode existir uma vista de ",
+          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor, data de início, fim planejado e grupo dos projetos existentes, criar, editar e excluir tarefas manualmente ou importar tarefas por Excel do Monday.com. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios, atrasos e uma visualização do prazo planejado. A lista agrupada por sanfonas ajuda a acompanhar os projetos por grupo. Pode existir uma vista de ",
           { href: "/projetos/tarefas", label: "tarefas" },
           " para trabalho transversal. Abra um projeto para ver contexto, fases, tarefas e informação associada."
         ]
@@ -233,7 +233,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           " — Cadastro de empresas fornecedoras utilizadas nos contratos.",
           " ",
           { href: "/fiscais", label: "Fiscais" },
-          " — Cadastro de fiscais do contrato. Ambos alimentam campos de selecção no detalhe do contrato."
+          " — Cadastro de fiscais do contrato. Ambos alimentam campos de seleção no detalhe do contrato."
         ]
       }
     ]
@@ -246,12 +246,12 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/exports", label: "Exportações" },
-          " — Descarregamento de ficheiros CSV (contratos, medições, glosas, aditivos) em UTF-8, para arquivo ou análise externa."
+          " — Download de arquivos CSV (contratos, medições, glosas, aditivos) em UTF-8, para arquivo ou análise externa."
         ]
       },
       {
         kind: "roles",
-        text: "Reservado a utilizadores com perfil de edição ou administração (não aparece no menu para leitores)."
+        text: "Reservado a usuários com perfil de edição ou administração (não aparece no menu para leitores)."
       }
     ]
   },
@@ -263,33 +263,34 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/reports", label: "Relatórios" },
-          " — Hub com o painel resumido e ligação ao fechamento mensal. O fechamento mensal mostra, por contrato e mês selecionado, referência da medição anterior, estado da medição da competência, valores aprovados quando aplicável, e contagens GLPI incluindo ordens represadas de meses anteriores."
+          " — Hub com o painel resumido e link para o fechamento mensal. O fechamento mensal mostra, por contrato e mês selecionado, referência da medição anterior, estado da medição da competência, valores aprovados quando aplicável, e contagens GLPI incluindo ordens represadas de meses anteriores."
         ]
       }
     ]
   },
   {
-    id: "utilizadores",
-    title: "Utilizadores",
+    id: "usuários",
+    title: "Usuários",
     blocks: [
       {
         kind: "p",
         parts: [
-          { href: "/users", label: "Utilizadores" },
-          " — Gestão de contas, papéis e senha inicial. Visível apenas para administradores."
+          { href: "/users", label: "Usuários" },
+          " — Gestão de contas, papéis, aprovação de cadastros e senha inicial. Visível apenas para administradores."
         ]
       },
       {
         kind: "ul",
         items: [
           "Ao criar uma conta ou redefinir a senha de um usuário pela administração, o sistema exige que a pessoa troque a senha no primeiro acesso antes de usar as demais telas.",
+          "Na tela de login, qualquer pessoa pode solicitar acesso informando e-mail e senha. Esse cadastro fica pendente até um administrador aprovar ou recusar na tela de Usuários.",
           "Ao criar uma conta, o sistema pode enviar um e-mail de boas-vindas com link para definição de senha, quando o envio por Resend estiver configurado. Se a senha for definida por esse link, a troca obrigatória é considerada concluída.",
           "Na tela de login, a opção «Esqueci a minha senha» envia um link de redefinição para o e-mail cadastrado. O link expira em 60 minutos."
         ]
       },
       {
         kind: "roles",
-        text: "Menu «Utilizadores» só é mostrado a administradores."
+        text: "Menu «Usuários» só é mostrado a administradores."
       }
     ]
   },
@@ -302,7 +303,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         parts: [
           "O texto desta página pretende descrever as funções do ponto de vista de quem utiliza o sistema no dia a dia. Última atualização do conteúdo: ",
           MANUAL_LAST_UPDATED,
-          ". Em caso de diferença entre o manual e o ecrã, o comportamento do sistema e as mensagens no próprio ecrã prevalecem."
+          ". Em caso de diferença entre o manual e a tela, o comportamento do sistema e as mensagens no própria tela prevalecem."
         ]
       }
     ]

@@ -21,7 +21,7 @@ export default async function ReportsPage(): Promise<JSX.Element> {
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Relatórios e exportações</h1>
         <p className="max-w-3xl text-sm text-slate-600">
-          Os mesmos indicadores e alertas do painel executivo, com acesso rápido a ficheiros CSV para arquivo ou auditoria
+          Os mesmos indicadores e alertas do painel executivo, com acesso rápido a arquivos CSV para arquivo ou auditoria
           externa.
         </p>
       </header>

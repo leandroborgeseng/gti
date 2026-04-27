@@ -321,14 +321,14 @@ export class UpdateContractDto {
   glpiGroups?: ContractGlpiGroupLinkDto[];
 }
 
-/** Corpo opcional ao gravar uma memória financeira do contrato (valores actuais antes de alterar). */
+/** Corpo opcional ao salvar uma memória financeira do contrato (valores atuais antes de alterar). */
 export class CreateContractFinancialSnapshotDto {
   @IsOptional()
   @IsString()
   note?: string;
 }
 
-/** Aditivo ou reajuste que altera valores e/ou fim de vigência do contrato (gravado e aplicado na BD). */
+/** Aditivo ou reajuste que altera valores e/ou fim de vigência do contrato (salvo e aplicado no banco de dados). */
 export class CreateContractAmendmentDto {
   @IsOptional()
   @IsString()

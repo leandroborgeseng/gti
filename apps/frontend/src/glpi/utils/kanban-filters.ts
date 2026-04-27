@@ -86,9 +86,9 @@ export type KanbanFilterInput = {
   groupFilter: string;
   onlyOpen: boolean;
   pendenciaParam: string;
-  /** Filtro exacto por e-mail do requerente (query `requesterEmail`). */
+  /** Filtro exato por e-mail do solicitante (query `requesterEmail`). */
   requesterEmail?: string;
-  /** Filtro exacto por nome do requerente (query `requesterName`). */
+  /** Filtro exato por nome do solicitante (query `requesterName`). */
   requesterName?: string;
   /** Vários grupos (contrato) em disjunção — query `groupInJson` (JSON array de strings; vazio = sem grupo). */
   groupInNames?: string[];

@@ -45,7 +45,7 @@ export const GOVERNANCE_RESOLVE_DEFAULTS: GovernanceResolveValues = {
 export const governanceExtendSchema = z.object({
   newDeadline: z.string().min(1, "Informe o novo prazo."),
   justification: z.string().min(1, "Informe a justificativa."),
-  createdBy: z.string().min(1, "Informe o utilizador responsável.")
+  createdBy: z.string().min(1, "Informe o usuário responsável.")
 });
 
 export type GovernanceExtendValues = z.infer<typeof governanceExtendSchema>;

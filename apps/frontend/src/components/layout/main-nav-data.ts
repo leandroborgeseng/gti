@@ -74,13 +74,13 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
   {
     id: "administracao",
     label: "Administração",
-    items: [{ href: "/users", label: "Utilizadores", icon: Users, adminOnly: true }]
+    items: [{ href: "/users", label: "Usuários", icon: Users, adminOnly: true }]
   }
 ];
 
 /**
- * Filtra entradas consoante o papel do utilizador.
- * `role === undefined` = ainda a carregar: mostra só entradas não exclusivas de admin.
+ * Filtra entradas conforme o papel do usuário.
+ * `role === undefined` = ainda carregando: mostra só entradas não exclusivas de admin.
  */
 export function filterMainNavByRole(
   items: MainNavItem[],

@@ -109,7 +109,7 @@ export function ManualView(): JSX.Element {
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ajuda</p>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Manual do sistema</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Descrição das áreas e fluxos para quem utiliza a aplicação. Conteúdo mantido em conjunto com o código: data de referência{" "}
+          Descrição das áreas e fluxos para quem utiliza a aplicativo. Conteúdo mantido em conjunto com o código: data de referência{" "}
           <time dateTime={MANUAL_LAST_UPDATED}>{MANUAL_LAST_UPDATED}</time>.
         </p>
       </header>

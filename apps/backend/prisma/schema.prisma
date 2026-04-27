@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client-js"
-  /// Relativo a este ficheiro (`apps/backend/prisma/`): raiz do monorepo → `node_modules/.prisma/client`.
+  /// Relativo a este arquivo (`apps/backend/prisma/`): raiz do monorepo → `node_modules/.prisma/client`.
   /// O `@prisma/client` hoisted na raiz (Docker / Railway) só funciona se o generate escrever aqui; caso contrário o Next falha em «Collecting page data».
   output   = "../../../node_modules/.prisma/client"
 }
@@ -122,11 +122,18 @@ enum UserRole {
   VIEWER
 }
 
+enum UserApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id                  String               @id @default(uuid())
   email               String               @unique
   passwordHash        String
   mustChangePassword  Boolean              @default(false)
+  approvalStatus      UserApprovalStatus   @default(APPROVED)
   role                UserRole             @default(EDITOR)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -177,7 +184,7 @@ model Contract {
   endDate          DateTime
   totalValue       Decimal            @db.Decimal(18, 2)
   monthlyValue     Decimal            @db.Decimal(18, 2)
-  /// Valor de implantação (único / projecto), separado da mensalidade.
+  /// Valor de implantação (único / projeto), separado da mensalidade.
   installationValue Decimal?          @db.Decimal(18, 2)
   /// Início do período em que predomina a cobrança/referência da implantação (data civil).
   implementationPeriodStart DateTime?
@@ -208,7 +215,7 @@ model Contract {
   @@index([deletedAt])
 }
 
-/// Registo pontual dos valores do contrato (ex.: antes de uma renovação), para comparar com os valores actuais.
+/// Registro pontual dos valores do contrato (ex.: antes de uma renovação), para comparar com os valores atuais.
 model ContractFinancialSnapshot {
   id                String   @id @default(uuid())
   contractId        String
@@ -235,7 +242,7 @@ model ContractGlpiGroup {
   @@index([glpiGroupId])
 }
 
-/// Registo de aditivo ou reajuste formal (valores e vigência); aplica alterações ao contrato na criação.
+/// Registro de aditivo ou reajuste formal (valores e vigência); aplica alterações ao contrato na criação.
 model ContractAmendment {
   id                   String   @id @default(uuid())
   contractId           String
@@ -528,7 +535,7 @@ model Ticket {
   requesterName      String?
   requesterEmail     String?
   requesterUserId    Int?
-  /// Técnico / utilizador atribuído no GLPI (`users_id_tech` + nome na equipa quando existir).
+  /// Técnico / usuário atribuído no GLPI (`users_id_tech` + nome na equipa quando existir).
   assignedUserId     Int?
   assignedUserName   String?
   /// cliente | empresa | na | unknown — inferido pelo histórico GLPI (cache).

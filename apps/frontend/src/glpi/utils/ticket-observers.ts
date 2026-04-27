@@ -77,7 +77,7 @@ function collectFromArray(arr: unknown, list: ObserverRow[], seen: Set<string>, 
 
 /**
  * Observadores do chamado (GLPI: _users_id_observer, lista team/actors com papel observer, etc.).
- * Não inclui o requerente (`excludeRequesterUserId`).
+ * Não inclui o solicitante (`excludeRequesterUserId`).
  */
 export function extractObserversFromTicketRaw(rawJson: unknown, excludeRequesterUserId: number | null): ObserverRow[] {
   const ticket = asRecord(rawJson);

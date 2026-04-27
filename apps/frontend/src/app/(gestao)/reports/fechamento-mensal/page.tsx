@@ -107,7 +107,7 @@ export default async function FechamentoMensalPage({
             type="submit"
             className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
           >
-            Actualizar
+            Atualizar
           </button>
         </form>
       </Card>

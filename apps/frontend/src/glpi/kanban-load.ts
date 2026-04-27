@@ -293,7 +293,7 @@ export type ChamadosOperationsSummary = {
   /** Nomes de `contractGroupName` dos 3 grupos com mais stock (`""` = sem grupo), para filtro «concentração». */
   concentrationTop3GroupNames: string[];
   oldestTickets: ChamadosOldestTicketRow[];
-  /** Aberturas por mês (fuso São Paulo), stock actual com os mesmos filtros. */
+  /** Aberturas por mês (fuso São Paulo), stock atual com os mesmos filtros. */
   openingsByMonth: ChamadosOpeningsByMonth[];
   /** Fechados no cache (mesmos filtros), por mês + acumulado no período. */
   closingsByMonth: ChamadosClosingsByMonth[];
@@ -702,7 +702,7 @@ async function buildChamadosOperationsSummary(
       .filter((r) => r.assignedUserId != null && r.assignedUserId > 0)
       .map((r) => [
         r.assignedUserId as number,
-        r.assignedUserName?.trim() || `Utilizador #${r.assignedUserId}`
+        r.assignedUserName?.trim() || `Usuário #${r.assignedUserId}`
       ])
   );
 
@@ -717,7 +717,7 @@ async function buildChamadosOperationsSummary(
           filterHrefPatch: { ...OPS_TABLE_LINK_PATCH, noAssignee: "1" }
         };
       }
-      const label = assigneeNameById.get(id) ?? `Utilizador #${id}`;
+      const label = assigneeNameById.get(id) ?? `Usuário #${id}`;
       return {
         label,
         count,
@@ -763,7 +763,7 @@ async function buildChamadosOperationsSummary(
       }
       return {
         assigneeId: k,
-        label: assigneeNameById.get(k) ?? `Utilizador #${k}`,
+        label: assigneeNameById.get(k) ?? `Usuário #${k}`,
         openCount,
         closedCount,
         totalCount,
@@ -928,7 +928,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     .filter((r): r is { assignedUserId: number; assignedUserName: string | null } => r.assignedUserId != null && r.assignedUserId > 0)
     .map((r) => ({
       id: r.assignedUserId,
-      label: r.assignedUserName?.trim() || `Utilizador #${r.assignedUserId}`
+      label: r.assignedUserName?.trim() || `Usuário #${r.assignedUserId}`
     }));
 
   const statuses = (statusRows as DistinctStatusRow[])
@@ -1007,7 +1007,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
       const daysOpen = openDaysApprox(ticket.dateCreation, now);
       const aid = ticket.assignedUserId;
       const assigneeLabel =
-        aid != null && aid > 0 ? ticket.assignedUserName?.trim() || `Utilizador #${aid}` : null;
+        aid != null && aid > 0 ? ticket.assignedUserName?.trim() || `Usuário #${aid}` : null;
       return {
         glpiTicketId: ticket.glpiTicketId,
         title: ticket.title,

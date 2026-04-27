@@ -21,7 +21,7 @@ sequenceDiagram
 
 ## Arranque do worker CLI
 
-O ficheiro `apps/frontend/scripts/glpi-worker-cli.ts` carrega primeiro `.env` na raiz e `apps/frontend/.env.local`, depois importa dinamicamente `bootstrapGlpiWorkerProcess` (sem guard de HMR).
+O arquivo `apps/frontend/scripts/glpi-worker-cli.ts` carrega primeiro `.env` na raiz e `apps/frontend/.env.local`, depois importa dinamicamente `bootstrapGlpiWorkerProcess` (sem guard de HMR).
 
 ## Concorrência
 
@@ -41,7 +41,7 @@ O ficheiro `apps/frontend/scripts/glpi-worker-cli.ts` carrega primeiro `.env` na
 | `GLPI_DOC_URL` | OpenAPI para descobrir caminhos |
 | `GLPI_TICKETS_PAGE_SIZE`, `GLPI_TICKETS_FETCH_CONCURRENCY` | Volume e paralelismo da sync |
 | `CRON_EXPRESSION` | Agenda do `node-cron` |
-| `GLPI_SKIP_BOOTSTRAP` | `1` durante `next build` para não contactar GLPI/BD |
+| `GLPI_SKIP_BOOTSTRAP` | `1` durante `next build` para não contactar GLPI/banco de dados |
 | `GLPI_CRON_DISABLED` | `1` desliga só o agendamento periódico (`node-cron`) |
 
 ## Referências externas (manter atualizadas)
@@ -51,4 +51,4 @@ O ficheiro `apps/frontend/scripts/glpi-worker-cli.ts` carrega primeiro `.env` na
 
 ## Observabilidade
 
-- Ao concluir com sucesso, `sync-cron` regista `durationMs`, `loaded`, `saved`, `failed` no log.
+- Ao concluir com sucesso, `sync-cron` registra `durationMs`, `loaded`, `saved`, `failed` no log.

@@ -40,7 +40,7 @@ type FormFieldProps = PropsWithChildren<{
   className?: string;
 }>;
 
-/** Label + erro + hint + controlo filho (uma célula de grelha). */
+/** Label + erro + hint + controlo filho (uma célula de grade). */
 export function FormField({ label, htmlFor, required, error, hint, className, children }: FormFieldProps): JSX.Element {
   return (
     <div className={className}>
@@ -69,7 +69,7 @@ export function PrimaryButton({
   type = "button",
   disabled,
   busy,
-  busyLabel = "A processar…",
+  busyLabel = "Processando…",
   children,
   onClick,
   className

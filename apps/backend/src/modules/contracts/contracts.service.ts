@@ -343,7 +343,7 @@ export class ContractsService {
   }
 
   /**
-   * Regista um aditivo/reajuste (histórico) e aplica imediatamente valor total, valor mensal e data de término no contrato.
+   * Registra um aditivo/reajuste (histórico) e aplica imediatamente valor total, valor mensal e data de término no contrato.
    */
   async createAmendment(contractId: string, dto: CreateContractAmendmentDto): Promise<unknown> {
     const prev = await this.prisma.contract.findFirst({
@@ -352,7 +352,7 @@ export class ContractsService {
     });
     if (!prev) throw new NotFoundException("Contrato não encontrado");
     if (prev.status !== ContractStatus.ACTIVE) {
-      throw new BadRequestException("Só é possível registar aditivos para contratos em estado «Ativo».");
+      throw new BadRequestException("Só é possível registrar aditivos para contratos em estado «Ativo».");
     }
 
     const newEnd = new Date(dto.newEndDate);
@@ -404,7 +404,7 @@ export class ContractsService {
   }
 
   /**
-   * Grava na memória os valores financeiros actuais do contrato (mensal, total, implantação),
+   * Grava na memória os valores financeiros atuais do contrato (mensal, total, implantação),
    * para comparar depois de uma renovação ou reajuste manual.
    */
   async createFinancialSnapshot(contractId: string, dto: CreateContractFinancialSnapshotDto): Promise<unknown> {
@@ -515,7 +515,7 @@ export class ContractsService {
       }
     }
 
-    // Transacção interactiva: o timeout por defeito do Prisma (~5 s) é curto para planilhas grandes;
+    // Transacção interactiva: o timeout por padrão do Prisma (~5 s) é curto para planilhas grandes;
     // ultrapassar fecha a transação e as operações seguintes falham com «Transaction not found».
     await this.prisma.$transaction(
       async (tx) => {

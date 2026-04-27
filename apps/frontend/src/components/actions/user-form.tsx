@@ -20,7 +20,7 @@ type Props = {
   submitLabel?: string;
 };
 
-export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador" }: Props): JSX.Element {
+export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" }: Props): JSX.Element {
   const qc = useQueryClient();
   const form = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserFormSchema),
@@ -35,14 +35,14 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador
         role: values.role
       }),
     onSuccess: (created) => {
-      toast.success("Utilizador criado. No primeiro acesso, será obrigado a trocar a senha.");
+      toast.success("Usuário criado. No primeiro acesso, será obrigado a trocar a senha.");
       void qc.invalidateQueries({ queryKey: queryKeys.users });
       form.reset({ email: "", password: "", role: "EDITOR" });
       onCreated?.(created);
       onSuccess?.();
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : "Erro ao criar utilizador");
+      toast.error(e instanceof Error ? e.message : "Erro ao criar usuário");
     }
   });
 
@@ -76,7 +76,7 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador
             name="password"
             render={({ field }) => (
               <FormItem className="sm:col-span-2">
-                <FormLabel>Palavra-passe inicial</FormLabel>
+                <FormLabel>Senha inicial</FormLabel>
                 <FormControl>
                   <Input type="password" autoComplete="new-password" {...field} />
                 </FormControl>
@@ -102,7 +102,7 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador
                     <SelectItem value="ADMIN">Administrador (ADMIN)</SelectItem>
                   </SelectContent>
                 </Select>
-                <FormDescription>Pode alterar mais tarde na edição do utilizador.</FormDescription>
+                <FormDescription>Pode alterar mais tarde na edição do usuário.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -110,7 +110,7 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar utilizador
         </FormSection>
 
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "A guardar…" : submitLabel}
+          {mutation.isPending ? "Salvando…" : submitLabel}
         </Button>
       </form>
     </Form>

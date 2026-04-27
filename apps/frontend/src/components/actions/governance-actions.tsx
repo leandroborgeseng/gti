@@ -213,7 +213,7 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
             )}
           />
           <Button type="submit" disabled={busy}>
-            {ackMut.isPending ? "A guardar…" : "Registrar ciência"}
+            {ackMut.isPending ? "Salvando…" : "Registrar ciência"}
           </Button>
         </form>
       </Form>
@@ -268,7 +268,7 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
             />
           </div>
           <Button type="submit" disabled={busy}>
-            {classifyMut.isPending ? "A guardar…" : "Classificar"}
+            {classifyMut.isPending ? "Salvando…" : "Classificar"}
           </Button>
         </form>
       </Form>
@@ -290,7 +290,7 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
             )}
           />
           <Button type="submit" variant="secondary" disabled={busy}>
-            {notifyMut.isPending ? "A guardar…" : "Registrar notificação"}
+            {notifyMut.isPending ? "Salvando…" : "Registrar notificação"}
           </Button>
         </form>
       </Form>
@@ -312,7 +312,7 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
             )}
           />
           <Button type="submit" disabled={busy}>
-            {resolveMut.isPending ? "A guardar…" : "Marcar como resolvido"}
+            {resolveMut.isPending ? "Salvando…" : "Marcar como resolvido"}
           </Button>
         </form>
       </Form>
@@ -351,16 +351,16 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
             name="createdBy"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Utilizador responsável</FormLabel>
+                <FormLabel>Usuário responsável</FormLabel>
                 <FormControl>
-                  <Input placeholder="Identificador do utilizador" {...field} />
+                  <Input placeholder="Identificador do usuário" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
           <Button type="submit" variant="outline" disabled={busy}>
-            {extendMut.isPending ? "A guardar…" : "Estender prazo"}
+            {extendMut.isPending ? "Salvando…" : "Estender prazo"}
           </Button>
         </form>
       </Form>
@@ -386,7 +386,7 @@ export function GovernanceDetailActions({ ticketId }: DetailProps): JSX.Element 
             name="controladoriaUserId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Utilizador da controladoria (opcional)</FormLabel>
+                <FormLabel>Usuário da controladoria (opcional)</FormLabel>
                 <FormControl>
                   <Input placeholder="Opcional" {...field} />
                 </FormControl>

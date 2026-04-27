@@ -1,4 +1,4 @@
-/** Utilitários para carregar dados da API Nest sem engolir erros (robustez / diagnóstico). */
+/** Utilitários parcarregando dados da API Nest sem engolir erros (robustez / diagnóstico). */
 
 export function formatLoadError(e: unknown): string {
   if (e instanceof Error && e.message.trim()) {

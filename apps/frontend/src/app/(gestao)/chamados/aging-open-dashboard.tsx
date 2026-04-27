@@ -58,7 +58,7 @@ function OpenAgePieSvg({ b }: { b: OpenAgeBuckets }): JSX.Element {
     const s = slices[fullIdx]!;
     const pctStr = `${formatAgingPercentOfTotal(s.n, total)}%`;
     return (
-      <svg className="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="100% numa unica faixa etaria">
+      <svg className="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="100% em uma única faixa etária">
         <circle cx="0" cy="0" r="1" fill={s.c}>
           <title>{agingPieSliceTitle(s.label, s.n, total)}</title>
         </circle>

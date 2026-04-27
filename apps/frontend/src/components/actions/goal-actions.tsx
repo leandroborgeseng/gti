@@ -101,7 +101,7 @@ export function GoalActions({ goalId }: Props): JSX.Element {
     <div className="space-y-6">
       <Form {...formAction}>
         <form className="space-y-4" onSubmit={formAction.handleSubmit((v) => createActionMut.mutate(v))}>
-          <FormSection title="Nova ação" description="Tarefas associadas à meta; responsável obrigatório (ID de utilizador).">
+          <FormSection title="Nova ação" description="Tarefas associadas à meta; responsável obrigatório (ID de usuário).">
             <FormField
               control={formAction.control}
               name="title"
@@ -170,7 +170,7 @@ export function GoalActions({ goalId }: Props): JSX.Element {
                 <FormItem className="sm:col-span-2">
                   <FormLabel>Responsável (ID)</FormLabel>
                   <FormControl>
-                    <Input placeholder="UUID do utilizador" autoComplete="off" {...field} />
+                    <Input placeholder="UUID do usuário" autoComplete="off" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -191,7 +191,7 @@ export function GoalActions({ goalId }: Props): JSX.Element {
             />
           </FormSection>
           <Button type="submit" disabled={crossBusy}>
-            {createActionMut.isPending ? "A guardar…" : "Adicionar ação"}
+            {createActionMut.isPending ? "Salvando…" : "Adicionar ação"}
           </Button>
         </form>
       </Form>
@@ -235,7 +235,7 @@ export function GoalActions({ goalId }: Props): JSX.Element {
             />
           </FormSection>
           <Button type="submit" disabled={crossBusy}>
-            {addLinkMut.isPending ? "A guardar…" : "Adicionar vínculo"}
+            {addLinkMut.isPending ? "Salvando…" : "Adicionar vínculo"}
           </Button>
         </form>
       </Form>
@@ -259,7 +259,7 @@ export function GoalActions({ goalId }: Props): JSX.Element {
             />
           </FormSection>
           <Button type="submit" variant="secondary" disabled={crossBusy}>
-            {manualProgressMut.isPending ? "A guardar…" : "Atualizar progresso"}
+            {manualProgressMut.isPending ? "Salvando…" : "Atualizar progresso"}
           </Button>
         </form>
       </Form>

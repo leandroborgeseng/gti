@@ -186,7 +186,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
       onSuccess?.();
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof Error ? e.message : "Erro ao guardar contrato");
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar contrato");
     }
   });
 
@@ -219,13 +219,13 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
       });
     },
     onSuccess: () => {
-      toast.success("Contrato actualizado.");
+      toast.success("Contrato atualizado.");
       void qc.invalidateQueries({ queryKey: queryKeys.contracts });
       void qc.invalidateQueries({ queryKey: queryKeys.glpiAssignedGroups });
       onSuccess?.();
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof Error ? e.message : "Erro ao actualizar contrato");
+      toast.error(e instanceof Error ? e.message : "Erro ao atualizar contrato");
     }
   });
 
@@ -340,7 +340,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   return (
     <Form {...form}>
       <form className="space-y-5" onSubmit={form.handleSubmit(onValidSubmit)}>
-        {listsLoading ? <p className="text-sm text-muted-foreground">A carregar fiscais e fornecedores…</p> : null}
+        {listsLoading ? <p className="text-sm text-muted-foreground">Carregando fiscais e fornecedores…</p> : null}
         {listsError ? <p className="text-sm text-destructive">{listsError}</p> : null}
 
         <FormSection title="Identificação do contrato" description="Número e nome como aparecem na gestão interna.">
@@ -414,7 +414,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                     <SelectItem value="LEI_14133">Lei 14.133/21</SelectItem>
                   </SelectContent>
                 </Select>
-                <FormDescription>Se vazio, o servidor usa a regra por omissão (14133).</FormDescription>
+                <FormDescription>Se vazio, o servidor usa a regra por padrão (14133).</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -439,7 +439,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
 
         <FormSection
           title="Fornecedor"
-          description="Vincule a um cadastro existente ou preencha manualmente. Novo fornecedor abre num modal sem sair desta página."
+          description="Vincule a um cadastro existente ou preencha manualmente. Novo fornecedor abre em um modal sem sair desta página."
         >
           <div className="sm:col-span-2">
             <Controller
@@ -464,7 +464,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                     setSupplierModalOpen(true);
                   }}
                   disabled={listsLoading}
-                  hint="Ao selecionar, a razão social e o CNPJ são preenchidos automaticamente (pode ajustar antes de guardar)."
+                  hint="Ao selecionar, a razão social e o CNPJ são preenchidos automaticamente (pode ajustar antes de salvar)."
                 />
               )}
             />
@@ -634,7 +634,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                 <FormControl>
                   <Input type="text" inputMode="decimal" placeholder="Opcional" {...field} />
                 </FormControl>
-                <FormDescription>Valor único de implantação ou projecto, separado da mensalidade.</FormDescription>
+                <FormDescription>Valor único de implantação ou projeto, separado da mensalidade.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -696,11 +696,11 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
           >
             {initialContract
               ? updateContractMut.isPending
-                ? "A guardar…"
-                : "Guardar alterações"
+                ? "Salvando…"
+                : "Salvar alterações"
               : createContractMut.isPending
-                ? "A guardar…"
-                : "Guardar contrato"}
+                ? "Salvando…"
+                : "Salvar contrato"}
           </Button>
         </div>
 
@@ -708,7 +708,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
           open={fiscalModalRole !== null}
           onClose={() => setFiscalModalRole(null)}
           title={fiscalModalRole === "manager" ? "Novo gestor (fiscal)" : "Novo fiscal"}
-          description="Os dados ficam guardados na lista de fiscais e são selecionados automaticamente neste contrato."
+          description="Os dados ficam salvos na lista de fiscais e são selecionados automaticamente neste contrato."
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
@@ -753,7 +753,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             {newFiscalErr ? <p className="sm:col-span-2 text-sm text-destructive">{newFiscalErr}</p> : null}
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Button type="button" disabled={createFiscalMut.isPending} onClick={() => submitNewFiscal()}>
-                {createFiscalMut.isPending ? "A guardar…" : "Guardar e selecionar"}
+                {createFiscalMut.isPending ? "Salvando…" : "Salvar e selecionar"}
               </Button>
               <Button type="button" variant="outline" onClick={() => setFiscalModalRole(null)}>
                 Cancelar
@@ -766,7 +766,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
           open={supplierModalOpen}
           onClose={() => setSupplierModalOpen(false)}
           title="Novo fornecedor"
-          description="Após guardar, o fornecedor passa a constar na lista e os campos do contrato são preenchidos."
+          description="Após salvar, o fornecedor passa a constar na lista e os campos do contrato são preenchidos."
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
@@ -798,7 +798,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             {newSupplierErr ? <p className="sm:col-span-2 text-sm text-destructive">{newSupplierErr}</p> : null}
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Button type="button" disabled={createSupplierMut.isPending} onClick={() => submitNewSupplier()}>
-                {createSupplierMut.isPending ? "A guardar…" : "Guardar e selecionar"}
+                {createSupplierMut.isPending ? "Salvando…" : "Salvar e selecionar"}
               </Button>
               <Button type="button" variant="outline" onClick={() => setSupplierModalOpen(false)}>
                 Cancelar

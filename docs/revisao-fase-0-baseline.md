@@ -17,7 +17,7 @@
 
 ## Definição de “pronto” (GLPI + cache)
 
-- Arranque do Next ou do worker autentica no GLPI (ou regista aviso) e corre a primeira sync sem derrubar o processo.
+- Arranque do Next ou do worker autentica no GLPI (ou registra aviso) e roda a primeira sync sem derrubar o processo.
 - Sync incremental respeita o cursor em `SyncState` e o âmbito `open` / `all`.
 - Kanban e modal leem sobretudo do PostgreSQL; chamadas ao GLPI em tempo real ficam em fluxos pontuais (detalhe, PATCH).
 - Logs estruturados com duração da sync concluída e contagens `loaded` / `saved` / `failed`.

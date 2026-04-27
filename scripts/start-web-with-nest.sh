@@ -14,7 +14,7 @@ if [ "${GTI_SKIP_NEST:-}" = "1" ]; then
 fi
 
 if [ -n "${BACKEND_API_BASE_URL:-}" ]; then
-  echo "[start-web] BACKEND_API_BASE_URL definido — Nest embutido não arranca."
+  echo "[start-web] BACKEND_API_BASE_URL definido — Nest embutido não inicia."
   cd apps/frontend && exec npm run start
 fi
 

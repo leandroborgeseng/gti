@@ -166,7 +166,7 @@ export function proxyGlpiAssetsInHtml(html: string): string {
   }
 }
 
-/** HTML seguro para pré-visualização (remove scripts; imagens via proxy no cliente). */
+/** HTML seguro para prévia (remove scripts; imagens via proxy no cliente). */
 export function sanitizeAndProxyTicketHtml(html: string): string {
   const clean = DOMPurify.sanitize(html || "", SANITIZE);
   return proxyGlpiAssetsInHtml(clean);

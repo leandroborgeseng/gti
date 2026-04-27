@@ -87,12 +87,12 @@ function canonicalHeader(cell: unknown): string | null {
   return HEADER_ALIASES[n.replace(/^col_/, "")] ?? null;
 }
 
-/** Gera o ficheiro .xlsx modelo (folhas Instrucoes + Dados). */
+/** Gera o arquivo .xlsx modelo (folhas Instrucoes + Dados). */
 export function buildContractStructureTemplateBuffer(_contractNumber: string): Buffer {
   const instr: string[][] = [
     ["Modelo — módulos e funcionalidades do contrato"],
     [""],
-    ["Preencha apenas a folha «Dados». Pode apagar as linhas de exemplo."],
+    ["Preencha apenas a aba «Dados». Pode apagar as linhas de exemplo."],
     [""],
     ["Colunas obrigatórias"],
     ["modulo_nome — nome do módulo (repetir o mesmo nome em várias linhas para várias funcionalidades no mesmo módulo)."],
@@ -112,7 +112,7 @@ export function buildContractStructureTemplateBuffer(_contractNumber: string): B
     [
       "Ao importar sem «substituir», o sistema acrescenta módulos novos e funcionalidades aos módulos já existentes (nome do módulo sem distinção de maiúsculas)."
     ],
-    ["Com «substituir», remove todos os módulos e funcionalidades actuais do contrato antes de importar."],
+    ["Com «substituir», remove todos os módulos e funcionalidades atuais do contrato antes de importar."],
     [""],
     ["No cadastro do contrato (página web) pode ainda definir as datas de início e fim do período de implantação e os valores de implantação e mensalidade — o sistema calcula os indicadores proporcionais por fase."]
   ];
@@ -162,7 +162,7 @@ export function parseContractStructureExcel(buffer: Buffer): ContractStructureIm
   const required = ["modulo_nome", "modulo_peso", "funcionalidade_nome", "funcionalidade_peso"] as const;
   for (const k of required) {
     if (col[k] === undefined) {
-      throw new Error(`Cabeçalho em falta: «${k}». Use o modelo descarregado na aplicação.`);
+      throw new Error(`Cabeçalho ausente: «${k}». Use o modelo baixado na aplicativo.`);
     }
   }
 
@@ -178,7 +178,7 @@ export function parseContractStructureExcel(buffer: Buffer): ContractStructureIm
     const mw = parseDecimalCell(r[col.modulo_peso]);
     const fw = parseDecimalCell(r[col.funcionalidade_peso]);
     if (!modName) {
-      errors.push(`Linha ${excelRow}: modulo_nome em falta.`);
+      errors.push(`Linha ${excelRow}: modulo_nome ausente.`);
       continue;
     }
     if (mw === null || mw < 0) {
@@ -186,7 +186,7 @@ export function parseContractStructureExcel(buffer: Buffer): ContractStructureIm
       continue;
     }
     if (!featName) {
-      errors.push(`Linha ${excelRow}: funcionalidade_nome em falta.`);
+      errors.push(`Linha ${excelRow}: funcionalidade_nome ausente.`);
       continue;
     }
     if (fw === null || fw < 0) {

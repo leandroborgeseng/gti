@@ -1,7 +1,7 @@
 /** Meta de soma de pesos (módulos do contrato ou funcionalidades por módulo). */
 export const CONTRACT_WEIGHT_SUM_TARGET = 1;
 
-/** Tolerância numérica (somas gravadas em `Decimal(8,4)`). */
+/** Tolerância numérica (somas salvas em `Decimal(8,4)`). */
 export const CONTRACT_WEIGHT_TOLERANCE = 0.002;
 
 export function parseContractWeight(input: string): number {
@@ -24,7 +24,7 @@ export function sumParsedWeights(weights: number[]): number {
   return weights.reduce((a, b) => a + b, 0);
 }
 
-/** Soma dos pesos das funcionalidades do módulo; `replace` simula o valor após gravar uma linha. */
+/** Soma dos pesos das funcionalidades do módulo; `replace` simula o valor após salvar uma linha. */
 export function projectModuleFeaturesSum(
   features: ReadonlyArray<{ id: string; weight: string | number }>,
   replace?: { id: string; weight: number }
@@ -38,7 +38,7 @@ export function projectModuleFeaturesSum(
   return s;
 }
 
-/** Soma dos pesos dos módulos; `replace` simula o valor de um módulo após gravar. */
+/** Soma dos pesos dos módulos; `replace` simula o valor de um módulo após salvar. */
 export function projectContractModulesSum(
   modules: ReadonlyArray<{ id: string; weight: string | number }>,
   replace?: { id: string; weight: number }

@@ -310,7 +310,7 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
                 <p className="aging-dash__lede">Métricas calculadas com base na lista atual (mesmos dados da tabela abaixo).</p>
                 <div className="aging-dash__panel mt-3">
                   <h3 className="aging-dash__panel-title">Distribuição por status</h3>
-                  <p className="aging-dash__panel-lede">Passe o rato sobre cada faixa para ver o rótulo e a contagem.</p>
+                  <p className="aging-dash__panel-lede">Passe o mouse sobre cada faixa para ver o rótulo e a contagem.</p>
                   <div className="aging-dash__status-track" role="img" aria-label="Distribuição por status na lista">
                     {statusBar.activePct > 0 ? (
                       <span
@@ -400,7 +400,7 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
                 <ContractDashMetricCard
                   tone="amendments"
                   value={dash.amendmentsSum}
-                  title="Aditivos registados"
+                  title="Aditivos registrados"
                   hint="Soma dos contadores na lista"
                   icon={<FileStack className="aging-card__svg" aria-hidden />}
                 />
@@ -439,7 +439,7 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
         title={editingContract ? `Editar contrato ${editingContract.number}` : "Novo contrato"}
         description={
           editingContract
-            ? "Altere os dados e clique em Guardar alterações. O número do contrato deve continuar único no sistema."
+            ? "Altere os dados e clique em Salvar alterações. O número do contrato deve continuar único no sistema."
             : "Preencha os campos obrigatórios. O contrato fica disponível na lista assim que for salvo."
         }
       >

@@ -5,7 +5,7 @@ export type RequestActor = { userId: string; email?: string; role: string };
 
 export const requestActorStore = new AsyncLocalStorage<RequestActor>();
 
-/** Identificador gravado em `AuditLog.userId` (UUID do utilizador). */
+/** Identificador salvo em `AuditLog.userId` (UUID do usuário). */
 export function getAuditActorId(): string {
   const id = requestActorStore.getStore()?.userId;
   if (!id || id === "anonymous") {

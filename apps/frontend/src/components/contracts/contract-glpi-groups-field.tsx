@@ -31,7 +31,7 @@ export function ContractGlpiGroupsField({ catalog, value, onChange, disabled }: 
     return (
       <p className="text-sm text-muted-foreground">
         Não foi possível obter grupos da API GLPI nem dos chamados em cache. Confirme as variáveis{" "}
-        <code className="rounded bg-muted px-1 text-xs">GLPI_*</code>, permissões do utilizador de serviço e se a API
+        <code className="rounded bg-muted px-1 text-xs">GLPI_*</code>, permissões do usuário de serviço e se a API
         expõe o recurso de grupos (ex.: <code className="rounded bg-muted px-1 text-xs">/v2/Group</code>).
       </p>
     );

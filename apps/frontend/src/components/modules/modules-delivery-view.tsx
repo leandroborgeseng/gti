@@ -124,9 +124,9 @@ type EditFeatureDraft = {
 
 export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props): JSX.Element {
   const qc = useQueryClient();
-  /** Contratos expandidos (ausente = colapsado). Por defeito todos fechados — expanda para ver módulos e ações. */
+  /** Contratos expandidos (ausente = colapsado). Por padrão todos fechados — expanda para ver módulos e ações. */
   const [openContractIds, setOpenContractIds] = useState<Set<string>>(() => new Set());
-  /** Módulos com corpo colapsado (chave ausente = expandido). Por defeito todos fechados. */
+  /** Módulos com corpo colapsado (chave ausente = expandido). Por padrão todos fechados. */
   const [collapsedModuleKeys, setCollapsedModuleKeys] = useState<Set<string>>(() =>
     buildAllModuleKeysFromRows(initialRows)
   );
@@ -338,9 +338,9 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Funcionalidades</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           Por contrato: <strong className="font-medium text-foreground">contratos</strong> e{" "}
-          <strong className="font-medium text-foreground">módulos</strong> em sanfona (por defeito fechados; contagem por estado de entrega no cabeçalho de cada módulo) e respetivas{" "}
+          <strong className="font-medium text-foreground">módulos</strong> em sanfona (fechados por padrão; contagem por estado de entrega no cabeçalho de cada módulo) e respectivas{" "}
           <strong className="font-medium text-foreground">funcionalidades</strong> (itens de entrega). Cada funcionalidade
-          regista se a entrega está <strong className="font-medium text-foreground">não feita</strong>,{" "}
+          registra se a entrega está <strong className="font-medium text-foreground">não feita</strong>,{" "}
           <strong className="font-medium text-foreground">parcial</strong> ou <strong className="font-medium text-foreground">concluída</strong>,
           para acompanhar se o contrato está a ser prestado. No indicador proporcional ao valor mensal, cada parcial conta como{" "}
           <strong className="font-medium text-foreground">0,5</strong> e cada concluída como <strong className="font-medium text-foreground">1</strong>.
@@ -576,8 +576,8 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                                       size="icon"
                                                       className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                                       disabled={rowBusy}
-                                                      title="Eliminar"
-                                                      aria-label={`Eliminar funcionalidade ${item.name}`}
+                                                      title="Excluir"
+                                                      aria-label={`Excluir funcionalidade ${item.name}`}
                                                       onClick={(e) => {
                                                         e.stopPropagation();
                                                         tryDeleteFeature(contract.id, mod, item);
@@ -710,7 +710,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                 Cancelar
               </Button>
               <Button type="button" disabled={saveFeatureMut.isPending} onClick={() => void submitEdit()}>
-                {saveFeatureMut.isPending ? "A guardar…" : "Guardar"}
+                {saveFeatureMut.isPending ? "Salvando…" : "Salvar"}
               </Button>
             </div>
           </div>

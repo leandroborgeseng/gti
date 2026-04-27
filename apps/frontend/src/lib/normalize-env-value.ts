@@ -1,5 +1,5 @@
 /**
- * Remove aspas envolventes que às vezes ficam guardadas no valor (copiar/colar ou UI).
+ * Remove aspas envolventes que às vezes ficam salvas no valor (copiar/colar ou UI).
  * Ex.: `"https://exemplo.gov.br/api.php"` → `https://exemplo.gov.br/api.php`
  */
 export function normalizeEnvValue(raw: string | undefined): string | undefined {

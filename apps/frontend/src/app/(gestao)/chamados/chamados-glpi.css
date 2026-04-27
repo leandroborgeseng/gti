@@ -297,8 +297,8 @@
 }
 
 /**
- * Chrome e outros mostram a camada `::backdrop` do fullscreen a preto por defeito;
- * o utilizador vê «buracos» ou todo o ecrã escuro se o elemento não cobrir o viewport.
+ * O Chrome e outros navegadores mostram a camada `::backdrop` do fullscreen preta por padrão;
+ * o usuário vê «buracos» ou toda a tela escura se o elemento não cobrir o viewport.
  */
 .chamados-glpi-page .kanban-fs-root:fullscreen::backdrop,
 .chamados-glpi-page .kanban-fs-root:-webkit-full-screen::backdrop {

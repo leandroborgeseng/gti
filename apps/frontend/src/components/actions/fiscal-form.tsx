@@ -81,7 +81,7 @@ export function FiscalForm({ onSuccess }: Props): JSX.Element {
           />
         </FormSection>
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "A guardar…" : "Cadastrar fiscal"}
+          {mutation.isPending ? "Salvando…" : "Cadastrar fiscal"}
         </Button>
       </form>
     </Form>

@@ -35,7 +35,7 @@ function jsonUtf8(body: unknown, status = 200): NextResponse {
 
 /**
  * Estado da integração GLPI (diagnóstico em produção / Railway).
- * Não expõe segredos; indica variáveis em falta e último estado do cron/sync.
+ * Não expõe segredos; indica variáveis ausente e último estado do cron/sync.
  */
 export async function GET(): Promise<NextResponse> {
   const readiness = glpiEnvironmentReadiness();
@@ -49,7 +49,7 @@ export async function GET(): Promise<NextResponse> {
       plataforma: diagnosticoPlataformaEnv(),
       processCwd: process.cwd(),
       hint:
-        "Veja `plataforma`: se `railway.*` vier tudo false, este contentor pode não ser um deploy Railway normal. Se `gtiEnvJsonDefinida` for false, a variável `GTI_ENV_JSON` não existe neste processo (crie-a neste serviço, aplique alterações e redeploy). Se for true mas `missingEnv` continuar, o JSON está inválido ou as chaves têm nomes errados. Variáveis soltas no painel também precisam estar neste mesmo serviço e aplicadas antes do redeploy."
+        "Veja `plataforma`: se `railway.*` vier tudo false, este contêiner pode não ser um deploy Railway normal. Se `gtiEnvJsonDefinida` for false, a variável `GTI_ENV_JSON` não existe neste processo (crie-a neste serviço, aplique alterações e redeploy). Se for true mas `missingEnv` continuar, o JSON está inválido ou as chaves têm nomes errados. Variáveis soltas no painel também precisam estar neste mesmo serviço e aplicadas antes do redeploy."
     });
   }
 
@@ -57,7 +57,7 @@ export async function GET(): Promise<NextResponse> {
     const mod = await import("@/glpi/sync-cron");
     /** Rede de segurança: em alguns ambientes o `instrumentation.register()` não corre; o mesmo bootstrap é deduplicado em `globalThis`. */
     void mod.bootstrapGlpiSyncInNext().catch((error) => {
-      console.error("[GTI] Garantia de arranque GLPI (após GET /api/glpi/status):", error);
+      console.error("[GTI] Garantia de inicialização GLPI (após GET /api/glpi/status):", error);
     });
     const checkpointVisivel = await waitForBootstrapCheckpointVisible(5000);
     const { syncStatus } = mod;
@@ -76,11 +76,11 @@ export async function GET(): Promise<NextResponse> {
     const avisos: string[] = [];
     if (process.env.GLPI_SKIP_BOOTSTRAP === "1") {
       avisos.push(
-        "GLPI_SKIP_BOOTSTRAP=1 neste processo: o instrumentation não arranca a sincronização (esperado no build; no runtime do serviço web remove esta variável ou use um worker com bootstrap ativo)."
+        "GLPI_SKIP_BOOTSTRAP=1 neste processo: o instrumentation não inicia a sincronização (esperado no build; no runtime do serviço web remove esta variável ou use um worker com bootstrap ativo)."
       );
     }
     if (dbRead.erroPrisma) {
-      avisos.push(`Falha ao ler SyncState na base: ${dbRead.erroPrisma}`);
+      avisos.push(`Falha ao ler SyncState no banco de dados: ${dbRead.erroPrisma}`);
     } else if (dbRead.parseInvalido) {
       avisos.push(
         "Existe valor em SyncState para a chave de estado GLPI, mas o JSON é inválido ou não contém `runs` numérico."
@@ -89,8 +89,8 @@ export async function GET(): Promise<NextResponse> {
       if (!arranqueGlpiUltimo) {
         avisos.push(
           checkpointVisivel
-            ? "Checkpoint de arranque não foi relido após espera — volte a chamar este URL ou veja Deploy Logs."
-            : "Após esperar até 5 s, ainda não há checkpoint em SyncState (`glpi_bootstrap_last_v1_next`). Possíveis causas: falha ao gravar na BD (Deploy Logs: «Não foi possível gravar o checkpoint de arranque GLPI»), `DATABASE_URL` errada neste processo, ou o bootstrap não arrancou (veja «register() executado» / «A agendar bootstrap GLPI»)."
+            ? "Checkpoint de inicialização não foi relido após espera — chame este URL novamente ou veja Deploy Logs."
+            : "Após esperar até 5 s, ainda não há checkpoint em SyncState (`glpi_bootstrap_last_v1_next`). Possíveis causas: falha ao salvar no banco de dados (Deploy Logs: «Não foi possível salvar o checkpoint de inicialização GLPI»), `DATABASE_URL` errada neste processo, ou o bootstrap não iniciou (veja «register() executado» / «Agendando bootstrap GLPI»)."
         );
       } else if (arranqueGlpiUltimo.phase === "instrumentation_pre_bootstrap") {
         avisos.push(
@@ -111,7 +111,7 @@ export async function GET(): Promise<NextResponse> {
         Date.now() - Date.parse(arranqueGlpiUltimo.at) > 35_000
       ) {
         avisos.push(
-          "Checkpoint «after_ensure_db» antigo: o arranque costumava ficar preso no download do OpenAPI (`GLPI_DOC_URL`). Com o limite de ~25s isso deve libertar; confirme que o contentor alcança o URL do doc (firewall, DNS, TLS) e que `GLPI_DOC_URL` está correto para a v2 do GLPI."
+          "Checkpoint «after_ensure_db» antigo: a inicialização costumava ficar preso no download do OpenAPI (`GLPI_DOC_URL`). Com o limite de ~25s isso deve libertar; confirme que o contêiner alcança o URL do doc (firewall, DNS, TLS) e que `GLPI_DOC_URL` está correto para a v2 do GLPI."
         );
       } else if (
         (arranqueGlpiUltimo.phase === "after_token" ||
@@ -125,11 +125,11 @@ export async function GET(): Promise<NextResponse> {
         );
       } else if (arranqueGlpiUltimo.phase === "bootstrap_done" && !dbRead.linhaComValor) {
         avisos.push(
-          "Arranque concluído (`bootstrap_done`) sem estado de sync na base — possível base nova ou `DATABASE_URL` diferente entre o arranque e este pedido, ou falhas repetidas ao persistir só a chave de estado da sync."
+          "Arranque concluído (`bootstrap_done`) sem estado de sync no banco de dados — possível base nova ou `DATABASE_URL` diferente entre o arranque e este pedido, ou falhas repetidas ao persistir só a chave de estado da sync."
         );
       } else {
         avisos.push(
-          `Último checkpoint de arranque: «${arranqueGlpiUltimo.phase}» em ${arranqueGlpiUltimo.at}. Ainda não há estado persistido da sincronização; confira Deploy Logs e conectividade com o GLPI.`
+          `Último checkpoint de inicialização: «${arranqueGlpiUltimo.phase}» em ${arranqueGlpiUltimo.at}. Ainda não há estado persistido da sincronização; confira Deploy Logs e conectividade com o GLPI.`
         );
       }
     }
@@ -160,12 +160,12 @@ export async function GET(): Promise<NextResponse> {
           Math.abs(tInicioSync - tBootstrapConcluido) < 120_000;
         if (!sincronizacaoDaMesmaVaga) {
           avisos.push(
-            `O checkpoint «${arranqueGlpiUltimo.phase}» (${arranqueGlpiUltimo.at}) é posterior ao último bootstrap concluído (${arranqueGlpiBootstrapConcluidoEm}) — típico de novo processo/redeploy ou de um novo arranque a disputar a mesma BD enquanto o estado da sync ainda reflete uma execução anterior (ex.: sync longa). Isto não indica, por si, várias réplicas do Next.`
+            `O checkpoint «${arranqueGlpiUltimo.phase}» (${arranqueGlpiUltimo.at}) é posterior ao último bootstrap concluído (${arranqueGlpiBootstrapConcluidoEm}) — típico de novo processo/redeploy ou de um nova inicialização a disputar a mesmo banco de dados enquanto o estado da sync ainda reflete uma execução anterior (ex.: sync longa). Isso não indica, por si, várias réplicas do Next.`
           );
         }
       } else if (!bootstrapConcluidoValido) {
         avisos.push(
-          "O checkpoint de arranque na BD é mais recente que o início da sync atual e ainda não há marcador de bootstrap concluído nesta base — pode haver mais do que uma réplica do Next a escrever na mesma base. Use 1 réplica ou GLPI_CRON_DISABLED=1 nas réplicas só HTTP e um worker de sync único."
+          "O checkpoint de inicialização no banco de dados é mais recente que o início da sync atual e ainda não há marcador de bootstrap concluído nesta base — pode haver mais do que uma réplica do Next a escrever na mesma base. Use 1 réplica ou GLPI_CRON_DISABLED=1 nas réplicas só HTTP e um worker de sync único."
         );
       }
     }

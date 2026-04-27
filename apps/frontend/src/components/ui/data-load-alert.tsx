@@ -37,8 +37,8 @@ export function DataLoadAlert({ messages, title = "Não foi possível carregar d
       {authHint ? (
         <p className="mt-3 text-xs leading-relaxed text-amber-900/80">
           Em primeiro lugar: <strong className="font-medium text-amber-950">sessão</strong>. Use <strong>Sair</strong> e volte a entrar em{" "}
-          <span className="font-mono text-[11px]">/login</span> com um utilizador válido. O mesmo{" "}
-          <span className="font-mono text-[11px]">JWT_SECRET</span> tem de estar definido no servidor onde corre o Next (ex. Railway).
+          <span className="font-mono text-[11px]">/login</span> com um usuário válido. O mesmo{" "}
+          <span className="font-mono text-[11px]">JWT_SECRET</span> deve estar definido no servidor onde roda o Next (ex. Railway).
         </p>
       ) : (
         <p className="mt-3 text-xs leading-relaxed text-amber-900/80">

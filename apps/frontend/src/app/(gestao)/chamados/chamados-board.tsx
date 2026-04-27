@@ -197,11 +197,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ columnOrder: next })
       });
-      if (!res.ok) throw new Error("Falha ao guardar ordem das colunas");
-      setToast("Ordem das colunas guardada.");
+      if (!res.ok) throw new Error("Falha ao salvar ordem das colunas");
+      setToast("Ordem das colunas salva.");
       setTimeout(() => setToast(null), 2500);
     } catch {
-      setToast("Não foi possível guardar a ordem das colunas.");
+      setToast("Não foi possível salvar a ordem das colunas.");
       setTimeout(() => setToast(null), 3500);
     } finally {
       setBusy(null);
@@ -322,12 +322,12 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scope })
       });
-      if (!res.ok) throw new Error("Falha ao guardar escopo");
-      setToast("Escopo de sincronização guardado.");
+      if (!res.ok) throw new Error("Falha ao salvar escopo");
+      setToast("Escopo de sincronização salvo.");
       setTimeout(() => setToast(null), 2500);
       router.refresh();
     } catch {
-      setToast("Não foi possível guardar o escopo.");
+      setToast("Não foi possível salvar o escopo.");
       setTimeout(() => setToast(null), 3500);
     } finally {
       setBusy(null);
@@ -629,7 +629,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                       ? String(initial.assignedUserId)
                       : ""
                 }
-                title="Filtra por técnico GLPI gravado no cache (users_id_tech)"
+                title="Filtra por técnico GLPI salvo no cache (users_id_tech)"
                 disabled={initial.noAssignee}
               >
                 <option value="">Todos</option>
@@ -637,7 +637,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                 initial.assignedUserId > 0 &&
                 !initial.assignedUsers.some((u) => u.id === initial.assignedUserId) ? (
                   <option value={String(initial.assignedUserId)}>
-                    Utilizador #{initial.assignedUserId}
+                    Usuário #{initial.assignedUserId}
                   </option>
                 ) : null}
                 {initial.assignedUsers.map((u) => (
@@ -720,7 +720,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                 disabled={Boolean(busy)}
                 onClick={() => void saveSyncScope(syncScopeDraft)}
               >
-                Guardar escopo
+                Salvar escopo
               </button>
               <button
                 type="button"
@@ -735,7 +735,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
             </div>
             {busy ? (
               <p className="filters-shell__sync-msg" role="status" aria-live="polite">
-                {busy === "colunas" ? "A guardar ordem das colunas…" : "A processar…"}
+                {busy === "colunas" ? "Salvando ordem das colunas…" : "Processando…"}
               </p>
             ) : null}
           </footer>
@@ -907,7 +907,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
             {detailErr ? <p className="modal-error" style={{ padding: "0 1.35rem", marginTop: "0.75rem" }}>{detailErr}</p> : null}
             {!detail && !detailErr ? (
               <p className="modal-hint" style={{ padding: "1.35rem" }}>
-                A carregar…
+                Carregando…
               </p>
             ) : null}
             {detail ? (
@@ -1002,7 +1002,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                           <summary>Editar descrição (editor rich text)</summary>
                           <p className="modal-hint modal-hint--tight">
                             O cartão acima mostra o HTML como no GLPI (imagens inline e ligações via proxy). Aqui altera o
-                            texto a gravar no GLPI.
+                            texto a salvar no GLPI.
                           </p>
                           <TicketRichEditor
                             value={editContent}
@@ -1050,7 +1050,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                             Cancelar
                           </button>
                           <button type="submit" id="ticket-edit-submit" disabled={Boolean(busy)}>
-                            Guardar alterações no GLPI
+                            Salvar alterações no GLPI
                           </button>
                         </div>
                       </>
@@ -1203,12 +1203,12 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                             href={`/governance/tickets/${detail.governance.id}` as Route}
                             className="glpi-governance-card__cta"
                           >
-                            Abrir registo de governança
+                            Abrir registro de governança
                           </Link>
                         </>
                       ) : (
                         <p className="glpi-aside-muted glpi-governance-card__empty">
-                          Sem registo com <span className="font-mono">ticketId</span> igual a{" "}
+                          Sem registro com <span className="font-mono">ticketId</span> igual a{" "}
                           <span className="font-mono">{detail.glpiTicketId}</span> ou{" "}
                           <span className="font-mono">#{detail.glpiTicketId}</span>. Cadastre em Governança se aplicável.
                         </p>
@@ -1218,11 +1218,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                     <h4 className="ticket-glpi-aside__subtitle">Atores</h4>
                     <div className="glpi-aside-actors">
                       <div className="glpi-aside-actors__row">
-                        <span className="glpi-aside-actors__label">Requerente</span>
+                        <span className="glpi-aside-actors__label">Solicitante</span>
                         <span className="glpi-chip glpi-chip--requester">{detail.requesterName || "—"}</span>
                       </div>
                       {detail.requesterUserId != null && detail.requesterUserId > 0 ? (
-                        <p className="glpi-aside-actors__hint">Utilizador #{detail.requesterUserId}</p>
+                        <p className="glpi-aside-actors__hint">Usuário #{detail.requesterUserId}</p>
                       ) : null}
                       <div className="glpi-aside-actors__row">
                         <span className="glpi-aside-actors__label">Observadores</span>

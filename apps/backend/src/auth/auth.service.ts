@@ -22,6 +22,12 @@ export class AuthService {
     if (!ok) {
       throw new UnauthorizedException("Credenciais inválidas");
     }
+    if (user.approvalStatus === "PENDING") {
+      throw new UnauthorizedException("Seu cadastro ainda está aguardando aprovação.");
+    }
+    if (user.approvalStatus === "REJECTED") {
+      throw new UnauthorizedException("Seu cadastro não foi aprovado. Entre em contato com a administração.");
+    }
     const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword };
     const access_token = await this.jwt.signAsync(payload);
     return {

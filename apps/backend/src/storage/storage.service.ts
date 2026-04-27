@@ -37,18 +37,18 @@ export class StorageService {
   assertMimeAllowed(mimeType: string): void {
     const m = mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
     if (!this.allowedMime.has(m)) {
-      throw new BadRequestException(`Tipo de ficheiro não permitido: ${mimeType}`);
+      throw new BadRequestException(`Tipo de arquivo não permitido: ${mimeType}`);
     }
   }
 
   assertSize(size: number): void {
     if (size > this.maxBytes) {
-      throw new BadRequestException(`Ficheiro excede o limite de ${Math.round(this.maxBytes / 1024 / 1024)} MB.`);
+      throw new BadRequestException(`Arquivo excede o limite de ${Math.round(this.maxBytes / 1024 / 1024)} MB.`);
     }
   }
 
   /**
-   * Grava o buffer no disco sob `measurements/<measurementId>/` e devolve caminhos para a BD.
+   * Grava o buffer no disco sob `measurements/<measurementId>/` e devolve caminhos para a banco de dados.
    */
   async saveMeasurementFile(
     measurementId: string,
@@ -107,7 +107,7 @@ export class StorageService {
     const abs = resolve(join(this.root, normalized));
     const rootResolved = resolve(this.root);
     if (!abs.startsWith(rootResolved)) {
-      throw new BadRequestException("Caminho de ficheiro inválido.");
+      throw new BadRequestException("Caminho de arquivo inválido.");
     }
     return abs;
   }

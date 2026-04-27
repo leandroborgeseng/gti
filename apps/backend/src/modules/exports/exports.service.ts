@@ -144,7 +144,7 @@ export class ExportsService {
       "valor_total_novo",
       "termino_anterior",
       "termino_novo",
-      "registado_em"
+      "registrado_em"
     ].join(",");
     const lines = rows.map((r) =>
       [

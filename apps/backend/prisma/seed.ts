@@ -16,9 +16,9 @@ async function main(): Promise<void> {
         role: UserRole.ADMIN
       }
     });
-    console.log(`Utilizador administrador criado: ${email}`);
+    console.log(`Usuário administrador criado: ${email}`);
   } else {
-    console.log(`Utilizador já existe (não alterado): ${email}`);
+    console.log(`Usuário já existe (não alterado): ${email}`);
   }
 }
 

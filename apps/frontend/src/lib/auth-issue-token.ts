@@ -31,7 +31,7 @@ export async function issueAuthToken(user: {
 
 /**
  * Autenticação local (PostgreSQL + bcrypt + JWT), sem serviço Nest.
- * O token é compatível com o `JwtStrategy` do backend (HS256, mesmo segredo por omissão).
+ * O token é compatível com o `JwtStrategy` do backend (HS256, mesmo segredo por padrão).
  */
 export async function loginWithDatabase(email: string, password: string): Promise<LoginSuccess> {
   const normalized = email.trim().toLowerCase();
@@ -42,6 +42,12 @@ export async function loginWithDatabase(email: string, password: string): Promis
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) {
     throw new Error("CREDENTIALS");
+  }
+  if (user.approvalStatus === "PENDING") {
+    throw new Error("PENDING_APPROVAL");
+  }
+  if (user.approvalStatus === "REJECTED") {
+    throw new Error("REJECTED_APPROVAL");
   }
   const { access_token, expires_in } = await issueAuthToken(user);
 

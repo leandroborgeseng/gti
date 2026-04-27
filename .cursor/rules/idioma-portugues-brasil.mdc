@@ -5,8 +5,8 @@ alwaysApply: true
 
 # Idioma: português do Brasil (pt-BR)
 
-- Escreva **toda a documentação de projeto** (`README.md`, `.env.example`, comentários em ficheiros de configuração, regras Cursor) em **português do Brasil**, com acentuação correta quando aplicável (configuração, sincronização, obrigatório, etc.).
-- **Prompts e instruções** guardados no repositório (regras, `AGENTS.md`, descrições) devem estar em **pt-BR**.
-- Para **código** (TypeScript): nomes de variáveis e funções podem permanecer em inglês técnico se for o padrão do repositório; **mensagens de erro e texto da interface** (`index.ts`, respostas HTTP ao utilizador) devem estar em **pt-BR**.
+- Escreva **toda a documentação de projeto** (`README.md`, `.env.example`, comentários em arquivos de configuração, regras Cursor) em **português do Brasil**, com acentuação correta quando aplicável (configuração, sincronização, obrigatório, etc.).
+- **Prompts e instruções** salvos no repositório (regras, `AGENTS.md`, descrições) devem estar em **pt-BR**.
+- Para **código** (TypeScript): nomes de variáveis e funções podem permanecer em inglês técnico se for o padrão do repositório; **mensagens de erro e texto da interface** (`index.ts`, respostas HTTP ao usuário) devem estar em **pt-BR**.
 - **Comentários JSDoc** em módulos públicos ou fluxos críticos: preferir **pt-BR**.
 - Evite misturar inglês desnecessário em frases orientadas a humanos (títulos, tooltips, parágrafos de ajuda).

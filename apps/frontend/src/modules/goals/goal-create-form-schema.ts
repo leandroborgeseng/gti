@@ -14,7 +14,7 @@ export const goalCreateFormSchema = z.object({
     }, "Ano inválido."),
   status: goalStatusSchema,
   priority: z.string().optional(),
-  responsibleId: z.string().min(1, "Selecione ou crie um utilizador responsável.")
+  responsibleId: z.string().min(1, "Selecione ou crie um usuário responsável.")
 });
 
 export type GoalCreateFormValues = z.infer<typeof goalCreateFormSchema>;

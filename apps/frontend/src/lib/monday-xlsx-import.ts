@@ -129,8 +129,8 @@ function isRowEffectivelyEmpty(row: unknown[]): boolean {
 }
 
 /**
- * Converte a grelha do Excel em registos com chaves = cabeçalhos Monday reais.
- * Ignora linhas introdutórias; detecta cabeçalhos intermédios (ex.: bloco Subitems);
+ * Converte a grade do Excel em registros com chaves = cabeçalhos Monday reais.
+ * Ignora linhas introdutórias; detecta cabeçalhos intermediários (ex.: bloco Subitems);
  * linhas só com título de grupo preenchem o campo virtual Grupo nas linhas seguintes.
  */
 function matrixToRecordsFrom(matrix: unknown[][], hdrIdx: number): Record<string, unknown>[] {
@@ -316,7 +316,7 @@ function groupsFromRecords(records: Record<string, unknown>[], defaultName: stri
 }
 
 /**
- * Lê um ficheiro Excel exportado do Monday.com (estrutura com colunas indicadas).
+ * Lê um arquivo Excel exportado do Monday.com (estrutura com colunas indicadas).
  * - Cada **folha** do livro vira um **grupo** (kanban).
  * - Se existir apenas uma folha e coluna **Grupo** / **Group**, agrupa linhas por esse valor.
  * - Suporta folhas com **linhas introdutórias** antes do cabeçalho real (Name, Status, …) e **linhas de grupo** (uma célula) injectadas como coluna Grupo.
@@ -361,7 +361,7 @@ export function buildMondayImportWarnings(payload: MondayImportPayload): string[
     warnings.push(`${emptyStatus} tarefa(s) sem status — considere preencher no Monday para o quadro ficar mais claro.`);
   }
   if (invalidDates > 0) {
-    warnings.push(`${invalidDates} valor(es) de data inválido(s); serão gravados como sem data se a importação os rejeitar.`);
+    warnings.push(`${invalidDates} valor(es) de data inválido(s); serão salvos como sem data se a importação os rejeitar.`);
   }
 
   let dupRoots = 0;

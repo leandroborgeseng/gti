@@ -146,7 +146,7 @@ function AssigneeWorkloadTable({
             tickets» e espere a sincronização de fechados.
           </span>
         ) : null}{" "}
-        Clique num técnico (com link) para abrir o quadro filtrado. Ordenação: mais abertos primeiro.
+        Clique em um técnico (com link) para abrir o quadro filtrado. Ordenação: mais abertos primeiro.
       </p>
       <div className="chamados-ops__table-wrap">
         <table className="chamados-ops__table chamados-ops__table--wide">
@@ -201,7 +201,7 @@ function TopRequestersTable({
   return (
     <div className="chamados-ops__block">
       <h3 className="chamados-ops__block-title">Top solicitantes (e-mail ou nome)</h3>
-      <p className="chamados-ops__table-hint">Clique numa linha para filtrar o Kanban por esse solicitante.</p>
+      <p className="chamados-ops__table-hint">Clique em uma linha para filtrar o Kanban por esse solicitante.</p>
       <div className="chamados-ops__table-wrap">
         <table className="chamados-ops__table">
           <thead>
@@ -328,9 +328,9 @@ function AberturasFechamentosChart({
       <h3 className="chamados-ops__block-title">Abertos e fechados ao longo do tempo</h3>
       {ticketSyncScope === "open" ? (
         <p className="chamados-ops__scope-hint">
-          O cache está em modo <strong>só abertos</strong>: não há tickets fechados guardados — as barras verdes e o
-          acumulado não refletem fechamentos reais. O predefinido da aplicação é <strong>todos os tickets</strong>; no
-          quadro, em Cache, escolha «Todos os tickets» e clique em <strong>Guardar escopo</strong>, depois deixe o sync
+          O cache está em modo <strong>só abertos</strong>: não há tickets fechados salvos — as barras verdes e o
+          acumulado não refletem fechamentos reais. O predefinido da aplicativo é <strong>todos os tickets</strong>; no
+          quadro, em Cache, escolha «Todos os tickets» e clique em <strong>Salvar escopo</strong>, depois deixe o sync
           correr.
         </p>
       ) : null}
@@ -637,25 +637,25 @@ export function ChamadosOperationsPanel({
                   title="Pendência inferida"
                   rows={summary.byWaitingParty}
                   kanbanHrefQuery={kanbanHrefQuery}
-                  hint="Clique numa linha para filtrar por pendência inferida (mantém os outros filtros)."
+                  hint="Clique em uma linha para filtrar por pendência inferida (mantém os outros filtros)."
                 />
                 <RankFilterTable
                   title="Por estado (status)"
                   rows={summary.byStatus}
                   kanbanHrefQuery={kanbanHrefQuery}
-                  hint="Clique numa linha para filtrar por estado GLPI exacto."
+                  hint="Clique em uma linha para filtrar por estado GLPI exato."
                 />
                 <RankFilterTable
                   title="Top grupos (contrato / GLPI)"
                   rows={summary.topGroups}
                   kanbanHrefQuery={kanbanHrefQuery}
-                  hint="Clique numa linha para filtrar por grupo (contrato) ou «sem grupo»."
+                  hint="Clique em uma linha para filtrar por grupo (contrato) ou «sem grupo»."
                 />
                 <RankFilterTable
                   title="Por técnico atribuído"
                   rows={summary.topAssignees}
                   kanbanHrefQuery={kanbanHrefQuery}
-                  hint="Chamados abertos (nestes filtros) por técnico GLPI no cache. Clique numa linha para filtrar o quadro. «Sem técnico» abre o filtro de só sem técnico (no cache)."
+                  hint="Chamados abertos (nestes filtros) por técnico GLPI no cache. Clique em uma linha para filtrar o quadro. «Sem técnico» abre o filtro de só sem técnico (no cache)."
                 />
               </div>
 

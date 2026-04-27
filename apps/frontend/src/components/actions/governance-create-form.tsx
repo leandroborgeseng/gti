@@ -130,7 +130,7 @@ export function GovernanceCreateForm({ onSuccess, contractOptions }: Props): JSX
         </FormSection>
 
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "A guardar…" : "Cadastrar chamado de governança"}
+          {mutation.isPending ? "Salvando…" : "Cadastrar chamado de governança"}
         </Button>
       </form>
     </Form>

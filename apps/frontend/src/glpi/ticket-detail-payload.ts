@@ -121,7 +121,7 @@ export async function buildTicketDetailPayload(glpiId: number): Promise<Record<s
     }
   });
 
-  /** Registo de governança na plataforma (opcional): `ticketId` no cadastro costuma ser o ID numérico GLPI. */
+  /** Registro de governança na plataforma (opcional): `ticketId` no cadastro costuma ser o ID numérico GLPI. */
   let governance: Record<string, unknown> | null = null;
   try {
     const gov = await prisma.ticketGovernance.findFirst({

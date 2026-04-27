@@ -149,7 +149,7 @@ export async function runSyncWithGuard(options: RunGlpiSyncOptions = {}): Promis
           create: { key: GLPI_INITIAL_FULL_SYNC_DONE_KEY, value: "1" }
         })
         .catch((err) => {
-          logger.warn({ error: toErrorLog(err) }, "Nao foi possivel gravar marcador de sync inicial completa");
+          logger.warn({ error: toErrorLog(err) }, "Nao foi possivel salvar marcador de sync inicial completa");
         });
       if (!already) {
         logger.info(
@@ -198,7 +198,7 @@ async function resolveMainCronPersistFilter(): Promise<SyncTicketsPersistFilter>
   return "inherit";
 }
 
-/** Passagem só de fechados (agendada 1x/dia por defeito quando o escopo é «todos os tickets»). */
+/** Passagem só de fechados (agendada 1x/dia por padrão quando o escopo é «todos os tickets»). */
 export async function runClosedTicketsDailySync(): Promise<void> {
   const scope = await getTicketSyncScope();
   if (scope !== "all") {
@@ -269,7 +269,7 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
   await ensureSqliteSchema().catch((error) => {
     logger.error(
       { error: toErrorLog(error) },
-      "Arranque GLPI: ligação à base de dados falhou; a primeira sync pode falhar até DATABASE_URL estar correta. O cron continua a ser agendado."
+      "Arranque GLPI: ligação à banco de dados falhou; a primeira sync pode falhar até DATABASE_URL estar correta. O cron continua a ser agendado."
     );
   });
   await recordGlpiBootstrapCheckpoint("after_ensure_db");
@@ -284,7 +284,7 @@ export async function bootstrapGlpiSync(options: BootstrapGlpiSyncOptions = {}):
   await recordGlpiBootstrapCheckpoint("after_token");
   await recordGlpiBootstrapCheckpoint("before_run_sync");
   /**
-   * No Next.js, aguardar a primeira sync completa bloqueava o fim do bootstrap (muitos tickets / GLPI lento)
+   * No Next.js, asalvar a primeira sync completa bloqueava o fim do bootstrap (muitos tickets / GLPI lento)
    * e atrasava `bootstrap_done`, cron e gravações em SyncState. No worker (`enableHmrGuard: false`)
    * mantemos await para o processo CLI refletir erros logo na consola.
    */
@@ -317,7 +317,7 @@ type GlpiBootstrapGlobal = typeof globalThis & {
 
 /**
  * Arranque GLPI no Next.js, **deduplicado** em `globalThis`.
- * Em alguns deploys o `instrumentation.register()` não corre ou corre antes da BD estar pronta;
+ * Em alguns deploys o `instrumentation.register()` não roda ou roda antes da banco de dados estar pronta;
  * o primeiro `GET /api/glpi/status` chama a mesma função como rede de segurança.
  */
 export function bootstrapGlpiSyncInNext(): Promise<void> {

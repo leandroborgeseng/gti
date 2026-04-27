@@ -60,7 +60,7 @@ export function GlosaForm({ onSuccess, measurementOptions }: Props): JSX.Element
       onSuccess?.();
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : "Erro ao guardar glosa");
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar glosa");
     }
   });
 
@@ -133,7 +133,7 @@ export function GlosaForm({ onSuccess, measurementOptions }: Props): JSX.Element
           />
         </FormSection>
 
-        <FormSection title="Valor e justificativa" description="O valor deve ser coerente com a medição. Quem regista pode ser indicado abaixo.">
+        <FormSection title="Valor e justificativa" description="O valor deve ser coerente com a medição. Quem registra pode ser indicado abaixo.">
           <FormField
             control={form.control}
             name="value"
@@ -152,7 +152,7 @@ export function GlosaForm({ onSuccess, measurementOptions }: Props): JSX.Element
             name="createdBy"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Responsável pelo registo (opcional)</FormLabel>
+                <FormLabel>Responsável pelo registro (opcional)</FormLabel>
                 <FormControl>
                   <Input placeholder="Identificador ou nome" {...field} />
                 </FormControl>
@@ -176,7 +176,7 @@ export function GlosaForm({ onSuccess, measurementOptions }: Props): JSX.Element
         </FormSection>
 
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "A guardar…" : "Guardar glosa"}
+          {mutation.isPending ? "Salvando…" : "Salvar glosa"}
         </Button>
       </form>
     </Form>

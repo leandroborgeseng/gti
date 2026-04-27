@@ -127,6 +127,12 @@ export class ProjectsController {
     return this.service.updateTask(projectId, taskId, dto);
   }
 
+  @Delete(":id/tasks/:taskId")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  deleteTask(@Param("id") projectId: string, @Param("taskId") taskId: string): Promise<unknown> {
+    return this.service.deleteTask(projectId, taskId);
+  }
+
   @Post(":id/tasks/:taskId/attachments")
   @Roles(UserRole.ADMIN, UserRole.EDITOR)
   @UseInterceptors(

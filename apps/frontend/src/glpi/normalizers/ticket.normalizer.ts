@@ -51,7 +51,7 @@ function toNullableString(value: unknown): string | null {
 
 /**
  * Papel de ator em chamados GLPI: na UI costuma ser string, na API / serialização
- * muitas vezes vem **número** (1 requerente, 2 atribuído, 3 observador — CommonITILActor).
+ * muitas vezes vem **número** (1 solicitante, 2 atribuído, 3 observador — CommonITILActor).
  * Sem isto, `role === 2` falha e ignoramos o técnico com grupo + user na `team`.
  */
 function itilActorRoleKey(raw: unknown): "requester" | "assigned" | "observer" | "other" {
@@ -65,7 +65,7 @@ function itilActorRoleKey(raw: unknown): "requester" | "assigned" | "observer" |
     return "observer";
   }
   const s = (typeof raw === "string" ? raw : String(raw ?? "")).toLowerCase();
-  if (s.includes("requisi") || s.includes("requester") || s.includes("requerente") || s.includes("recipient")) {
+  if (s.includes("requisi") || s.includes("requester") || s.includes("solicitante") || s.includes("recipient")) {
     return "requester";
   }
   if (
@@ -141,7 +141,7 @@ function isSupplierTeamEntry(o: JsonObject): boolean {
 }
 
 /**
- * Técnico (utilizador) do chamado. O GLPI permite **grupo técnico** + **utilizador** e várias entradas na
+ * Técnico (usuário) do chamado. O GLPI permite **grupo técnico** + **usuário** e várias entradas na
  * `team` / `actors`. Grupos e fornecedores na lista são ignorados para o ID (só procuramos User).
  * Se `users_id_tech` existir, **não** é substituído por outro id encontrado na equipa — só procuramos o nome.
  */
@@ -221,7 +221,7 @@ function extractAssignedUser(ticket: JsonObject): { id: number | null; name: str
     techId = first.id;
   }
   const again = pickAssignedUserFromMemberList(members, techId);
-  const fallback = techId ? `Utilizador #${techId}` : null;
+  const fallback = techId ? `Usuário #${techId}` : null;
   return { id: techId, name: again.name ?? first.name ?? fallback };
 }
 

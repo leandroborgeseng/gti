@@ -32,7 +32,7 @@ interface SyncTicketsOptions {
   pageSize?: number;
   /** Páginas GLPI a buscar em paralelo (prefetch). */
   fetchConcurrency?: number;
-  /** Tickets por página a persistir em paralelo na BD (sobrepor env). */
+  /** Tickets por página a persistir em paralelo no banco de dados (sobrepor env). */
   persistConcurrency?: number;
   onProgress?: (progress: SyncProgress) => void;
   persistFilter?: SyncTicketsPersistFilter;
@@ -91,7 +91,7 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
   const cursorState = await prisma.syncState.findUnique({ where: { key: "last_sync_date_mod" } });
   const previousCursor = cursorState?.value || null;
 
-  /** Total de tickets no GLPI (última resposta ou `glpi_ticket_total` na BD) — evita parar na 1.ª página se `limit < pageSize`. */
+  /** Total de tickets no GLPI (última resposta ou `glpi_ticket_total` no banco de dados) — evita parar na primeira página se `limit < pageSize`. */
   const totalHintRow = await prisma.syncState.findUnique({ where: { key: "glpi_ticket_total" } });
   let lastRemoteTotal: number | undefined;
   if (totalHintRow?.value) {
@@ -112,7 +112,7 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
 
   logger.info(
     { pageSize, fetchConcurrency, persistConcurrency },
-    "Sincronizacao GLPI: tamanho de pagina, prefetch GLPI e persistencia na BD"
+    "Sincronizacao GLPI: tamanho de pagina, prefetch GLPI e persistencia no banco de dados"
   );
 
   const deleteAllClosedAtStart = persistFilter === "inherit" && syncScope === "open";
@@ -278,7 +278,7 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
         remoteTotal: lastRemoteTotal,
         /** Espera pela Promise da página (HTTP GLPI já disparada pelo prefetch). */
         fetchMs: roundMs(fetchMs),
-        /** Normalização + cache de requerentes. */
+        /** Normalização + cache de solicitantes. */
         prepMs: roundMs(prepMs),
         /** Upsert do total de tickets em `SyncState`. */
         dbStateMs: roundMs(dbStateMs),
@@ -387,7 +387,7 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
           ? roundMs((totalFetchMs + totalPrepMs + totalDbStateMs + totalDeleteClosedMs + totalPersistMs) / loadedCount)
           : 0
     },
-    "Sincronizacao de tickets concluida (metricas: fetch=GLPI/rede; persist e demais=BD)"
+    "Sincronizacao de tickets concluida (metricas: fetch=GLPI/rede; persist e demais=banco de dados)"
   );
   return result;
 }

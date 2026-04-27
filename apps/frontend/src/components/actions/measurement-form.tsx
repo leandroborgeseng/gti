@@ -158,7 +158,7 @@ export function MeasurementForm({ onSuccess, contractOptions, defaultContractId 
         </FormSection>
 
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "A guardar…" : "Cadastrar medição"}
+          {mutation.isPending ? "Salvando…" : "Cadastrar medição"}
         </Button>
       </form>
     </Form>

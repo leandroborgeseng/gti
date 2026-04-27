@@ -79,10 +79,10 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
         newMonthlyValue,
         newEndDate
       });
-      setOk("Aditivo registado e valores do contrato atualizados.");
+      setOk("Aditivo registrado e valores do contrato atualizados.");
       router.refresh();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Não foi possível registar o aditivo.");
+      setErr(e instanceof Error ? e.message : "Não foi possível registrar o aditivo.");
     } finally {
       setBusy(false);
     }
@@ -92,17 +92,17 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
     <Card className="p-5">
       <h2 className="text-lg font-semibold text-slate-900">Aditivos e reajustes</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Registo formal de alteração de <strong className="font-medium text-slate-800">valor total</strong>,{" "}
+        Registro formal de alteração de <strong className="font-medium text-slate-800">valor total</strong>,{" "}
         <strong className="font-medium text-slate-800">valor mensal</strong> e{" "}
         <strong className="font-medium text-slate-800">data de término</strong>. Os novos valores passam a vigorar de imediato no
         contrato.
       </p>
 
       {role === undefined ? (
-        <p className="mt-4 text-sm text-slate-500">A carregar permissões…</p>
+        <p className="mt-4 text-sm text-slate-500">Carregando permissões…</p>
       ) : canEdit && !contractActive ? (
         <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          Só é possível registar novos aditivos com o contrato em estado <strong className="font-medium">Ativo</strong>. Altere o
+          Só é possível registrar novos aditivos com o contrato em estado <strong className="font-medium">Ativo</strong>. Altere o
           estado do contrato antes de continuar, se aplicável.
         </p>
       ) : canEdit ? (
@@ -142,7 +142,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
               />
             </FormField>
           </FormSection>
-          <FormSection title="Novos valores e descrição" description="Após gravar, o contrato passa a refletir estes valores de imediato.">
+          <FormSection title="Novos valores e descrição" description="Após salvar, o contrato passa a refletir estes valores de imediato.">
             <FormField label="Novo valor total (R$)" htmlFor="amend-total" required>
               <input
                 id="amend-total"
@@ -178,8 +178,8 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
               />
             </FormField>
           </FormSection>
-          <PrimaryButton type="submit" busy={busy} busyLabel="A gravar…">
-            Registar aditivo e aplicar
+          <PrimaryButton type="submit" busy={busy} busyLabel="Salvando…">
+            Registrar aditivo e aplicar
           </PrimaryButton>
         </form>
       ) : (
@@ -198,7 +198,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
       ) : null}
 
       {list.length === 0 ? (
-        <p className="mt-6 text-sm text-slate-500">Ainda não existem aditivos registados para este contrato.</p>
+        <p className="mt-6 text-sm text-slate-500">Ainda não existem aditivos registrados para este contrato.</p>
       ) : (
         <ul className="mt-6 divide-y divide-slate-100 rounded-md border border-slate-200">
           {list.map((a) => (
@@ -213,7 +213,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
                 {formatBrl(a.newTotalValue)}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                Término: {formatDatePt(a.previousEndDate)} → {formatDatePt(a.newEndDate)} · Registo em {formatDatePt(a.createdAt)}
+                Término: {formatDatePt(a.previousEndDate)} → {formatDatePt(a.newEndDate)} · Registro em {formatDatePt(a.createdAt)}
               </p>
             </li>
           ))}

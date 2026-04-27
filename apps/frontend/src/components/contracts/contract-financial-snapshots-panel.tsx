@@ -32,12 +32,12 @@ export function ContractFinancialSnapshotsPanel({ contractId, snapshots, current
   const mut = useMutation({
     mutationFn: () => createContractFinancialSnapshot(contractId, note.trim() ? { note: note.trim() } : {}),
     onSuccess: () => {
-      toast.success("Memória financeira registada com os valores vigentes neste momento.");
+      toast.success("Memória financeira registrada com os valores vigentes neste momento.");
       setNote("");
       router.refresh();
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof Error ? e.message : "Erro ao registar memória");
+      toast.error(e instanceof Error ? e.message : "Erro ao registrar memória");
     }
   });
 
@@ -46,14 +46,14 @@ export function ContractFinancialSnapshotsPanel({ contractId, snapshots, current
       <div>
         <h2 className="text-sm font-semibold text-slate-900">Histórico financeiro (renovação)</h2>
         <p className="mt-1 text-xs text-slate-600">
-          Use «Registar memória» <strong>antes</strong> de alterar valores no cadastro ou por aditivo, para guardar o
-          estado actual (mensalidade, total e implantação). Depois pode comparar com os valores novos.
+          Use «Registrar memória» <strong>antes</strong> de alterar valores no cadastro ou por aditivo, para salvar o
+          estado atual (mensalidade, total e implantação). Depois pode comparar com os valores novos.
         </p>
       </div>
 
       {deltaMv !== null && latest ? (
         <p className="rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-950">
-          <span className="font-medium">Última memória → valores actuais (mensalidade):</span>{" "}
+          <span className="font-medium">Última memória → valores atuais (mensalidade):</span>{" "}
           {formatBrl(latest.monthlyValue)} → {formatBrl(currentMonthly)}
           <span className="whitespace-nowrap">
             {" "}
@@ -79,12 +79,12 @@ export function ContractFinancialSnapshotsPanel({ contractId, snapshots, current
           />
         </div>
         <Button type="button" disabled={mut.isPending} onClick={() => mut.mutate()}>
-          {mut.isPending ? "A registar…" : "Registar memória"}
+          {mut.isPending ? "Registrando…" : "Registrar memória"}
         </Button>
       </div>
 
       {list.length === 0 ? (
-        <p className="text-xs text-slate-500">Ainda não há registos de memória financeira para este contrato.</p>
+        <p className="text-xs text-slate-500">Ainda não há registros de memória financeira para este contrato.</p>
       ) : (
         <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
           <table className="w-full min-w-[520px] border-collapse text-left text-xs">

@@ -57,7 +57,7 @@ function ResetarSenhaForm(): JSX.Element {
   if (done) {
     return (
       <div className="space-y-4 text-sm text-muted-foreground">
-        <p>A sua senha foi redefinida. Já pode iniciar sessão com a nova senha.</p>
+        <p>A sua senha foi redefinida. Agora você pode fazer login com a nova senha.</p>
         <Button asChild className="w-full">
           <Link href="/login">Ir para o login</Link>
         </Button>
@@ -88,7 +88,7 @@ function ResetarSenhaForm(): JSX.Element {
         required
       />
       <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "A guardar…" : "Redefinir senha"}
+        {isSubmitting ? "Salvando…" : "Redefinir senha"}
       </Button>
     </form>
   );
@@ -103,7 +103,7 @@ export default function ResetarSenhaPage(): JSX.Element {
           <CardDescription>Escolha uma senha com pelo menos 8 caracteres.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Suspense fallback={<p className="text-sm text-muted-foreground">A carregar…</p>}>
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando…</p>}>
             <ResetarSenhaForm />
           </Suspense>
         </CardContent>

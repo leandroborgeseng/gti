@@ -6,7 +6,7 @@ export const revalidate = 0;
 
 export default function ProjetosTarefasPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">A carregar filtros…</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Carregando filtros…</div>}>
       <AllProjectTasksView />
     </Suspense>
   );

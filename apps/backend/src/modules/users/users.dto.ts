@@ -1,4 +1,4 @@
-import { UserRole } from "@prisma/client";
+import { UserApprovalStatus, UserRole } from "@prisma/client";
 import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
 
 export class CreateUserDto {
@@ -7,7 +7,7 @@ export class CreateUserDto {
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(8, { message: "A palavra-passe deve ter pelo menos 8 caracteres" })
+  @MinLength(8, { message: "A senha deve ter pelo menos 8 caracteres" })
   password!: string;
 
   @IsOptional()
@@ -21,7 +21,11 @@ export class UpdateUserDto {
   role?: UserRole;
 
   @IsOptional()
+  @IsEnum(UserApprovalStatus, { message: "Status de aprovação inválido" })
+  approvalStatus?: UserApprovalStatus;
+
+  @IsOptional()
   @IsString()
-  @MinLength(8, { message: "A palavra-passe deve ter pelo menos 8 caracteres" })
+  @MinLength(8, { message: "A senha deve ter pelo menos 8 caracteres" })
   password?: string;
 }

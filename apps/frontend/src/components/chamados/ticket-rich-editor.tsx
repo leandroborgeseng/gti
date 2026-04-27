@@ -7,7 +7,7 @@ const ReactQuill = dynamic(async () => (await import("react-quill")).default, {
   ssr: false,
   loading: () => (
     <div className="ticket-quill-editor ticket-quill-editor--loading" aria-busy>
-      A carregar editor…
+      Carregando editor…
     </div>
   )
 });

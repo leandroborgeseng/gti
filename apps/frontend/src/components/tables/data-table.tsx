@@ -50,7 +50,7 @@ export function DataTable<TData>({
   data,
   searchPlaceholder = "Pesquisar…",
   className,
-  emptyLabel = "Nenhum registo encontrado.",
+  emptyLabel = "Nenhum registro encontrado.",
   pageSizeOptions = [10, 25, 50]
 }: DataTableProps<TData>): JSX.Element {
   const [sorting, setSorting] = useState<SortingState>([]);

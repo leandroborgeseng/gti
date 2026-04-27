@@ -84,7 +84,7 @@ export function MondayImportWizard({ open, onClose, onImported }: Props): JSX.El
     if (!payload) return;
     const nTasks = countMondayImportRootTasks(payload);
     if (nTasks === 0) {
-      setStatus("Não há tarefas na pré-visualização. Escolha outro ficheiro ou confirme que o Excel tem a linha de cabeçalho (Name, Status, …).");
+      setStatus("Não há tarefas na prévia. Escolha outro arquivo ou confirme que o Excel tem a linha de cabeçalho (Name, Status, …).");
       return;
     }
     const name = projectTitle.trim() || payload.name;
@@ -107,12 +107,12 @@ export function MondayImportWizard({ open, onClose, onImported }: Props): JSX.El
       open={open}
       onClose={handleClose}
       title="Importar Excel (Monday.com)"
-      description="Cada folha do ficheiro vira um grupo (quadro kanban). Colunas: Name, Status, Pessoa, Data, Observação, Subelementos, Subelementos Status, Números, Resp. PMF."
+      description="Cada folha do arquivo vira um grupo (quadro kanban). Colunas: Name, Status, Pessoa, Data, Observação, Subelementos, Subelementos Status, Números, Resp. PMF."
     >
       <div className="space-y-4">
         {step === "pick" ? (
           <>
-            <FormField label="Ficheiro .xlsx" htmlFor="monday-file">
+            <FormField label="Arquivo .xlsx" htmlFor="monday-file">
               <input
                 id="monday-file"
                 type="file"
@@ -131,7 +131,7 @@ export function MondayImportWizard({ open, onClose, onImported }: Props): JSX.El
                 value={projectTitle}
                 onChange={(e) => setProjectTitle(e.target.value)}
                 className={formControlClass}
-                placeholder="Por omissão: nome do ficheiro sem extensão"
+                placeholder="Por padrão: nome do arquivo sem extensão"
               />
             </FormField>
             {importWarnings.length > 0 ? (
@@ -145,9 +145,9 @@ export function MondayImportWizard({ open, onClose, onImported }: Props): JSX.El
               </div>
             ) : null}
             <div className="max-h-[50vh] overflow-y-auto rounded-md border border-slate-200 bg-slate-50/80 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pré-visualização</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prévia</p>
               <p className="mt-1 text-xs text-slate-600">
-                Ficheiro: <span className="font-medium text-slate-800">{fileName}</span>
+                Arquivo: <span className="font-medium text-slate-800">{fileName}</span>
                 {payload ? (
                   <>
                     {" "}
@@ -176,7 +176,7 @@ export function MondayImportWizard({ open, onClose, onImported }: Props): JSX.El
             {status ? <p className="text-sm text-slate-700">{status}</p> : null}
             <div className="flex flex-wrap gap-2">
               <SecondaryButton type="button" onClick={() => setStep("pick")}>
-                Escolher outro ficheiro
+                Escolher outro arquivo
               </SecondaryButton>
               <PrimaryButton type="button" busy={busy} onClick={() => void confirmImport()}>
                 Confirmar importação

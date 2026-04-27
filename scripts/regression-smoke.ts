@@ -26,7 +26,7 @@ const publicChecks: Check[] = [
 /**
  * API Nest (JWT obrigatório).
  * Nota: exportações CSV (contratos, medições, glosas, aditivos) e mutações (ex.: PATCH de linha de medição)
- * exigem papel EDITOR ou ADMIN; utilizador só VIEWER fará falhar esses checks.
+ * exigem papel EDITOR ou ADMIN; usuário só VIEWER fará falhar esses checks.
  */
 const apiChecks: Check[] = [
   { name: "Sessão JWT (auth/me)", url: `${backendUrl}/auth/me`, expectedStatus: 200 },

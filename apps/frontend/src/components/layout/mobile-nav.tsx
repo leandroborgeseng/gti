@@ -41,7 +41,7 @@ export function MobileNav({ groups }: Props): JSX.Element {
             </Link>
             <p className="text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">Gestão de Operações de TI</p>
             <SheetTitle className="sr-only">Navegação</SheetTitle>
-            <SheetDescription className="sr-only">Menu principal da aplicação</SheetDescription>
+            <SheetDescription className="sr-only">Menu principal da aplicativo</SheetDescription>
           </SheetHeader>
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3" aria-label="Navegação principal">
             <MainNavAccordion groups={groups} onNavigate={() => setOpen(false)} />

@@ -46,7 +46,7 @@ function loopbackGestaoApiBase(incoming: Headers): string {
 }
 
 /**
- * Base da API de gestão (`.../api`). A lógica de negócio corre nas Route Handlers do Next
+ * Base da API de gestão (`.../api`). A lógica de negócio roda nas Route Handlers do Next
  * (`app/api/[...path]`). Opcional: `NEXT_PUBLIC_BACKEND_URL` se a API estiver noutro domínio.
  */
 export function getBackendApiBaseUrl(): string {
@@ -696,6 +696,7 @@ export type UserRecord = {
   id: string;
   email: string;
   role: string;
+  approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
   mustChangePassword?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -715,7 +716,7 @@ export async function createUser(payload: {
 
 export async function updateUser(
   id: string,
-  payload: { role?: "ADMIN" | "EDITOR" | "VIEWER"; password?: string }
+  payload: { role?: "ADMIN" | "EDITOR" | "VIEWER"; password?: string; approvalStatus?: "PENDING" | "APPROVED" | "REJECTED" }
 ): Promise<UserRecord> {
   return request(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
@@ -772,12 +773,12 @@ export async function fetchContractStructureTemplateBlob(contractId: string): Pr
     } catch {
       detail = "";
     }
-    throw new Error(detail || `Falha ao descarregar modelo (${res.status})`);
+    throw new Error(detail || `Falha ao baixar modelo (${res.status})`);
   }
   return res.blob();
 }
 
-/** Importa módulos e funcionalidades a partir de ficheiro .xlsx (campo file + opcional replace). */
+/** Importa módulos e funcionalidades a partir de arquivo .xlsx (campo file + opcional replace). */
 export async function importContractStructureFromXlsx(
   contractId: string,
   file: File,
@@ -1168,6 +1169,10 @@ export async function patchProjectTask(
     method: "PATCH",
     body: JSON.stringify(payload)
   });
+}
+
+export async function deleteProjectTask(projectId: string, taskId: string): Promise<{ ok: true; id: string }> {
+  return request(`/projects/${projectId}/tasks/${taskId}`, { method: "DELETE" });
 }
 
 export async function createProjectTask(

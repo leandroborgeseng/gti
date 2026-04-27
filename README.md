@@ -5,7 +5,7 @@ Serviço em **Node.js + TypeScript** que sincroniza chamados do **GLPI** para **
 ## Requisitos
 
 - Node.js 20 ou superior
-- Credenciais de acesso à API do GLPI (OAuth + utilizador)
+- Credenciais de acesso à API do GLPI (OAuth + usuário)
 
 ## Configuração
 
@@ -24,7 +24,7 @@ Opcional: `GLPI_TICKETS_PATH`, `GLPI_TICKETS_PAGE_SIZE`, `GLPI_TICKETS_FETCH_CON
 ```bash
 npm install
 npm run prisma:generate
-# Interface Next (porta 3001 por defeito):
+# Interface Next (porta 3001 por padrão):
 npm run dev
 # Opcional — worker só GLPI (cron + sync, sem HTTP):
 npm run dev:worker
@@ -39,7 +39,7 @@ O **Kanban**, o login e a **API de gestão** (`/api/contracts`, `/api/measuremen
 
 Validação de tipos na raiz: `npm run typecheck` (requer dependências instaladas em `apps/frontend` e `apps/backend`, por exemplo `npm install` na raiz e `npm ci` em `apps/frontend` se o `tsc` reclamar de tipos React).
 
-**Importar quadro «Sistemas terceirizados atuais» (contratos de software):** após `prisma migrate deploy` e com `DATABASE_URL` apontando para a base desejada. Na **imagem Docker** o `docker-entrypoint.sh` corre este seed automaticamente após as migrações (pode desativar com `SKIP_SEED_OUTSOURCED=1`). Em local:
+**Importar quadro «Sistemas terceirizados atuais» (contratos de software):** após `prisma migrate deploy` e com `DATABASE_URL` apontando para a base desejada. Na **imagem Docker** o `docker-entrypoint.sh` roda este seed automaticamente após as migrações (pode desativar com `SKIP_SEED_OUTSOURCED=1`). Em local:
 
 ```bash
 npm run prisma:seed:outsourced
@@ -49,7 +49,7 @@ Cria fornecedores, um fiscal técnico de importação e nove contratos (`ST-2026
 
 ### Docker (só a app Next)
 
-O contentor **não** inclui PostgreSQL: a base fica num **serviço separado** (ex.: **Railway Postgres**), com `DATABASE_URL` persistente e cópias de segurança geridas pela plataforma.
+O contêiner **não** inclui PostgreSQL: a base fica em um **serviço separado** (ex.: **Railway Postgres**), com `DATABASE_URL` persistente e backups gerenciados pela plataforma.
 
 Na raiz, com Docker instalado:
 
@@ -59,9 +59,9 @@ docker compose build
 docker compose up
 ```
 
-O `docker-compose.yml` usa `env_file: .env` na raiz (não inclui Postgres). O serviço `app` corre `prisma migrate deploy` no arranque e inicia o Next (porta `3000` por defeito). Ver `Dockerfile`.
+O `docker-compose.yml` usa `env_file: .env` na raiz (não inclui Postgres). O serviço `app` roda `prisma migrate deploy` no arranque e inicia o Next (porta `3000` por padrão). Ver `Dockerfile`.
 
-**Gestão contratual:** a API REST de contratos, medições, etc. corre **no mesmo processo Next** (`app/api/[...path]`), reutilizando os serviços em `apps/backend/src/modules/*` via alias TypeScript (`@gestao/*`). Não é necessário serviço Nest separado nem `BACKEND_API_BASE_URL`.
+**Gestão contratual:** a API REST de contratos, medições, etc. roda **no mesmo processo Next** (`app/api/[...path]`), reutilizando os serviços em `apps/backend/src/modules/*` via alias TypeScript (`@gestao/*`). Não é necessário serviço Nest separado nem `BACKEND_API_BASE_URL`.
 
 Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`npm start`** (sobe o Next) e, se quiser o cron GLPI noutro processo, crie um **segundo** serviço com **`npm run start:worker`**. O build deve incluir **`npm run build`** na raiz (ou defina o comando de build assim no painel).
 
@@ -70,7 +70,7 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 1. **PostgreSQL** (plugin Railway): copie `DATABASE_URL` para o serviço da app; se a ligação falhar, acrescente `?sslmode=require` (ou `&sslmode=require`) ao URL.
 2. **Variáveis** na app: todas as `GLPI_*` obrigatórias (ver `.env.example`), `DATABASE_URL`, `NODE_ENV=production`. A Railway define **`PORT`** automaticamente; o Next usa essa porta.
 3. **Build:** `npm run build` (na raiz do repo).
-4. **Start:** `npm start` — corre `prisma migrate deploy` e inicia o Next. **Imagem Docker / `docker-entrypoint.sh`:** após as migrações corre também `npm run prisma:seed:outsourced` (contratos ST-2026-001…009, idempotente). Para desativar: `SKIP_SEED_OUTSOURCED=1` no serviço.
+4. **Start:** `npm start` — roda `prisma migrate deploy` e inicia o Next. **Imagem Docker / `docker-entrypoint.sh`:** após as migrações roda também `npm run prisma:seed:outsourced` (contratos ST-2026-001…009, idempotente). Para desativar: `SKIP_SEED_OUTSOURCED=1` no serviço.
 5. **Opcional:** segundo serviço com `npm run start:worker` e as mesmas variáveis (só sync GLPI).
 6. **Teste:** `GET /health` no domínio publicado.
 7. **Gestão contratual:** use o mesmo **`JWT_SECRET`** que o login Next (`/api/auth/login`). Opcional: `NEXT_PUBLIC_BACKEND_URL` só se a API estiver noutro domínio.
@@ -85,7 +85,7 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 | `build` | Compila o frontend (`apps/frontend`) para deploy na Railway na raiz do repo. |
 | `dev` | Next em desenvolvimento (`apps/frontend`, porta 3001). |
 | `dev:worker` / `sync` | Worker só GLPI (cron + sync). |
-| `postinstall` | Gera o cliente Prisma (corre no `npm install`, incl. Railway em produção) |
+| `postinstall` | Gera o cliente Prisma (roda no `npm install`, incl. Railway em produção) |
 | `prisma:generate` | Gera o cliente Prisma a partir de `apps/backend/prisma/schema.prisma` |
 | `prisma:migrate` | Cria/aplica migrações em desenvolvimento (Prisma Migrate) |
 | `prisma:deploy` | Aplica migrações pendentes em CI/produção |
@@ -101,14 +101,14 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 
 ## Comportamento da sincronização
 
-- Na arranque, confirma a ligação ao PostgreSQL e tenta autenticar no GLPI.
+- Na arranque, confirma a link para o PostgreSQL e tenta autenticar no GLPI.
 - Descarrega o OpenAPI (`doc.json`) para descobrir o caminho dos tickets, se não estiver fixo no `.env`.
 - Sincroniza chamados **logo ao iniciar** e de seguida conforme `CRON_EXPRESSION` (padrão: a cada 5 minutos).
 - O **âmbito** “só abertos” vs “todos no cache” pode ser guardado na interface (estado em PostgreSQL, tabela `SyncState`).
 - A sync usa cache local de usuários ativos (TTL de 24h) para preencher solicitantes por `users_id` sem chamadas por ticket.
 - Chamadas pontuais a `GET /User/...` permanecem no fluxo do modal (`GET /api/tickets/glpi/:id`) para completar dados quando necessário.
 
-## Base de dados
+## Banco de dados
 
 - **PostgreSQL** (`DATABASE_URL`): schema e migrações em **`apps/backend/prisma/`** (contratos, medições, governança, etc.).
 - Cache GLPI no mesmo servidor: modelos **`Ticket`**, **`TicketAttribute`**, **`SyncState`** (migration `20260415140000_add_glpi_sync_cache`).
@@ -116,14 +116,14 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 
 ## Stack e evolução (TypeScript + Next)
 
-O projecto usa **uma linguagem (TypeScript)** no front e nos servidores Node. A direcção é **consolidar UI e APIs GLPI no Next.js** (Node + React num só deploy); ver **`docs/stack-unificado.md`**. Já existe **base PWA** (`app/manifest.ts`, metadados e `public/icon.svg`); service worker offline fica para uma fase seguinte.
+O projeto usa **uma linguagem (TypeScript)** no front e nos servidores Node. A direção é **consolidar UI e APIs GLPI no Next.js** (Node + React em um só deploy); ver **`docs/stack-unificado.md`**. Já existe **base PWA** (`app/manifest.ts`, metadados e `public/icon.svg`); service worker offline fica para uma fase seguinte.
 
 ## Novo módulo de contratos públicos (arquitetura isolada)
 
 Para não quebrar o sistema atual de GLPI, o novo módulo foi iniciado em estrutura paralela:
 
 - `apps/backend`: API em NestJS + Prisma + PostgreSQL
-- `apps/frontend`: aplicação Next.js + Tailwind + Recharts (base para shadcn/ui)
+- `apps/frontend`: aplicativo Next.js + Tailwind + Recharts (base para shadcn/ui)
 
 ### Backend (`apps/backend`)
 
@@ -181,7 +181,7 @@ npm run dev
 
 ## Documentação e idioma
 
-Toda a **documentação de projeto**, **ficheiros de exemplo** (`.env.example`), **regras Cursor** em `.cursor/rules/` e **textos orientados ao utilizador** na interface devem estar em **português do Brasil (pt-BR)**.
+Toda a **documentação do projeto**, **arquivos de exemplo** (`.env.example`), **regras Cursor** em `.cursor/rules/` e **textos orientados ao usuário** na interface devem estar em **português do Brasil (pt-BR)**.
 
 - **`AGENTS.md`** — mapa do monorepo e comandos para agentes.
 - **`docs/revisao-fase-0-baseline.md`** — processos e decisão stack (Next).
@@ -207,19 +207,19 @@ Com os serviços no ar, execute:
 npm run smoke:regression
 ```
 
-Por omissão, `SMOKE_APP_URL` é `http://localhost:3001` (porta do `npm run dev`). O script também testa **`GET` da listagem de contratos via o mesmo host** (`/api/contracts` no Next), confirmando o **proxy** para o Nest. Para desativar só este passo (ex.: imagem Docker sem Nest): `SMOKE_SKIP_NEXT_PROXY=1`.
+Por padrão, `SMOKE_APP_URL` é `http://localhost:3001` (porta do `npm run dev`). O script também testa **`GET` da listagem de contratos via o mesmo host** (`/api/contracts` no Next), confirmando o **proxy** para o Nest. Para desativar só este passo (ex.: imagem Docker sem Nest): `SMOKE_SKIP_NEXT_PROXY=1`.
 
-No GitHub Actions existe o workflow **Smoke (manual)** (`.github/workflows/smoke-manual.yml`): em **Actions**, escolha o workflow, **Run workflow** e preencha a URL da app e da API (`/api`). As variáveis `SMOKE_APP_URL` e `SMOKE_BACKEND_URL` são injetadas automaticamente. Para as chamadas à API Nest (JWT), configure no repositório os secrets **`SMOKE_EMAIL`** e **`SMOKE_PASSWORD`** (utilizador existente) ou **`SMOKE_API_BEARER`** (token já emitido).
+No GitHub Actions existe o workflow **Smoke (manual)** (`.github/workflows/smoke-manual.yml`): em **Actions**, escolha o workflow, **Run workflow** e preencha a URL da app e da API (`/api`). As variáveis `SMOKE_APP_URL` e `SMOKE_BACKEND_URL` são injetadas automaticamente. Para as chamadas à API Nest (JWT), configure no repositório os secrets **`SMOKE_EMAIL`** e **`SMOKE_PASSWORD`** (usuário existente) ou **`SMOKE_API_BEARER`** (token já emitido).
 
 ## Autenticação (gestão contratual)
 
-- **Backend:** utilizadores na tabela `User`, `POST /api/auth/login`, JWT em todas as rotas exceto login; perfis `VIEWER` (só leitura), `EDITOR` e `ADMIN` (escrita). Variáveis `JWT_SECRET` e opcional `JWT_EXPIRES_IN` em `apps/backend/.env.example`.
-- **Primeiro acesso:** após migrações, `npx prisma db seed` na raiz cria o administrador (`BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` por omissão no exemplo).
+- **Backend:** usuários na tabela `User`, `POST /api/auth/login`, JWT em todas as rotas exceto login; perfis `VIEWER` (só leitura), `EDITOR` e `ADMIN` (escrita). Variáveis `JWT_SECRET` e opcional `JWT_EXPIRES_IN` em `apps/backend/.env.example`.
+- **Primeiro acesso:** após migrações, `npx prisma db seed` na raiz cria o administrador (`BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` por padrão no exemplo).
 - **Frontend:** `/login`, cookie `gti_token`, rotas de contratos/medições/etc. protegidas por middleware; **Chamados GLPI** (`/chamados`) e a página inicial permanecem sem login obrigatório.
 
 ## Anexos (medições e glosas)
 
-O backend grava ficheiros no disco sob `UPLOAD_ROOT` (ver `apps/backend/.env.example`: `UPLOAD_ROOT`, `UPLOAD_MAX_MB`). Em produção (ex.: Railway), use **volume persistente** ou caminho montado; sem isso, os anexos perdem-se entre deploys. Na app Next, anexos por medição em `/measurements/[id]` e por glosa em `/glosas/[id]`.
+O backend salva arquivos no disco sob `UPLOAD_ROOT` (ver `apps/backend/.env.example`: `UPLOAD_ROOT`, `UPLOAD_MAX_MB`). Em produção (ex.: Railway), use **volume persistente** ou caminho montado; sem isso, os anexos são perdidos entre deploys. Na app Next, anexos por medição em `/measurements/[id]` e por glosa em `/glosas/[id]`.
 
 ## Verificação de tipos (local)
 

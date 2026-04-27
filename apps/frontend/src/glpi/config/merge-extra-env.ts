@@ -3,7 +3,7 @@ import path from "node:path";
 import { normalizeEnvValue } from "@/lib/normalize-env-value";
 
 /**
- * Injeta chaves em `process.env` a partir de um objeto (ficheiro local ou `GTI_ENV_JSON`).
+ * Injeta chaves em `process.env` a partir de um objeto (arquivo local ou `GTI_ENV_JSON`).
  * Só preenche chaves que ainda estão vazias — não sobrescreve variáveis já definidas pela Railway ou `.env`.
  */
 function mergeRecordIntoEnv(record: Record<string, unknown>): void {

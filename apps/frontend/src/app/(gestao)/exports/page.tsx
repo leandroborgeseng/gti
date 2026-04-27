@@ -41,7 +41,7 @@ export default function ExportsPage(): JSX.Element {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      setMsg(`Ficheiro «${filename}» transferido.`);
+      setMsg(`Arquivo «${filename}» transferido.`);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Falha na exportação");
     } finally {
@@ -52,7 +52,7 @@ export default function ExportsPage(): JSX.Element {
   if (auth.status === "loading") {
     return (
       <Card className="p-6">
-        <p className="text-sm text-slate-600">A carregar…</p>
+        <p className="text-sm text-slate-600">Carregando…</p>
       </Card>
     );
   }
@@ -84,7 +84,7 @@ export default function ExportsPage(): JSX.Element {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Exportações</h1>
         <p className="mt-1 max-w-2xl text-sm text-slate-500">
-          Descarregue dados em CSV para arquivo ou análise externa. Os ficheiros usam UTF-8 com BOM (compatível com Excel).
+          Baixe dados em CSV para arquivo ou análise externa. Os arquivos usam UTF-8 com BOM (compatível com Excel).
         </p>
       </div>
 
@@ -99,14 +99,14 @@ export default function ExportsPage(): JSX.Element {
           className={btnClass}
           onClick={() => void download("contracts", fetchContractsCsvBlob, "contratos.csv")}
         >
-          {busy === "contracts" ? "A gerar…" : "Descarregar contratos.csv"}
+          {busy === "contracts" ? "Gerando…" : "Baixar contratos.csv"}
         </button>
       </Card>
 
       <Card className="p-5">
         <h2 className="text-base font-semibold text-slate-900">Aditivos de contratos</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Histórico de aditivos e reajustes (valores e vigência), com ligação ao contrato.
+          Histórico de aditivos e reajustes (valores e vigência), com link para o contrato.
         </p>
         <button
           type="button"
@@ -114,7 +114,7 @@ export default function ExportsPage(): JSX.Element {
           className={btnClass}
           onClick={() => void download("amendments", fetchContractAmendmentsCsvBlob, "aditivos-contratos.csv")}
         >
-          {busy === "amendments" ? "A gerar…" : "Descarregar aditivos-contratos.csv"}
+          {busy === "amendments" ? "Gerando…" : "Baixar aditivos-contratos.csv"}
         </button>
       </Card>
 
@@ -129,20 +129,20 @@ export default function ExportsPage(): JSX.Element {
           className={btnClass}
           onClick={() => void download("measurements", fetchMeasurementsCsvBlob, "medicoes.csv")}
         >
-          {busy === "measurements" ? "A gerar…" : "Descarregar medicoes.csv"}
+          {busy === "measurements" ? "Gerando…" : "Baixar medicoes.csv"}
         </button>
       </Card>
 
       <Card className="p-5">
         <h2 className="text-base font-semibold text-slate-900">Glosas</h2>
-        <p className="mt-1 text-sm text-slate-600">Registos de glosa com ligação à competência e ao contrato (via medição).</p>
+        <p className="mt-1 text-sm text-slate-600">Registros de glosa com ligação à competência e ao contrato (via medição).</p>
         <button
           type="button"
           disabled={busy !== null}
           className={btnClass}
           onClick={() => void download("glosas", fetchGlosasCsvBlob, "glosas.csv")}
         >
-          {busy === "glosas" ? "A gerar…" : "Descarregar glosas.csv"}
+          {busy === "glosas" ? "Gerando…" : "Baixar glosas.csv"}
         </button>
       </Card>
 

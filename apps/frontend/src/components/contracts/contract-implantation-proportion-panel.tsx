@@ -70,7 +70,7 @@ export function ContractImplantationProportionPanel({ data }: Props): JSX.Elemen
         <p className="mt-1 leading-relaxed text-slate-700 dark:text-slate-300">{phaseDescription[phase]}</p>
         {data.implementationPeriodStart || data.implementationPeriodEnd ? (
           <p className="mt-2 tabular-nums text-slate-600 dark:text-slate-400">
-            Período registado: {data.implementationPeriodStart ?? "—"} → {data.implementationPeriodEnd ?? "—"}
+            Período registrado: {data.implementationPeriodStart ?? "—"} → {data.implementationPeriodEnd ?? "—"}
           </p>
         ) : null}
       </div>

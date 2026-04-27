@@ -243,7 +243,7 @@ export class MeasurementsService {
     const exists = await this.prisma.measurement.findFirst({ where: { id: measurementId, deletedAt: null } });
     if (!exists) throw new NotFoundException("Medição não encontrada");
     if (!file.buffer?.length) {
-      throw new BadRequestException("Ficheiro vazio");
+      throw new BadRequestException("Arquivo vazio");
     }
     const { filePath } = await this.storage.saveMeasurementFile(
       measurementId,

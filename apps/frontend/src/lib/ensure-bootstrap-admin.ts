@@ -6,7 +6,7 @@ function isUniqueConstraintError(e: unknown): boolean {
 }
 
 /**
- * Se não existir nenhum utilizador (ex.: deploy sem `prisma db seed`), cria o mesmo
+ * Se não existir nenhum usuário (ex.: deploy sem `prisma db seed`), cria o mesmo
  * administrador que `apps/backend/prisma/seed.ts`, para o primeiro login funcionar.
  */
 export async function ensureBootstrapAdminIfNoUsers(): Promise<void> {

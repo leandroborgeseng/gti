@@ -33,7 +33,7 @@ export async function persistNormalizedTicket(
     const requesterUserId = normalized.requester_user_id ?? requesterFallback?.userId ?? null;
     let assigneeName: string | null = normalized.assigned_user_name ?? null;
     if (normalized.assigned_user_id && normalized.assigned_user_id > 0) {
-      const weak = (assigneeName ?? "").trim() === "" || (assigneeName ?? "").trim().startsWith("Utilizador #");
+      const weak = (assigneeName ?? "").trim() === "" || (assigneeName ?? "").trim().startsWith("Usuário #");
       if (weak) {
         const c = (await getCachedUsersByIds([normalized.assigned_user_id]).catch(() => new Map())).get(
           normalized.assigned_user_id
@@ -181,7 +181,7 @@ export async function backfillAssignedUserFromCachedRaw(
 
   let updated = 0;
   for (const p of toPatch) {
-    const weak = (p.name ?? "").trim() === "" || (p.name ?? "").trim().startsWith("Utilizador #");
+    const weak = (p.name ?? "").trim() === "" || (p.name ?? "").trim().startsWith("Usuário #");
     const display = weak
       ? nameMap.get(p.userId)?.displayName
       : p.name?.trim() || null;

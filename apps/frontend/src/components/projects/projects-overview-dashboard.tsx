@@ -72,7 +72,7 @@ function ProjectStatusPieSvg({ breakdown }: { breakdown: ProjectsDashboardStats[
     const s = slices[fullIdx]!;
     const pctStr = `${formatPct(s.n, total)}%`;
     return (
-      <svg className="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Todas as tarefas num unico tipo de status">
+      <svg className="aging-dash__pie-svg" viewBox="-1 -1 2 2" role="img" aria-label="Todas as tarefas em um único tipo de status">
         <circle cx="0" cy="0" r="1" fill={s.c}>
           <title>{sliceTitle(s.label, s.n, total)}</title>
         </circle>
@@ -231,7 +231,7 @@ function StatusLegendLinks({ breakdown }: { breakdown: ProjectsDashboardStats["s
 
 function DashboardSkeleton(): JSX.Element {
   return (
-    <div className="gti-exec-metric-dash" aria-busy="true" aria-label="A carregar resumo dos projetos">
+    <div className="gti-exec-metric-dash" aria-busy="true" aria-label="Carregando resumo dos projetos">
       <div className="aging-dash-skel" />
     </div>
   );
@@ -299,7 +299,7 @@ export function ProjectsOverviewDashboard(): JSX.Element {
           <p className="aging-dash__lede">
             <Link href="/projetos/tarefas">Abrir todas as tarefas com filtros</Link>
             {" · "}
-            Use os cartões abaixo para saltar para atrasadas, sem data ou lista completa. A pizza reflete a mesma
+            Use os cartões abaixo para ir para atrasadas, sem data ou lista completa. A pizza reflete a mesma
             agregação por tipo de status do quadro.
           </p>
         </div>

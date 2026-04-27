@@ -33,7 +33,7 @@ export default async function DashboardPage(): Promise<JSX.Element> {
             >
               Manual do sistema
             </Link>
-            <span className="text-muted-foreground"> — descrição das áreas e fluxos para utilizadores.</span>
+            <span className="text-muted-foreground"> — descrição das áreas e fluxos para usuários.</span>
           </p>
         </div>
       </section>

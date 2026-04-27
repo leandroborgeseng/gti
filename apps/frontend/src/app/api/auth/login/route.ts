@@ -33,7 +33,13 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (e instanceof Error && e.message === "CREDENTIALS") {
       return new NextResponse("Credenciais inválidas", { status: 401 });
     }
+    if (e instanceof Error && e.message === "PENDING_APPROVAL") {
+      return new NextResponse("Seu cadastro ainda está aguardando aprovação.", { status: 403 });
+    }
+    if (e instanceof Error && e.message === "REJECTED_APPROVAL") {
+      return new NextResponse("Seu cadastro não foi aprovado. Entre em contato com a administração.", { status: 403 });
+    }
     const msg = e instanceof Error ? e.message : String(e);
-    return new NextResponse(`Erro ao iniciar sessão: ${msg}`, { status: 500 });
+    return new NextResponse(`Erro ao entrar: ${msg}`, { status: 500 });
   }
 }

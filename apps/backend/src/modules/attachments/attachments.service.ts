@@ -17,7 +17,7 @@ export class AttachmentsService {
     }
     const abs = this.storage.resolveAbsoluteSafe(att.filePath);
     if (!existsSync(abs)) {
-      throw new NotFoundException("Ficheiro não existe no armazenamento");
+      throw new NotFoundException("Arquivo não existe no armazenamento");
     }
     const stream = createReadStream(abs);
     const safeName = att.fileName.replace(/"/g, "'");

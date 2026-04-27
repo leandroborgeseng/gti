@@ -43,7 +43,7 @@ function parsePositiveInt(value: unknown): number | null {
   return null;
 }
 
-/** Atores `team` / `actors` da API GLPI: grupo técnico costuma vir explícito; o requerente também pode vir só aqui. */
+/** Atores `team` / `actors` da API GLPI: grupo técnico costuma vir explícito; o solicitante também pode vir só aqui. */
 function isGroupLikeActorRow(o: Record<string, unknown>): boolean {
   const t = String(o.type ?? o.itemtype ?? o.item_type ?? o.actor_type ?? "").toLowerCase();
   if (t.includes("group")) {
@@ -56,10 +56,10 @@ function isGroupLikeActorRow(o: Record<string, unknown>): boolean {
   return href.includes("group.form") || href.includes("/group/");
 }
 
-/** Papel de requerente (strings ou constante numérica 1 em CommonITILActor::REQUESTER). */
+/** Papel de solicitante (strings ou constante numérica 1 em CommonITILActor::REQUESTER). */
 function isStrictRequesterRole(o: Record<string, unknown>): boolean {
   const r = String(o.role ?? o.actor_role ?? o.relation ?? "").toLowerCase();
-  if (r.includes("request") || r.includes("requerente") || r.includes("solicit")) {
+  if (r.includes("request") || r.includes("solicitante") || r.includes("solicit")) {
     return true;
   }
   if (r.includes("demandeur") || r.includes("petic")) {
@@ -74,7 +74,7 @@ function isRecipientLikeRole(o: Record<string, unknown>): boolean {
   return r.includes("recipient") || r.includes("destinat");
 }
 
-/** Evita confundir técnico/agente atribuído com o requerente na lista `team`. */
+/** Evita confundir técnico/agente atribuído com o solicitante na lista `team`. */
 function isAssignedOrTechActorRow(o: Record<string, unknown>): boolean {
   const r = String(o.role ?? o.actor_role ?? o.relation ?? "").toLowerCase();
   return (
@@ -106,7 +106,7 @@ function userIdFromActorRow(o: Record<string, unknown>): number | null {
 export type RequesterContact = {
   displayName: string | null;
   email: string | null;
-  /** GLPI `users_id` do requerente, quando identificável. */
+  /** GLPI `users_id` do solicitante, quando identificável. */
   userId: number | null;
 };
 
@@ -181,7 +181,7 @@ export function extractRequesterContact(rawJson: unknown): RequesterContact {
   }
 
   /**
-   * Lista `team` / `actors` (GLPI v2): entrada com papel de requerente e tipo utilizador,
+   * Lista `team` / `actors` (GLPI v2): entrada com papel de solicitante e tipo usuário,
    * mesmo quando `users_id_requester` não vem no JSON da listagem.
    */
   const tryFillFromTeamOrActors = (strictRequesterOnly: boolean): void => {

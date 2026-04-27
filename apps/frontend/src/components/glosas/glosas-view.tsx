@@ -94,7 +94,7 @@ export function GlosasView({ glosas: initialGlosas, measurementOptions, dataLoad
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Glosas</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Registro por medição (atraso, não entrega, SLA, qualidade). Use <strong className="font-medium text-foreground">Nova glosa</strong>{" "}
-            para lançar valores; a lista atualiza ao guardar.
+            para lançar valores; a lista atualiza ao salvar.
           </p>
         </div>
         <Button type="button" className="shrink-0 gap-2" onClick={() => setModalOpen(true)}>

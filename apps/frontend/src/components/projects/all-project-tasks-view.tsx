@@ -376,7 +376,7 @@ export function AllProjectTasksView(): JSX.Element {
             Exportar CSV (página)
           </Button>
           <span className="text-xs text-muted-foreground tabular-nums">
-            {isPending ? "A carregar…" : `${total} resultado(s)${data?.truncated ? " (truncado na BD)" : ""}`}
+            {isPending ? "Carregando…" : `${total} resultado(s)${data?.truncated ? " (truncado no banco de dados)" : ""}`}
           </span>
         </div>
 

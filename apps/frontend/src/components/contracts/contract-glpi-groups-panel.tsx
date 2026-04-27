@@ -47,11 +47,11 @@ export function ContractGlpiGroupsPanel({ contractId, initialGroups }: Props): J
         }))
       }),
     onSuccess: () => {
-      toast.success("Grupos GLPI guardados.");
+      toast.success("Grupos GLPI salvos.");
       void qc.invalidateQueries({ queryKey: queryKeys.contracts });
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof Error ? e.message : "Não foi possível guardar os grupos.");
+      toast.error(e instanceof Error ? e.message : "Não foi possível salvar os grupos.");
     }
   });
 
@@ -85,7 +85,7 @@ export function ContractGlpiGroupsPanel({ contractId, initialGroups }: Props): J
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button type="button" disabled={!dirty || mut.isPending} onClick={() => mut.mutate()}>
-          {mut.isPending ? "A guardar…" : "Guardar grupos"}
+          {mut.isPending ? "Salvando…" : "Salvar grupos"}
         </Button>
         {dirty ? (
           <Button type="button" variant="ghost" size="sm" disabled={mut.isPending} onClick={() => setSelected(toSelection(initialGroups))}>

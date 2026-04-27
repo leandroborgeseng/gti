@@ -22,7 +22,7 @@ export function GlosaAttachments(props: { glosaId: string; attachments: Attachme
       await uploadGlosaAttachment(props.glosaId, file);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha no envio do ficheiro");
+      setError(err instanceof Error ? err.message : "Falha no envio do arquivo");
     } finally {
       setUploading(false);
     }

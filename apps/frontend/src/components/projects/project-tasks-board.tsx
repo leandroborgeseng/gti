@@ -1,13 +1,13 @@
 "use client";
 
-import { ChevronDown, ChevronRight, MessageSquare, Paperclip, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, MessageSquare, Paperclip, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ProjectGroupWithTasks, ProjectTaskPatchPayload, ProjectTaskTree } from "@/lib/api";
-import { attachmentDownloadUrl, createProjectTask, getAuthMe, patchProjectTask, uploadProjectTaskAttachment } from "@/lib/api";
+import { attachmentDownloadUrl, createProjectTask, deleteProjectTask, getAuthMe, patchProjectTask, uploadProjectTaskAttachment } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import {
@@ -304,7 +304,7 @@ function FilesCell({ projectId, task, canEdit, busy, onUploaded }: FilesCellProp
     setUploading(true);
     try {
       await uploadProjectTaskAttachment(projectId, task.id, file);
-      toast.success("Ficheiro enviado.");
+      toast.success("Arquivo enviado.");
       onUploaded();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha no envio.");
@@ -330,7 +330,7 @@ function FilesCell({ projectId, task, canEdit, busy, onUploaded }: FilesCellProp
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 space-y-2 p-3">
         {list.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Sem ficheiros.</p>
+          <p className="text-xs text-muted-foreground">Sem arquivos.</p>
         ) : (
           <ul className="max-h-40 space-y-1 overflow-y-auto text-xs">
             {list.map((a) => (
@@ -349,7 +349,7 @@ function FilesCell({ projectId, task, canEdit, busy, onUploaded }: FilesCellProp
         )}
         {canEdit ? (
           <div className="border-t border-border pt-2">
-            <label className="block text-[11px] font-medium text-muted-foreground">Adicionar ficheiro</label>
+            <label className="block text-[11px] font-medium text-muted-foreground">Adicionar arquivo</label>
             <input
               type="file"
               className="mt-1 block w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs"
@@ -415,7 +415,7 @@ function ObservationCell({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Observação</DialogTitle>
-          <DialogDescription>Edite o texto abaixo. As alterações ficam registadas ao guardar.</DialogDescription>
+          <DialogDescription>Edite o texto abaixo. As alterações ficam registradas ao salvar.</DialogDescription>
         </DialogHeader>
         <textarea
           autoFocus
@@ -441,7 +441,7 @@ function ObservationCell({
               })();
             }}
           >
-            Guardar
+            Salvar
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -459,6 +459,7 @@ type TaskRowsProps = {
   canEdit: boolean;
   savingTaskId: string | null;
   onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
+  onDelete: (task: ProjectTaskTree) => Promise<void>;
   onFilesUploaded: () => void;
 };
 
@@ -472,6 +473,7 @@ function TaskRows({
   canEdit,
   savingTaskId,
   onPatch,
+  onDelete,
   onFilesUploaded
 }: TaskRowsProps): JSX.Element {
   const hasChildren = Boolean(task.children?.length);
@@ -548,13 +550,26 @@ function TaskRows({
             ) : (
               <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-[#323338]">{task.title}</span>
             )}
-            <span className="flex shrink-0 gap-0.5 opacity-35">
+            <span className="flex shrink-0 gap-0.5">
               <button type="button" className="rounded p-0.5 hover:bg-muted" title="Adicionar (em breve)" disabled>
                 <Plus className="h-3.5 w-3.5" />
               </button>
               <button type="button" className="rounded p-0.5 hover:bg-muted" title="Comentários (em breve)" disabled>
                 <MessageSquare className="h-3.5 w-3.5" />
               </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="rounded p-0.5 text-destructive opacity-70 hover:bg-destructive/10 hover:opacity-100"
+                  title="Excluir tarefa"
+                  disabled={busy}
+                  onClick={() => {
+                    void onDelete(task);
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </span>
           </div>
         </td>
@@ -695,6 +710,7 @@ function TaskRows({
               canEdit={canEdit}
               savingTaskId={savingTaskId}
               onPatch={onPatch}
+              onDelete={onDelete}
               onFilesUploaded={onFilesUploaded}
             />
           ))
@@ -711,6 +727,7 @@ function GroupBoard({
   canEdit,
   savingTaskId,
   onPatch,
+  onDelete,
   onFilesUploaded
 }: {
   projectId: string;
@@ -720,6 +737,7 @@ function GroupBoard({
   canEdit: boolean;
   savingTaskId: string | null;
   onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
+  onDelete: (task: ProjectTaskTree) => Promise<void>;
   onFilesUploaded: () => void;
 }): JSX.Element {
   const accentHex = groupAccentHex(group.id, groupIndex);
@@ -817,6 +835,7 @@ function GroupBoard({
                     canEdit={canEdit}
                     savingTaskId={savingTaskId}
                     onPatch={onPatch}
+                    onDelete={onDelete}
                     onFilesUploaded={onFilesUploaded}
                   />
                 ))
@@ -950,17 +969,39 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
       setSavingTaskId(taskId);
       try {
         await patchProjectTask(projectId, taskId, payload);
-        toast.success("Alterações guardadas.");
+        toast.success("Alterações salvas.");
         void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
         void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Falha ao guardar.");
+        toast.error(e instanceof Error ? e.message : "Falha ao salvar.");
       } finally {
         setSavingTaskId(null);
       }
     },
     [projectId, qc, router]
+  );
+
+  const onDelete = useCallback(
+    async (task: ProjectTaskTree) => {
+      if (!canEdit) return;
+      const childCount = countTasksInForest(task.children ?? []);
+      const extra = childCount > 0 ? ` e ${childCount} subtarefa(s)` : "";
+      if (!confirm(`Excluir a tarefa «${task.title}»${extra}? Esta ação não pode ser desfeita.`)) return;
+      setSavingTaskId(task.id);
+      try {
+        await deleteProjectTask(projectId, task.id);
+        toast.success("Tarefa excluída.");
+        void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
+        void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
+        router.refresh();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Não foi possível excluir a tarefa.");
+      } finally {
+        setSavingTaskId(null);
+      }
+    },
+    [canEdit, projectId, qc, router]
   );
 
   const onFilesUploaded = useCallback(() => {
@@ -1065,7 +1106,7 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
   return (
     <div className="space-y-2 rounded-lg border border-[#e6e9ef] bg-[#f6f7fb] p-2 dark:border-neutral-800 dark:bg-neutral-950">
       {role === undefined ? (
-        <p className="text-xs text-[#676879]">A carregar permissões…</p>
+        <p className="text-xs text-[#676879]">Carregando permissões…</p>
       ) : null}
       <div className="flex flex-col gap-2 rounded-md border border-[#e6e9ef] bg-white p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900/40">
         <div className="flex flex-wrap items-center gap-2 text-[#676879]">
@@ -1176,6 +1217,7 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
           canEdit={canEdit}
           savingTaskId={savingTaskId}
           onPatch={onPatch}
+          onDelete={onDelete}
           onFilesUploaded={onFilesUploaded}
         />
       ))}
@@ -1304,7 +1346,7 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
                 Cancelar
               </Button>
               <Button type="submit" disabled={creatingTask}>
-                {creatingTask ? "A guardar…" : "Criar tarefa"}
+                {creatingTask ? "Salvando…" : "Criar tarefa"}
               </Button>
             </DialogFooter>
           </form>

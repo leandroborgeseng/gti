@@ -119,7 +119,7 @@ function collectRequesterUserIds(raw: Record<string, unknown>): Set<number> {
     for (const row of actors) {
       const o = asRecord(row);
       const type = String(o.type ?? o.role ?? o.actor_type ?? "").toLowerCase();
-      if (type.includes("requester") || type.includes("recipient") || type.includes("requerente")) {
+      if (type.includes("requester") || type.includes("recipient") || type.includes("solicitante")) {
         add(num(o.id ?? o.users_id ?? o.user_id));
       }
     }
@@ -269,7 +269,7 @@ export function buildTicketHistoryBundle(
       waitingOn: "empresa",
       waitingLabel: "Aguardando ação da empresa",
       waitingDetail:
-        "A última interação visível partiu do solicitante (ou usuário associado ao papel de requerente). A equipe deve responder."
+        "A última interação visível partiu do solicitante (ou usuário associado ao papel de solicitante). A equipe deve responder."
     };
   }
 
@@ -279,7 +279,7 @@ export function buildTicketHistoryBundle(
       waitingOn: "cliente",
       waitingLabel: "Aguardando retorno do cliente",
       waitingDetail:
-        "A última interação visível não é do requerente identificado; em geral é técnico/equipe — espera-se retorno do cliente."
+        "A última interação visível não é do solicitante identificado; em geral é técnico/equipe — espera-se retorno do cliente."
     };
   }
 
@@ -316,7 +316,7 @@ export async function loadTicketHistoryFromGlpi(
   }
 }
 
-/** Carrega histórico no GLPI, grava `waitingParty` no cache (PostgreSQL) e devolve o bundle para a API. */
+/** Carrega histórico no GLPI, salva `waitingParty` no cache (PostgreSQL) e devolve o bundle para a API. */
 export async function loadAndPersistWaitingParty(
   glpiId: number,
   statusLabel: string | null

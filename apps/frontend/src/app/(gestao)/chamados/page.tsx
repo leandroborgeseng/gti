@@ -53,7 +53,7 @@ export default async function ChamadosPage({ searchParams }: { searchParams: Sea
       {loadError ? (
         <div className="chamados-load-error" role="alert">
           <strong>Não foi possível carregar o quadro.</strong> Verifique <code>DATABASE_URL</code>, migrações Prisma e a
-          ligação ao PostgreSQL. Detalhes: {loadError}
+          link para o PostgreSQL. Detalhes: {loadError}
         </div>
       ) : null}
       <ChamadosBoard key={boardKey} initial={payload} />

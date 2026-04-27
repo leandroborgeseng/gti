@@ -11,7 +11,7 @@ type Props = {
 };
 
 /**
- * Pré-visualização do conteúdo GLPI como HTML (sanitizado + proxy de anexos no browser).
+ * Prévia do conteúdo GLPI como HTML (sanitizado + proxy de anexos no browser).
  */
 export function TicketHtmlPreview({ html, className, emptyLabel = "—" }: Props): JSX.Element {
   const safe = useMemo(() => sanitizeAndProxyTicketHtml(html), [html]);
@@ -25,7 +25,7 @@ export function TicketHtmlPreview({ html, className, emptyLabel = "—" }: Props
     <div
       className={`ticket-html-preview ql-snow ${className ?? ""}`.trim()}
       role="region"
-      aria-label="Pré-visualização do conteúdo"
+      aria-label="Prévia do conteúdo"
     >
       <div className="ql-editor" dangerouslySetInnerHTML={{ __html: safe }} />
     </div>

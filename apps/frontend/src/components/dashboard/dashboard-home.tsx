@@ -192,7 +192,7 @@ export function DashboardHome(props: {
             <li>Controladoria: {s.governance.chamadosControladoria ?? 0}</li>
           </ul>
           <p className="aging-dash__lede m-0 mt-3">
-            Os percentuais consideram os registos de governança em cache. Para operação GLPI em tempo real, use{" "}
+            Os percentuais consideram os registros de governança em cache. Para operação GLPI em tempo real, use{" "}
             <Link href={"/chamados" as Route}>Chamados</Link>.
           </p>
         </section>

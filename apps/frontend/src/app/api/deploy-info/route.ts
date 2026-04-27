@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   return NextResponse.json({
     gestaoApi: "next-route-handlers",
-    /** Se o teu browser/curl não vê isto, ainda estás numa imagem antiga com `console.error('[gti/api-proxy]…')` no catch-all. */
+    /** Se seu navegador/curl não vê isso, você ainda está em uma imagem antiga com `console.error('[gti/api-proxy]…')` no catch-all. */
     catchAllHandler: "gestao-dispatch",
     nestHttpProxyInCatchAll: false,
     gitSha: process.env.RAILWAY_GIT_COMMIT_SHA?.trim() || process.env.NEXT_PUBLIC_GTI_BUILD?.trim() || null,

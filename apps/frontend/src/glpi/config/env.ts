@@ -103,7 +103,7 @@ export const env = {
   /** Limite de páginas GLPI por execução (evita laço infinito se o total remoto for desconhecido). */
   GLPI_SYNC_MAX_PAGES: clampInt(process.env.GLPI_SYNC_MAX_PAGES, 50, 50_000, 5000),
   /**
-   * A cada quantos tickets carregados emitir um log agregado de tempos (GLPI vs preparação vs BD).
+   * A cada quantos tickets carregados emitir um log agregado de tempos (GLPI vs preparação vs banco de dados).
    * 0 = desativar apenas o agregado; o log **por página** mantém-se sempre.
    */
   GLPI_SYNC_METRICS_LOG_EVERY: clampInt(process.env.GLPI_SYNC_METRICS_LOG_EVERY, 0, 50_000, 500)

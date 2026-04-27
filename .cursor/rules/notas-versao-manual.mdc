@@ -1,0 +1,13 @@
+---
+description: Atualização obrigatória das notas de versão e do manual do produto.
+alwaysApply: true
+---
+
+# Notas de versão e manual
+
+- Para toda mudança funcional, visual, de fluxo, permissão, integração, modelo de dados ou comportamento visível ao usuário, atualize `NOTAS_DE_VERSAO.md`.
+- Escreva as notas em pt-BR, com foco no impacto para usuários, administradores ou operação. Evite detalhes internos sem valor para quem usa o sistema.
+- Use a seção `Não publicado` e as categorias `Adicionado`, `Alterado`, `Corrigido`, `Removido`, `Segurança` ou `Técnico`, conforme necessário.
+- Se a mudança alterar menus, fluxos relevantes da UI, permissões por papel ou instruções de uso, atualize também `apps/frontend/src/content/manual-do-utilizador.ts` e ajuste `MANUAL_LAST_UPDATED`.
+- Se a mudança for puramente interna e não afetar usuário, registre em `Técnico` apenas quando for relevante para operação, deploy, manutenção ou suporte.
+- Antes de finalizar, mencione na resposta se as notas de versão e o manual foram atualizados ou por que não eram aplicáveis.

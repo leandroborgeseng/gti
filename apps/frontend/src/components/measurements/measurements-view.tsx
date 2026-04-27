@@ -113,7 +113,7 @@ export function MeasurementsView({
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Medições</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Lista das medições por contrato e competência (uma por mês). O <strong className="font-medium text-foreground">estado</strong>{" "}
-            (Aberta → Em revisão / Glosada → Aprovada) fica registado após calcular e aprovar. Use{" "}
+            (Aberta → Em revisão / Glosada → Aprovada) fica registrado após calcular e aprovar. Use{" "}
             <strong className="font-medium text-foreground">Nova medição</strong> para cada fechamento mensal.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">

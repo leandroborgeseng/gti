@@ -68,7 +68,7 @@ export class GlosasService {
     const exists = await this.prisma.glosa.findUnique({ where: { id: glosaId } });
     if (!exists) throw new NotFoundException("Glosa não encontrada");
     if (!file.buffer?.length) {
-      throw new BadRequestException("Ficheiro vazio");
+      throw new BadRequestException("Arquivo vazio");
     }
     const { filePath } = await this.storage.saveGlosaFile(glosaId, file.buffer, file.originalname, file.mimetype);
     const attachment = await this.prisma.attachment.create({

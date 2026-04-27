@@ -1,5 +1,5 @@
 /**
- * Metadados sem segredos para perceber se o contentor recebe variáveis da Railway / `GTI_ENV_JSON`.
+ * Metadados sem segredos para perceber se o contêiner recebe variáveis da Railway / `GTI_ENV_JSON`.
  */
 
 export function diagnosticoPlataformaEnv(): {

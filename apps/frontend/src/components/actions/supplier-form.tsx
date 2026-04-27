@@ -69,7 +69,7 @@ export function SupplierForm({ onSuccess }: Props): JSX.Element {
           />
         </FormSection>
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "A guardar…" : "Cadastrar fornecedor"}
+          {mutation.isPending ? "Salvando…" : "Cadastrar fornecedor"}
         </Button>
       </form>
     </Form>

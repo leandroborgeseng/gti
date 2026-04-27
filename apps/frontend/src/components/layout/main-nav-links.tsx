@@ -7,7 +7,7 @@ import type { MainNavItem } from "./main-nav-data";
 
 type Props = {
   items: MainNavItem[];
-  /** Chamado após clicar num link (ex.: fechar drawer mobile). */
+  /** Chamado após clicar em um link (ex.: fechar drawer mobile). */
   onNavigate?: () => void;
   /** Dentro da sanfona: indentação e ritmo visual alinhados ao grupo. */
   nested?: boolean;
