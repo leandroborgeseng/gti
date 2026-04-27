@@ -51,12 +51,60 @@ export class CreateProjectDto {
   @IsString()
   @IsNotEmpty()
   name!: string;
+
+  @IsOptional()
+  @IsString()
+  parentProjectId?: string;
 }
 
 export class UpdateProjectDto {
   @IsString()
   @IsNotEmpty()
   name!: string;
+}
+
+export class CreateProjectTaskDto {
+  @IsString()
+  @IsNotEmpty()
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  groupId?: string;
+
+  @IsOptional()
+  @IsString()
+  groupName?: string;
+
+  @IsOptional()
+  @IsString()
+  parentTaskId?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  /** ISO 8601 ou string vazia. */
+  @IsOptional()
+  @IsString()
+  dueDate?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  assigneeExternal?: string;
+
+  @IsOptional()
+  @IsString()
+  internalResponsible?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  effort?: number;
 }
 
 export class BulkPatchProjectTasksItemDto {

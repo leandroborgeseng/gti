@@ -898,6 +898,7 @@ export async function setManualGoalProgress(id: string, progress: number): Promi
 export type ProjectListItem = {
   id: string;
   name: string;
+  parentProjectId?: string | null;
   createdAt: string;
   updatedAt: string;
   _count?: { groups: number; tasks: number };
@@ -1019,8 +1020,11 @@ export type ProjectGroupWithTasks = {
 export type ProjectDetail = {
   id: string;
   name: string;
+  parentProjectId?: string | null;
   createdAt: string;
   updatedAt: string;
+  parentProject?: { id: string; name: string } | null;
+  subprojects?: ProjectListItem[];
   groups: ProjectGroupWithTasks[];
 };
 
@@ -1028,7 +1032,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
   return request("/projects");
 }
 
-export async function createProject(payload: { name: string }): Promise<ProjectListItem> {
+export async function createProject(payload: { name: string; parentProjectId?: string | null }): Promise<ProjectListItem> {
   return request("/projects", { method: "POST", body: JSON.stringify(payload) });
 }
 
@@ -1089,6 +1093,27 @@ export async function patchProjectTask(
 ): Promise<ProjectTaskPatchResponse> {
   return request(`/projects/${projectId}/tasks/${taskId}`, {
     method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function createProjectTask(
+  projectId: string,
+  payload: {
+    title: string;
+    groupId?: string;
+    groupName?: string;
+    parentTaskId?: string;
+    status?: string;
+    dueDate?: string;
+    description?: string;
+    assigneeExternal?: string;
+    internalResponsible?: string;
+    effort?: number;
+  }
+): Promise<ProjectTaskPatchResponse> {
+  return request(`/projects/${projectId}/tasks`, {
+    method: "POST",
     body: JSON.stringify(payload)
   });
 }

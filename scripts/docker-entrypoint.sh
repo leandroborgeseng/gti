@@ -6,7 +6,8 @@
 # Variáveis opcionais adicionais:
 #   PRISMA_RESOLVE_ROLLED_BACK — nome da pasta da migração
 #   PRISMA_RESOLVE_APPLIED — nome da pasta da migração
-#   SKIP_SEED_OUTSOURCED=1 — não corre o seed dos contratos «sistemas terceirizados» (idempotente)
+#   RUN_SEED_OUTSOURCED=1 — corre o seed dos contratos «sistemas terceirizados» no arranque
+#   SKIP_SEED_OUTSOURCED=0 — compatibilidade: também força o seed no arranque
 #
 # Depois de recuperação com sucesso, remove variáveis de um uso único e volta a fazer deploy.
 
@@ -30,12 +31,13 @@ fi
 
 npx prisma migrate deploy --schema "$SCHEMA"
 
-# Contratos de referência «Sistemas terceirizados atuais» (ST-2026-001…009). Idempotente.
-if [ "${SKIP_SEED_OUTSOURCED:-0}" != "1" ]; then
+# Contratos de referência «Sistemas terceirizados atuais» (ST-2026-001…009). Idempotente, mas
+# ainda abre ligação à BD e executa consultas; por isso fica opt-in no arranque de produção.
+if [ "${RUN_SEED_OUTSOURCED:-0}" = "1" ] || [ "${SKIP_SEED_OUTSOURCED:-1}" = "0" ]; then
   echo "[gti-contratos] prisma:seed:outsourced (idempotente)…"
   npm run prisma:seed:outsourced
 else
-  echo "[gti-contratos] SKIP_SEED_OUTSOURCED=1 — seed terceirizados omitido"
+  echo "[gti-contratos] seed terceirizados omitido (defina RUN_SEED_OUTSOURCED=1 para executar)"
 fi
 
 cd apps/frontend && exec npm run start

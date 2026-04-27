@@ -19,6 +19,7 @@ import { Roles } from "../../auth/roles-required.decorator";
 import {
   BulkPatchProjectTasksDto,
   CreateProjectDto,
+  CreateProjectTaskDto,
   ImportProjectDto,
   UpdateProjectDto,
   UpdateProjectTaskDto
@@ -78,6 +79,12 @@ export class ProjectsController {
   @Roles(UserRole.ADMIN, UserRole.EDITOR)
   update(@Param("id") id: string, @Body() dto: UpdateProjectDto): Promise<unknown> {
     return this.service.update(id, dto);
+  }
+
+  @Post(":id/tasks")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  createTask(@Param("id") projectId: string, @Body() dto: CreateProjectTaskDto): Promise<unknown> {
+    return this.service.createTask(projectId, dto);
   }
 
   @Patch(":id/tasks/:taskId")

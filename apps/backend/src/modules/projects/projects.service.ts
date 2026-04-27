@@ -4,6 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { StorageService } from "../../storage/storage.service";
 import {
   CreateProjectDto,
+  CreateProjectTaskDto,
   ImportProjectDto,
   ImportProjectGroupDto,
   ImportProjectTaskNodeDto,
@@ -28,7 +29,12 @@ export class ProjectsService {
     if (!name) {
       throw new BadRequestException("O nome do projeto é obrigatório.");
     }
-    const created = await this.prisma.project.create({ data: { name } });
+    const parentProjectId = dto.parentProjectId?.trim() || null;
+    if (parentProjectId) {
+      const parent = await this.prisma.project.findUnique({ where: { id: parentProjectId }, select: { id: true } });
+      if (!parent) throw new NotFoundException("Projeto pai não encontrado.");
+    }
+    const created = await this.prisma.project.create({ data: { name, parentProjectId } });
     return created;
   }
 
@@ -134,6 +140,105 @@ export class ProjectsService {
       ...p,
       _stats: { overdueNotDone: overdueByProject.get(p.id) ?? 0 }
     }));
+  }
+
+  private async resolveTaskGroup(
+    projectId: string,
+    dto: Pick<CreateProjectTaskDto, "groupId" | "groupName" | "parentTaskId">
+  ): Promise<string> {
+    if (dto.parentTaskId?.trim()) {
+      const parent = await this.prisma.projectTask.findFirst({
+        where: { id: dto.parentTaskId.trim(), projectId },
+        select: { groupId: true }
+      });
+      if (!parent) throw new NotFoundException("Tarefa pai não encontrada neste projeto.");
+      return parent.groupId;
+    }
+
+    if (dto.groupId?.trim()) {
+      const group = await this.prisma.projectGroup.findFirst({
+        where: { id: dto.groupId.trim(), projectId },
+        select: { id: true }
+      });
+      if (!group) throw new NotFoundException("Grupo não encontrado neste projeto.");
+      return group.id;
+    }
+
+    const groupName = dto.groupName?.trim() || "Tarefas";
+    const existing = await this.prisma.projectGroup.findFirst({
+      where: { projectId, name: groupName },
+      select: { id: true }
+    });
+    if (existing) return existing.id;
+
+    const last = await this.prisma.projectGroup.findFirst({
+      where: { projectId },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true }
+    });
+    const created = await this.prisma.projectGroup.create({
+      data: {
+        projectId,
+        name: groupName,
+        sortOrder: (last?.sortOrder ?? -1) + 1
+      },
+      select: { id: true }
+    });
+    return created.id;
+  }
+
+  async createTask(projectId: string, dto: CreateProjectTaskDto): Promise<unknown> {
+    const title = dto.title.trim();
+    if (!title) throw new BadRequestException("O título da tarefa é obrigatório.");
+
+    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+    if (!project) throw new NotFoundException("Projeto não encontrado.");
+
+    const groupId = await this.resolveTaskGroup(projectId, dto);
+    const parentTaskId = dto.parentTaskId?.trim() || null;
+    const last = await this.prisma.projectTask.findFirst({
+      where: { projectId, groupId, parentTaskId },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true }
+    });
+
+    let dueDate: Date | null = null;
+    if (dto.dueDate?.trim()) {
+      const d = new Date(dto.dueDate.trim());
+      if (Number.isNaN(d.getTime())) throw new BadRequestException("Data inválida.");
+      dueDate = d;
+    }
+
+    const created = await this.prisma.projectTask.create({
+      data: {
+        projectId,
+        groupId,
+        parentTaskId,
+        title,
+        status: dto.status?.trim() || "Não iniciado",
+        dueDate,
+        description: dto.description?.trim() || null,
+        assigneeExternal: dto.assigneeExternal?.trim() || null,
+        internalResponsible: dto.internalResponsible?.trim() || null,
+        effort: dto.effort != null && Number.isFinite(dto.effort) ? new Prisma.Decimal(dto.effort) : null,
+        sortOrder: (last?.sortOrder ?? -1) + 1
+      }
+    });
+    return {
+      id: created.id,
+      projectId: created.projectId,
+      groupId: created.groupId,
+      parentTaskId: created.parentTaskId,
+      title: created.title,
+      status: created.status,
+      assigneeExternal: created.assigneeExternal,
+      dueDate: created.dueDate ? created.dueDate.toISOString() : null,
+      description: created.description,
+      effort: created.effort != null ? String(created.effort) : null,
+      internalResponsible: created.internalResponsible,
+      sortOrder: created.sortOrder,
+      attachments: []
+    };
   }
 
   /**
@@ -428,6 +533,17 @@ export class ProjectsService {
     const project = await this.prisma.project.findUnique({
       where: { id },
       include: {
+        parentProject: { select: { id: true, name: true } },
+        subprojects: {
+          orderBy: { updatedAt: "desc" },
+          select: {
+            id: true,
+            name: true,
+            createdAt: true,
+            updatedAt: true,
+            _count: { select: { groups: true, tasks: true } }
+          }
+        },
         groups: { orderBy: { sortOrder: "asc" } }
       }
     });

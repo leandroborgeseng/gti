@@ -31,9 +31,13 @@ const titles: Record<string, string> = {
   "/exports": "Exportações"
 };
 
-export function AppShell({ children }: PropsWithChildren): JSX.Element {
+type AppShellProps = PropsWithChildren<{
+  initialRole?: string | null;
+}>;
+
+export function AppShell({ children, initialRole }: AppShellProps): JSX.Element {
   const pathname = usePathname();
-  const [role, setRole] = useState<string | null | undefined>(undefined);
+  const [role, setRole] = useState<string | null | undefined>(initialRole);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const persistSidebarCollapsed = useCallback((collapsed: boolean) => {
@@ -49,10 +53,11 @@ export function AppShell({ children }: PropsWithChildren): JSX.Element {
   const expandSidebar = useCallback(() => persistSidebarCollapsed(false), [persistSidebarCollapsed]);
 
   useEffect(() => {
+    if (initialRole !== undefined) return;
     void getAuthMe()
       .then((m) => setRole(m.role))
       .catch(() => setRole(null));
-  }, []);
+  }, [initialRole]);
 
   useLayoutEffect(() => {
     try {

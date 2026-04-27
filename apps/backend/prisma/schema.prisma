@@ -446,12 +446,17 @@ model Attachment {
 // ---------------------------------------------------------------------------
 
 model Project {
-  id        String         @id @default(uuid())
-  name      String
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  groups    ProjectGroup[]
-  tasks     ProjectTask[]
+  id              String         @id @default(uuid())
+  name            String
+  parentProjectId String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  parentProject   Project?       @relation("ProjectHierarchy", fields: [parentProjectId], references: [id], onDelete: SetNull)
+  subprojects     Project[]      @relation("ProjectHierarchy")
+  groups          ProjectGroup[]
+  tasks           ProjectTask[]
+
+  @@index([parentProjectId])
 }
 
 model ProjectGroup {

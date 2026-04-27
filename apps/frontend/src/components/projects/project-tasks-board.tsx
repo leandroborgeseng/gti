@@ -3,11 +3,11 @@
 import { ChevronDown, ChevronRight, MessageSquare, Paperclip, Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ProjectGroupWithTasks, ProjectTaskPatchPayload, ProjectTaskTree } from "@/lib/api";
-import { attachmentDownloadUrl, getAuthMe, patchProjectTask, uploadProjectTaskAttachment } from "@/lib/api";
+import { attachmentDownloadUrl, createProjectTask, getAuthMe, patchProjectTask, uploadProjectTaskAttachment } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
 import {
   aggregateStatusByKind,
   classifyStatus,
@@ -270,6 +271,18 @@ function flattenTaskIds(roots: ProjectTaskTree[]): string[] {
   }
   roots.forEach(walk);
   return ids;
+}
+
+function flattenTaskOptions(groups: ProjectGroupWithTasks[]): Array<{ id: string; label: string }> {
+  const out: Array<{ id: string; label: string }> = [];
+  function walk(task: ProjectTaskTree, depth: number): void {
+    out.push({ id: task.id, label: `${"— ".repeat(depth)}${task.title}` });
+    task.children?.forEach((child) => walk(child, depth + 1));
+  }
+  for (const group of groups) {
+    group.tasks.forEach((task) => walk(task, 0));
+  }
+  return out;
 }
 
 type FilesCellProps = {
@@ -862,6 +875,17 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkStatusPick, setBulkStatusPick] = useState("Feito");
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskGroupId, setNewTaskGroupId] = useState("");
+  const [newTaskGroupName, setNewTaskGroupName] = useState("Tarefas");
+  const [newTaskParentId, setNewTaskParentId] = useState("");
+  const [newTaskStatus, setNewTaskStatus] = useState("Não iniciado");
+  const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskResponsible, setNewTaskResponsible] = useState("");
+  const [newTaskPmf, setNewTaskPmf] = useState("");
+  const [newTaskDescription, setNewTaskDescription] = useState("");
+  const [creatingTask, setCreatingTask] = useState(false);
 
   const [overdueOnly, setOverdueOnly] = useState(() => boardQuery?.filter === "overdue");
   const [noDueOnly, setNoDueOnly] = useState(() => boardQuery?.filter === "no_due");
@@ -909,6 +933,18 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
 
   const canEdit = role === "ADMIN" || role === "EDITOR";
 
+  const resetNewTaskForm = useCallback(() => {
+    setNewTaskTitle("");
+    setNewTaskGroupId("");
+    setNewTaskGroupName("Tarefas");
+    setNewTaskParentId("");
+    setNewTaskStatus("Não iniciado");
+    setNewTaskDueDate("");
+    setNewTaskResponsible("");
+    setNewTaskPmf("");
+    setNewTaskDescription("");
+  }, []);
+
   const onPatch = useCallback(
     async (taskId: string, payload: ProjectTaskPatchPayload) => {
       setSavingTaskId(taskId);
@@ -932,6 +968,58 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
   }, [router]);
 
   const displayGroups = useMemo(() => normalizeProjectGroups(groups), [groups]);
+  const taskOptions = useMemo(() => flattenTaskOptions(displayGroups), [displayGroups]);
+
+  const submitNewTask = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const title = newTaskTitle.trim();
+      if (!title || !canEdit) {
+        toast.error("Informe o título da tarefa.");
+        return;
+      }
+      setCreatingTask(true);
+      try {
+        await createProjectTask(projectId, {
+          title,
+          groupId: newTaskParentId ? undefined : newTaskGroupId || undefined,
+          groupName: newTaskParentId ? undefined : newTaskGroupId ? undefined : newTaskGroupName.trim() || "Tarefas",
+          parentTaskId: newTaskParentId || undefined,
+          status: newTaskStatus,
+          dueDate: newTaskDueDate ? dateInputToPayload(newTaskDueDate) : undefined,
+          assigneeExternal: newTaskResponsible.trim() || undefined,
+          internalResponsible: newTaskPmf.trim() || undefined,
+          description: newTaskDescription.trim() || undefined
+        });
+        toast.success(newTaskParentId ? "Subtarefa criada." : "Tarefa criada.");
+        resetNewTaskForm();
+        setTaskDialogOpen(false);
+        void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
+        void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
+        router.refresh();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Não foi possível criar a tarefa.");
+      } finally {
+        setCreatingTask(false);
+      }
+    },
+    [
+      canEdit,
+      newTaskDescription,
+      newTaskDueDate,
+      newTaskGroupId,
+      newTaskGroupName,
+      newTaskParentId,
+      newTaskPmf,
+      newTaskResponsible,
+      newTaskStatus,
+      newTaskTitle,
+      projectId,
+      qc,
+      resetNewTaskForm,
+      router
+    ]
+  );
 
   const filterState: BoardFilterState = useMemo(
     () => ({ overdueOnly, noDueOnly, statusKind }),
@@ -1068,6 +1156,15 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
             </Button>
           </div>
         ) : null}
+        {canEdit ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-[#ececf0] pt-2 dark:border-neutral-800">
+            <Button type="button" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setTaskDialogOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Nova tarefa
+            </Button>
+            <span className="text-xs text-[#676879]">Crie tarefas manuais ou selecione uma tarefa pai para cadastrar uma subtarefa.</span>
+          </div>
+        ) : null}
       </div>
       {processedGroups.map((g, idx) => (
         <GroupBoard
@@ -1082,6 +1179,137 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
           onFilesUploaded={onFilesUploaded}
         />
       ))}
+      <Dialog
+        open={taskDialogOpen}
+        onOpenChange={(open) => {
+          setTaskDialogOpen(open);
+          if (!open) resetNewTaskForm();
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <form className="space-y-4" onSubmit={submitNewTask}>
+            <DialogHeader>
+              <DialogTitle>Nova tarefa</DialogTitle>
+              <DialogDescription>
+                Cadastre uma tarefa no projeto. Para criar subtarefa, selecione uma tarefa pai; ela herdará o grupo da tarefa pai.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm font-medium sm:col-span-2">
+                <span>Título</span>
+                <Input
+                  value={newTaskTitle}
+                  onChange={(event) => setNewTaskTitle(event.target.value)}
+                  placeholder="Ex.: Validar integração"
+                  disabled={creatingTask}
+                  autoFocus
+                />
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                <span>Tarefa pai (opcional)</span>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  value={newTaskParentId}
+                  disabled={creatingTask}
+                  onChange={(event) => setNewTaskParentId(event.target.value)}
+                >
+                  <option value="">Sem tarefa pai</option>
+                  {taskOptions.map((task) => (
+                    <option key={task.id} value={task.id}>
+                      {task.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                <span>Grupo</span>
+                {displayGroups.length > 0 ? (
+                  <select
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                    value={newTaskGroupId}
+                    disabled={creatingTask || Boolean(newTaskParentId)}
+                    onChange={(event) => setNewTaskGroupId(event.target.value)}
+                  >
+                    <option value="">Novo grupo / padrão</option>
+                    {displayGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input value={newTaskGroupName} onChange={(event) => setNewTaskGroupName(event.target.value)} disabled={creatingTask} />
+                )}
+              </label>
+              {displayGroups.length > 0 && !newTaskGroupId && !newTaskParentId ? (
+                <label className="space-y-2 text-sm font-medium sm:col-span-2">
+                  <span>Nome do novo grupo</span>
+                  <Input
+                    value={newTaskGroupName}
+                    onChange={(event) => setNewTaskGroupName(event.target.value)}
+                    placeholder="Tarefas"
+                    disabled={creatingTask}
+                  />
+                </label>
+              ) : null}
+              <label className="space-y-2 text-sm font-medium">
+                <span>Status</span>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  value={newTaskStatus}
+                  disabled={creatingTask}
+                  onChange={(event) => setNewTaskStatus(event.target.value)}
+                >
+                  {STATUS_PRESETS.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                <span>Prazo</span>
+                <Input type="date" value={newTaskDueDate} disabled={creatingTask} onChange={(event) => setNewTaskDueDate(event.target.value)} />
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                <span>Pessoa</span>
+                <Input
+                  value={newTaskResponsible}
+                  onChange={(event) => setNewTaskResponsible(event.target.value)}
+                  placeholder="Responsável externo"
+                  disabled={creatingTask}
+                />
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                <span>Responsável PMF</span>
+                <Input
+                  value={newTaskPmf}
+                  onChange={(event) => setNewTaskPmf(event.target.value)}
+                  placeholder="Responsável interno"
+                  disabled={creatingTask}
+                />
+              </label>
+              <label className="space-y-2 text-sm font-medium sm:col-span-2">
+                <span>Observação</span>
+                <textarea
+                  className="min-h-[96px] w-full resize-y rounded-md border border-input bg-background p-3 text-sm leading-relaxed shadow-sm"
+                  value={newTaskDescription}
+                  disabled={creatingTask}
+                  onChange={(event) => setNewTaskDescription(event.target.value)}
+                />
+              </label>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setTaskDialogOpen(false)} disabled={creatingTask}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={creatingTask}>
+                {creatingTask ? "A guardar…" : "Criar tarefa"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

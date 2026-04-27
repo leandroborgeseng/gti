@@ -37,7 +37,6 @@ export function MobileNav({ groups }: Props): JSX.Element {
                 width={200}
                 height={58}
                 className="h-10 w-auto max-w-full object-contain object-left"
-                priority
               />
             </Link>
             <p className="text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">Gestão de Operações de TI</p>

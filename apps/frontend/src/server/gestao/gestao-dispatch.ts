@@ -409,6 +409,15 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       }
       return jsonOk(await gestaoProjects.updateTask(seg[1], seg[3], body as never));
     }
+    if (seg.length === 3 && seg[2] === "tasks" && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou em falta. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoProjects.createTask(seg[1], body as never));
+    }
     if (seg.length === 5 && seg[2] === "tasks" && seg[4] === "attachments" && method === "POST") {
       assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
       assertMutation(user, method);

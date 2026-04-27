@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileSpreadsheet, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -12,7 +13,6 @@ import type { ProjectListItem } from "@/lib/api";
 import { createProject, deleteProject, getAuthMe, getProjects, updateProject } from "@/lib/api";
 import { ProjectsOverviewDashboard } from "@/components/projects/projects-overview-dashboard";
 import { queryKeys } from "@/lib/query-keys";
-import { MondayImportWizard } from "@/components/projects/monday-import-wizard";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
@@ -27,6 +27,14 @@ import {
 import { Input } from "@/components/ui/input";
 
 const columnHelper = createColumnHelper<ProjectListItem>();
+
+const MondayImportWizard = dynamic(
+  async () => (await import("@/components/projects/monday-import-wizard")).MondayImportWizard,
+  {
+    ssr: false,
+    loading: () => <p className="text-sm text-muted-foreground">A carregar importador Excel…</p>
+  }
+);
 
 type Props = {
   projects: ProjectListItem[];
@@ -272,16 +280,18 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         />
       </section>
 
-      <MondayImportWizard
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onImported={() => {
-          void qc.invalidateQueries({ queryKey: queryKeys.projects });
-          void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
-          void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
-          router.refresh();
-        }}
-      />
+      {importOpen ? (
+        <MondayImportWizard
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          onImported={() => {
+            void qc.invalidateQueries({ queryKey: queryKeys.projects });
+            void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
+            void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
+            router.refresh();
+          }}
+        />
+      ) : null}
 
       <Dialog
         open={createOpen || editingProject != null}
