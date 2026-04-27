@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { StorageService } from "../../storage/storage.service";
 import {
+  CreateProjectCollectionDto,
   CreateProjectDto,
   CreateProjectTaskDto,
   ImportProjectDto,
@@ -11,6 +12,7 @@ import {
   type ProjectFlatTaskRow,
   type ProjectsDashboardStats,
   type ProjectsTasksFlatResponse,
+  UpdateProjectCollectionDto,
   UpdateProjectDto,
   UpdateProjectTaskDto
 } from "./projects.dto";
@@ -29,12 +31,18 @@ export class ProjectsService {
     if (!name) {
       throw new BadRequestException("O nome do projeto é obrigatório.");
     }
-    const parentProjectId = dto.parentProjectId?.trim() || null;
-    if (parentProjectId) {
-      const parent = await this.prisma.project.findUnique({ where: { id: parentProjectId }, select: { id: true } });
-      if (!parent) throw new NotFoundException("Projeto pai não encontrado.");
+    const projectCollectionId = typeof dto.projectCollectionId === "string" ? dto.projectCollectionId.trim() || null : null;
+    if (projectCollectionId) {
+      const group = await this.prisma.projectCollection.findUnique({ where: { id: projectCollectionId }, select: { id: true } });
+      if (!group) throw new NotFoundException("Grupo de projetos não encontrado.");
     }
-    const created = await this.prisma.project.create({ data: { name, parentProjectId } });
+    const context = typeof dto.context === "string" ? dto.context.trim() || null : null;
+    const supervisorId = typeof dto.supervisorId === "string" ? dto.supervisorId.trim() || null : null;
+    if (supervisorId) {
+      const supervisor = await this.prisma.user.findUnique({ where: { id: supervisorId }, select: { id: true } });
+      if (!supervisor) throw new NotFoundException("Supervisor do projeto não encontrado.");
+    }
+    const created = await this.prisma.project.create({ data: { name, context, supervisorId, projectCollectionId } });
     return created;
   }
 
@@ -45,7 +53,87 @@ export class ProjectsService {
     }
     const exists = await this.prisma.project.findUnique({ where: { id }, select: { id: true } });
     if (!exists) throw new NotFoundException("Projeto não encontrado.");
-    return this.prisma.project.update({ where: { id }, data: { name } });
+    const data: Prisma.ProjectUpdateInput = { name };
+    if (dto.context !== undefined) {
+      const context = typeof dto.context === "string" ? dto.context.trim() : "";
+      data.context = context || null;
+    }
+    if (dto.supervisorId !== undefined) {
+      const supervisorId = typeof dto.supervisorId === "string" ? dto.supervisorId.trim() : "";
+      if (supervisorId) {
+        const supervisor = await this.prisma.user.findUnique({
+          where: { id: supervisorId },
+          select: { id: true }
+        });
+        if (!supervisor) throw new NotFoundException("Supervisor do projeto não encontrado.");
+        data.supervisor = { connect: { id: supervisorId } };
+      } else {
+        data.supervisor = { disconnect: true };
+      }
+    }
+    if (dto.projectCollectionId !== undefined) {
+      const projectCollectionId = typeof dto.projectCollectionId === "string" ? dto.projectCollectionId.trim() : "";
+      if (projectCollectionId) {
+        const group = await this.prisma.projectCollection.findUnique({
+          where: { id: projectCollectionId },
+          select: { id: true }
+        });
+        if (!group) throw new NotFoundException("Grupo de projetos não encontrado.");
+        data.projectCollection = { connect: { id: projectCollectionId } };
+      } else {
+        data.projectCollection = { disconnect: true };
+      }
+    }
+    return this.prisma.project.update({ where: { id }, data });
+  }
+
+  async findSupervisors(): Promise<unknown> {
+    return this.prisma.user.findMany({
+      orderBy: { email: "asc" },
+      select: { id: true, email: true, role: true }
+    });
+  }
+
+  async findCollections(): Promise<unknown> {
+    return this.prisma.projectCollection.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        projects: {
+          orderBy: { updatedAt: "desc" },
+          select: {
+            id: true,
+            name: true,
+            supervisorId: true,
+            supervisor: { select: { id: true, email: true, role: true } },
+            createdAt: true,
+            updatedAt: true,
+            _count: { select: { groups: true, tasks: true } }
+          }
+        },
+        _count: { select: { projects: true } }
+      }
+    });
+  }
+
+  async createCollection(dto: CreateProjectCollectionDto): Promise<unknown> {
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException("O nome do grupo é obrigatório.");
+    return this.prisma.projectCollection.create({ data: { name } });
+  }
+
+  async updateCollection(id: string, dto: UpdateProjectCollectionDto): Promise<unknown> {
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException("O nome do grupo é obrigatório.");
+    const exists = await this.prisma.projectCollection.findUnique({ where: { id }, select: { id: true } });
+    if (!exists) throw new NotFoundException("Grupo de projetos não encontrado.");
+    return this.prisma.projectCollection.update({ where: { id }, data: { name } });
+  }
+
+  async deleteCollection(id: string): Promise<{ ok: true; id: string }> {
+    const exists = await this.prisma.projectCollection.findUnique({ where: { id }, select: { id: true } });
+    if (!exists) throw new NotFoundException("Grupo de projetos não encontrado.");
+    await this.prisma.projectCollection.delete({ where: { id } });
+    return { ok: true, id };
   }
 
   async delete(id: string): Promise<{ ok: true; id: string }> {
@@ -123,6 +211,8 @@ export class ProjectsService {
     const projects = await this.prisma.project.findMany({
       orderBy: { updatedAt: "desc" },
       include: {
+        supervisor: { select: { id: true, email: true, role: true } },
+        projectCollection: { select: { id: true, name: true } },
         _count: { select: { groups: true, tasks: true } }
       }
     });
@@ -130,15 +220,53 @@ export class ProjectsService {
       select: { projectId: true, dueDate: true, status: true }
     });
     const sod = this.startOfUtcDay();
-    const overdueByProject = new Map<string, number>();
-    for (const t of meta) {
-      if (this.isOverdueNotDone(t.dueDate, t.status, sod)) {
-        overdueByProject.set(t.projectId, (overdueByProject.get(t.projectId) ?? 0) + 1);
+    const statsByProject = new Map<
+      string,
+      {
+        total: number;
+        done: number;
+        progress: number;
+        blocked: number;
+        notStarted: number;
+        other: number;
+        empty: number;
+        overdueNotDone: number;
       }
+    >();
+    for (const t of meta) {
+      const current =
+        statsByProject.get(t.projectId) ??
+        {
+          total: 0,
+          done: 0,
+          progress: 0,
+          blocked: 0,
+          notStarted: 0,
+          other: 0,
+          empty: 0,
+          overdueNotDone: 0
+        };
+      const kind = this.classifyTaskStatusForDashboard(t.status);
+      current.total += 1;
+      current[kind] += 1;
+      if (this.isOverdueNotDone(t.dueDate, t.status, sod)) {
+        current.overdueNotDone += 1;
+      }
+      statsByProject.set(t.projectId, current);
     }
     return projects.map((p) => ({
       ...p,
-      _stats: { overdueNotDone: overdueByProject.get(p.id) ?? 0 }
+      _stats: {
+        total: statsByProject.get(p.id)?.total ?? 0,
+        done: statsByProject.get(p.id)?.done ?? 0,
+        progress: statsByProject.get(p.id)?.progress ?? 0,
+        blocked: statsByProject.get(p.id)?.blocked ?? 0,
+        notStarted: statsByProject.get(p.id)?.notStarted ?? 0,
+        other: statsByProject.get(p.id)?.other ?? 0,
+        empty: statsByProject.get(p.id)?.empty ?? 0,
+        overdueNotDone: statsByProject.get(p.id)?.overdueNotDone ?? 0,
+        completionPercent: statsByProject.get(p.id)?.total ? Math.round(((statsByProject.get(p.id)?.done ?? 0) / statsByProject.get(p.id)!.total) * 100) : 0
+      }
     }));
   }
 
@@ -533,15 +661,24 @@ export class ProjectsService {
     const project = await this.prisma.project.findUnique({
       where: { id },
       include: {
-        parentProject: { select: { id: true, name: true } },
-        subprojects: {
-          orderBy: { updatedAt: "desc" },
+        supervisor: { select: { id: true, email: true, role: true } },
+        projectCollection: {
           select: {
             id: true,
             name: true,
-            createdAt: true,
-            updatedAt: true,
-            _count: { select: { groups: true, tasks: true } }
+            projects: {
+              where: { id: { not: id } },
+              orderBy: { updatedAt: "desc" },
+              select: {
+                id: true,
+                name: true,
+                supervisorId: true,
+                supervisor: { select: { id: true, email: true, role: true } },
+                createdAt: true,
+                updatedAt: true,
+                _count: { select: { groups: true, tasks: true } }
+              }
+            }
           }
         },
         groups: { orderBy: { sortOrder: "asc" } }

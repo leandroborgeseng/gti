@@ -130,6 +130,7 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   passwordResetTokens PasswordResetToken[]
+  supervisedProjects  Project[]            @relation("ProjectSupervisor")
 }
 
 model PasswordResetToken {
@@ -446,17 +447,28 @@ model Attachment {
 // ---------------------------------------------------------------------------
 
 model Project {
-  id              String         @id @default(uuid())
-  name            String
-  parentProjectId String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  parentProject   Project?       @relation("ProjectHierarchy", fields: [parentProjectId], references: [id], onDelete: SetNull)
-  subprojects     Project[]      @relation("ProjectHierarchy")
-  groups          ProjectGroup[]
-  tasks           ProjectTask[]
+  id                  String             @id @default(uuid())
+  name                String
+  context             String?            @db.Text
+  supervisorId        String?
+  projectCollectionId String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  supervisor          User?              @relation("ProjectSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+  projectCollection   ProjectCollection? @relation(fields: [projectCollectionId], references: [id], onDelete: SetNull)
+  groups              ProjectGroup[]
+  tasks               ProjectTask[]
 
-  @@index([parentProjectId])
+  @@index([supervisorId])
+  @@index([projectCollectionId])
+}
+
+model ProjectCollection {
+  id        String    @id @default(uuid())
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  projects  Project[]
 }
 
 model ProjectGroup {

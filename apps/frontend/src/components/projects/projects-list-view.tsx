@@ -9,8 +9,19 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
-import type { ProjectListItem } from "@/lib/api";
-import { createProject, deleteProject, getAuthMe, getProjects, updateProject } from "@/lib/api";
+import type { ProjectCollection, ProjectListItem } from "@/lib/api";
+import {
+  createProject,
+  createProjectCollection,
+  deleteProject,
+  deleteProjectCollection,
+  getAuthMe,
+  getProjectCollections,
+  getProjects,
+  getProjectSupervisors,
+  updateProject,
+  updateProjectCollection
+} from "@/lib/api";
 import { ProjectsOverviewDashboard } from "@/components/projects/projects-overview-dashboard";
 import { queryKeys } from "@/lib/query-keys";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
@@ -25,6 +36,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 const columnHelper = createColumnHelper<ProjectListItem>();
 
@@ -41,6 +53,94 @@ type Props = {
   dataLoadErrors?: string[];
 };
 
+type ProjectExecutionStats = NonNullable<ProjectListItem["_stats"]>;
+
+const emptyExecutionStats: ProjectExecutionStats = {
+  total: 0,
+  done: 0,
+  progress: 0,
+  blocked: 0,
+  notStarted: 0,
+  other: 0,
+  empty: 0,
+  overdueNotDone: 0,
+  completionPercent: 0
+};
+
+function normalizeExecutionStats(stats?: ProjectExecutionStats): ProjectExecutionStats {
+  if (!stats) return emptyExecutionStats;
+  return { ...emptyExecutionStats, ...stats };
+}
+
+function aggregateExecutionStats(items: ProjectListItem[]): ProjectExecutionStats {
+  const total = items.reduce(
+    (acc, project) => {
+      const stats = normalizeExecutionStats(project._stats);
+      return {
+        total: acc.total + stats.total,
+        done: acc.done + stats.done,
+        progress: acc.progress + stats.progress,
+        blocked: acc.blocked + stats.blocked,
+        notStarted: acc.notStarted + stats.notStarted,
+        other: acc.other + stats.other,
+        empty: acc.empty + stats.empty,
+        overdueNotDone: acc.overdueNotDone + stats.overdueNotDone,
+        completionPercent: 0
+      };
+    },
+    { ...emptyExecutionStats }
+  );
+  return {
+    ...total,
+    completionPercent: total.total > 0 ? Math.round((total.done / total.total) * 100) : 0
+  };
+}
+
+function MiniExecutionChart({ stats, compact = false }: { stats?: ProjectExecutionStats; compact?: boolean }): JSX.Element {
+  const data = normalizeExecutionStats(stats);
+  const pending = Math.max(data.total - data.done - data.progress - data.blocked, 0);
+  const segments = [
+    { key: "done", value: data.done, className: "bg-emerald-500" },
+    { key: "progress", value: data.progress, className: "bg-sky-500" },
+    { key: "blocked", value: data.blocked, className: "bg-amber-500" },
+    { key: "pending", value: pending, className: "bg-slate-300" }
+  ];
+
+  if (data.total === 0) {
+    return <span className="text-xs text-muted-foreground">Sem tarefas</span>;
+  }
+
+  return (
+    <div className={compact ? "min-w-36 space-y-1" : "space-y-2"}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold tabular-nums text-foreground">{data.completionPercent}% concluído</span>
+        <span className={data.overdueNotDone > 0 ? "text-xs font-semibold tabular-nums text-destructive" : "text-xs text-muted-foreground"}>
+          {data.overdueNotDone > 0 ? `${data.overdueNotDone} atraso(s)` : "sem atrasos"}
+        </span>
+      </div>
+      <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-label={`${data.completionPercent}% concluído`}>
+        {segments.map((segment) =>
+          segment.value > 0 ? (
+            <span
+              key={segment.key}
+              className={segment.className}
+              style={{ width: `${Math.max((segment.value / data.total) * 100, 3)}%` }}
+            />
+          ) : null
+        )}
+      </div>
+      {!compact ? (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="tabular-nums">Total: {data.total}</span>
+          <span className="tabular-nums">Feitas: {data.done}</span>
+          <span className="tabular-nums">Em andamento: {data.progress}</span>
+          <span className="tabular-nums">Bloqueadas: {data.blocked}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
   const qc = useQueryClient();
@@ -49,6 +149,12 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
   const [createOpen, setCreateOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectListItem | null>(null);
   const [projectName, setProjectName] = useState("");
+  const [projectContext, setProjectContext] = useState("");
+  const [projectSupervisorId, setProjectSupervisorId] = useState("");
+  const [projectCollectionId, setProjectCollectionId] = useState("");
+  const [collectionDialogOpen, setCollectionDialogOpen] = useState(false);
+  const [editingCollection, setEditingCollection] = useState<ProjectCollection | null>(null);
+  const [collectionName, setCollectionName] = useState("");
 
   useEffect(() => {
     void getAuthMe()
@@ -60,6 +166,16 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
     queryKey: queryKeys.projects,
     queryFn: getProjects,
     initialData: initialProjects
+  });
+
+  const { data: projectCollections = [] } = useQuery({
+    queryKey: queryKeys.projectCollections,
+    queryFn: getProjectCollections
+  });
+
+  const { data: projectSupervisors = [] } = useQuery({
+    queryKey: queryKeys.projectSupervisors,
+    queryFn: getProjectSupervisors
   });
 
   const deleteMut = useMutation({
@@ -78,6 +194,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
 
   const refreshProjects = (): void => {
     void qc.invalidateQueries({ queryKey: queryKeys.projects });
+    void qc.invalidateQueries({ queryKey: queryKeys.projectCollections });
     void qc.invalidateQueries({ queryKey: queryKeys.projectsDashboard });
     void qc.invalidateQueries({ queryKey: [...queryKeys.projectsAllTasksRoot] });
     router.refresh();
@@ -89,6 +206,9 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
       toast.success("Projeto criado.");
       setCreateOpen(false);
       setProjectName("");
+      setProjectContext("");
+      setProjectSupervisorId("");
+      setProjectCollectionId("");
       refreshProjects();
     },
     onError: (e: unknown) => {
@@ -97,11 +217,26 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => updateProject(id, { name }),
+    mutationFn: ({
+      id,
+      name,
+      context,
+      supervisorId,
+      collectionId
+    }: {
+      id: string;
+      name: string;
+      context: string;
+      supervisorId: string;
+      collectionId: string;
+    }) => updateProject(id, { name, context: context || null, supervisorId: supervisorId || null, projectCollectionId: collectionId || null }),
     onSuccess: () => {
       toast.success("Projeto atualizado.");
       setEditingProject(null);
       setProjectName("");
+      setProjectContext("");
+      setProjectSupervisorId("");
+      setProjectCollectionId("");
       refreshProjects();
     },
     onError: (e: unknown) => {
@@ -109,16 +244,80 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
     }
   });
 
+  const createCollectionMut = useMutation({
+    mutationFn: createProjectCollection,
+    onSuccess: () => {
+      toast.success("Grupo de projetos criado.");
+      setCollectionDialogOpen(false);
+      setCollectionName("");
+      refreshProjects();
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Não foi possível criar o grupo.");
+    }
+  });
+
+  const updateCollectionMut = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => updateProjectCollection(id, { name }),
+    onSuccess: () => {
+      toast.success("Grupo de projetos atualizado.");
+      setEditingCollection(null);
+      setCollectionName("");
+      refreshProjects();
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Não foi possível atualizar o grupo.");
+    }
+  });
+
+  const deleteCollectionMut = useMutation({
+    mutationFn: deleteProjectCollection,
+    onSuccess: () => {
+      toast.success("Grupo de projetos removido.");
+      refreshProjects();
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Não foi possível remover o grupo.");
+    }
+  });
+
   const canImport = role === "ADMIN" || role === "EDITOR";
+  const projectsByCollectionId = useMemo(() => {
+    const map = new Map<string, ProjectListItem[]>();
+    for (const project of projects) {
+      const collectionId = project.projectCollectionId ?? project.projectCollection?.id;
+      if (!collectionId) continue;
+      map.set(collectionId, [...(map.get(collectionId) ?? []), project]);
+    }
+    return map;
+  }, [projects]);
 
   function openCreateDialog(): void {
     setProjectName("");
+    setProjectContext("");
+    setProjectSupervisorId("");
+    setProjectCollectionId("");
     setCreateOpen(true);
   }
 
   function openEditDialog(project: ProjectListItem): void {
     setProjectName(project.name);
+    setProjectContext(project.context ?? "");
+    setProjectSupervisorId(project.supervisorId ?? project.supervisor?.id ?? "");
+    setProjectCollectionId(project.projectCollectionId ?? project.projectCollection?.id ?? "");
     setEditingProject(project);
+  }
+
+  function openCreateCollectionDialog(): void {
+    setCollectionName("");
+    setEditingCollection(null);
+    setCollectionDialogOpen(true);
+  }
+
+  function openEditCollectionDialog(collection: ProjectCollection): void {
+    setCollectionName(collection.name);
+    setEditingCollection(collection);
+    setCollectionDialogOpen(true);
   }
 
   function submitProjectForm(event: FormEvent<HTMLFormElement>): void {
@@ -128,10 +327,30 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
       toast.error("Informe o nome do projeto.");
       return;
     }
+    const context = projectContext.trim();
     if (editingProject) {
-      updateMut.mutate({ id: editingProject.id, name });
+      updateMut.mutate({ id: editingProject.id, name, context, supervisorId: projectSupervisorId, collectionId: projectCollectionId });
     } else {
-      createMut.mutate({ name });
+      createMut.mutate({
+        name,
+        context: context || null,
+        supervisorId: projectSupervisorId || null,
+        projectCollectionId: projectCollectionId || null
+      });
+    }
+  }
+
+  function submitCollectionForm(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const name = collectionName.trim();
+    if (!name) {
+      toast.error("Informe o nome do grupo.");
+      return;
+    }
+    if (editingCollection) {
+      updateCollectionMut.mutate({ id: editingCollection.id, name });
+    } else {
+      createCollectionMut.mutate({ name });
     }
   }
 
@@ -155,6 +374,30 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
             {new Date(info.getValue()).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
           </span>
         )
+      }),
+      columnHelper.accessor((row) => row.projectCollection?.name ?? "", {
+        id: "projectCollection",
+        header: "Grupo de projetos",
+        enableSorting: true,
+        cell: (info) => {
+          const value = info.getValue() as string;
+          return value ? <span className="text-sm text-foreground">{value}</span> : <span className="text-muted-foreground">—</span>;
+        }
+      }),
+      columnHelper.display({
+        id: "execution",
+        header: "Execução",
+        enableSorting: false,
+        cell: (info) => <MiniExecutionChart stats={info.row.original._stats} compact />
+      }),
+      columnHelper.accessor((row) => row.supervisor?.email ?? "", {
+        id: "supervisor",
+        header: "Supervisor",
+        enableSorting: true,
+        cell: (info) => {
+          const value = info.getValue() as string;
+          return value ? <span className="text-sm text-foreground">{value}</span> : <span className="text-muted-foreground">—</span>;
+        }
       }),
       columnHelper.accessor((row) => row._count?.groups ?? 0, {
         id: "groups",
@@ -256,6 +499,9 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
           </Button>
           {canImport ? (
             <>
+              <Button type="button" variant="outline" className="gap-2" onClick={openCreateCollectionDialog}>
+                Novo grupo
+              </Button>
               <Button type="button" className="gap-2" onClick={openCreateDialog}>
                 <Plus className="h-4 w-4" />
                 Novo projeto
@@ -270,6 +516,68 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
       </div>
 
       <ProjectsOverviewDashboard />
+
+      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Grupos de projetos</h2>
+            <p className="text-sm text-muted-foreground">Agrupe um ou mais projetos para acompanhar iniciativas relacionadas.</p>
+          </div>
+          <span className="text-xs tabular-nums text-muted-foreground">{projectCollections.length} grupo(s)</span>
+        </div>
+        {projectCollections.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum grupo cadastrado.</p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {projectCollections.map((collection) => {
+              const collectionProjects = projectsByCollectionId.get(collection.id) ?? [];
+              const executionStats = aggregateExecutionStats(collectionProjects);
+              return (
+                <div key={collection.id} className="rounded-lg border bg-background p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">{collection.name}</h3>
+                    <p className="text-xs text-muted-foreground">{collection._count?.projects ?? collection.projects?.length ?? 0} projeto(s)</p>
+                  </div>
+                  {canImport ? (
+                    <div className="flex gap-1">
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditCollectionDialog(collection)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        disabled={deleteCollectionMut.isPending}
+                        onClick={() => {
+                          if (!confirm(`Remover o grupo «${collection.name}»? Os projetos ficarão sem grupo.`)) return;
+                          deleteCollectionMut.mutate(collection.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="mt-3 rounded-md border bg-card/60 p-3">
+                  <MiniExecutionChart stats={executionStats} />
+                </div>
+                {collection.projects?.length ? (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {collection.projects.slice(0, 6).map((project) => (
+                      <Link key={project.id} href={`/projetos/${project.id}`} className="rounded-full bg-muted px-2 py-1 text-xs text-foreground hover:bg-accent">
+                        {project.name}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <DataTable
@@ -300,6 +608,9 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
             setCreateOpen(false);
             setEditingProject(null);
             setProjectName("");
+            setProjectContext("");
+            setProjectSupervisorId("");
+            setProjectCollectionId("");
           }
         }}
       >
@@ -309,8 +620,8 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
               <DialogTitle>{editingProject ? "Editar projeto" : "Novo projeto"}</DialogTitle>
               <DialogDescription>
                 {editingProject
-                  ? "Altere o nome do projeto cadastrado."
-                  : "Cadastre um projeto vazio; as tarefas podem ser importadas pelo Excel do Monday depois."}
+                  ? "Altere o nome, o contexto, o supervisor e o grupo do projeto cadastrado."
+                  : "Cadastre um projeto vazio com uma apresentação inicial; as tarefas podem ser criadas manualmente ou importadas depois."}
               </DialogDescription>
             </DialogHeader>
             <label className="space-y-2 text-sm font-medium">
@@ -323,6 +634,51 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                 disabled={createMut.isPending || updateMut.isPending}
               />
             </label>
+            <label className="space-y-2 text-sm font-medium">
+              <span>Contexto do projeto</span>
+              <Textarea
+                value={projectContext}
+                onChange={(event) => setProjectContext(event.target.value)}
+                placeholder="Descreva o que o projeto faz, por que existe, objetivos principais e informações importantes para acompanhar."
+                className="min-h-32"
+                disabled={createMut.isPending || updateMut.isPending}
+              />
+            </label>
+            <label className="space-y-2 text-sm font-medium">
+              <span>Supervisor do projeto</span>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                value={projectSupervisorId}
+                disabled={createMut.isPending || updateMut.isPending}
+                onChange={(event) => setProjectSupervisorId(event.target.value)}
+              >
+                <option value="">Sem supervisor definido</option>
+                {projectSupervisors.map((supervisor) => (
+                  <option key={supervisor.id} value={supervisor.id}>
+                    {supervisor.email}
+                  </option>
+                ))}
+              </select>
+              <span className="block text-xs font-normal text-muted-foreground">
+                Pessoa responsável por acompanhar os status das tarefas e conferir se foram executadas.
+              </span>
+            </label>
+            <label className="space-y-2 text-sm font-medium">
+              <span>Grupo de projetos</span>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                value={projectCollectionId}
+                disabled={createMut.isPending || updateMut.isPending}
+                onChange={(event) => setProjectCollectionId(event.target.value)}
+              >
+                <option value="">Sem grupo</option>
+                {projectCollections.map((collection) => (
+                  <option key={collection.id} value={collection.id}>
+                    {collection.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <DialogFooter>
               <Button
                 type="button"
@@ -331,12 +687,53 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                   setCreateOpen(false);
                   setEditingProject(null);
                   setProjectName("");
+                  setProjectContext("");
+                  setProjectSupervisorId("");
+                  setProjectCollectionId("");
                 }}
               >
                 Cancelar
               </Button>
               <Button type="submit" disabled={createMut.isPending || updateMut.isPending}>
                 {createMut.isPending || updateMut.isPending ? "A guardar…" : "Guardar"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={collectionDialogOpen}
+        onOpenChange={(open) => {
+          setCollectionDialogOpen(open);
+          if (!open) {
+            setEditingCollection(null);
+            setCollectionName("");
+          }
+        }}
+      >
+        <DialogContent>
+          <form className="space-y-4" onSubmit={submitCollectionForm}>
+            <DialogHeader>
+              <DialogTitle>{editingCollection ? "Editar grupo de projetos" : "Novo grupo de projetos"}</DialogTitle>
+              <DialogDescription>Use grupos para reunir projetos relacionados sem criar hierarquia entre eles.</DialogDescription>
+            </DialogHeader>
+            <label className="space-y-2 text-sm font-medium">
+              <span>Nome do grupo</span>
+              <Input
+                value={collectionName}
+                onChange={(event) => setCollectionName(event.target.value)}
+                placeholder="Ex.: Implantação ERP"
+                autoFocus
+                disabled={createCollectionMut.isPending || updateCollectionMut.isPending}
+              />
+            </label>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCollectionDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={createCollectionMut.isPending || updateCollectionMut.isPending}>
+                {createCollectionMut.isPending || updateCollectionMut.isPending ? "A guardar…" : "Guardar"}
               </Button>
             </DialogFooter>
           </form>

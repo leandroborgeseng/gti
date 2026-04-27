@@ -18,9 +18,11 @@ import { UserRole } from "@prisma/client";
 import { Roles } from "../../auth/roles-required.decorator";
 import {
   BulkPatchProjectTasksDto,
+  CreateProjectCollectionDto,
   CreateProjectDto,
   CreateProjectTaskDto,
   ImportProjectDto,
+  UpdateProjectCollectionDto,
   UpdateProjectDto,
   UpdateProjectTaskDto
 } from "./projects.dto";
@@ -54,6 +56,34 @@ export class ProjectsController {
   @Get("tasks")
   listTasksFlat(@Query() query: Record<string, string | string[] | undefined>): Promise<unknown> {
     return this.service.findAllTasksFlat(query);
+  }
+
+  @Get("groups")
+  findGroups(): Promise<unknown> {
+    return this.service.findCollections();
+  }
+
+  @Get("supervisors")
+  findSupervisors(): Promise<unknown> {
+    return this.service.findSupervisors();
+  }
+
+  @Post("groups")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  createGroup(@Body() dto: CreateProjectCollectionDto): Promise<unknown> {
+    return this.service.createCollection(dto);
+  }
+
+  @Patch("groups/:groupId")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  updateGroup(@Param("groupId") groupId: string, @Body() dto: UpdateProjectCollectionDto): Promise<unknown> {
+    return this.service.updateCollection(groupId, dto);
+  }
+
+  @Delete("groups/:groupId")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  deleteGroup(@Param("groupId") groupId: string): Promise<unknown> {
+    return this.service.deleteCollection(groupId);
   }
 
   /** Segmento literal antes de `:id` para evitar ambiguidade com palavras reservadas em URLs. */

@@ -54,10 +54,42 @@ export class CreateProjectDto {
 
   @IsOptional()
   @IsString()
-  parentProjectId?: string;
+  context?: string | null;
+
+  @IsOptional()
+  @IsString()
+  supervisorId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  projectCollectionId?: string | null;
 }
 
 export class UpdateProjectDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  context?: string | null;
+
+  @IsOptional()
+  @IsString()
+  supervisorId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  projectCollectionId?: string | null;
+}
+
+export class CreateProjectCollectionDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+}
+
+export class UpdateProjectCollectionDto {
   @IsString()
   @IsNotEmpty()
   name!: string;

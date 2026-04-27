@@ -895,14 +895,43 @@ export async function setManualGoalProgress(id: string, progress: number): Promi
 
 // --- Projetos (importação Monday.com / Excel) ---
 
+export type ProjectSupervisor = {
+  id: string;
+  email: string;
+  role: string;
+};
+
 export type ProjectListItem = {
   id: string;
   name: string;
-  parentProjectId?: string | null;
+  context?: string | null;
+  supervisorId?: string | null;
+  supervisor?: ProjectSupervisor | null;
+  projectCollectionId?: string | null;
+  projectCollection?: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
   _count?: { groups: number; tasks: number };
-  _stats?: { overdueNotDone: number };
+  _stats?: {
+    total: number;
+    done: number;
+    progress: number;
+    blocked: number;
+    notStarted: number;
+    other: number;
+    empty: number;
+    overdueNotDone: number;
+    completionPercent: number;
+  };
+};
+
+export type ProjectCollection = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  projects?: ProjectListItem[];
+  _count?: { projects: number };
 };
 
 /** Linha na vista plana multi-projeto. */
@@ -1020,11 +1049,13 @@ export type ProjectGroupWithTasks = {
 export type ProjectDetail = {
   id: string;
   name: string;
-  parentProjectId?: string | null;
+  context?: string | null;
+  supervisorId?: string | null;
+  supervisor?: ProjectSupervisor | null;
+  projectCollectionId?: string | null;
   createdAt: string;
   updatedAt: string;
-  parentProject?: { id: string; name: string } | null;
-  subprojects?: ProjectListItem[];
+  projectCollection?: ({ id: string; name: string; projects?: ProjectListItem[] }) | null;
   groups: ProjectGroupWithTasks[];
 };
 
@@ -1032,11 +1063,39 @@ export async function getProjects(): Promise<ProjectListItem[]> {
   return request("/projects");
 }
 
-export async function createProject(payload: { name: string; parentProjectId?: string | null }): Promise<ProjectListItem> {
+export async function getProjectCollections(): Promise<ProjectCollection[]> {
+  return request("/projects/groups");
+}
+
+export async function getProjectSupervisors(): Promise<ProjectSupervisor[]> {
+  return request("/projects/supervisors");
+}
+
+export async function createProjectCollection(payload: { name: string }): Promise<ProjectCollection> {
+  return request("/projects/groups", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateProjectCollection(id: string, payload: { name: string }): Promise<ProjectCollection> {
+  return request(`/projects/groups/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export async function deleteProjectCollection(id: string): Promise<{ ok: true; id: string }> {
+  return request(`/projects/groups/${id}`, { method: "DELETE" });
+}
+
+export async function createProject(payload: {
+  name: string;
+  context?: string | null;
+  supervisorId?: string | null;
+  projectCollectionId?: string | null;
+}): Promise<ProjectListItem> {
   return request("/projects", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export async function updateProject(id: string, payload: { name: string }): Promise<ProjectListItem> {
+export async function updateProject(
+  id: string,
+  payload: { name: string; context?: string | null; supervisorId?: string | null; projectCollectionId?: string | null }
+): Promise<ProjectListItem> {
   return request(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 

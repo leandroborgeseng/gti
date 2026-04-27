@@ -382,6 +382,31 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
 
   if (root === "projects") {
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoProjects.findAll());
+    if (seg.length === 2 && seg[1] === "supervisors" && method === "GET") return jsonOk(await gestaoProjects.findSupervisors());
+    if (seg.length === 2 && seg[1] === "groups" && method === "GET") return jsonOk(await gestaoProjects.findCollections());
+    if (seg.length === 2 && seg[1] === "groups" && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou em falta. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoProjects.createCollection(body as never));
+    }
+    if (seg.length === 3 && seg[1] === "groups" && method === "PATCH") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou em falta. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoProjects.updateCollection(seg[2], body as never));
+    }
+    if (seg.length === 3 && seg[1] === "groups" && method === "DELETE") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      return jsonOk(await gestaoProjects.deleteCollection(seg[2]));
+    }
     if (seg.length === 1 && method === "POST") {
       assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
       assertMutation(user, method);

@@ -215,9 +215,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/projetos", label: "Projetos" },
-          " — Projetos e iniciativas. Administradores e editores podem cadastrar projetos vazios, criar subprojetos vinculados, editar o nome dos projetos existentes, criar tarefas manualmente ou importar tarefas por Excel do Monday.com. Pode existir uma vista de ",
+          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor e grupo dos projetos existentes, criar tarefas manualmente ou importar tarefas por Excel do Monday.com. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios e atrasos. Pode existir uma vista de ",
           { href: "/projetos/tarefas", label: "tarefas" },
-          " para trabalho transversal. Abra um projeto para ver fases, tarefas e informação associada."
+          " para trabalho transversal. Abra um projeto para ver contexto, fases, tarefas e informação associada."
         ]
       }
     ]

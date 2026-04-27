@@ -13,6 +13,8 @@ export const queryKeys = {
   goals: ["gestao", "goals"] as const,
   governanceTickets: ["gestao", "governance-tickets"] as const,
   projects: ["gestao", "projects"] as const,
+  projectCollections: ["gestao", "project-collections"] as const,
+  projectSupervisors: ["gestao", "project-supervisors"] as const,
   projectsDashboard: ["gestao", "projects", "dashboard"] as const,
   /** Prefixo para invalidar todas as queries da vista plana de tarefas. */
   projectsAllTasksRoot: ["gestao", "projects", "all-tasks"] as const,
