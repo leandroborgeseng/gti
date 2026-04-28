@@ -21,6 +21,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionado relatório administrativo de uso por usuário dentro do Resumo Operacional, com logins, tempo aproximado de uso ativo e áreas acessadas.
 - Adicionados comentários nas tarefas de projeto, com histórico por tarefa, autor e data de registro.
 - Adicionado vínculo de tarefas de projeto a usuários do sistema: uma pessoa principal por tarefa e múltiplos responsáveis PMF por tarefa.
+- Adicionado perfil do usuário com nome de exibição e cor escolhida em paleta, usados na identificação de pessoas vinculadas a projetos.
 
 ### Alterado
 

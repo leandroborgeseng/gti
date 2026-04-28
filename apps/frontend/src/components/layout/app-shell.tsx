@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, ChevronsRight, LogOut, Megaphone } from "lucide-react";
+import { BookOpen, ChevronsRight, LogOut, Megaphone, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PropsWithChildren, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
@@ -35,6 +35,7 @@ const titles: Record<string, string> = {
   "/resumo-operacional/uso-usuarios": "Uso do sistema por usuário",
   "/manual": "Manual do sistema",
   "/notas-versao": "Notas de versão",
+  "/perfil": "Meu perfil",
   "/users": "Usuários",
   "/exports": "Exportações"
 };
@@ -231,6 +232,13 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
                 Notas de versão
               </Link>
               <span className="hidden sm:inline">Área autenticada</span>
+              <Link
+                href="/perfil"
+                className="inline-flex items-center gap-1.5 font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
+              >
+                <UserCircle className="h-3.5 w-3.5" aria-hidden />
+                Meu perfil
+              </Link>
               <a
                 href="/api/auth/logout"
                 className="inline-flex items-center gap-1.5 font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"

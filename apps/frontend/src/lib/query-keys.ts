@@ -1,5 +1,6 @@
 /** Chaves estáveis para TanStack Query (gestão contratual). */
 export const queryKeys = {
+  authMe: ["gestao", "auth", "me"] as const,
   users: ["gestao", "users"] as const,
   suppliers: ["gestao", "suppliers"] as const,
   fiscais: ["gestao", "fiscais"] as const,

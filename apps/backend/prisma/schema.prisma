@@ -153,6 +153,8 @@ enum ContractItemCriticality {
 model User {
   id                  String               @id @default(uuid())
   email               String               @unique
+  displayName         String?
+  profileColor        String?
   passwordHash        String
   mustChangePassword  Boolean              @default(false)
   approvalStatus      UserApprovalStatus   @default(APPROVED)

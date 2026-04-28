@@ -812,10 +812,46 @@ export async function updateFiscal(id: string, payload: { name: string; email: s
   return request(`/fiscais/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
-export type AuthMe = { id: string; email: string; role: string; mustChangePassword?: boolean };
+export type UserProfileColor =
+  | "#2563eb"
+  | "#7c3aed"
+  | "#db2777"
+  | "#dc2626"
+  | "#ea580c"
+  | "#ca8a04"
+  | "#16a34a"
+  | "#0891b2"
+  | "#475569"
+  | "#111827";
+
+export const USER_PROFILE_COLORS: UserProfileColor[] = [
+  "#2563eb",
+  "#7c3aed",
+  "#db2777",
+  "#dc2626",
+  "#ea580c",
+  "#ca8a04",
+  "#16a34a",
+  "#0891b2",
+  "#475569",
+  "#111827"
+];
+
+export type AuthMe = {
+  id: string;
+  email: string;
+  displayName?: string | null;
+  profileColor?: string | null;
+  role: string;
+  mustChangePassword?: boolean;
+};
 
 export async function getAuthMe(): Promise<AuthMe> {
   return request("/auth/me");
+}
+
+export async function updateMyProfile(payload: { displayName?: string | null; profileColor?: string | null }): Promise<AuthMe> {
+  return request("/profile", { method: "PATCH", body: JSON.stringify(payload) });
 }
 
 export type UserAccessEventInput = {
@@ -936,6 +972,8 @@ export async function getMyAssignments(): Promise<MyAssignments> {
 export type UserRecord = {
   id: string;
   email: string;
+  displayName?: string | null;
+  profileColor?: string | null;
   role: string;
   approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
   mustChangePassword?: boolean;
@@ -1141,6 +1179,8 @@ export async function setManualGoalProgress(id: string, progress: number): Promi
 export type ProjectSupervisor = {
   id: string;
   email: string;
+  displayName?: string | null;
+  profileColor?: string | null;
   role: string;
 };
 

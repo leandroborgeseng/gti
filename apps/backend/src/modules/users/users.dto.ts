@@ -29,3 +29,13 @@ export class UpdateUserDto {
   @MinLength(8, { message: "A senha deve ter pelo menos 8 caracteres" })
   password?: string;
 }
+
+export class UpdateMyProfileDto {
+  @IsOptional()
+  @IsString()
+  displayName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  profileColor?: string | null;
+}

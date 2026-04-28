@@ -176,6 +176,23 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): 
         header: "E-mail",
         cell: (info) => <span className="font-medium text-foreground">{info.getValue()}</span>
       }),
+      columnHelper.accessor((row) => row.displayName ?? "", {
+        id: "displayName",
+        header: "Nome",
+        cell: (info) => {
+          const user = info.row.original;
+          return (
+            <span className="inline-flex items-center gap-2">
+              <span
+                className="h-3 w-3 rounded-full ring-1 ring-black/10"
+                style={{ backgroundColor: user.profileColor || "#475569" }}
+                aria-hidden
+              />
+              <span>{info.getValue() || "Não informado"}</span>
+            </span>
+          );
+        }
+      }),
       columnHelper.accessor("role", {
         header: "Papel",
         cell: (info) => <span>{roleLabel[info.getValue()] ?? info.getValue()}</span>

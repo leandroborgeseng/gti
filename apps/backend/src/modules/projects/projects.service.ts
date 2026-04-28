@@ -20,6 +20,7 @@ import {
 } from "./projects.dto";
 
 const MAX_TASKS_FLAT_FETCH = 8000;
+const PROJECT_USER_SELECT = { id: true, email: true, displayName: true, profileColor: true, role: true } as const;
 
 function parseProjectDate(value: string | null | undefined, fieldLabel: string): Date | null {
   if (value == null) return null;
@@ -119,7 +120,7 @@ export class ProjectsService {
   async findSupervisors(): Promise<unknown> {
     return this.prisma.user.findMany({
       orderBy: { email: "asc" },
-      select: { id: true, email: true, role: true }
+      select: PROJECT_USER_SELECT
     });
   }
 
@@ -137,7 +138,7 @@ export class ProjectsService {
     }
     const users = await this.prisma.user.findMany({
       where: { id: { in: ids } },
-      select: { id: true, email: true, role: true }
+      select: PROJECT_USER_SELECT
     });
     if (users.length !== ids.length) {
       throw new NotFoundException("Um ou mais usuários selecionados não foram encontrados.");
@@ -149,12 +150,12 @@ export class ProjectsService {
     };
   }
 
-  private userLabel(user: { email: string } | null | undefined): string | null {
-    return user?.email?.trim() || null;
+  private userLabel(user: { email: string; displayName?: string | null } | null | undefined): string | null {
+    return user?.displayName?.trim() || user?.email?.trim() || null;
   }
 
-  private taskResponsibleLabel(users: { email: string }[]): string | null {
-    const label = users.map((user) => user.email.trim()).filter(Boolean).join(", ");
+  private taskResponsibleLabel(users: { email: string; displayName?: string | null }[]): string | null {
+    const label = users.map((user) => this.userLabel(user)).filter(Boolean).join(", ");
     return label || null;
   }
 
@@ -170,7 +171,7 @@ export class ProjectsService {
             startDate: true,
             plannedEndDate: true,
             supervisorId: true,
-            supervisor: { select: { id: true, email: true, role: true } },
+            supervisor: { select: PROJECT_USER_SELECT },
             createdAt: true,
             updatedAt: true,
             _count: { select: { groups: true, tasks: true } }
@@ -277,7 +278,7 @@ export class ProjectsService {
     const projects = await this.prisma.project.findMany({
       orderBy: { updatedAt: "desc" },
       include: {
-        supervisor: { select: { id: true, email: true, role: true } },
+        supervisor: { select: PROJECT_USER_SELECT },
         projectCollection: { select: { id: true, name: true } },
         _count: { select: { groups: true, tasks: true } }
       }
@@ -748,7 +749,7 @@ export class ProjectsService {
     const project = await this.prisma.project.findUnique({
       where: { id },
       include: {
-        supervisor: { select: { id: true, email: true, role: true } },
+        supervisor: { select: PROJECT_USER_SELECT },
         projectCollection: {
           select: {
             id: true,
@@ -762,7 +763,7 @@ export class ProjectsService {
                 startDate: true,
                 plannedEndDate: true,
                 supervisorId: true,
-                supervisor: { select: { id: true, email: true, role: true } },
+                supervisor: { select: PROJECT_USER_SELECT },
                 createdAt: true,
                 updatedAt: true,
                 _count: { select: { groups: true, tasks: true } }
@@ -779,10 +780,10 @@ export class ProjectsService {
       where: { projectId: id },
       orderBy: [{ groupId: "asc" }, { sortOrder: "asc" }],
       include: {
-        assigneeUser: { select: { id: true, email: true, role: true } },
+        assigneeUser: { select: PROJECT_USER_SELECT },
         responsibleUsers: {
           orderBy: { createdAt: "asc" },
-          include: { user: { select: { id: true, email: true, role: true } } }
+          include: { user: { select: PROJECT_USER_SELECT } }
         },
         attachments: {
           orderBy: { createdAt: "asc" },
@@ -921,10 +922,10 @@ export class ProjectsService {
     const updated = await this.prisma.projectTask.findUniqueOrThrow({
       where: { id: taskId },
       include: {
-        assigneeUser: { select: { id: true, email: true, role: true } },
+        assigneeUser: { select: PROJECT_USER_SELECT },
         responsibleUsers: {
           orderBy: { createdAt: "asc" },
-          include: { user: { select: { id: true, email: true, role: true } } }
+          include: { user: { select: PROJECT_USER_SELECT } }
         },
         attachments: {
           orderBy: { createdAt: "asc" },

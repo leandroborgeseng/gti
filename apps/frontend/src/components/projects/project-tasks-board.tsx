@@ -153,23 +153,34 @@ function PmfPill({ name }: { name: string }): JSX.Element | null {
   );
 }
 
-function userDisplay(user: Pick<ProjectSupervisor, "email"> | null | undefined): string {
-  return user?.email?.trim() || "";
+function userDisplay(user: Pick<ProjectSupervisor, "email" | "displayName"> | null | undefined): string {
+  return user?.displayName?.trim() || user?.email?.trim() || "";
 }
 
-function UserBadge({ email, compact = false }: { email: string; compact?: boolean }): JSX.Element {
+function UserBadge({
+  user,
+  fallback,
+  compact = false
+}: {
+  user?: Pick<ProjectSupervisor, "email" | "displayName" | "profileColor"> | null;
+  fallback?: string;
+  compact?: boolean;
+}): JSX.Element {
+  const label = userDisplay(user) || fallback?.trim() || "";
+  const color = user?.profileColor || "#475569";
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1 rounded-full bg-[#ececf0] px-2 py-0.5 text-xs font-medium text-[#323338] ring-1 ring-[#e6e9ef]",
+        "inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white ring-1 ring-black/10",
         compact && "px-1.5 text-[11px]"
       )}
-      title={email}
+      style={{ backgroundColor: color }}
+      title={user?.email ?? label}
     >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-bold">
-        {initials(email)}
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white/90 text-[9px] font-bold" style={{ color }}>
+        {initials(label)}
       </span>
-      <span className="truncate">{email}</span>
+      <span className="truncate">{label}</span>
     </span>
   );
 }
@@ -504,11 +515,10 @@ function AssigneeUserCell({
   users: ProjectSupervisor[];
   onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
 }): JSX.Element {
-  const linkedEmail = userDisplay(task.assigneeUser);
-  const label = linkedEmail || task.assigneeExternal?.trim() || "";
+  const label = userDisplay(task.assigneeUser) || task.assigneeExternal?.trim() || "";
 
   if (!canEdit) {
-    return label ? <UserBadge email={label} /> : <span className="text-[#c5c7d0]">—</span>;
+    return label ? <UserBadge user={task.assigneeUser} fallback={label} /> : <span className="text-[#c5c7d0]">—</span>;
   }
 
   return (
@@ -520,7 +530,7 @@ function AssigneeUserCell({
           disabled={busy}
           title="Selecionar pessoa"
         >
-          {label ? <UserBadge email={label} /> : <span className="text-xs italic text-[#c5c7d0]">Selecionar pessoa</span>}
+          {label ? <UserBadge user={task.assigneeUser} fallback={label} /> : <span className="text-xs italic text-[#c5c7d0]">Selecionar pessoa</span>}
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 p-2">
@@ -549,7 +559,7 @@ function AssigneeUserCell({
               )}
               onClick={() => void onPatch(task.id, { assigneeUserId: user.id })}
             >
-              <span className="truncate">{user.email}</span>
+              <span className="truncate">{userDisplay(user)}</span>
               <span className="shrink-0 text-[10px] text-muted-foreground">{user.role}</span>
             </button>
           ))}
@@ -574,8 +584,8 @@ function ResponsibleUsersCell({
 }): JSX.Element {
   const selected = task.responsibleUsers ?? [];
   const selectedIds = selected.map((item) => item.userId);
-  const selectedEmails = selected.map((item) => userDisplay(item.user)).filter(Boolean);
-  const fallbackNames = selectedEmails.length === 0 ? (task.internalResponsible ?? "").split(",").map((name) => name.trim()).filter(Boolean) : [];
+  const selectedUsers = selected.map((item) => item.user).filter(Boolean);
+  const fallbackNames = selectedUsers.length === 0 ? (task.internalResponsible ?? "").split(",").map((name) => name.trim()).filter(Boolean) : [];
 
   const toggle = (userId: string): void => {
     const next = selectedIds.includes(userId) ? selectedIds.filter((id) => id !== userId) : [...selectedIds, userId];
@@ -583,10 +593,10 @@ function ResponsibleUsersCell({
   };
 
   const content =
-    selectedEmails.length > 0 ? (
+    selectedUsers.length > 0 ? (
       <div className="flex flex-wrap gap-1">
-        {selectedEmails.map((email) => (
-          <UserBadge key={email} email={email} compact />
+        {selectedUsers.map((user) => (
+          <UserBadge key={user.id} user={user} compact />
         ))}
       </div>
     ) : fallbackNames.length > 0 ? (
@@ -612,7 +622,7 @@ function ResponsibleUsersCell({
           disabled={busy}
           title="Selecionar responsáveis PMF"
         >
-          {selectedEmails.length || fallbackNames.length ? content : <span className="text-xs italic text-[#c5c7d0]">Selecionar responsáveis</span>}
+          {selectedUsers.length || fallbackNames.length ? content : <span className="text-xs italic text-[#c5c7d0]">Selecionar responsáveis</span>}
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 p-2">
@@ -640,7 +650,7 @@ function ResponsibleUsersCell({
                 )}
                 onClick={() => toggle(user.id)}
               >
-                <span className="truncate">{user.email}</span>
+                <span className="truncate">{userDisplay(user)}</span>
                 <span className="shrink-0 text-[10px] text-muted-foreground">{checked ? "Selecionado" : user.role}</span>
               </button>
             );
@@ -1576,7 +1586,7 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
                   <option value="">Sem pessoa atribuída</option>
                   {userOptions.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.email}
+                      {userDisplay(user)}
                     </option>
                   ))}
                 </select>
@@ -1609,7 +1619,7 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
                               )
                             }
                           >
-                            <span className="truncate">{user.email}</span>
+                            <span className="truncate">{userDisplay(user)}</span>
                             <span className="shrink-0 text-[10px] text-muted-foreground">{checked ? "Selecionado" : user.role}</span>
                           </button>
                         );

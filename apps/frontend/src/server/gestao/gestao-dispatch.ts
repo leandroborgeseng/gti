@@ -25,7 +25,14 @@ import {
 } from "./gestao-services";
 import { loadContractGlpiGroupCatalog } from "./contract-glpi-groups-catalog";
 
-type JwtUser = { sub: string; email: string; role: UserRole; mustChangePassword: boolean };
+type JwtUser = {
+  sub: string;
+  email: string;
+  displayName: string | null;
+  profileColor: string | null;
+  role: UserRole;
+  mustChangePassword: boolean;
+};
 
 async function readJsonBody(req: Request): Promise<unknown> {
   const m = req.method.toUpperCase();
@@ -61,9 +68,19 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
     const role = payload.role as UserRole;
     if (!sub || !email || !role) return null;
     const { prisma } = await import("@/glpi/config/prisma");
-    const user = await prisma.user.findUnique({ where: { id: sub } });
+    const user = await prisma.user.findUnique({
+      where: { id: sub },
+      select: { id: true, email: true, displayName: true, profileColor: true, role: true, mustChangePassword: true }
+    });
     if (!user || user.email !== email) return null;
-    return { sub: user.id, email: user.email, role: user.role as UserRole, mustChangePassword: user.mustChangePassword };
+    return {
+      sub: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      profileColor: user.profileColor,
+      role: user.role as UserRole,
+      mustChangePassword: user.mustChangePassword
+    };
   } catch {
     return null;
   }
@@ -138,7 +155,14 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
   if (seg[0] === "auth" && seg[1] === "me" && method === "GET") {
     const user = await requireUser(req);
     if (!user) return jsonErr(401, "Não autenticado");
-    return jsonOk({ id: user.sub, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword });
+    return jsonOk({
+      id: user.sub,
+      email: user.email,
+      displayName: user.displayName,
+      profileColor: user.profileColor,
+      role: user.role,
+      mustChangePassword: user.mustChangePassword
+    });
   }
 
   const user = await requireUser(req);
@@ -163,6 +187,27 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
 
 async function routeWithUser(req: Request, method: string, seg: string[], user: JwtUser): Promise<Response> {
   const root = seg[0];
+
+  if (root === "profile") {
+    if (seg.length === 1 && method === "GET") {
+      return jsonOk({
+        id: user.sub,
+        email: user.email,
+        displayName: user.displayName,
+        profileColor: user.profileColor,
+        role: user.role,
+        mustChangePassword: user.mustChangePassword
+      });
+    }
+    if (seg.length === 1 && method === "PATCH") {
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou ausente. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoUsers.updateMyProfile(user.sub, body as never));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
 
   if (root === "usage") {
     if (seg.length === 2 && seg[1] === "track" && method === "POST") {

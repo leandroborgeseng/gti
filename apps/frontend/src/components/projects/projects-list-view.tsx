@@ -39,6 +39,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 const columnHelper = createColumnHelper<ProjectListItem>();
+
+function projectUserLabel(user: { email: string; displayName?: string | null } | null | undefined): string {
+  return user?.displayName?.trim() || user?.email?.trim() || "";
+}
 const groupAccentColors = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#dc2626", "#0891b2"];
 
 const MondayImportWizard = dynamic(
@@ -460,7 +464,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         enableSorting: false,
         cell: (info) => <MiniExecutionChart stats={info.row.original._stats} compact />
       }),
-      columnHelper.accessor((row) => row.supervisor?.email ?? "", {
+      columnHelper.accessor((row) => projectUserLabel(row.supervisor), {
         id: "supervisor",
         header: "Supervisor",
         enableSorting: true,
@@ -677,7 +681,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                         <ProjectScheduleSummary project={project} />
                         <MiniExecutionChart stats={project._stats} compact />
                         <span className="text-xs text-muted-foreground">
-                          Supervisor: <strong className="font-medium text-foreground">{project.supervisor?.email ?? "não definido"}</strong>
+                          Supervisor: <strong className="font-medium text-foreground">{projectUserLabel(project.supervisor) || "não definido"}</strong>
                         </span>
                       </div>
                     ))
@@ -706,7 +710,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                     <ProjectScheduleSummary project={project} />
                     <MiniExecutionChart stats={project._stats} compact />
                     <span className="text-xs text-muted-foreground">
-                      Supervisor: <strong className="font-medium text-foreground">{project.supervisor?.email ?? "não definido"}</strong>
+                      Supervisor: <strong className="font-medium text-foreground">{projectUserLabel(project.supervisor) || "não definido"}</strong>
                     </span>
                   </div>
                 ))}
@@ -818,7 +822,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
                 <option value="">Sem supervisor definido</option>
                 {projectSupervisors.map((supervisor) => (
                   <option key={supervisor.id} value={supervisor.id}>
-                    {supervisor.email}
+                    {projectUserLabel(supervisor)}
                   </option>
                 ))}
               </select>
