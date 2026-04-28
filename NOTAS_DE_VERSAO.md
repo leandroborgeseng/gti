@@ -25,6 +25,8 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - O manual do produto deve ser atualizado junto com mudanças que impactem menus, fluxos da interface, permissões por papel ou formas de uso.
 - Revisados textos da interface, mensagens de erro e documentação do produto para padronizar o português do Brasil.
 - A lista de projetos passou a mostrar apenas as datas de início e fim planejado, sem barra visual de prazo.
+- A tela de Funcionalidades passou a permitir ajuste de criticidade diretamente na linha do item, com seletor colorido do nível 1 (verde) ao nível 5 (vermelho).
+- O cabeçalho dos contratos em Funcionalidades passou a mostrar um mini gráfico de requisitos cumpridos e os nomes do gestor e do fiscal do contrato.
 
 ### Como manter
 

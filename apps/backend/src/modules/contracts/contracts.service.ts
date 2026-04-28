@@ -301,6 +301,8 @@ export class ContractsService {
         installationValue: true,
         implementationPeriodStart: true,
         implementationPeriodEnd: true,
+        fiscal: { select: { id: true, name: true, email: true } },
+        manager: { select: { id: true, name: true, email: true } },
         modules: {
           select: {
             id: true,

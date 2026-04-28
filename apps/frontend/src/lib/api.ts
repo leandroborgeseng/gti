@@ -291,6 +291,8 @@ export type ContractModulesDeliveryOverview = {
   contractType: string;
   status: string;
   monthlyValue?: string;
+  fiscal?: Pick<Fiscal, "id" | "name" | "email"> | null;
+  manager?: Pick<Fiscal, "id" | "name" | "email"> | null;
   featureImplantationProportion?: FeatureImplantationProportion;
   modules: Array<{
     id: string;

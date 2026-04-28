@@ -51,6 +51,41 @@ const criticalityLabels: Record<ContractItemCriticality, string> = {
 
 const criticalityOptions: ContractItemCriticality[] = ["CRITICA", "ALTA", "MEDIA", "BAIXA", "APOIO"];
 
+function criticalitySelectTriggerClass(criticality: ContractItemCriticality): string {
+  const ring = "font-medium focus:outline-none focus:ring-1 focus:ring-offset-0 focus:ring-offset-background disabled:opacity-50";
+  switch (criticality) {
+    case "APOIO":
+      return `${ring} border-emerald-200 bg-emerald-50/80 text-emerald-800 dark:border-emerald-800/90 dark:bg-emerald-950/35 dark:text-emerald-300 dark:focus:ring-emerald-700 focus:ring-emerald-300`;
+    case "BAIXA":
+      return `${ring} border-lime-200 bg-lime-50/80 text-lime-800 dark:border-lime-800/90 dark:bg-lime-950/35 dark:text-lime-300 dark:focus:ring-lime-700 focus:ring-lime-300`;
+    case "MEDIA":
+      return `${ring} border-amber-200 bg-amber-50/80 text-amber-800 dark:border-amber-800/90 dark:bg-amber-950/35 dark:text-amber-300 dark:focus:ring-amber-700 focus:ring-amber-300`;
+    case "ALTA":
+      return `${ring} border-orange-200 bg-orange-50/80 text-orange-800 dark:border-orange-800/90 dark:bg-orange-950/35 dark:text-orange-300 dark:focus:ring-orange-700 focus:ring-orange-300`;
+    case "CRITICA":
+      return `${ring} border-rose-200 bg-rose-50/80 text-rose-800 dark:border-rose-800/90 dark:bg-rose-950/40 dark:text-rose-300 dark:focus:ring-rose-700 focus:ring-rose-300`;
+    default:
+      return `${ring} text-muted-foreground`;
+  }
+}
+
+function criticalitySelectItemClass(criticality: ContractItemCriticality): string {
+  switch (criticality) {
+    case "APOIO":
+      return "text-emerald-800 data-[highlighted]:bg-emerald-100 data-[highlighted]:text-emerald-950 focus:bg-emerald-100 focus:text-emerald-950 dark:text-emerald-300 dark:data-[highlighted]:bg-emerald-950/50 dark:data-[highlighted]:text-emerald-50 dark:focus:bg-emerald-950/50 dark:focus:text-emerald-50";
+    case "BAIXA":
+      return "text-lime-800 data-[highlighted]:bg-lime-100 data-[highlighted]:text-lime-950 focus:bg-lime-100 focus:text-lime-950 dark:text-lime-300 dark:data-[highlighted]:bg-lime-950/50 dark:data-[highlighted]:text-lime-50 dark:focus:bg-lime-950/50 dark:focus:text-lime-50";
+    case "MEDIA":
+      return "text-amber-800 data-[highlighted]:bg-amber-100 data-[highlighted]:text-amber-950 focus:bg-amber-100 focus:text-amber-950 dark:text-amber-300 dark:data-[highlighted]:bg-amber-950/50 dark:data-[highlighted]:text-amber-50 dark:focus:bg-amber-950/50 dark:focus:text-amber-50";
+    case "ALTA":
+      return "text-orange-800 data-[highlighted]:bg-orange-100 data-[highlighted]:text-orange-950 focus:bg-orange-100 focus:text-orange-950 dark:text-orange-300 dark:data-[highlighted]:bg-orange-950/50 dark:data-[highlighted]:text-orange-50 dark:focus:bg-orange-950/50 dark:focus:text-orange-50";
+    case "CRITICA":
+      return "text-rose-800 data-[highlighted]:bg-rose-100 data-[highlighted]:text-rose-950 focus:bg-rose-100 focus:text-rose-950 dark:text-rose-300 dark:data-[highlighted]:bg-rose-950/50 dark:data-[highlighted]:text-rose-50 dark:focus:bg-rose-950/50 dark:focus:text-rose-50";
+    default:
+      return "";
+  }
+}
+
 function rowKey(contractId: string, moduleId: string, featureId: string): string {
   return `${contractId}-${moduleId}-${featureId}`;
 }
@@ -74,6 +109,55 @@ function countByDelivery(
     }
   }
   return n;
+}
+
+function deliveryCompletionPercent(total: number, delivered: number, partial: number): number {
+  if (total <= 0) return 0;
+  return Math.round(((delivered + partial * 0.5) / total) * 100);
+}
+
+function DeliveryMiniChart({ total, delivered, partial, notDelivered }: { total: number; delivered: number; partial: number; notDelivered: number }): JSX.Element {
+  const completion = deliveryCompletionPercent(total, delivered, partial);
+  if (total <= 0) {
+    return (
+      <div className="min-w-[11rem] text-xs text-muted-foreground">
+        <span>Sem requisitos</span>
+      </div>
+    );
+  }
+
+  const segments = [
+    { key: "delivered", value: delivered, className: "bg-emerald-500" },
+    { key: "partial", value: partial, className: "bg-amber-500" },
+    { key: "notDelivered", value: notDelivered, className: "bg-rose-400" }
+  ];
+
+  return (
+    <div className="min-w-[11rem] space-y-1">
+      <div className="flex items-center justify-between gap-2 text-[11px]">
+        <span className="font-semibold tabular-nums text-foreground">{completion}% cumprido</span>
+        <span className={itemDeliveryLabelClass("DELIVERED")}>
+          {delivered}/{total} requisito(s)
+        </span>
+      </div>
+      <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-label={`${completion}% dos requisitos cumpridos`}>
+        {segments.map((segment) =>
+          segment.value > 0 ? (
+            <span
+              key={segment.key}
+              className={segment.className}
+              style={{ width: `${Math.max((segment.value / total) * 100, 4)}%` }}
+            />
+          ) : null
+        )}
+      </div>
+      <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+        <span className={itemDeliveryLabelClass("DELIVERED")}>{delivered} entregues</span>
+        <span className={itemDeliveryLabelClass("PARTIALLY_DELIVERED")}>{partial} parciais</span>
+        <span className={itemDeliveryLabelClass("NOT_DELIVERED")}>{notDelivered} não entregues</span>
+      </div>
+    </div>
+  );
 }
 
 /** Chave estável para o painel de um módulo (sanfona por módulo). */
@@ -194,6 +278,23 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     }
   });
 
+  const updateCriticalityMut = useMutation({
+    mutationFn: async (vars: {
+      contractId: string;
+      moduleId: string;
+      featureId: string;
+      criticality: ContractItemCriticality;
+    }) => {
+      await updateContractFeature(vars.contractId, vars.moduleId, vars.featureId, {
+        criticality: vars.criticality
+      });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliveryOverview });
+      void qc.invalidateQueries({ queryKey: queryKeys.contracts });
+    }
+  });
+
   const deleteFeatureMut = useMutation({
     mutationFn: async (vars: { contractId: string; moduleId: string; featureId: string }) => {
       await deleteContractFeature(vars.contractId, vars.moduleId, vars.featureId);
@@ -238,7 +339,13 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
           updateDeliveryMut.variables.moduleId,
           updateDeliveryMut.variables.featureId
         )
-      : deleteFeatureMut.isPending && deleteFeatureMut.variables
+      : updateCriticalityMut.isPending && updateCriticalityMut.variables
+        ? rowKey(
+            updateCriticalityMut.variables.contractId,
+            updateCriticalityMut.variables.moduleId,
+            updateCriticalityMut.variables.featureId
+          )
+        : deleteFeatureMut.isPending && deleteFeatureMut.variables
         ? rowKey(
             deleteFeatureMut.variables.contractId,
             deleteFeatureMut.variables.moduleId,
@@ -320,6 +427,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
 
   const mutationError =
     (updateDeliveryMut.error instanceof Error ? updateDeliveryMut.error.message : null) ??
+    (updateCriticalityMut.error instanceof Error ? updateCriticalityMut.error.message : null) ??
     (deleteFeatureMut.error instanceof Error ? deleteFeatureMut.error.message : null) ??
     (saveFeatureMut.error instanceof Error ? saveFeatureMut.error.message : null);
 
@@ -335,7 +443,9 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
           <strong className="font-medium text-foreground">funcionalidades</strong> (itens de entrega). Cada funcionalidade
           registra se a entrega está <strong className="font-medium text-foreground">não feita</strong>,{" "}
           <strong className="font-medium text-foreground">parcial</strong> ou <strong className="font-medium text-foreground">concluída</strong>,
-          para acompanhar se o contrato está a ser prestado. No indicador proporcional ao valor mensal, cada parcial conta como{" "}
+          para acompanhar se o contrato está sendo prestado. A criticidade também pode ser ajustada na linha, em escala colorida de{" "}
+          <strong className="font-medium text-emerald-700 dark:text-emerald-300">apoio (1)</strong> a{" "}
+          <strong className="font-medium text-rose-700 dark:text-rose-300">crítica (5)</strong>. No indicador proporcional ao valor mensal, cada parcial conta como{" "}
           <strong className="font-medium text-foreground">0,5</strong> e cada concluída como <strong className="font-medium text-foreground">1</strong>.
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
@@ -368,54 +478,67 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                 <button
                   type="button"
                   id={`${panelId}-trigger`}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+                  className="flex w-full flex-col gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
                   aria-expanded={isOpen}
                   aria-controls={panelId}
                   onClick={() => toggleContract(contract.id)}
                 >
-                  <ChevronDown
-                    className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out", isOpen && "rotate-180")}
-                    aria-hidden
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-muted-foreground">{contract.number}</span>
-                      <span className="truncate font-medium text-foreground">{contract.name}</span>
-                      <Badge variant="secondary" className="text-[10px] font-normal">
-                        {contractTypeLabel[contract.contractType] ?? contract.contractType}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] font-normal">
-                        {statusLabel[contract.status] ?? contract.status}
-                      </Badge>
+                  <div className="flex w-full min-w-0 items-start gap-3 sm:flex-1">
+                    <ChevronDown
+                      className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out", isOpen && "rotate-180")}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs text-muted-foreground">{contract.number}</span>
+                        <span className="truncate font-medium text-foreground">{contract.name}</span>
+                        <Badge variant="secondary" className="text-[10px] font-normal">
+                          {contractTypeLabel[contract.contractType] ?? contract.contractType}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] font-normal">
+                          {statusLabel[contract.status] ?? contract.status}
+                        </Badge>
+                      </div>
+                      {itemsN > 0 ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          <span className="tabular-nums font-medium text-foreground">{itemsN}</span> itens ·{" "}
+                          <span className={itemDeliveryLabelClass("DELIVERED")}>{nOk} entregues</span>
+                          {" · "}
+                          <span className={itemDeliveryLabelClass("PARTIALLY_DELIVERED")}>{nPart} parciais</span>
+                          {" · "}
+                          <span className={itemDeliveryLabelClass("NOT_DELIVERED")}>{nNot} não entregues</span>
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">Sem módulos ou itens — configure na página do contrato.</p>
+                      )}
+                      <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span>
+                          Gestor: <strong className="font-medium text-foreground">{contract.manager?.name ?? "Não informado"}</strong>
+                        </span>
+                        <span>
+                          Fiscal: <strong className="font-medium text-foreground">{contract.fiscal?.name ?? "Não informado"}</strong>
+                        </span>
+                      </p>
+                      {prop?.applicable && prop.proportionalMonthlyValue && prop.ratioImplantedPercent ? (
+                        <p className="mt-1 text-xs font-medium text-sky-900 dark:text-sky-200">
+                          Proporcional ao valor mensal: {prop.ratioImplantedPercent}% → {formatBrl(prop.proportionalMonthlyValue)} (contrato{" "}
+                          {formatBrl(prop.contractMonthlyValue)}/mês)
+                        </p>
+                      ) : prop?.explanation ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{prop.explanation}</p>
+                      ) : null}
                     </div>
-                    {itemsN > 0 ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        <span className="tabular-nums font-medium text-foreground">{itemsN}</span> itens ·{" "}
-                        <span className={itemDeliveryLabelClass("DELIVERED")}>{nOk} entregues</span>
-                        {" · "}
-                        <span className={itemDeliveryLabelClass("PARTIALLY_DELIVERED")}>{nPart} parciais</span>
-                        {" · "}
-                        <span className={itemDeliveryLabelClass("NOT_DELIVERED")}>{nNot} não entregues</span>
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">Sem módulos ou itens — configure na página do contrato.</p>
-                    )}
-                    {prop?.applicable && prop.proportionalMonthlyValue && prop.ratioImplantedPercent ? (
-                      <p className="mt-1 text-xs font-medium text-sky-900 dark:text-sky-200">
-                        Proporcional ao valor mensal: {prop.ratioImplantedPercent}% → {formatBrl(prop.proportionalMonthlyValue)} (contrato{" "}
-                        {formatBrl(prop.contractMonthlyValue)}/mês)
-                      </p>
-                    ) : prop?.explanation ? (
-                      <p className="mt-1 text-xs text-muted-foreground">{prop.explanation}</p>
-                    ) : null}
                   </div>
-                  <Link
-                    href={`/contracts/${contract.id}` as Route}
-                    className="shrink-0 text-xs font-medium text-primary underline-offset-4 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Abrir contrato
-                  </Link>
+                  <div className="flex w-full shrink-0 items-center justify-between gap-3 sm:w-auto sm:justify-end">
+                    <DeliveryMiniChart total={itemsN} delivered={nOk} partial={nPart} notDelivered={nNot} />
+                    <Link
+                      href={`/contracts/${contract.id}` as Route}
+                      className="shrink-0 text-xs font-medium text-primary underline-offset-4 hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Abrir contrato
+                    </Link>
+                  </div>
                 </button>
 
                 <div
@@ -504,6 +627,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                         <ul className="space-y-2">
                                           {mod.features.map((item) => {
                                             const ds = (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus;
+                                            const criticality = (item.criticality ?? "MEDIA") as ContractItemCriticality;
                                             const rowBusy = busyRowKey === rowKey(contract.id, mod.id, item.id);
                                             return (
                                               <li
@@ -518,10 +642,42 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                                     {item.name}
                                                   </p>
                                                   <p className="text-[11px] text-muted-foreground">
-                                                    {criticalityLabels[item.criticality ?? "MEDIA"]} · Peso {serializeWeight(item.weight)}
+                                                    Peso {serializeWeight(item.weight)}
                                                   </p>
                                                 </div>
-                                                <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-[22rem] sm:flex-row sm:items-center sm:justify-end sm:gap-2">
+                                                <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-[35rem] sm:flex-row sm:items-center sm:justify-end sm:gap-2">
+                                                  <div className="min-w-0 flex-1 sm:min-w-[10.5rem] sm:flex-1 sm:max-w-[12rem]">
+                                                    <Select
+                                                      value={criticality}
+                                                      disabled={rowBusy}
+                                                      onValueChange={(v) => {
+                                                        updateCriticalityMut.mutate({
+                                                          contractId: contract.id,
+                                                          moduleId: mod.id,
+                                                          featureId: item.id,
+                                                          criticality: v as ContractItemCriticality
+                                                        });
+                                                      }}
+                                                    >
+                                                      <SelectTrigger
+                                                        className={cn("h-9 w-full text-left text-xs", criticalitySelectTriggerClass(criticality))}
+                                                        aria-label={`Criticidade da funcionalidade: ${item.name}`}
+                                                      >
+                                                        <SelectValue placeholder="Criticidade" />
+                                                      </SelectTrigger>
+                                                      <SelectContent>
+                                                        {criticalityOptions.map((opt) => (
+                                                          <SelectItem
+                                                            key={opt}
+                                                            value={opt}
+                                                            className={cn("text-xs", criticalitySelectItemClass(opt))}
+                                                          >
+                                                            {criticalityLabels[opt]}
+                                                          </SelectItem>
+                                                        ))}
+                                                      </SelectContent>
+                                                    </Select>
+                                                  </div>
                                                   <div className="min-w-0 flex-1 sm:min-w-[12rem] sm:flex-1 sm:max-w-[14.5rem]">
                                                     <Select
                                                       value={ds}
@@ -649,22 +805,27 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="modulos-edit-criticidade">Criticidade</Label>
-              <select
-                id="modulos-edit-criticidade"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              <Label>Criticidade</Label>
+              <Select
                 value={editDraft.criticality}
                 disabled={saveFeatureMut.isPending}
-                onChange={(e) =>
-                  setEditDraft((d) => (d ? { ...d, criticality: e.target.value as ContractItemCriticality } : d))
+                onValueChange={(v) =>
+                  setEditDraft((d) => (d ? { ...d, criticality: v as ContractItemCriticality } : d))
                 }
               >
-                {criticalityOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {criticalityLabels[opt]}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  className={cn("h-9 text-left text-xs", criticalitySelectTriggerClass(editDraft.criticality))}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {criticalityOptions.map((opt) => (
+                    <SelectItem key={opt} value={opt} className={cn("text-xs", criticalitySelectItemClass(opt))}>
+                      {criticalityLabels[opt]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">Peso calculado atual: {editDraft.weightStr}</p>
             </div>
             <div className="space-y-2">

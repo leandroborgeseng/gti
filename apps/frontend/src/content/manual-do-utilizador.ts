@@ -174,7 +174,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/modulos", label: "Funcionalidades" },
-          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. Cada funcionalidade pode ter Código do Item separado do nome, para guardar a numeração do Termo de Referência. A criticidade recalcula automaticamente os pesos de todas as funcionalidades do módulo sempre que um item é incluído, excluído ou alterado. Cada contrato e cada módulo têm sanfona (fechados por padrão); no cabeçalho do módulo você vê contagens de entregues / parciais / não entregues. Dentro do módulo, use o estado de entrega, o botão de editar (lápis) ou excluir (lixeira)."
+          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. Cada funcionalidade pode ter Código do Item separado do nome, para guardar a numeração do Termo de Referência. A criticidade aparece em um seletor colorido na linha do item, do nível 1 (Apoio, verde) ao nível 5 (Crítica, vermelho), e recalcula automaticamente os pesos de todas as funcionalidades do módulo sempre que um item é incluído, excluído ou alterado. Cada contrato e cada módulo têm sanfona (fechados por padrão); no cabeçalho do contrato aparecem o mini gráfico de requisitos cumpridos, o gestor e o fiscal do contrato, e no cabeçalho do módulo você vê contagens de entregues / parciais / não entregues. Dentro do módulo, use os seletores de criticidade e estado de entrega, o botão de editar (lápis) ou excluir (lixeira)."
         ]
       }
     ]
