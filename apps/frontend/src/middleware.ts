@@ -8,6 +8,7 @@ import { publicAbsoluteUrl } from "@/lib/public-site-url";
 const gestaoPrefixes = [
   "/dashboard",
   "/resumo-operacional",
+  "/minhas-atribuicoes",
   "/contracts",
   "/measurements",
   "/glosas",
@@ -84,6 +85,7 @@ export const config = {
     "/dashboard/:path*",
     "/resumo-operacional",
     "/resumo-operacional/:path*",
+    "/minhas-atribuicoes",
     "/contracts",
     "/contracts/:path*",
     "/measurements",

@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  BarChart3,
   BookOpen,
   ClipboardList,
   ClipboardCheck,
@@ -15,6 +14,7 @@ import {
   Target,
   Ticket,
   UserCog,
+  UserRoundCheck,
   Users,
   Wallet
 } from "lucide-react";
@@ -41,6 +41,7 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
     items: [
       { href: "/dashboard", label: "Painel executivo", icon: LayoutDashboard },
       { href: "/resumo-operacional", label: "Resumo operacional", icon: ClipboardCheck },
+      { href: "/minhas-atribuicoes", label: "Minhas atribuições", icon: UserRoundCheck },
       { href: "/chamados", label: "Chamados (GLPI)", icon: Ticket }
     ]
   },
@@ -70,7 +71,6 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
       { href: "/suppliers", label: "Fornecedores", icon: Package },
       { href: "/fiscais", label: "Fiscais", icon: UserCog },
       { href: "/exports", label: "Exportações", icon: FileSpreadsheet, hideForViewer: true },
-      { href: "/reports", label: "Relatórios", icon: BarChart3 },
       { href: "/manual", label: "Manual do sistema", icon: BookOpen },
       { href: "/notas-versao", label: "Notas de versão", icon: Megaphone }
     ]

@@ -163,6 +163,7 @@ model User {
   supervisedProjects  Project[]            @relation("ProjectSupervisor")
   validatedContractModules ContractModule[] @relation("ContractModuleValidator")
   accessEvents        UserAccessEvent[]
+  fiscalProfile       Fiscal?              @relation("FiscalUser")
 }
 
 model UserAccessEvent {
@@ -211,6 +212,8 @@ model Fiscal {
   name              String
   email             String     @unique
   phone             String
+  userId            String?    @unique
+  user              User?      @relation("FiscalUser", fields: [userId], references: [id], onDelete: SetNull)
   contractsAsFiscal Contract[] @relation("ContractFiscal")
   contractsAsManager Contract[] @relation("ContractManager")
 }

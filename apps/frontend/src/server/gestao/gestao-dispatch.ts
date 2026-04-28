@@ -20,6 +20,7 @@ import {
   gestaoProjects,
   gestaoSuppliers,
   gestaoUserAccess,
+  gestaoUserAssignments,
   gestaoUsers
 } from "./gestao-services";
 import { loadContractGlpiGroupCatalog } from "./contract-glpi-groups-catalog";
@@ -198,6 +199,13 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
           { userId: user.sub, email: user.email, role: user.role }
         )
       );
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "assignments") {
+    if (seg.length === 2 && seg[1] === "me" && method === "GET") {
+      return jsonOk(await gestaoUserAssignments.mine({ userId: user.sub, email: user.email }));
     }
     return jsonErr(404, "Não encontrado");
   }
@@ -388,9 +396,16 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
 
   if (root === "fiscais") {
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoFiscais.findAll());
+    if (seg.length === 2 && seg[1] === "user-options" && method === "GET") {
+      return jsonOk(await gestaoFiscais.findUserOptions());
+    }
     if (seg.length === 1 && method === "POST") {
       assertMutation(user, method);
       return jsonOk(await gestaoFiscais.create((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoFiscais.update(seg[1], (await readJsonBody(req)) as never));
     }
     return jsonErr(404, "Não encontrado");
   }

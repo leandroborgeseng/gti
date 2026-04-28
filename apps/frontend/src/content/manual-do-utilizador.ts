@@ -133,6 +133,23 @@ export const MANUAL_SECTIONS: ManualSection[] = [
     ]
   },
   {
+    id: "minhas-atribuicoes",
+    title: "Minhas atribuições",
+    blocks: [
+      {
+        kind: "p",
+        parts: [
+          { href: "/minhas-atribuicoes", label: "Minhas atribuições" },
+          " — Janela única para o usuário logado acompanhar chamados GLPI, tarefas de projetos, projetos supervisionados, contratos como fiscal ou gestor, módulos sob sua validação e chamados de governança vinculados ao seu usuário."
+        ]
+      },
+      {
+        kind: "tip",
+        text: "Para contratos aparecerem nesta tela, o cadastro de Fiscal/Gestor precisa estar vinculado ao usuário correspondente."
+      }
+    ]
+  },
+  {
     id: "contratos",
     title: "Contratos",
     blocks: [
@@ -272,7 +289,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           " — Cadastro de empresas fornecedoras utilizadas nos contratos.",
           " ",
           { href: "/fiscais", label: "Fiscais" },
-          " — Cadastro de fiscais do contrato. Ambos alimentam campos de seleção no detalhe do contrato."
+          " — Cadastro e edição de fiscais e gestores do contrato. Ambos alimentam campos de seleção no detalhe do contrato e podem, opcionalmente, ser vinculados a uma conta de usuário do sistema."
         ]
       }
     ]
@@ -302,7 +319,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/reports", label: "Relatórios" },
-          " — Hub com o painel resumido e link para o fechamento mensal. O fechamento mensal mostra, por contrato e mês selecionado, referência da medição anterior, estado da medição da competência, valores aprovados quando aplicável, e contagens GLPI incluindo ordens represadas de meses anteriores."
+          " — Hub com o painel resumido e link para o fechamento mensal. O botão foi removido temporariamente do menu principal, mas a rota pode ser acessada diretamente quando necessário. O fechamento mensal mostra, por contrato e mês selecionado, referência da medição anterior, estado da medição da competência, valores aprovados quando aplicável, e contagens GLPI incluindo ordens represadas de meses anteriores."
         ]
       }
     ]

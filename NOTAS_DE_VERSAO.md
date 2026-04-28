@@ -28,6 +28,10 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - A lista de projetos passou a mostrar apenas as datas de início e fim planejado, sem barra visual de prazo.
 - A tela de Funcionalidades passou a permitir ajuste de criticidade diretamente na linha do item, com seletor colorido do nível 1 (verde) ao nível 5 (vermelho).
 - O cabeçalho dos contratos em Funcionalidades passou a mostrar um mini gráfico de requisitos cumpridos e os nomes do gestor e do fiscal do contrato.
+- A tela de Fiscais e gestores passou a permitir editar nome, e-mail e telefone dos cadastros existentes.
+- Fiscais e gestores agora podem ser vinculados opcionalmente a uma conta de usuário do sistema.
+- O botão Relatórios foi removido temporariamente do menu principal.
+- Adicionada a tela Minhas atribuições para o usuário acompanhar chamados, tarefas, projetos, contratos e módulos vinculados a ele.
 
 ### Como manter
 

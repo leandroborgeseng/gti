@@ -32,10 +32,6 @@ export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = []
 
   const columns = useMemo<ColumnDef<Supplier, any>[]>(
     () => [
-      columnHelper.accessor("id", {
-        header: "ID",
-        cell: (info) => <span className="font-mono text-xs text-muted-foreground">{info.getValue()}</span>
-      }),
       columnHelper.accessor("name", {
         header: "Nome",
         cell: (info) => <span className="font-medium text-foreground">{info.getValue()}</span>

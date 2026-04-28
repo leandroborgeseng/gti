@@ -2,7 +2,7 @@
 
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserPlus } from "lucide-react";
+import { Pencil, UserPlus } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Fiscal } from "@/lib/api";
 import { getFiscais } from "@/lib/api";
@@ -23,6 +23,7 @@ type Props = {
 export function FiscaisView({ fiscais: initialFiscais, dataLoadErrors = [] }: Props): JSX.Element {
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingFiscal, setEditingFiscal] = useState<Fiscal | null>(null);
 
   const { data: fiscais = initialFiscais } = useQuery({
     queryKey: queryKeys.fiscais,
@@ -48,6 +49,15 @@ export function FiscaisView({ fiscais: initialFiscais, dataLoadErrors = [] }: Pr
         header: "Telefone",
         cell: (info) => <span className="whitespace-nowrap text-muted-foreground">{info.getValue()}</span>
       }),
+      columnHelper.accessor((row) => row.user?.email ?? "Sem usuário vinculado", {
+        id: "linkedUser",
+        header: "Usuário vinculado",
+        cell: (info) => (
+          <span className={info.row.original.user ? "text-muted-foreground" : "text-xs text-muted-foreground"}>
+            {info.getValue()}
+          </span>
+        )
+      }),
       columnHelper.accessor((row) => row.contractsAsFiscal?.length ?? 0, {
         id: "asFiscal",
         header: () => <span className="flex w-full justify-end">Como fiscal</span>,
@@ -57,6 +67,27 @@ export function FiscaisView({ fiscais: initialFiscais, dataLoadErrors = [] }: Pr
         id: "asManager",
         header: () => <span className="flex w-full justify-end">Como gestor</span>,
         cell: (info) => <div className="text-right tabular-nums">{info.getValue()}</div>
+      }),
+      columnHelper.display({
+        id: "actions",
+        header: () => <span className="flex w-full justify-end">Ações</span>,
+        cell: (info) => (
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                setEditingFiscal(info.row.original);
+                setModalOpen(true);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden />
+              Editar
+            </Button>
+          </div>
+        )
       })
     ],
     []
@@ -73,7 +104,14 @@ export function FiscaisView({ fiscais: initialFiscais, dataLoadErrors = [] }: Pr
             <strong className="font-medium text-foreground">Novo fiscal</strong> abre o cadastro em modal.
           </p>
         </div>
-        <Button type="button" className="shrink-0 gap-2" onClick={() => setModalOpen(true)}>
+        <Button
+          type="button"
+          className="shrink-0 gap-2"
+          onClick={() => {
+            setEditingFiscal(null);
+            setModalOpen(true);
+          }}
+        >
           <UserPlus className="h-4 w-4" />
           Novo fiscal
         </Button>
@@ -90,13 +128,23 @@ export function FiscaisView({ fiscais: initialFiscais, dataLoadErrors = [] }: Pr
 
       <Modal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title="Novo fiscal ou gestor"
-        description="Dados de contacto do perfil. Depois associe ao contrato no cadastro do contrato."
+        onClose={() => {
+          setModalOpen(false);
+          setEditingFiscal(null);
+        }}
+        title={editingFiscal ? "Editar fiscal ou gestor" : "Novo fiscal ou gestor"}
+        description={
+          editingFiscal
+            ? "Atualize nome, e-mail, telefone ou o usuário vinculado. Contratos vinculados continuam apontando para este cadastro."
+            : "Dados de contato do perfil. Opcionalmente, vincule a uma conta de usuário do sistema."
+        }
       >
         <FiscalForm
+          key={editingFiscal?.id ?? "new"}
+          fiscal={editingFiscal}
           onSuccess={() => {
             setModalOpen(false);
+            setEditingFiscal(null);
             void qc.invalidateQueries({ queryKey: queryKeys.fiscais });
           }}
         />

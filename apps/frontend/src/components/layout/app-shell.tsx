@@ -19,6 +19,7 @@ const USAGE_HEARTBEAT_INTERVAL_MS = 60_000;
 
 const titles: Record<string, string> = {
   "/dashboard": "Painel executivo",
+  "/minhas-atribuicoes": "Minhas atribuições",
   "/chamados": "Chamados GLPI",
   "/contracts": "Contratos",
   "/modulos": "Funcionalidades",

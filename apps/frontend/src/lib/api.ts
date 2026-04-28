@@ -410,9 +410,13 @@ export type Fiscal = {
   name: string;
   email: string;
   phone: string;
+  userId?: string | null;
+  user?: { id: string; email: string; role: string } | null;
   contractsAsFiscal?: Array<{ id: string; number: string; name: string; status: string }>;
   contractsAsManager?: Array<{ id: string; number: string; name: string; status: string }>;
 };
+
+export type FiscalUserOption = { id: string; email: string; role: string };
 
 export async function getDashboardSummary(): Promise<Record<string, unknown>> {
   return request("/dashboard/summary");
@@ -796,8 +800,16 @@ export async function getFiscais(): Promise<Fiscal[]> {
   return request("/fiscais");
 }
 
-export async function createFiscal(payload: { name: string; email: string; phone: string }): Promise<Fiscal> {
+export async function getFiscalUserOptions(): Promise<FiscalUserOption[]> {
+  return request("/fiscais/user-options");
+}
+
+export async function createFiscal(payload: { name: string; email: string; phone: string; userId?: string | null }): Promise<Fiscal> {
   return request("/fiscais", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateFiscal(id: string, payload: { name: string; email: string; phone: string; userId?: string | null }): Promise<Fiscal> {
+  return request(`/fiscais/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
 export type AuthMe = { id: string; email: string; role: string; mustChangePassword?: boolean };
@@ -849,6 +861,76 @@ export async function getUserUsageReport(params: { preset?: string; from?: strin
   if (params.to) sp.set("to", params.to);
   const qs = sp.toString();
   return request(`/usage/report${qs ? `?${qs}` : ""}`);
+}
+
+export type MyAssignments = {
+  user: { id: string; email: string; fiscalProfile?: { id: string; name: string; email: string } | null };
+  totals: {
+    contracts: number;
+    modules: number;
+    projects: number;
+    tasks: number;
+    governanceTickets: number;
+    glpiTickets: number;
+  };
+  contracts: Array<{ id: string; number: string; name: string; status: string; endDate: string; role: string }>;
+  modules: Array<{
+    id: string;
+    name: string;
+    criticality: string;
+    weight: string;
+    status: string;
+    delivered: number;
+    partial: number;
+    total: number;
+    contract: { id: string; number: string; name: string; status: string };
+  }>;
+  projects: Array<{
+    id: string;
+    name: string;
+    startDate?: string | null;
+    plannedEndDate?: string | null;
+    updatedAt: string;
+    status: string;
+    total: number;
+    done: number;
+    overdue: number;
+  }>;
+  tasks: Array<{
+    id: string;
+    title: string;
+    status: string;
+    dueDate?: string | null;
+    internalResponsible?: string | null;
+    assigneeExternal?: string | null;
+    project: { id: string; name: string };
+    group: { id: string; name: string };
+  }>;
+  governanceTickets: Array<{
+    id: string;
+    ticketId: string;
+    status: string;
+    priority?: string | null;
+    slaDeadline?: string | null;
+    role: string;
+    contract: { id: string; number: string; name: string };
+  }>;
+  glpiTickets: Array<{
+    glpiTicketId: number;
+    title?: string | null;
+    status?: string | null;
+    priority?: string | null;
+    dateCreation?: string | null;
+    dateModification?: string | null;
+    assignedUserName?: string | null;
+    requesterEmail?: string | null;
+    contractGroupName?: string | null;
+    open: boolean;
+  }>;
+};
+
+export async function getMyAssignments(): Promise<MyAssignments> {
+  return request("/assignments/me");
 }
 
 export type UserRecord = {
