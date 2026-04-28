@@ -12,6 +12,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionado o Resumo Operacional para acompanhar chamados abertos/fechados, tarefas concluídas e alterações em contratos por dia, semana ou mês.
 - Adicionado histórico auditável de itens contratuais, registrando inserção, exclusão e mudança de status com usuário e data.
 - Adicionados botões na área autenticada para abrir o manual do sistema e as notas de versão.
+- Adicionado aviso de nova versão para orientar usuários a atualizar o PWA quando um novo deploy estiver disponível.
 
 ### Alterado
 

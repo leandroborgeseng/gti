@@ -50,6 +50,12 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         ]
       },
       {
+        kind: "p",
+        parts: [
+          "Quando uma nova versão for publicada, o sistema exibirá um aviso na área autenticada com o botão «Atualizar agora». Use esse botão para recarregar o PWA e garantir que está usando a versão mais recente."
+        ]
+      },
+      {
         kind: "tip",
         text: "Se algo não carregar, verifique a sessão (voltar a entrar) e, em caso de erro persistente, contate a equipe de suporte com o texto do erro apresentado na tela."
       }

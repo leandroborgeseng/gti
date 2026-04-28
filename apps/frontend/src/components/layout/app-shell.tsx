@@ -12,6 +12,8 @@ import { MobileNav } from "./mobile-nav";
 import { Sidebar } from "./sidebar";
 
 const SIDEBAR_STORAGE_KEY = "gti-sidebar-collapsed";
+const DEPLOY_VERSION_STORAGE_KEY = "gti-last-seen-deploy-version";
+const DEPLOY_CHECK_INTERVAL_MS = 60_000;
 
 const titles: Record<string, string> = {
   "/dashboard": "Painel executivo",
@@ -41,6 +43,7 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
   const pathname = usePathname();
   const [role, setRole] = useState<string | null | undefined>(initialRole);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [availableVersion, setAvailableVersion] = useState<string | null>(null);
 
   const persistSidebarCollapsed = useCallback((collapsed: boolean) => {
     try {
@@ -68,6 +71,51 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
       setSidebarCollapsed(false);
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkDeployVersion(): Promise<void> {
+      try {
+        const res = await fetch(`/api/deploy-info?t=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const payload = (await res.json()) as { gitSha?: string | null };
+        const version = payload.gitSha?.trim();
+        if (!version) return;
+        const previous = localStorage.getItem(DEPLOY_VERSION_STORAGE_KEY);
+        if (!previous) {
+          localStorage.setItem(DEPLOY_VERSION_STORAGE_KEY, version);
+          return;
+        }
+        if (previous !== version && !cancelled) {
+          setAvailableVersion(version);
+        }
+      } catch {
+        /* Falha silenciosa: a verificação é auxiliar e não deve atrapalhar o uso. */
+      }
+    }
+
+    void checkDeployVersion();
+    const timer = window.setInterval(() => {
+      void checkDeployVersion();
+    }, DEPLOY_CHECK_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const applyAvailableVersion = useCallback(() => {
+    if (availableVersion) {
+      try {
+        localStorage.setItem(DEPLOY_VERSION_STORAGE_KEY, availableVersion);
+      } catch {
+        /* localStorage indisponível */
+      }
+    }
+    window.location.reload();
+  }, [availableVersion]);
 
   const visibleNavGroups = useMemo(() => filterMainNavGroups(MAIN_NAV_GROUPS, role), [role]);
 
@@ -138,6 +186,19 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
             </div>
           </div>
         </header>
+        {availableVersion ? (
+          <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 md:px-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p>
+                Uma nova versão do sistema está disponível. Atualize o PWA para usar as melhorias e correções mais
+                recentes.
+              </p>
+              <Button type="button" size="sm" className="shrink-0" onClick={applyAvailableVersion}>
+                Atualizar agora
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <div className="p-6 md:p-8">
           <PageTransition>{children}</PageTransition>
         </div>
