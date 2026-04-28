@@ -313,7 +313,7 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       const file = form.get("file");
       const replace = String(form.get("replace") ?? "").toLowerCase() === "true";
       if (!(file instanceof File)) return jsonErr(400, "Arquivo ausente (campo file).");
-      if (file.size > uploadMaxBytes()) return jsonErr(400, "Arquivo demasiado grande");
+      if (file.size > uploadMaxBytes()) return jsonErr(400, "Arquivo muito grande");
       try {
         const buffer = Buffer.from(await file.arrayBuffer());
         const { parseContractStructureExcel } = await import("./contract-structure-xlsx");
@@ -534,6 +534,15 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       if (!(file instanceof File)) return jsonErr(400, "Arquivo ausente");
       if (file.size > uploadMaxBytes()) return jsonErr(400, "Arquivo demasiado grande");
       return jsonOk(await gestaoProjects.addTaskAttachment(seg[1], seg[3], await multerLikeFromFile(file)));
+    }
+    if (seg.length === 5 && seg[2] === "tasks" && seg[4] === "comments" && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      const body = await readJsonBody(req);
+      if (body == null || typeof body !== "object") {
+        return jsonErr(400, "Corpo JSON inválido ou ausente. Use Content-Type: application/json.");
+      }
+      return jsonOk(await gestaoProjects.addTaskComment(seg[1], seg[3], body as never));
     }
     if (seg.length === 2 && method === "DELETE") {
       assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);

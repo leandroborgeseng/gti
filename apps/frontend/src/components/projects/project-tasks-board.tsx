@@ -4,10 +4,19 @@ import { ChevronDown, ChevronRight, MessageSquare, Paperclip, Plus, Trash2 } fro
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { ProjectGroupWithTasks, ProjectTaskPatchPayload, ProjectTaskTree } from "@/lib/api";
-import { attachmentDownloadUrl, createProjectTask, deleteProjectTask, getAuthMe, patchProjectTask, uploadProjectTaskAttachment } from "@/lib/api";
+import type { ProjectGroupWithTasks, ProjectSupervisor, ProjectTaskPatchPayload, ProjectTaskTree } from "@/lib/api";
+import {
+  attachmentDownloadUrl,
+  createProjectTask,
+  createProjectTaskComment,
+  deleteProjectTask,
+  getAuthMe,
+  getProjectSupervisors,
+  patchProjectTask,
+  uploadProjectTaskAttachment
+} from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import {
@@ -144,6 +153,27 @@ function PmfPill({ name }: { name: string }): JSX.Element | null {
   );
 }
 
+function userDisplay(user: Pick<ProjectSupervisor, "email"> | null | undefined): string {
+  return user?.email?.trim() || "";
+}
+
+function UserBadge({ email, compact = false }: { email: string; compact?: boolean }): JSX.Element {
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full items-center gap-1 rounded-full bg-[#ececf0] px-2 py-0.5 text-xs font-medium text-[#323338] ring-1 ring-[#e6e9ef]",
+        compact && "px-1.5 text-[11px]"
+      )}
+      title={email}
+    >
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-bold">
+        {initials(email)}
+      </span>
+      <span className="truncate">{email}</span>
+    </span>
+  );
+}
+
 function initials(name: string): string {
   const p = name.trim().split(/\s+/).filter(Boolean);
   if (p.length === 0) return "?";
@@ -184,13 +214,18 @@ function taskAttachments(task: ProjectTaskTree): NonNullable<ProjectTaskTree["at
   return task.attachments ?? [];
 }
 
-/** Garante `children` e `attachments` sempre como arrays (evita subtarefas invisíveis se o JSON vier incompleto). */
+function taskComments(task: ProjectTaskTree): NonNullable<ProjectTaskTree["comments"]> {
+  return task.comments ?? [];
+}
+
+/** Garante `children`, `attachments` e `comments` sempre como arrays (evita subtarefas invisíveis se o JSON vier incompleto). */
 function ensureTaskTree(t: ProjectTaskTree): ProjectTaskTree {
   const raw = t.children;
   const ch = Array.isArray(raw) ? raw : [];
   return {
     ...t,
     attachments: t.attachments ?? [],
+    comments: t.comments ?? [],
     children: ch.map(ensureTaskTree)
   };
 }
@@ -363,6 +398,259 @@ function FilesCell({ projectId, task, canEdit, busy, onUploaded }: FilesCellProp
   );
 }
 
+type CommentsCellProps = {
+  projectId: string;
+  task: ProjectTaskTree;
+  canEdit: boolean;
+  busy: boolean;
+  onCommentAdded: () => void;
+};
+
+function formatCommentDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return iso;
+  }
+}
+
+function CommentsCell({ projectId, task, canEdit, busy, onCommentAdded }: CommentsCellProps): JSX.Element {
+  const list = taskComments(task);
+  const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (): Promise<void> => {
+    const body = draft.trim();
+    if (!body || !canEdit) return;
+    setSubmitting(true);
+    try {
+      await createProjectTaskComment(projectId, task.id, body);
+      setDraft("");
+      toast.success("Comentário adicionado.");
+      onCommentAdded();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao salvar comentário.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 rounded p-0.5 px-1 text-[#676879] hover:bg-muted"
+          disabled={busy}
+          title="Comentários"
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          <span className="tabular-nums text-[11px]">{list.length}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 space-y-3 p-3">
+        <div>
+          <p className="text-xs font-semibold text-[#323338]">Comentários</p>
+          <p className="text-[11px] text-muted-foreground">Histórico de observações desta tarefa.</p>
+        </div>
+        {list.length === 0 ? (
+          <p className="rounded-md bg-muted/50 px-2 py-2 text-xs text-muted-foreground">Nenhum comentário ainda.</p>
+        ) : (
+          <ul className="max-h-52 space-y-2 overflow-y-auto pr-1">
+            {list.map((comment) => (
+              <li key={comment.id} className="rounded-md border border-border bg-background px-2 py-1.5 text-xs">
+                <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                  <span className="truncate font-medium">{comment.authorEmail || "Usuário"}</span>
+                  <span className="shrink-0">{formatCommentDate(comment.createdAt)}</span>
+                </div>
+                <p className="whitespace-pre-wrap break-words text-[#323338]">{comment.body}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+        {canEdit ? (
+          <div className="border-t border-border pt-2">
+            <textarea
+              className="min-h-20 w-full resize-y rounded-md border border-input bg-background p-2 text-xs shadow-sm"
+              placeholder="Adicionar comentário..."
+              value={draft}
+              disabled={submitting || busy}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <div className="mt-2 flex justify-end">
+              <Button type="button" size="sm" disabled={submitting || busy || !draft.trim()} onClick={() => void submit()}>
+                Adicionar
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function AssigneeUserCell({
+  task,
+  canEdit,
+  busy,
+  users,
+  onPatch
+}: {
+  task: ProjectTaskTree;
+  canEdit: boolean;
+  busy: boolean;
+  users: ProjectSupervisor[];
+  onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
+}): JSX.Element {
+  const linkedEmail = userDisplay(task.assigneeUser);
+  const label = linkedEmail || task.assigneeExternal?.trim() || "";
+
+  if (!canEdit) {
+    return label ? <UserBadge email={label} /> : <span className="text-[#c5c7d0]">—</span>;
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex min-h-8 w-full items-center gap-2 rounded px-1 py-1 text-left hover:bg-[#ececf0] disabled:opacity-60"
+          disabled={busy}
+          title="Selecionar pessoa"
+        >
+          {label ? <UserBadge email={label} /> : <span className="text-xs italic text-[#c5c7d0]">Selecionar pessoa</span>}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 p-2">
+        <div className="mb-2 px-1">
+          <p className="text-xs font-semibold text-[#323338]">Pessoa atribuída</p>
+          <p className="text-[11px] text-muted-foreground">A tarefa pode ter uma pessoa principal.</p>
+        </div>
+        <div className="max-h-64 space-y-1 overflow-y-auto">
+          <button
+            type="button"
+            className={cn(
+              "flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
+              !task.assigneeUserId && "bg-muted font-semibold"
+            )}
+            onClick={() => void onPatch(task.id, { assigneeUserId: null })}
+          >
+            Limpar pessoa
+          </button>
+          {users.map((user) => (
+            <button
+              key={user.id}
+              type="button"
+              className={cn(
+                "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
+                task.assigneeUserId === user.id && "bg-muted font-semibold"
+              )}
+              onClick={() => void onPatch(task.id, { assigneeUserId: user.id })}
+            >
+              <span className="truncate">{user.email}</span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">{user.role}</span>
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ResponsibleUsersCell({
+  task,
+  canEdit,
+  busy,
+  users,
+  onPatch
+}: {
+  task: ProjectTaskTree;
+  canEdit: boolean;
+  busy: boolean;
+  users: ProjectSupervisor[];
+  onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
+}): JSX.Element {
+  const selected = task.responsibleUsers ?? [];
+  const selectedIds = selected.map((item) => item.userId);
+  const selectedEmails = selected.map((item) => userDisplay(item.user)).filter(Boolean);
+  const fallbackNames = selectedEmails.length === 0 ? (task.internalResponsible ?? "").split(",").map((name) => name.trim()).filter(Boolean) : [];
+
+  const toggle = (userId: string): void => {
+    const next = selectedIds.includes(userId) ? selectedIds.filter((id) => id !== userId) : [...selectedIds, userId];
+    void onPatch(task.id, { responsibleUserIds: next });
+  };
+
+  const content =
+    selectedEmails.length > 0 ? (
+      <div className="flex flex-wrap gap-1">
+        {selectedEmails.map((email) => (
+          <UserBadge key={email} email={email} compact />
+        ))}
+      </div>
+    ) : fallbackNames.length > 0 ? (
+      <div className="flex flex-wrap gap-1">
+        {fallbackNames.map((name) => (
+          <PmfPill key={name} name={name} />
+        ))}
+      </div>
+    ) : (
+      <span className="text-[#c5c7d0]">—</span>
+    );
+
+  if (!canEdit) {
+    return content;
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="min-h-8 w-full rounded px-1 py-1 text-left hover:bg-[#ececf0] disabled:opacity-60"
+          disabled={busy}
+          title="Selecionar responsáveis PMF"
+        >
+          {selectedEmails.length || fallbackNames.length ? content : <span className="text-xs italic text-[#c5c7d0]">Selecionar responsáveis</span>}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 p-2">
+        <div className="mb-2 px-1">
+          <p className="text-xs font-semibold text-[#323338]">Responsáveis PMF</p>
+          <p className="text-[11px] text-muted-foreground">Selecione um ou mais usuários responsáveis pela execução/validação.</p>
+        </div>
+        <div className="max-h-64 space-y-1 overflow-y-auto">
+          <button
+            type="button"
+            className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-muted"
+            onClick={() => void onPatch(task.id, { responsibleUserIds: [] })}
+          >
+            Limpar responsáveis
+          </button>
+          {users.map((user) => {
+            const checked = selectedIds.includes(user.id);
+            return (
+              <button
+                key={user.id}
+                type="button"
+                className={cn(
+                  "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
+                  checked && "bg-muted font-semibold"
+                )}
+                onClick={() => toggle(user.id)}
+              >
+                <span className="truncate">{user.email}</span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">{checked ? "Selecionado" : user.role}</span>
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ObservationCell({
   taskId,
   description,
@@ -455,12 +743,14 @@ type TaskRowsProps = {
   depth: number;
   accentHex: string;
   expanded: Record<string, boolean>;
+  userOptions: ProjectSupervisor[];
   onToggleExpand: (taskId: string) => void;
   canEdit: boolean;
   savingTaskId: string | null;
   onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
   onDelete: (task: ProjectTaskTree) => Promise<void>;
   onFilesUploaded: () => void;
+  onCommentAdded: () => void;
 };
 
 function TaskRows({
@@ -469,12 +759,14 @@ function TaskRows({
   depth,
   accentHex,
   expanded,
+  userOptions,
   onToggleExpand,
   canEdit,
   savingTaskId,
   onPatch,
   onDelete,
-  onFilesUploaded
+  onFilesUploaded,
+  onCommentAdded
 }: TaskRowsProps): JSX.Element {
   const hasChildren = Boolean(task.children?.length);
   const isOpen = expanded[task.id] !== false;
@@ -536,9 +828,9 @@ function TaskRows({
               </span>
             ) : null}
             {canEdit ? (
-              <input
+              <textarea
                 key={`${task.id}-title-${task.title}`}
-                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium leading-snug text-[#323338] hover:border-[#e6e9ef] focus:border-[#579bfc] focus:outline-none"
+                className="min-h-8 min-w-0 flex-1 resize-y rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium leading-snug text-[#323338] hover:border-[#e6e9ef] focus:border-[#579bfc] focus:outline-none"
                 defaultValue={task.title}
                 disabled={busy}
                 aria-label="Título da tarefa"
@@ -548,15 +840,13 @@ function TaskRows({
                 }}
               />
             ) : (
-              <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-[#323338]">{task.title}</span>
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm font-medium leading-snug text-[#323338]">{task.title}</span>
             )}
             <span className="flex shrink-0 gap-0.5">
               <button type="button" className="rounded p-0.5 hover:bg-muted" title="Adicionar (em breve)" disabled>
                 <Plus className="h-3.5 w-3.5" />
               </button>
-              <button type="button" className="rounded p-0.5 hover:bg-muted" title="Comentários (em breve)" disabled>
-                <MessageSquare className="h-3.5 w-3.5" />
-              </button>
+              <CommentsCell projectId={projectId} task={task} canEdit={canEdit} busy={busy} onCommentAdded={onCommentAdded} />
               {canEdit ? (
                 <button
                   type="button"
@@ -606,47 +896,7 @@ function TaskRows({
           )}
         </td>
         <td className="min-w-[160px] border-r border-[#ececf0] bg-white p-2 align-middle">
-          {canEdit ? (
-            <div className="flex items-center gap-2">
-              <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ececf0] text-[10px] font-bold text-[#323338] ring-1 ring-[#e6e9ef]"
-                title={task.assigneeExternal ?? ""}
-              >
-                {task.assigneeExternal?.trim() ? initials(task.assigneeExternal) : "—"}
-              </span>
-              <input
-                key={`${task.id}-person-${task.assigneeExternal ?? ""}`}
-                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-[#323338] hover:border-[#e6e9ef] focus:border-[#579bfc] focus:outline-none"
-                defaultValue={task.assigneeExternal ?? ""}
-                disabled={busy}
-                placeholder="Pessoa"
-                aria-label="Pessoa atribuída"
-                onBlur={(e) => {
-                  const v = e.target.value.trim();
-                  const prev = (task.assigneeExternal ?? "").trim();
-                  if (v !== prev) void onPatch(task.id, { assigneeExternal: v });
-                }}
-              />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              {task.assigneeExternal?.trim() ? (
-                <>
-                  <span
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ececf0] text-[10px] font-bold text-[#323338] ring-1 ring-[#e6e9ef]"
-                    title={task.assigneeExternal}
-                  >
-                    {initials(task.assigneeExternal)}
-                  </span>
-                  <span className="max-w-[140px] truncate text-xs text-[#323338]" title={task.assigneeExternal}>
-                    {task.assigneeExternal}
-                  </span>
-                </>
-              ) : (
-                <span className="text-[#c5c7d0]">—</span>
-              )}
-            </div>
-          )}
+          <AssigneeUserCell task={task} canEdit={canEdit} busy={busy} users={userOptions} onPatch={onPatch} />
         </td>
         <td className="w-[110px] whitespace-nowrap border-r border-[#ececf0] bg-white p-2 align-middle">
           {canEdit ? (
@@ -675,23 +925,7 @@ function TaskRows({
           />
         </td>
         <td className="w-[120px] border-r border-[#ececf0] bg-white p-2 align-middle">
-          {canEdit ? (
-            <input
-              key={`${task.id}-pmf-${task.internalResponsible ?? ""}`}
-              className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-xs hover:border-border focus:border-primary focus:outline-none"
-              defaultValue={task.internalResponsible ?? ""}
-              disabled={busy}
-              placeholder="Resp."
-              aria-label="Responsável PMF"
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                const prev = (task.internalResponsible ?? "").trim();
-                if (v !== prev) void onPatch(task.id, { internalResponsible: v });
-              }}
-            />
-          ) : (
-            <PmfPill name={task.internalResponsible ?? ""} />
-          )}
+          <ResponsibleUsersCell task={task} canEdit={canEdit} busy={busy} users={userOptions} onPatch={onPatch} />
         </td>
         <td className="w-[88px] border-l border-transparent p-2 align-middle">
           <FilesCell projectId={projectId} task={task} canEdit={canEdit} busy={busy} onUploaded={onFilesUploaded} />
@@ -706,12 +940,14 @@ function TaskRows({
               depth={depth + 1}
               accentHex={accentHex}
               expanded={expanded}
+              userOptions={userOptions}
               onToggleExpand={onToggleExpand}
               canEdit={canEdit}
               savingTaskId={savingTaskId}
               onPatch={onPatch}
               onDelete={onDelete}
               onFilesUploaded={onFilesUploaded}
+              onCommentAdded={onCommentAdded}
             />
           ))
         : null}
@@ -724,21 +960,25 @@ function GroupBoard({
   group,
   groupIndex,
   defaultExpanded,
+  userOptions,
   canEdit,
   savingTaskId,
   onPatch,
   onDelete,
-  onFilesUploaded
+  onFilesUploaded,
+  onCommentAdded
 }: {
   projectId: string;
   group: ProjectGroupWithTasks;
   groupIndex: number;
   defaultExpanded: boolean;
+  userOptions: ProjectSupervisor[];
   canEdit: boolean;
   savingTaskId: string | null;
   onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
   onDelete: (task: ProjectTaskTree) => Promise<void>;
   onFilesUploaded: () => void;
+  onCommentAdded: () => void;
 }): JSX.Element {
   const accentHex = groupAccentHex(group.id, groupIndex);
   const rootCount = group.tasks.length;
@@ -831,12 +1071,14 @@ function GroupBoard({
                     depth={0}
                     accentHex={accentHex}
                     expanded={mergedExpanded}
+                    userOptions={userOptions}
                     onToggleExpand={toggleTaskExpand}
                     canEdit={canEdit}
                     savingTaskId={savingTaskId}
                     onPatch={onPatch}
                     onDelete={onDelete}
                     onFilesUploaded={onFilesUploaded}
+                    onCommentAdded={onCommentAdded}
                   />
                 ))
               )}
@@ -890,6 +1132,10 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
   const router = useRouter();
   const pathname = usePathname();
   const qc = useQueryClient();
+  const { data: userOptions = [] } = useQuery({
+    queryKey: queryKeys.projectSupervisors,
+    queryFn: getProjectSupervisors
+  });
   const [role, setRole] = useState<string | null | undefined>(undefined);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -901,8 +1147,8 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
   const [newTaskParentId, setNewTaskParentId] = useState("");
   const [newTaskStatus, setNewTaskStatus] = useState("Não iniciado");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
-  const [newTaskResponsible, setNewTaskResponsible] = useState("");
-  const [newTaskPmf, setNewTaskPmf] = useState("");
+  const [newTaskAssigneeUserId, setNewTaskAssigneeUserId] = useState("");
+  const [newTaskResponsibleUserIds, setNewTaskResponsibleUserIds] = useState<string[]>([]);
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [creatingTask, setCreatingTask] = useState(false);
 
@@ -959,8 +1205,8 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
     setNewTaskParentId("");
     setNewTaskStatus("Não iniciado");
     setNewTaskDueDate("");
-    setNewTaskResponsible("");
-    setNewTaskPmf("");
+    setNewTaskAssigneeUserId("");
+    setNewTaskResponsibleUserIds([]);
     setNewTaskDescription("");
   }, []);
 
@@ -1008,6 +1254,10 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
     router.refresh();
   }, [router]);
 
+  const onCommentAdded = useCallback(() => {
+    router.refresh();
+  }, [router]);
+
   const displayGroups = useMemo(() => normalizeProjectGroups(groups), [groups]);
   const taskOptions = useMemo(() => flattenTaskOptions(displayGroups), [displayGroups]);
 
@@ -1028,8 +1278,8 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
           parentTaskId: newTaskParentId || undefined,
           status: newTaskStatus,
           dueDate: newTaskDueDate ? dateInputToPayload(newTaskDueDate) : undefined,
-          assigneeExternal: newTaskResponsible.trim() || undefined,
-          internalResponsible: newTaskPmf.trim() || undefined,
+          assigneeUserId: newTaskAssigneeUserId || undefined,
+          responsibleUserIds: newTaskResponsibleUserIds,
           description: newTaskDescription.trim() || undefined
         });
         toast.success(newTaskParentId ? "Subtarefa criada." : "Tarefa criada.");
@@ -1051,8 +1301,8 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
       newTaskGroupId,
       newTaskGroupName,
       newTaskParentId,
-      newTaskPmf,
-      newTaskResponsible,
+      newTaskAssigneeUserId,
+      newTaskResponsibleUserIds,
       newTaskStatus,
       newTaskTitle,
       projectId,
@@ -1214,11 +1464,13 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
           group={g}
           groupIndex={idx}
           defaultExpanded
+          userOptions={userOptions}
           canEdit={canEdit}
           savingTaskId={savingTaskId}
           onPatch={onPatch}
           onDelete={onDelete}
           onFilesUploaded={onFilesUploaded}
+          onCommentAdded={onCommentAdded}
         />
       ))}
       <Dialog
@@ -1315,22 +1567,57 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
               </label>
               <label className="space-y-2 text-sm font-medium">
                 <span>Pessoa</span>
-                <Input
-                  value={newTaskResponsible}
-                  onChange={(event) => setNewTaskResponsible(event.target.value)}
-                  placeholder="Responsável externo"
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  value={newTaskAssigneeUserId}
                   disabled={creatingTask}
-                />
+                  onChange={(event) => setNewTaskAssigneeUserId(event.target.value)}
+                >
+                  <option value="">Sem pessoa atribuída</option>
+                  {userOptions.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.email}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <label className="space-y-2 text-sm font-medium">
+              <div className="space-y-2 text-sm font-medium">
                 <span>Responsável PMF</span>
-                <Input
-                  value={newTaskPmf}
-                  onChange={(event) => setNewTaskPmf(event.target.value)}
-                  placeholder="Responsável interno"
-                  disabled={creatingTask}
-                />
-              </label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" className="w-full justify-start" disabled={creatingTask}>
+                      {newTaskResponsibleUserIds.length
+                        ? `${newTaskResponsibleUserIds.length} responsável(is) selecionado(s)`
+                        : "Selecionar responsáveis"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-80 p-2">
+                    <div className="max-h-64 space-y-1 overflow-y-auto">
+                      {userOptions.map((user) => {
+                        const checked = newTaskResponsibleUserIds.includes(user.id);
+                        return (
+                          <button
+                            key={user.id}
+                            type="button"
+                            className={cn(
+                              "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
+                              checked && "bg-muted font-semibold"
+                            )}
+                            onClick={() =>
+                              setNewTaskResponsibleUserIds((prev) =>
+                                prev.includes(user.id) ? prev.filter((id) => id !== user.id) : [...prev, user.id]
+                              )
+                            }
+                          >
+                            <span className="truncate">{user.email}</span>
+                            <span className="shrink-0 text-[10px] text-muted-foreground">{checked ? "Selecionado" : user.role}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
               <label className="space-y-2 text-sm font-medium sm:col-span-2">
                 <span>Observação</span>
                 <textarea

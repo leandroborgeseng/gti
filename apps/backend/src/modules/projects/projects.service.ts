@@ -6,6 +6,7 @@ import { StorageService } from "../../storage/storage.service";
 import {
   CreateProjectCollectionDto,
   CreateProjectDto,
+  CreateProjectTaskCommentDto,
   CreateProjectTaskDto,
   ImportProjectDto,
   ImportProjectGroupDto,
@@ -120,6 +121,41 @@ export class ProjectsService {
       orderBy: { email: "asc" },
       select: { id: true, email: true, role: true }
     });
+  }
+
+  private normalizeUserIds(ids: string[] | undefined): string[] {
+    return Array.from(new Set((ids ?? []).map((id) => id.trim()).filter(Boolean)));
+  }
+
+  private async loadTaskAssignmentUsers(assigneeUserId: string | null, responsibleUserIds: string[]): Promise<{
+    assignee: { id: string; email: string; role: string } | null;
+    responsible: { id: string; email: string; role: string }[];
+  }> {
+    const ids = Array.from(new Set([assigneeUserId, ...responsibleUserIds].filter((id): id is string => Boolean(id))));
+    if (ids.length === 0) {
+      return { assignee: null, responsible: [] };
+    }
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, email: true, role: true }
+    });
+    if (users.length !== ids.length) {
+      throw new NotFoundException("Um ou mais usuários selecionados não foram encontrados.");
+    }
+    const byId = new Map(users.map((user) => [user.id, user]));
+    return {
+      assignee: assigneeUserId ? (byId.get(assigneeUserId) ?? null) : null,
+      responsible: responsibleUserIds.map((id) => byId.get(id)!).filter(Boolean)
+    };
+  }
+
+  private userLabel(user: { email: string } | null | undefined): string | null {
+    return user?.email?.trim() || null;
+  }
+
+  private taskResponsibleLabel(users: { email: string }[]): string | null {
+    const label = users.map((user) => user.email.trim()).filter(Boolean).join(", ");
+    return label || null;
   }
 
   async findCollections(): Promise<unknown> {
@@ -366,6 +402,9 @@ export class ProjectsService {
       if (Number.isNaN(d.getTime())) throw new BadRequestException("Data inválida.");
       dueDate = d;
     }
+    const assigneeUserId = dto.assigneeUserId?.trim() || null;
+    const responsibleUserIds = this.normalizeUserIds(dto.responsibleUserIds);
+    const assignmentUsers = await this.loadTaskAssignmentUsers(assigneeUserId, responsibleUserIds);
 
     const created = await this.prisma.projectTask.create({
       data: {
@@ -376,12 +415,19 @@ export class ProjectsService {
         status: dto.status?.trim() || "Não iniciado",
         dueDate,
         description: dto.description?.trim() || null,
-        assigneeExternal: dto.assigneeExternal?.trim() || null,
-        internalResponsible: dto.internalResponsible?.trim() || null,
+        assigneeExternal: (this.userLabel(assignmentUsers.assignee) ?? dto.assigneeExternal?.trim() ?? null) || null,
+        assigneeUserId,
+        internalResponsible: (this.taskResponsibleLabel(assignmentUsers.responsible) ?? dto.internalResponsible?.trim() ?? null) || null,
         effort: dto.effort != null && Number.isFinite(dto.effort) ? new Prisma.Decimal(dto.effort) : null,
         sortOrder: (last?.sortOrder ?? -1) + 1
       }
     });
+    if (responsibleUserIds.length > 0) {
+      await this.prisma.projectTaskResponsible.createMany({
+        data: responsibleUserIds.map((userId) => ({ taskId: created.id, userId })),
+        skipDuplicates: true
+      });
+    }
     await this.recordProjectEvent({
       type: "PROJECT_TASK_CREATED",
       entityId: created.id,
@@ -397,12 +443,16 @@ export class ProjectsService {
       title: created.title,
       status: created.status,
       assigneeExternal: created.assigneeExternal,
+      assigneeUserId: created.assigneeUserId,
+      assigneeUser: assignmentUsers.assignee,
       dueDate: created.dueDate ? created.dueDate.toISOString() : null,
       description: created.description,
       effort: created.effort != null ? String(created.effort) : null,
       internalResponsible: created.internalResponsible,
+      responsibleUsers: assignmentUsers.responsible.map((user) => ({ userId: user.id, user })),
       sortOrder: created.sortOrder,
-      attachments: []
+      attachments: [],
+      comments: []
     };
   }
 
@@ -729,9 +779,18 @@ export class ProjectsService {
       where: { projectId: id },
       orderBy: [{ groupId: "asc" }, { sortOrder: "asc" }],
       include: {
+        assigneeUser: { select: { id: true, email: true, role: true } },
+        responsibleUsers: {
+          orderBy: { createdAt: "asc" },
+          include: { user: { select: { id: true, email: true, role: true } } }
+        },
         attachments: {
           orderBy: { createdAt: "asc" },
           select: { id: true, fileName: true, mimeType: true, createdAt: true }
+        },
+        comments: {
+          orderBy: { createdAt: "asc" },
+          select: { id: true, body: true, authorId: true, authorEmail: true, createdAt: true }
         }
       }
     });
@@ -771,8 +830,10 @@ export class ProjectsService {
       dto.title !== undefined ||
       dto.status !== undefined ||
       dto.assigneeExternal !== undefined ||
+      dto.assigneeUserId !== undefined ||
       dto.description !== undefined ||
       dto.internalResponsible !== undefined ||
+      dto.responsibleUserIds !== undefined ||
       dto.dueDate !== undefined ||
       dto.effort !== undefined;
     if (!hasPatch) {
@@ -788,6 +849,14 @@ export class ProjectsService {
     }
 
     const data: Prisma.ProjectTaskUpdateInput = {};
+    const assigneePatch = dto.assigneeUserId !== undefined;
+    const responsiblePatch = dto.responsibleUserIds !== undefined;
+    const assigneeUserId = assigneePatch ? dto.assigneeUserId?.trim() || null : null;
+    const responsibleUserIds = responsiblePatch ? this.normalizeUserIds(dto.responsibleUserIds) : [];
+    const assignmentUsers =
+      assigneePatch || responsiblePatch
+        ? await this.loadTaskAssignmentUsers(assigneePatch ? assigneeUserId : null, responsibleUserIds)
+        : { assignee: null, responsible: [] };
 
     if (dto.title !== undefined) {
       const title = dto.title.trim();
@@ -801,6 +870,10 @@ export class ProjectsService {
       const v = dto.assigneeExternal.trim();
       data.assigneeExternal = v === "" ? null : v;
     }
+    if (assigneePatch) {
+      data.assigneeUser = assigneeUserId ? { connect: { id: assigneeUserId } } : { disconnect: true };
+      data.assigneeExternal = this.userLabel(assignmentUsers.assignee);
+    }
     if (dto.description !== undefined) {
       const v = dto.description.trim();
       data.description = v === "" ? null : v;
@@ -808,6 +881,9 @@ export class ProjectsService {
     if (dto.internalResponsible !== undefined) {
       const v = dto.internalResponsible.trim();
       data.internalResponsible = v === "" ? null : v;
+    }
+    if (responsiblePatch) {
+      data.internalResponsible = this.taskResponsibleLabel(assignmentUsers.responsible);
     }
     if (dto.dueDate !== undefined) {
       const raw = dto.dueDate.trim();
@@ -828,13 +904,35 @@ export class ProjectsService {
       data.effort = new Prisma.Decimal(dto.effort);
     }
 
-    const updated = await this.prisma.projectTask.update({
+    await this.prisma.projectTask.update({
       where: { id: taskId },
-      data,
+      data
+    });
+    if (responsiblePatch) {
+      await this.prisma.projectTaskResponsible.deleteMany({ where: { taskId } });
+      if (responsibleUserIds.length > 0) {
+        await this.prisma.projectTaskResponsible.createMany({
+          data: responsibleUserIds.map((userId) => ({ taskId, userId })),
+          skipDuplicates: true
+        });
+      }
+    }
+
+    const updated = await this.prisma.projectTask.findUniqueOrThrow({
+      where: { id: taskId },
       include: {
+        assigneeUser: { select: { id: true, email: true, role: true } },
+        responsibleUsers: {
+          orderBy: { createdAt: "asc" },
+          include: { user: { select: { id: true, email: true, role: true } } }
+        },
         attachments: {
           orderBy: { createdAt: "asc" },
           select: { id: true, fileName: true, mimeType: true, createdAt: true }
+        },
+        comments: {
+          orderBy: { createdAt: "asc" },
+          select: { id: true, body: true, authorId: true, authorEmail: true, createdAt: true }
         }
       }
     });
@@ -877,16 +975,29 @@ export class ProjectsService {
       title: updated.title,
       status: updated.status,
       assigneeExternal: updated.assigneeExternal,
+      assigneeUserId: updated.assigneeUserId,
+      assigneeUser: updated.assigneeUser,
       dueDate: updated.dueDate ? updated.dueDate.toISOString() : null,
       description: updated.description,
       effort: updated.effort != null ? String(updated.effort) : null,
       internalResponsible: updated.internalResponsible,
+      responsibleUsers: updated.responsibleUsers.map((responsible) => ({
+        userId: responsible.userId,
+        user: responsible.user
+      })),
       sortOrder: updated.sortOrder,
       attachments: updated.attachments.map((a) => ({
         id: a.id,
         fileName: a.fileName,
         mimeType: a.mimeType,
         createdAt: a.createdAt.toISOString()
+      })),
+      comments: updated.comments.map((comment) => ({
+        id: comment.id,
+        body: comment.body,
+        authorId: comment.authorId,
+        authorEmail: comment.authorEmail,
+        createdAt: comment.createdAt.toISOString()
       }))
     };
   }
@@ -929,6 +1040,45 @@ export class ProjectsService {
       fileName: attachment.fileName,
       mimeType: attachment.mimeType,
       createdAt: attachment.createdAt.toISOString()
+    };
+  }
+
+  async addTaskComment(projectId: string, taskId: string, dto: CreateProjectTaskCommentDto): Promise<unknown> {
+    const body = dto.body.trim();
+    if (!body) {
+      throw new BadRequestException("Escreva um comentário antes de salvar.");
+    }
+    const task = await this.prisma.projectTask.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true, title: true, project: { select: { id: true, name: true } } }
+    });
+    if (!task) {
+      throw new NotFoundException("Tarefa não encontrada neste projeto.");
+    }
+    const authorId = getAuditActorId();
+    const authorEmail = getAuditActorLabel() || null;
+    const comment = await this.prisma.projectTaskComment.create({
+      data: {
+        taskId,
+        authorId: authorId || null,
+        authorEmail,
+        body
+      },
+      select: { id: true, body: true, authorId: true, authorEmail: true, createdAt: true }
+    });
+    await this.recordProjectEvent({
+      type: "PROJECT_TASK_COMMENT_CREATED",
+      entityId: task.id,
+      title: `Comentário adicionado: ${task.title}`,
+      description: `Projeto: ${task.project.name}`,
+      metadata: { projectId, projectName: task.project.name, commentId: comment.id }
+    });
+    return {
+      id: comment.id,
+      body: comment.body,
+      authorId: comment.authorId,
+      authorEmail: comment.authorEmail,
+      createdAt: comment.createdAt.toISOString()
     };
   }
 

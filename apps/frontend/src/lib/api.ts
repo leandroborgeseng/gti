@@ -1250,6 +1250,19 @@ export type ProjectTaskFile = {
   createdAt: string;
 };
 
+export type ProjectTaskComment = {
+  id: string;
+  body: string;
+  authorId?: string | null;
+  authorEmail?: string | null;
+  createdAt: string;
+};
+
+export type ProjectTaskResponsibleUser = {
+  userId: string;
+  user: ProjectSupervisor;
+};
+
 export type ProjectTaskTree = {
   id: string;
   projectId: string;
@@ -1258,13 +1271,18 @@ export type ProjectTaskTree = {
   title: string;
   status: string;
   assigneeExternal: string | null;
+  assigneeUserId?: string | null;
+  assigneeUser?: ProjectSupervisor | null;
   dueDate: string | null;
   description: string | null;
   effort: string | null;
   internalResponsible: string | null;
+  responsibleUsers?: ProjectTaskResponsibleUser[];
   sortOrder: number;
   /** Anexos da tarefa (quando o backend devolve na árvore). */
   attachments?: ProjectTaskFile[];
+  /** Comentários da tarefa (histórico colaborativo). */
+  comments?: ProjectTaskComment[];
   children: ProjectTaskTree[];
 };
 
@@ -1272,8 +1290,10 @@ export type ProjectTaskPatchPayload = {
   title?: string;
   status?: string;
   assigneeExternal?: string;
+  assigneeUserId?: string | null;
   description?: string;
   internalResponsible?: string;
+  responsibleUserIds?: string[];
   /** ISO 8601 ou string vazia para limpar. */
   dueDate?: string;
   effort?: number;
@@ -1281,6 +1301,7 @@ export type ProjectTaskPatchPayload = {
 
 export type ProjectTaskPatchResponse = Omit<ProjectTaskTree, "children" | "attachments"> & {
   attachments: ProjectTaskFile[];
+  comments: ProjectTaskComment[];
 };
 
 export type ProjectGroupWithTasks = {
@@ -1427,7 +1448,9 @@ export async function createProjectTask(
     dueDate?: string;
     description?: string;
     assigneeExternal?: string;
+    assigneeUserId?: string | null;
     internalResponsible?: string;
+    responsibleUserIds?: string[];
     effort?: number;
   }
 ): Promise<ProjectTaskPatchResponse> {
@@ -1453,4 +1476,11 @@ export async function uploadProjectTaskAttachment(projectId: string, taskId: str
     throw new Error(await parseUploadError(response));
   }
   return (await response.json()) as ProjectTaskFile;
+}
+
+export async function createProjectTaskComment(projectId: string, taskId: string, body: string): Promise<ProjectTaskComment> {
+  return request(`/projects/${projectId}/tasks/${taskId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body })
+  });
 }

@@ -40,6 +40,8 @@ export class UserAssignmentsService {
       .filter(Boolean);
     const insensitive = Prisma.QueryMode.insensitive;
     const taskMatches: Prisma.ProjectTaskWhereInput[] = [
+      { assigneeUserId: actor.userId },
+      { responsibleUsers: { some: { userId: actor.userId } } },
       { internalResponsible: { contains: actor.email, mode: insensitive } },
       { assigneeExternal: { contains: actor.email, mode: insensitive } }
     ];

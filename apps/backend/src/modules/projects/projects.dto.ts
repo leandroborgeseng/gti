@@ -147,7 +147,16 @@ export class CreateProjectTaskDto {
 
   @IsOptional()
   @IsString()
+  assigneeUserId?: string | null;
+
+  @IsOptional()
+  @IsString()
   internalResponsible?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  responsibleUserIds?: string[];
 
   @IsOptional()
   @Type(() => Number)
@@ -194,11 +203,20 @@ export class UpdateProjectTaskDto {
 
   @IsOptional()
   @IsString()
+  assigneeUserId?: string | null;
+
+  @IsOptional()
+  @IsString()
   description?: string;
 
   @IsOptional()
   @IsString()
   internalResponsible?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  responsibleUserIds?: string[];
 
   /** ISO 8601 ou string vazia para limpar a data. */
   @IsOptional()
@@ -209,6 +227,12 @@ export class UpdateProjectTaskDto {
   @Type(() => Number)
   @IsNumber()
   effort?: number;
+}
+
+export class CreateProjectTaskCommentDto {
+  @IsString()
+  @IsNotEmpty()
+  body!: string;
 }
 
 /** Nó de tarefa (raiz ou subtarefa), recursivo. */
