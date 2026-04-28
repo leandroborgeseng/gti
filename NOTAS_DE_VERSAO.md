@@ -24,6 +24,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - A tela de login foi redesenhada com identidade visual da BlueBeaver e textos voltados ao uso do sistema.
 - O manual do produto deve ser atualizado junto com mudanças que impactem menus, fluxos da interface, permissões por papel ou formas de uso.
 - Revisados textos da interface, mensagens de erro e documentação do produto para padronizar o português do Brasil.
+- A lista de projetos passou a mostrar apenas as datas de início e fim planejado, sem barra visual de prazo.
 
 ### Como manter
 

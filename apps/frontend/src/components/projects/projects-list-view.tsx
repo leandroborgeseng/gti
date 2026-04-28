@@ -157,30 +157,14 @@ function formatProjectDate(value?: string | null): string {
 }
 
 function ProjectScheduleSummary({ project }: { project: ProjectListItem }): JSX.Element {
-  const start = project.startDate ? new Date(project.startDate) : null;
-  const end = project.plannedEndDate ? new Date(project.plannedEndDate) : null;
-  const now = new Date();
-  const hasValidRange = start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start <= end;
-  const elapsedPercent = hasValidRange
-    ? Math.min(100, Math.max(0, Math.round(((now.getTime() - start.getTime()) / Math.max(end.getTime() - start.getTime(), 1)) * 100)))
-    : 0;
-  const statusLabel = !start && !end ? "Sem planejamento" : hasValidRange && now > end ? "Fim planejado vencido" : hasValidRange && now >= start ? "Em execução planejada" : "Ainda não iniciado";
-  const statusClass = hasValidRange && now > end ? "bg-destructive" : hasValidRange && now >= start ? "bg-sky-500" : "bg-slate-400";
-
   return (
-    <div className="min-w-48 space-y-1.5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span>
-          Início: <strong className="font-medium text-foreground">{formatProjectDate(project.startDate)}</strong>
-        </span>
-        <span>
-          Fim planejado: <strong className="font-medium text-foreground">{formatProjectDate(project.plannedEndDate)}</strong>
-        </span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-muted">
-        <span className={`block h-full ${statusClass}`} style={{ width: hasValidRange ? `${Math.max(elapsedPercent, 4)}%` : "100%" }} />
-      </div>
-      <p className="text-xs text-muted-foreground">{hasValidRange ? `${elapsedPercent}% do prazo planejado decorrido` : statusLabel}</p>
+    <div className="flex min-w-48 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <span>
+        Início: <strong className="font-medium text-foreground">{formatProjectDate(project.startDate)}</strong>
+      </span>
+      <span>
+        Fim planejado: <strong className="font-medium text-foreground">{formatProjectDate(project.plannedEndDate)}</strong>
+      </span>
     </div>
   );
 }
