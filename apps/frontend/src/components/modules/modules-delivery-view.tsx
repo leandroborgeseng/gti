@@ -7,11 +7,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ContractFeatureStatus,
+  ContractItemCriticality,
   ContractItemDeliveryStatus,
   ContractModulesDeliveryOverview
 } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
-import { confirmWeightSumDeviation, parseContractWeight, projectModuleFeaturesSum } from "@/lib/contract-weights";
 import { itemDeliveryLabelClass, itemDeliverySelectItemClass, itemDeliverySelectTriggerClass } from "@/lib/item-delivery-styles";
 import { deleteContractFeature, getModulesDeliveryOverview, updateContractFeature } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
@@ -40,6 +40,16 @@ const featureStatusLabels: Record<ContractFeatureStatus, string> = {
 };
 
 const featureStatuses: ContractFeatureStatus[] = ["NOT_STARTED", "IN_PROGRESS", "DELIVERED", "VALIDATED"];
+
+const criticalityLabels: Record<ContractItemCriticality, string> = {
+  CRITICA: "Crítica (5)",
+  ALTA: "Alta (4)",
+  MEDIA: "Média (3)",
+  BAIXA: "Baixa (2)",
+  APOIO: "Apoio (1)"
+};
+
+const criticalityOptions: ContractItemCriticality[] = ["CRITICA", "ALTA", "MEDIA", "BAIXA", "APOIO"];
 
 function rowKey(contractId: string, moduleId: string, featureId: string): string {
   return `${contractId}-${moduleId}-${featureId}`;
@@ -113,11 +123,11 @@ type Props = {
 type EditFeatureDraft = {
   contractId: string;
   moduleId: string;
-  moduleName: string;
   featureId: string;
-  moduleFeatures: ContractModulesDeliveryOverview["modules"][number]["features"];
+  itemCode: string;
   name: string;
   weightStr: string;
+  criticality: ContractItemCriticality;
   status: ContractFeatureStatus;
   deliveryStatus: ContractItemDeliveryStatus;
 };
@@ -199,14 +209,16 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       contractId: string;
       moduleId: string;
       featureId: string;
+      itemCode?: string | null;
       name: string;
-      weight: number;
+      criticality: ContractItemCriticality;
       status: ContractFeatureStatus;
       deliveryStatus: ContractItemDeliveryStatus;
     }) => {
       await updateContractFeature(vars.contractId, vars.moduleId, vars.featureId, {
+        itemCode: vars.itemCode,
         name: vars.name,
-        weight: vars.weight,
+        criticality: vars.criticality,
         status: vars.status,
         deliveryStatus: vars.deliveryStatus
       });
@@ -267,11 +279,11 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     setEditDraft({
       contractId,
       moduleId: mod.id,
-      moduleName: mod.name,
       featureId: item.id,
-      moduleFeatures: mod.features,
+      itemCode: item.itemCode ?? "",
       name: item.name,
       weightStr: serializeWeight(item.weight),
+      criticality: item.criticality ?? "MEDIA",
       status: (item.status as ContractFeatureStatus) ?? "NOT_STARTED",
       deliveryStatus: (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus
     });
@@ -283,14 +295,6 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     item: ContractModulesDeliveryOverview["modules"][number]["features"][number]
   ): void {
     if (!window.confirm(`Remover a funcionalidade «${item.name}»?`)) return;
-    const projected = projectModuleFeaturesSum(
-      mod.features
-        .filter((f) => f.id !== item.id)
-        .map((f) => ({ id: f.id, weight: f.weight as string | number }))
-    );
-    if (!confirmWeightSumDeviation(projected, `Funcionalidades do módulo «${mod.name}» (após remover)`)) {
-      return;
-    }
     deleteFeatureMut.mutate({ contractId, moduleId: mod.id, featureId: item.id });
   }
 
@@ -302,24 +306,13 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       setEditHint("Indique um nome.");
       return;
     }
-    const w = parseContractWeight(editDraft.weightStr);
-    if (!Number.isFinite(w)) {
-      setEditHint("Peso inválido.");
-      return;
-    }
-    const projected = projectModuleFeaturesSum(
-      editDraft.moduleFeatures.map((f) => ({ id: f.id, weight: f.weight as string | number })),
-      { id: editDraft.featureId, weight: w }
-    );
-    if (!confirmWeightSumDeviation(projected, `Funcionalidades do módulo «${editDraft.moduleName}»`)) {
-      return;
-    }
     saveFeatureMut.mutate({
       contractId: editDraft.contractId,
       moduleId: editDraft.moduleId,
       featureId: editDraft.featureId,
+      itemCode: editDraft.itemCode.trim() || null,
       name,
-      weight: w,
+      criticality: editDraft.criticality,
       status: editDraft.status,
       deliveryStatus: editDraft.deliveryStatus
     });
@@ -518,8 +511,15 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                                 className="flex flex-col gap-3 rounded-md border border-border/40 bg-background/80 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
                                               >
                                                 <div className="min-w-0 flex-1">
-                                                  <p className="text-sm font-medium text-foreground">{item.name}</p>
-                                                  <p className="text-[11px] text-muted-foreground">Peso {serializeWeight(item.weight)}</p>
+                                                  <p className="text-sm font-medium text-foreground">
+                                                    {item.itemCode ? (
+                                                      <span className="mr-2 font-mono text-xs text-muted-foreground">{item.itemCode}</span>
+                                                    ) : null}
+                                                    {item.name}
+                                                  </p>
+                                                  <p className="text-[11px] text-muted-foreground">
+                                                    {criticalityLabels[item.criticality ?? "MEDIA"]} · Peso {serializeWeight(item.weight)}
+                                                  </p>
                                                 </div>
                                                 <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-[22rem] sm:flex-row sm:items-center sm:justify-end sm:gap-2">
                                                   <div className="min-w-0 flex-1 sm:min-w-[12rem] sm:flex-1 sm:max-w-[14.5rem]">
@@ -624,11 +624,21 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
           }
         }}
         title="Editar funcionalidade"
-        description="Nome, peso no módulo, estado da funcionalidade e estado de entrega."
+        description="Código do item, nome, criticidade, estado da funcionalidade e estado de entrega."
         contentClassName="max-w-md"
       >
         {editDraft ? (
           <div className="space-y-4 pt-1">
+            <div className="space-y-2">
+              <Label htmlFor="modulos-edit-codigo">Código do Item</Label>
+              <Input
+                id="modulos-edit-codigo"
+                value={editDraft.itemCode}
+                placeholder="Ex.: 1.2.3"
+                disabled={saveFeatureMut.isPending}
+                onChange={(e) => setEditDraft((d) => (d ? { ...d, itemCode: e.target.value } : d))}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="modulos-edit-nome">Nome</Label>
               <Input
@@ -639,15 +649,23 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="modulos-edit-peso">Peso no módulo</Label>
-              <Input
-                id="modulos-edit-peso"
-                type="text"
-                inputMode="decimal"
-                value={editDraft.weightStr}
+              <Label htmlFor="modulos-edit-criticidade">Criticidade</Label>
+              <select
+                id="modulos-edit-criticidade"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                value={editDraft.criticality}
                 disabled={saveFeatureMut.isPending}
-                onChange={(e) => setEditDraft((d) => (d ? { ...d, weightStr: e.target.value } : d))}
-              />
+                onChange={(e) =>
+                  setEditDraft((d) => (d ? { ...d, criticality: e.target.value as ContractItemCriticality } : d))
+                }
+              >
+                {criticalityOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {criticalityLabels[opt]}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">Peso calculado atual: {editDraft.weightStr}</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="modulos-edit-status">Estado da funcionalidade</Label>

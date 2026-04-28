@@ -151,7 +151,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Proporção de implantação por funcionalidade: repartição do valor de implantação alinhada às funcionalidades do contrato.",
           "Grupos GLPI: associação de grupos do GLPI ao contrato, para contagem de chamados nos relatórios.",
           "Aditivos: registro de alterações contratuais.",
-          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir.",
+          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir. Cada módulo tem uma sanfona para mostrar ou ocultar suas funcionalidades, facilitando a navegação em contratos extensos. No topo do módulo aparecem total de itens, entregues, parciais, não entregues e fiscal responsável. O campo Código do Item deve guardar a numeração do item no Termo de Referência, mantendo o nome/descrição sem o número embutido. A criticidade de módulos e funcionalidades define automaticamente os pesos proporcionais usados nos reflexos financeiros: Crítica = 5, Alta = 4, Média = 3, Baixa = 2 e Apoio = 1.",
+          "Fiscal responsável pelo módulo: selecione um usuário do sistema para acompanhar e validar a entrega daquele módulo.",
           "Histórico auditável dos itens: registra quem inseriu, excluiu ou alterou status de módulos, funcionalidades e serviços, apoiando a conferência antes de medições e pagamentos."
         ]
       },
@@ -173,7 +174,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/modulos", label: "Funcionalidades" },
-          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. Cada contrato e cada módulo têm sanfona (fechados por padrão); no cabeçalho do módulo você vê contagens de entregues / parciais / não entregues. Dentro do módulo, use o estado de entrega, o botão de editar (lápis) ou excluir (lixeira), com confirmação e validação da soma dos pesos ao excluir ou ao salvar edição."
+          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. Cada funcionalidade pode ter Código do Item separado do nome, para guardar a numeração do Termo de Referência. A criticidade recalcula automaticamente os pesos de todas as funcionalidades do módulo sempre que um item é incluído, excluído ou alterado. Cada contrato e cada módulo têm sanfona (fechados por padrão); no cabeçalho do módulo você vê contagens de entregues / parciais / não entregues. Dentro do módulo, use o estado de entrega, o botão de editar (lápis) ou excluir (lixeira)."
         ]
       }
     ]

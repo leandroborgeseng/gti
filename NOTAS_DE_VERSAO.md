@@ -13,6 +13,11 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionado histórico auditável de itens contratuais, registrando inserção, exclusão e mudança de status com usuário e data.
 - Adicionados botões na área autenticada para abrir o manual do sistema e as notas de versão.
 - Adicionado aviso de nova versão para orientar usuários a atualizar o PWA quando um novo deploy estiver disponível.
+- Adicionado campo próprio “Código do Item” nas funcionalidades contratuais, separado do nome/descrição do item do Termo de Referência.
+- Adicionada classificação de criticidade em módulos e funcionalidades, com recálculo automático dos pesos proporcionais e reflexos financeiros.
+- Adicionado fiscal responsável por módulo, vinculado a usuários do sistema para validação da entrega.
+- Adicionada sanfona nos módulos do contrato para ocultar/mostrar funcionalidades e reduzir rolagem em contratos extensos.
+- Adicionado resumo no topo de cada módulo com total de itens, entregues, parciais, não entregues e fiscal responsável.
 
 ### Alterado
 

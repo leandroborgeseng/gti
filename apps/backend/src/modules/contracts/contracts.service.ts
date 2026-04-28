@@ -4,6 +4,7 @@ import {
   ContractFeatureStatus,
   ContractItemChangeAction,
   ContractItemChangeType,
+  ContractItemCriticality,
   ContractItemDeliveryStatus,
   ContractStatus,
   ContractType,
@@ -41,6 +42,23 @@ function dedupeGlpiGroupLinks(links: ContractGlpiGroupLinkDto[]): { glpiGroupId:
     out.push({ glpiGroupId: id, glpiGroupName: n ? n : null });
   }
   return out;
+}
+
+function featureDisplayName(itemCode: string | null | undefined, name: string): string {
+  const code = itemCode?.trim();
+  return code ? `${code} — ${name}` : name;
+}
+
+const CRITICALITY_SCORE: Record<ContractItemCriticality, number> = {
+  CRITICA: 5,
+  ALTA: 4,
+  MEDIA: 3,
+  BAIXA: 2,
+  APOIO: 1
+};
+
+function criticalityScore(value: ContractItemCriticality | null | undefined): number {
+  return CRITICALITY_SCORE[value ?? ContractItemCriticality.MEDIA] ?? CRITICALITY_SCORE.MEDIA;
 }
 
 export type BillingPhase = "UNDEFINED" | "PRE_IMPLEMENTATION" | "IMPLEMENTATION" | "MONTHLY";
@@ -255,6 +273,14 @@ export class ContractsService {
       .map((r) => ({ glpiGroupId: r.contractGroupId, glpiGroupName: r.contractGroupName ?? null }));
   }
 
+  async findModuleValidators(): Promise<Array<{ id: string; email: string; role: string }>> {
+    return this.prisma.user.findMany({
+      where: { approvalStatus: "APPROVED" },
+      orderBy: { email: "asc" },
+      select: { id: true, email: true, role: true }
+    });
+  }
+
   /**
    * Contratos com estrutura de módulos (Software / Infra / Serviço) e itens com estado de entrega,
    * para a página global «Módulos».
@@ -279,13 +305,18 @@ export class ContractsService {
           select: {
             id: true,
             name: true,
+            criticality: true,
+            validatorId: true,
+            validator: { select: { id: true, email: true, role: true } },
             weight: true,
             features: {
               select: {
                 id: true,
+                itemCode: true,
                 name: true,
                 weight: true,
                 status: true,
+                criticality: true,
                 deliveryStatus: true
               },
               orderBy: { name: "asc" }
@@ -327,7 +358,7 @@ export class ContractsService {
     const contract = await this.prisma.contract.findFirst({
       where: { id, deletedAt: null },
       include: {
-        modules: { include: { features: true } },
+        modules: { include: { features: true, validator: { select: { id: true, email: true, role: true } } } },
         services: true,
         fiscal: true,
         manager: true,
@@ -509,16 +540,29 @@ export class ContractsService {
     }
     if (!rows.length) throw new BadRequestException("Nenhuma linha válida para importar.");
 
-    const groups = new Map<string, { displayName: string; weight: number; features: ContractStructureImportRow[] }>();
+    const groups = new Map<
+      string,
+      { displayName: string; weight?: number; criticality: ContractItemCriticality; features: ContractStructureImportRow[] }
+    >();
     for (const row of rows) {
       const key = moduleGroupKey(row.moduleName);
       const prev = groups.get(key);
       if (!prev) {
-        groups.set(key, { displayName: row.moduleName.trim(), weight: row.moduleWeight, features: [row] });
+        groups.set(key, {
+          displayName: row.moduleName.trim(),
+          weight: row.moduleWeight,
+          criticality: row.moduleCriticality ?? ContractItemCriticality.MEDIA,
+          features: [row]
+        });
       } else {
-        if (Math.abs(prev.weight - row.moduleWeight) > 1e-6) {
+        if (prev.weight != null && row.moduleWeight != null && Math.abs(prev.weight - row.moduleWeight) > 1e-6) {
           throw new BadRequestException(
             `Peso do módulo inconsistente para «${row.moduleName.trim()}» (linhas ${prev.features[0]?.sourceRow} e ${row.sourceRow}).`
+          );
+        }
+        if ((row.moduleCriticality ?? prev.criticality) !== prev.criticality) {
+          throw new BadRequestException(
+            `Criticidade do módulo inconsistente para «${row.moduleName.trim()}» (linhas ${prev.features[0]?.sourceRow} e ${row.sourceRow}).`
           );
         }
         prev.features.push(row);
@@ -527,8 +571,9 @@ export class ContractsService {
 
     // Transacção interactiva: o timeout por padrão do Prisma (~5 s) é curto para planilhas grandes;
     // ultrapassar fecha a transação e as operações seguintes falham com «Transaction not found».
-    await this.prisma.$transaction(
+    const affectedModuleIds = await this.prisma.$transaction(
       async (tx) => {
+        const affected: string[] = [];
         if (opts.replace) {
           await tx.contractFeature.deleteMany({ where: { module: { contractId } } });
           await tx.contractModule.deleteMany({ where: { contractId } });
@@ -549,16 +594,20 @@ export class ContractsService {
               data: {
                 contractId,
                 name: group.displayName,
-                weight: new Prisma.Decimal(group.weight)
+                criticality: group.criticality,
+                weight: new Prisma.Decimal(group.weight ?? 0)
               }
             });
             moduleId = created.id;
           }
           const mid = moduleId!;
+          affected.push(mid);
           const featureRows = group.features.map((fr) => ({
             moduleId: mid,
+            itemCode: fr.featureCode?.trim() || null,
             name: fr.featureName.trim(),
-            weight: new Prisma.Decimal(fr.featureWeight),
+            criticality: fr.featureCriticality ?? ContractItemCriticality.MEDIA,
+            weight: new Prisma.Decimal(fr.featureWeight ?? 0),
             status: fr.featureStatus ?? ContractFeatureStatus.NOT_STARTED,
             deliveryStatus: fr.featureDelivery ?? ContractItemDeliveryStatus.NOT_DELIVERED
           }));
@@ -566,9 +615,15 @@ export class ContractsService {
             await tx.contractFeature.createMany({ data: featureRows });
           }
         }
+        return affected;
       },
       { maxWait: 30_000, timeout: 180_000 }
     );
+
+    await this.recalculateContractModuleWeights(contractId);
+    for (const moduleId of affectedModuleIds) {
+      await this.recalculateModuleFeatureWeights(moduleId);
+    }
 
     await this.createAudit("Contract", contractId, "IMPORT_STRUCTURE", null, { rows: rows.length, replace: opts.replace });
     await this.createContractItemChangeLog({
@@ -584,44 +639,61 @@ export class ContractsService {
 
   async createModule(contractId: string, dto: CreateContractModuleDto): Promise<unknown> {
     await this.ensureContract(contractId);
+    if (dto.validatorId?.trim()) {
+      await this.ensureUser(dto.validatorId.trim());
+    }
     const created = await this.prisma.contractModule.create({
       data: {
         contractId,
         name: dto.name,
-        weight: new Prisma.Decimal(dto.weight)
+        criticality: dto.criticality ?? ContractItemCriticality.MEDIA,
+        validatorId: dto.validatorId?.trim() || null,
+        weight: new Prisma.Decimal(dto.weight ?? 0)
       }
     });
+    await this.recalculateContractModuleWeights(contractId);
+    const recalculated = await this.prisma.contractModule.findUnique({ where: { id: created.id } });
     await this.createAudit("ContractModule", created.id, "CREATE", null, created);
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.MODULE,
       itemId: created.id,
-      itemName: created.name,
+      itemName: recalculated?.name ?? created.name,
       action: ContractItemChangeAction.CREATED,
-      newData: created
+      criticalityAfter: recalculated?.criticality ?? created.criticality,
+      newData: recalculated ?? created
     });
     return this.findOne(contractId);
   }
 
   async updateModule(contractId: string, moduleId: string, dto: UpdateContractModuleDto): Promise<unknown> {
     await this.ensureModule(contractId, moduleId);
+    if (dto.validatorId?.trim()) {
+      await this.ensureUser(dto.validatorId.trim());
+    }
     const prev = await this.prisma.contractModule.findUnique({ where: { id: moduleId } });
     const updated = await this.prisma.contractModule.update({
       where: { id: moduleId },
       data: {
         name: dto.name ?? undefined,
+        criticality: dto.criticality ?? undefined,
+        validatorId: dto.validatorId === undefined ? undefined : dto.validatorId?.trim() || null,
         weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : undefined
       }
     });
-    await this.createAudit("ContractModule", moduleId, "UPDATE", prev, updated);
+    await this.recalculateContractModuleWeights(contractId);
+    const recalculated = await this.prisma.contractModule.findUnique({ where: { id: moduleId } });
+    await this.createAudit("ContractModule", moduleId, "UPDATE", prev, recalculated ?? updated);
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.MODULE,
       itemId: moduleId,
-      itemName: updated.name,
+      itemName: recalculated?.name ?? updated.name,
       action: ContractItemChangeAction.UPDATED,
+      criticalityBefore: prev?.criticality ?? null,
+      criticalityAfter: recalculated?.criticality ?? updated.criticality,
       oldData: prev,
-      newData: updated
+      newData: recalculated ?? updated
     });
     return this.findOne(contractId);
   }
@@ -643,6 +715,7 @@ export class ContractsService {
       }
       throw e;
     }
+    await this.recalculateContractModuleWeights(contractId);
     await this.createAudit("ContractModule", moduleId, "DELETE", prev, null);
     await this.createContractItemChangeLog({
       contractId,
@@ -650,6 +723,7 @@ export class ContractsService {
       itemId: moduleId,
       itemName: prev?.name ?? moduleId,
       action: ContractItemChangeAction.DELETED,
+      criticalityBefore: prev?.criticality ?? null,
       oldData: prev
     });
     return this.findOne(contractId);
@@ -660,22 +734,27 @@ export class ContractsService {
     const created = await this.prisma.contractFeature.create({
       data: {
         moduleId,
+        itemCode: dto.itemCode?.trim() || null,
         name: dto.name,
-        weight: new Prisma.Decimal(dto.weight),
+        criticality: dto.criticality ?? ContractItemCriticality.MEDIA,
+        weight: new Prisma.Decimal(dto.weight ?? 0),
         status: dto.status ?? ContractFeatureStatus.NOT_STARTED,
         deliveryStatus: dto.deliveryStatus ?? ContractItemDeliveryStatus.NOT_DELIVERED
       }
     });
-    await this.createAudit("ContractFeature", created.id, "CREATE", null, created);
+    await this.recalculateModuleFeatureWeights(moduleId);
+    const recalculated = await this.prisma.contractFeature.findUnique({ where: { id: created.id } });
+    await this.createAudit("ContractFeature", created.id, "CREATE", null, recalculated ?? created);
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.FEATURE,
       itemId: created.id,
-      itemName: created.name,
+      itemName: featureDisplayName(recalculated?.itemCode ?? created.itemCode, recalculated?.name ?? created.name),
       action: ContractItemChangeAction.CREATED,
-      statusAfter: created.status,
-      deliveryStatusAfter: created.deliveryStatus,
-      newData: created
+      criticalityAfter: recalculated?.criticality ?? created.criticality,
+      statusAfter: recalculated?.status ?? created.status,
+      deliveryStatusAfter: recalculated?.deliveryStatus ?? created.deliveryStatus,
+      newData: recalculated ?? created
     });
     return this.findOne(contractId);
   }
@@ -691,28 +770,35 @@ export class ContractsService {
     const updated = await this.prisma.contractFeature.update({
       where: { id: featureId },
       data: {
+        itemCode: dto.itemCode !== undefined ? dto.itemCode.trim() || null : undefined,
         name: dto.name ?? undefined,
         weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : undefined,
+        criticality: dto.criticality ?? undefined,
         status: dto.status ?? undefined,
         deliveryStatus: dto.deliveryStatus ?? undefined
       }
     });
-    await this.createAudit("ContractFeature", featureId, "UPDATE", prev, updated);
+    await this.recalculateModuleFeatureWeights(moduleId);
+    const recalculated = await this.prisma.contractFeature.findUnique({ where: { id: featureId } });
+    const next = recalculated ?? updated;
+    await this.createAudit("ContractFeature", featureId, "UPDATE", prev, next);
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.FEATURE,
       itemId: featureId,
-      itemName: updated.name,
+      itemName: featureDisplayName(next.itemCode, next.name),
       action:
-        prev?.status !== updated.status || prev?.deliveryStatus !== updated.deliveryStatus
+        prev?.status !== next.status || prev?.deliveryStatus !== next.deliveryStatus
           ? ContractItemChangeAction.STATUS_CHANGED
           : ContractItemChangeAction.UPDATED,
+      criticalityBefore: prev?.criticality ?? null,
+      criticalityAfter: next.criticality,
       statusBefore: prev?.status ?? null,
-      statusAfter: updated.status,
+      statusAfter: next.status,
       deliveryStatusBefore: prev?.deliveryStatus ?? null,
-      deliveryStatusAfter: updated.deliveryStatus,
+      deliveryStatusAfter: next.deliveryStatus,
       oldData: prev,
-      newData: updated
+      newData: next
     });
     return this.findOne(contractId);
   }
@@ -728,13 +814,15 @@ export class ContractsService {
       }
       throw e;
     }
+    await this.recalculateModuleFeatureWeights(moduleId);
     await this.createAudit("ContractFeature", featureId, "DELETE", prev, null);
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.FEATURE,
       itemId: featureId,
-      itemName: prev?.name ?? featureId,
+      itemName: prev ? featureDisplayName(prev.itemCode, prev.name) : featureId,
       action: ContractItemChangeAction.DELETED,
+      criticalityBefore: prev?.criticality ?? null,
       statusBefore: prev?.status ?? null,
       deliveryStatusBefore: prev?.deliveryStatus ?? null,
       oldData: prev
@@ -816,6 +904,49 @@ export class ContractsService {
     if (!c) throw new NotFoundException("Contrato não encontrado");
   }
 
+  private async ensureUser(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!user) throw new NotFoundException("Usuário responsável não encontrado");
+  }
+
+  private async recalculateContractModuleWeights(contractId: string): Promise<void> {
+    const modules = await this.prisma.contractModule.findMany({
+      where: { contractId },
+      select: { id: true, criticality: true }
+    });
+    const total = modules.reduce((sum, mod) => sum + criticalityScore(mod.criticality), 0);
+    if (total <= 0) return;
+    await this.prisma.$transaction(
+      modules.map((mod) =>
+        this.prisma.contractModule.update({
+          where: { id: mod.id },
+          data: {
+            weight: new Prisma.Decimal(criticalityScore(mod.criticality)).div(total).toDecimalPlaces(8)
+          }
+        })
+      )
+    );
+  }
+
+  private async recalculateModuleFeatureWeights(moduleId: string): Promise<void> {
+    const features = await this.prisma.contractFeature.findMany({
+      where: { moduleId },
+      select: { id: true, criticality: true }
+    });
+    const total = features.reduce((sum, feature) => sum + criticalityScore(feature.criticality), 0);
+    if (total <= 0) return;
+    await this.prisma.$transaction(
+      features.map((feature) =>
+        this.prisma.contractFeature.update({
+          where: { id: feature.id },
+          data: {
+            weight: new Prisma.Decimal(criticalityScore(feature.criticality)).div(total).toDecimalPlaces(8)
+          }
+        })
+      )
+    );
+  }
+
   private async ensureModule(contractId: string, moduleId: string): Promise<void> {
     const m = await this.prisma.contractModule.findFirst({ where: { id: moduleId, contractId } });
     if (!m) throw new NotFoundException("Módulo não encontrado neste contrato");
@@ -852,6 +983,8 @@ export class ContractsService {
     itemId?: string | null;
     itemName: string;
     action: ContractItemChangeAction;
+    criticalityBefore?: string | null;
+    criticalityAfter?: string | null;
     statusBefore?: string | null;
     statusAfter?: string | null;
     deliveryStatusBefore?: string | null;
@@ -866,6 +999,8 @@ export class ContractsService {
         itemId: input.itemId ?? null,
         itemName: input.itemName,
         action: input.action,
+        criticalityBefore: input.criticalityBefore ?? null,
+        criticalityAfter: input.criticalityAfter ?? null,
         statusBefore: input.statusBefore ?? null,
         statusAfter: input.statusAfter ?? null,
         deliveryStatusBefore: input.deliveryStatusBefore ?? null,

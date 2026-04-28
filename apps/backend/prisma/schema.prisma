@@ -142,6 +142,14 @@ enum ContractItemChangeType {
   SERVICE
 }
 
+enum ContractItemCriticality {
+  CRITICA
+  ALTA
+  MEDIA
+  BAIXA
+  APOIO
+}
+
 model User {
   id                  String               @id @default(uuid())
   email               String               @unique
@@ -153,6 +161,7 @@ model User {
   updatedAt           DateTime             @updatedAt
   passwordResetTokens PasswordResetToken[]
   supervisedProjects  Project[]            @relation("ProjectSupervisor")
+  validatedContractModules ContractModule[] @relation("ContractModuleValidator")
 }
 
 model PasswordResetToken {
@@ -238,6 +247,8 @@ model ContractItemChangeLog {
   itemId               String?
   itemName             String
   action               ContractItemChangeAction
+  criticalityBefore    String?
+  criticalityAfter     String?
   statusBefore         String?
   statusAfter          String?
   deliveryStatusBefore String?
@@ -302,19 +313,26 @@ model ContractAmendment {
 }
 
 model ContractModule {
-  id         String            @id @default(uuid())
-  contractId String
-  name       String
-  weight     Decimal           @db.Decimal(8, 4)
-  contract   Contract          @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  features   ContractFeature[]
+  id          String                  @id @default(uuid())
+  contractId  String
+  name        String
+  criticality ContractItemCriticality @default(MEDIA) @map("modulo_criticidade")
+  validatorId String?                 @map("fiscal_responsavel_id")
+  weight      Decimal                 @db.Decimal(18, 8)
+  contract    Contract                @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  validator   User?                   @relation("ContractModuleValidator", fields: [validatorId], references: [id], onDelete: SetNull)
+  features    ContractFeature[]
+
+  @@index([validatorId])
 }
 
 model ContractFeature {
   id             String                     @id @default(uuid())
   moduleId       String
+  itemCode       String?                    @map("funcionalidade_codigo")
   name           String
-  weight         Decimal                    @db.Decimal(8, 4)
+  criticality    ContractItemCriticality    @default(MEDIA) @map("funcionalidade_criticidade")
+  weight         Decimal                    @db.Decimal(18, 8)
   status         ContractFeatureStatus      @default(NOT_STARTED)
   deliveryStatus ContractItemDeliveryStatus @default(NOT_DELIVERED)
   module         ContractModule             @relation(fields: [moduleId], references: [id], onDelete: Restrict)

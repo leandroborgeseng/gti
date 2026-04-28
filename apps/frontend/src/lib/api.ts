@@ -171,6 +171,7 @@ export type ContractGlpiGroup = {
 
 /** Estado de entrega do item (funcionalidade) para acompanhar a prestação do contrato. */
 export type ContractItemDeliveryStatus = "NOT_DELIVERED" | "PARTIALLY_DELIVERED" | "DELIVERED";
+export type ContractItemCriticality = "CRITICA" | "ALTA" | "MEDIA" | "BAIXA" | "APOIO";
 
 /**
  * Proporção do valor mensal com base no progresso de entrega: «Entregue» = 1, «Parcialmente entregue» = 0,5,
@@ -229,8 +230,19 @@ export type Contract = {
   modules?: Array<{
     id: string;
     name: string;
+    criticality?: ContractItemCriticality;
+    validatorId?: string | null;
+    validator?: { id: string; email: string; role: string } | null;
     weight: string;
-    features: Array<{ id: string; name: string; status: string; weight: string; deliveryStatus?: ContractItemDeliveryStatus }>;
+    features: Array<{
+      id: string;
+      itemCode?: string | null;
+      name: string;
+      criticality?: ContractItemCriticality;
+      status: string;
+      weight: string;
+      deliveryStatus?: ContractItemDeliveryStatus;
+    }>;
   }>;
   services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
   amendments?: ContractAmendment[];
@@ -251,6 +263,8 @@ export type ContractItemChangeLog = {
   itemId?: string | null;
   itemName: string;
   action: "CREATED" | "DELETED" | "STATUS_CHANGED" | "UPDATED" | "BULK_IMPORTED";
+  criticalityBefore?: string | null;
+  criticalityAfter?: string | null;
   statusBefore?: string | null;
   statusAfter?: string | null;
   deliveryStatusBefore?: string | null;
@@ -281,12 +295,17 @@ export type ContractModulesDeliveryOverview = {
   modules: Array<{
     id: string;
     name: string;
+    criticality: ContractItemCriticality;
+    validatorId?: string | null;
+    validator?: { id: string; email: string; role: string } | null;
     weight: unknown;
     features: Array<{
       id: string;
+      itemCode?: string | null;
       name: string;
       weight: unknown;
       status: string;
+      criticality: ContractItemCriticality;
       deliveryStatus: ContractItemDeliveryStatus;
     }>;
   }>;
@@ -294,6 +313,12 @@ export type ContractModulesDeliveryOverview = {
 
 export async function getModulesDeliveryOverview(): Promise<ContractModulesDeliveryOverview[]> {
   return request("/contracts/overview/modules-delivery");
+}
+
+export type ContractModuleValidator = { id: string; email: string; role: string };
+
+export async function getContractModuleValidators(): Promise<ContractModuleValidator[]> {
+  return request("/contracts/module-validators");
 }
 
 export type AttachmentRecord = {
@@ -563,14 +588,17 @@ export async function createContract(payload: {
 
 export type ContractFeatureStatus = "NOT_STARTED" | "IN_PROGRESS" | "DELIVERED" | "VALIDATED";
 
-export async function createContractModule(contractId: string, payload: { name: string; weight: number }): Promise<Contract> {
+export async function createContractModule(
+  contractId: string,
+  payload: { name: string; weight?: number; criticality?: ContractItemCriticality; validatorId?: string | null }
+): Promise<Contract> {
   return request(`/contracts/${contractId}/modules`, { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function updateContractModule(
   contractId: string,
   moduleId: string,
-  payload: { name?: string; weight?: number }
+  payload: { name?: string; weight?: number; criticality?: ContractItemCriticality; validatorId?: string | null }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}`, { method: "PUT", body: JSON.stringify(payload) });
 }
@@ -582,7 +610,14 @@ export async function deleteContractModule(contractId: string, moduleId: string)
 export async function createContractFeature(
   contractId: string,
   moduleId: string,
-  payload: { name: string; weight: number; status?: ContractFeatureStatus; deliveryStatus?: ContractItemDeliveryStatus }
+  payload: {
+    itemCode?: string | null;
+    name: string;
+    weight?: number;
+    criticality?: ContractItemCriticality;
+    status?: ContractFeatureStatus;
+    deliveryStatus?: ContractItemDeliveryStatus;
+  }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}/features`, { method: "POST", body: JSON.stringify(payload) });
 }
@@ -591,7 +626,14 @@ export async function updateContractFeature(
   contractId: string,
   moduleId: string,
   featureId: string,
-  payload: { name?: string; weight?: number; status?: ContractFeatureStatus; deliveryStatus?: ContractItemDeliveryStatus }
+  payload: {
+    itemCode?: string | null;
+    name?: string;
+    weight?: number;
+    criticality?: ContractItemCriticality;
+    status?: ContractFeatureStatus;
+    deliveryStatus?: ContractItemDeliveryStatus;
+  }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}/features/${featureId}`, {
     method: "PUT",

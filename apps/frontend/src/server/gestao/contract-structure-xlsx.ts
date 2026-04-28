@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { ContractFeatureStatus, ContractItemDeliveryStatus } from "@prisma/client";
+import type { ContractFeatureStatus, ContractItemCriticality, ContractItemDeliveryStatus } from "@prisma/client";
 import type { ContractStructureImportRow } from "@gestao/modules/contracts/contracts.dto";
 
 function stripAccents(s: string): string {
@@ -40,6 +40,20 @@ const DELIVERY_ALIASES: Record<string, ContractItemDeliveryStatus> = {
   entregue: "DELIVERED"
 };
 
+const CRITICALITY_ALIASES: Record<string, ContractItemCriticality> = {
+  critica: "CRITICA",
+  critical: "CRITICA",
+  critico: "CRITICA",
+  alta: "ALTA",
+  high: "ALTA",
+  media: "MEDIA",
+  medium: "MEDIA",
+  baixa: "BAIXA",
+  low: "BAIXA",
+  apoio: "APOIO",
+  support: "APOIO"
+};
+
 function parseStatus(raw: unknown): ContractFeatureStatus | undefined {
   const s = String(raw ?? "").trim();
   if (!s) return undefined;
@@ -62,15 +76,36 @@ function parseDelivery(raw: unknown): ContractItemDeliveryStatus | undefined {
   return DELIVERY_ALIASES[nk];
 }
 
+function parseCriticality(raw: unknown): ContractItemCriticality | undefined {
+  const s = String(raw ?? "").trim();
+  if (!s) return undefined;
+  const u = stripAccents(s).toUpperCase().replace(/\s+/g, "_");
+  if (u === "CRITICA" || u === "ALTA" || u === "MEDIA" || u === "BAIXA" || u === "APOIO") {
+    return u as ContractItemCriticality;
+  }
+  const nk = normHeader(s);
+  return CRITICALITY_ALIASES[nk];
+}
+
 const HEADER_ALIASES: Record<string, string> = {
   modulo_nome: "modulo_nome",
   nome_modulo: "modulo_nome",
   módulo: "modulo_nome",
+  modulo_criticidade: "modulo_criticidade",
+  criticidade_modulo: "modulo_criticidade",
   modulo_peso: "modulo_peso",
   peso_modulo: "modulo_peso",
+  funcionalidade_codigo: "funcionalidade_codigo",
+  codigo_funcionalidade: "funcionalidade_codigo",
+  codigo_item: "funcionalidade_codigo",
+  item_codigo: "funcionalidade_codigo",
+  codigo: "funcionalidade_codigo",
   funcionalidade_nome: "funcionalidade_nome",
   nome_funcionalidade: "funcionalidade_nome",
   funcionalidade: "funcionalidade_nome",
+  funcionalidade_criticidade: "funcionalidade_criticidade",
+  criticidade_funcionalidade: "funcionalidade_criticidade",
+  criticidade: "funcionalidade_criticidade",
   funcionalidade_peso: "funcionalidade_peso",
   peso_funcionalidade: "funcionalidade_peso",
   funcionalidade_status: "funcionalidade_status",
@@ -96,11 +131,13 @@ export function buildContractStructureTemplateBuffer(_contractNumber: string): B
     [""],
     ["Colunas obrigatórias"],
     ["modulo_nome — nome do módulo (repetir o mesmo nome em várias linhas para várias funcionalidades no mesmo módulo)."],
-    ["modulo_peso — peso do módulo na soma global (ex.: 0,6). Deve ser igual em todas as linhas do mesmo módulo."],
     ["funcionalidade_nome — nome da funcionalidade / item."],
-    ["funcionalidade_peso — peso dentro do módulo (soma por módulo ≈ 1)."],
+    ["funcionalidade_criticidade — CRITICA | ALTA | MEDIA | BAIXA | APOIO. O peso proporcional é calculado automaticamente."],
     [""],
     ["Colunas opcionais (códigos em inglês ou rótulos em português)"],
+    ["modulo_criticidade — CRITICA | ALTA | MEDIA | BAIXA | APOIO. Se vazio, usa MEDIA."],
+    ["modulo_peso e funcionalidade_peso — aceitos por compatibilidade, mas recalculados automaticamente pela criticidade."],
+    ["funcionalidade_codigo — código/numeração do item no Termo de Referência (ex.: 1.2.3)."],
     [
       "funcionalidade_status — NOT_STARTED | IN_PROGRESS | DELIVERED | VALIDATED (ou: não iniciada, em progresso, entregue, validada)."
     ],
@@ -118,10 +155,10 @@ export function buildContractStructureTemplateBuffer(_contractNumber: string): B
   ];
 
   const dataSheet: (string | number)[][] = [
-    ["modulo_nome", "modulo_peso", "funcionalidade_nome", "funcionalidade_peso", "funcionalidade_status", "funcionalidade_entrega"],
-    ["Módulo A", 0.6, "Funcionalidade 1", 0.5, "NOT_STARTED", "NOT_DELIVERED"],
-    ["Módulo A", 0.6, "Funcionalidade 2", 0.5, "NOT_STARTED", "NOT_DELIVERED"],
-    ["Módulo B", 0.4, "Funcionalidade X", 1, "", ""]
+    ["modulo_nome", "modulo_criticidade", "funcionalidade_codigo", "funcionalidade_nome", "funcionalidade_criticidade", "funcionalidade_status", "funcionalidade_entrega"],
+    ["Módulo A", "ALTA", "1.1", "Funcionalidade 1", "CRITICA", "NOT_STARTED", "NOT_DELIVERED"],
+    ["Módulo A", "ALTA", "1.2", "Funcionalidade 2", "MEDIA", "NOT_STARTED", "NOT_DELIVERED"],
+    ["Módulo B", "MEDIA", "2.1", "Funcionalidade X", "APOIO", "", ""]
   ];
 
   const wb = XLSX.utils.book_new();
@@ -159,10 +196,10 @@ export function parseContractStructureExcel(buffer: Buffer): ContractStructureIm
     const canon = canonicalHeader(headerRow[c] ?? "");
     if (canon) col[canon] = c;
   }
-  const required = ["modulo_nome", "modulo_peso", "funcionalidade_nome", "funcionalidade_peso"] as const;
+  const required = ["modulo_nome", "funcionalidade_nome"] as const;
   for (const k of required) {
     if (col[k] === undefined) {
-      throw new Error(`Cabeçalho ausente: «${k}». Use o modelo baixado na aplicativo.`);
+      throw new Error(`Cabeçalho ausente: «${k}». Use o modelo baixado no aplicativo.`);
     }
   }
 
@@ -173,15 +210,25 @@ export function parseContractStructureExcel(buffer: Buffer): ContractStructureIm
     const excelRow = i + 1;
     const r = rows[i] ?? [];
     const modName = String(r[col.modulo_nome] ?? "").trim();
+    const modCriticality =
+      col.modulo_criticidade !== undefined ? parseCriticality(r[col.modulo_criticidade]) : undefined;
+    const featCode =
+      col.funcionalidade_codigo !== undefined ? String(r[col.funcionalidade_codigo] ?? "").trim() : "";
     const featName = String(r[col.funcionalidade_nome] ?? "").trim();
+    const featCriticality =
+      col.funcionalidade_criticidade !== undefined ? parseCriticality(r[col.funcionalidade_criticidade]) : undefined;
     if (!modName && !featName) continue;
-    const mw = parseDecimalCell(r[col.modulo_peso]);
-    const fw = parseDecimalCell(r[col.funcionalidade_peso]);
+    const mw = col.modulo_peso !== undefined ? parseDecimalCell(r[col.modulo_peso]) : null;
+    const fw = col.funcionalidade_peso !== undefined ? parseDecimalCell(r[col.funcionalidade_peso]) : null;
     if (!modName) {
       errors.push(`Linha ${excelRow}: modulo_nome ausente.`);
       continue;
     }
-    if (mw === null || mw < 0) {
+    if (col.modulo_criticidade !== undefined && String(r[col.modulo_criticidade] ?? "").trim() && !modCriticality) {
+      errors.push(`Linha ${excelRow}: modulo_criticidade não reconhecida.`);
+      continue;
+    }
+    if (mw !== null && mw < 0) {
       errors.push(`Linha ${excelRow}: modulo_peso inválido.`);
       continue;
     }
@@ -189,7 +236,11 @@ export function parseContractStructureExcel(buffer: Buffer): ContractStructureIm
       errors.push(`Linha ${excelRow}: funcionalidade_nome ausente.`);
       continue;
     }
-    if (fw === null || fw < 0) {
+    if (col.funcionalidade_criticidade !== undefined && String(r[col.funcionalidade_criticidade] ?? "").trim() && !featCriticality) {
+      errors.push(`Linha ${excelRow}: funcionalidade_criticidade não reconhecida.`);
+      continue;
+    }
+    if (fw !== null && fw < 0) {
       errors.push(`Linha ${excelRow}: funcionalidade_peso inválido.`);
       continue;
     }
@@ -205,9 +256,12 @@ export function parseContractStructureExcel(buffer: Buffer): ContractStructureIm
     }
     out.push({
       moduleName: modName,
-      moduleWeight: mw,
+      moduleWeight: mw ?? undefined,
+      moduleCriticality: modCriticality,
+      featureCode: featCode || null,
       featureName: featName,
-      featureWeight: fw,
+      featureWeight: fw ?? undefined,
+      featureCriticality: featCriticality,
       featureStatus: st,
       featureDelivery: dl,
       sourceRow: excelRow

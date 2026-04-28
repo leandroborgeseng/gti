@@ -28,6 +28,14 @@ const deliveryStatusLabel: Record<string, string> = {
   DELIVERED: "Concluída"
 };
 
+const criticalityLabel: Record<string, string> = {
+  CRITICA: "Crítica",
+  ALTA: "Alta",
+  MEDIA: "Média",
+  BAIXA: "Baixa",
+  APOIO: "Apoio"
+};
+
 function formatDateTime(value: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
@@ -43,8 +51,10 @@ function ChangeDetails({ log }: { log: ContractItemChangeLog }): JSX.Element | n
   const statusChanged = log.statusBefore !== log.statusAfter && (log.statusBefore || log.statusAfter);
   const deliveryChanged =
     log.deliveryStatusBefore !== log.deliveryStatusAfter && (log.deliveryStatusBefore || log.deliveryStatusAfter);
+  const criticalityChanged =
+    log.criticalityBefore !== log.criticalityAfter && (log.criticalityBefore || log.criticalityAfter);
 
-  if (!statusChanged && !deliveryChanged) return null;
+  if (!statusChanged && !deliveryChanged && !criticalityChanged) return null;
 
   return (
     <div className="mt-2 space-y-1 text-xs text-slate-600">
@@ -52,6 +62,12 @@ function ChangeDetails({ log }: { log: ContractItemChangeLog }): JSX.Element | n
         <p>
           Status: <strong>{statusText(log.statusBefore, featureStatusLabel)}</strong> →{" "}
           <strong>{statusText(log.statusAfter, featureStatusLabel)}</strong>
+        </p>
+      ) : null}
+      {criticalityChanged ? (
+        <p>
+          Criticidade: <strong>{statusText(log.criticalityBefore, criticalityLabel)}</strong> →{" "}
+          <strong>{statusText(log.criticalityAfter, criticalityLabel)}</strong>
         </p>
       ) : null}
       {deliveryChanged ? (

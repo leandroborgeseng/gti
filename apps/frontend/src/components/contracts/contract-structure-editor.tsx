@@ -1,13 +1,14 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Modal } from "@/components/ui/modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Contract, ContractItemDeliveryStatus } from "@/lib/api";
+import type { Contract, ContractItemCriticality, ContractItemDeliveryStatus } from "@/lib/api";
 import {
   createContractFeature,
   createContractModule,
@@ -16,6 +17,7 @@ import {
   deleteContractModule,
   deleteContractService,
   fetchContractStructureTemplateBlob,
+  getContractModuleValidators,
   importContractStructureFromXlsx,
   updateContractFeature,
   updateContractModule,
@@ -23,13 +25,12 @@ import {
   type ContractFeatureStatus
 } from "@/lib/api";
 import {
-  confirmWeightSumDeviation,
   formatWeightPt,
-  parseContractWeight,
   projectContractModulesSum,
   projectModuleFeaturesSum,
   weightSumMatchesTarget
 } from "@/lib/contract-weights";
+import { queryKeys } from "@/lib/query-keys";
 import { buttonSmallClass, buttonSmallPrimaryClass, formControlClass } from "@/components/ui/form-primitives";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +50,16 @@ const itemDeliveryLabels: Record<ContractItemDeliveryStatus, string> = {
 };
 
 const itemDeliveryOptions: ContractItemDeliveryStatus[] = ["NOT_DELIVERED", "PARTIALLY_DELIVERED", "DELIVERED"];
+
+const criticalityLabels: Record<ContractItemCriticality, string> = {
+  CRITICA: "Crítica (5)",
+  ALTA: "Alta (4)",
+  MEDIA: "Média (3)",
+  BAIXA: "Baixa (2)",
+  APOIO: "Apoio (1)"
+};
+
+const criticalityOptions: ContractItemCriticality[] = ["CRITICA", "ALTA", "MEDIA", "BAIXA", "APOIO"];
 
 function showsModules(contractType: string): boolean {
   return ["SOFTWARE", "INFRA", "SERVICO"].includes(contractType);
@@ -94,6 +105,10 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const [contract, setContract] = useState(props.contract);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { data: validators = [] } = useQuery({
+    queryKey: queryKeys.contractModuleValidators,
+    queryFn: getContractModuleValidators
+  });
 
   const cid = contract.id;
 
@@ -113,10 +128,12 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const [structureModalOpen, setStructureModalOpen] = useState(false);
   const [structureModalKind, setStructureModalKind] = useState<"module" | "feature">("module");
   const [modalModName, setModalModName] = useState("");
-  const [modalModWeight, setModalModWeight] = useState("");
+  const [modalModCriticality, setModalModCriticality] = useState<ContractItemCriticality>("MEDIA");
+  const [modalModValidatorId, setModalModValidatorId] = useState("");
   const [modalFeatModuleId, setModalFeatModuleId] = useState("");
+  const [modalFeatCode, setModalFeatCode] = useState("");
   const [modalFeatName, setModalFeatName] = useState("");
-  const [modalFeatWeight, setModalFeatWeight] = useState("");
+  const [modalFeatCriticality, setModalFeatCriticality] = useState<ContractItemCriticality>("MEDIA");
   const [modalFeatStatus, setModalFeatStatus] = useState<ContractFeatureStatus>("NOT_STARTED");
   const [modalFeatDelivery, setModalFeatDelivery] = useState<ContractItemDeliveryStatus>("NOT_DELIVERED");
 
@@ -133,9 +150,11 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 
   function openStructureModal(): void {
     setModalModName("");
-    setModalModWeight("");
+    setModalModCriticality("MEDIA");
+    setModalModValidatorId("");
     setModalFeatName("");
-    setModalFeatWeight("");
+    setModalFeatCode("");
+    setModalFeatCriticality("MEDIA");
     setModalFeatStatus("NOT_STARTED");
     setModalFeatDelivery("NOT_DELIVERED");
     setModalFeatModuleId(modules[0]?.id ?? "");
@@ -280,11 +299,11 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     key={mod.id}
                     contractId={cid}
                     module={mod}
-                    allModules={modules}
                     busy={busy}
                     onError={setError}
                     onBusy={setBusy}
                     onUpdated={setContract}
+                    validators={validators}
                   />
                 ))}
               </div>
@@ -340,17 +359,35 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                   />
                 </label>
                 <label className="block text-xs font-medium text-slate-700">
-                  Peso
-                  <input
-                    className={`mt-1 w-full max-w-[12rem] ${formControlClass}`}
-                    placeholder="0 a 1"
-                    type="number"
-                    step="0.0001"
-                    min={0}
-                    value={modalModWeight}
-                    onChange={(e) => setModalModWeight(e.target.value)}
+                  Criticidade do módulo
+                  <select
+                    className={`mt-1 w-full ${formControlClass}`}
+                    value={modalModCriticality}
+                    onChange={(e) => setModalModCriticality(e.target.value as ContractItemCriticality)}
                     disabled={busy}
-                  />
+                  >
+                    {criticalityOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {criticalityLabels[opt]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Fiscal responsável pelo módulo
+                  <select
+                    className={`mt-1 w-full ${formControlClass}`}
+                    value={modalModValidatorId}
+                    onChange={(e) => setModalModValidatorId(e.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="">Sem responsável definido</option>
+                    {validators.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.email}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" size="sm" disabled={busy} onClick={closeStructureModal}>
@@ -361,17 +398,12 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     size="sm"
                     disabled={busy || !modalModName.trim()}
                     onClick={() => {
-                      const w = parseContractWeight(modalModWeight);
-                      if (!Number.isFinite(w)) {
-                        setError("Indique um peso numérico válido.");
-                        return;
-                      }
-                      const projected = projectContractModulesSum(modules) + w;
-                      if (!confirmWeightSumDeviation(projected, "Pesos dos módulos (após incluir este módulo)")) {
-                        return;
-                      }
                       void run(async () => {
-                        const c = await createContractModule(cid, { name: modalModName.trim(), weight: w });
+                        const c = await createContractModule(cid, {
+                          name: modalModName.trim(),
+                          criticality: modalModCriticality,
+                          validatorId: modalModValidatorId || null
+                        });
                         closeStructureModal();
                         return c;
                       });
@@ -399,6 +431,16 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                   </select>
                 </label>
                 <label className="block text-xs font-medium text-slate-700">
+                  Código do Item
+                  <input
+                    className={`mt-1 w-full ${formControlClass}`}
+                    placeholder="Ex.: 1.2.3"
+                    value={modalFeatCode}
+                    onChange={(e) => setModalFeatCode(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-slate-700">
                   Nome da funcionalidade
                   <input
                     className={`mt-1 w-full ${formControlClass}`}
@@ -409,16 +451,19 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                   />
                 </label>
                 <label className="block text-xs font-medium text-slate-700">
-                  Peso
-                  <input
-                    className={`mt-1 w-full max-w-[12rem] ${formControlClass}`}
-                    type="number"
-                    step="0.0001"
-                    min={0}
-                    value={modalFeatWeight}
-                    onChange={(e) => setModalFeatWeight(e.target.value)}
+                  Criticidade
+                  <select
+                    className={`mt-1 w-full ${formControlClass}`}
+                    value={modalFeatCriticality}
+                    onChange={(e) => setModalFeatCriticality(e.target.value as ContractItemCriticality)}
                     disabled={busy}
-                  />
+                  >
+                    {criticalityOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {criticalityLabels[opt]}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block text-xs font-medium text-slate-700">
@@ -463,22 +508,14 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     onClick={() => {
                       const mod = modules.find((m) => m.id === modalFeatModuleId);
                       if (!mod) {
-                        setError("Seleccione um módulo válido.");
-                        return;
-                      }
-                      const w = parseContractWeight(modalFeatWeight);
-                      if (!Number.isFinite(w)) {
-                        setError("Peso da funcionalidade inválido.");
-                        return;
-                      }
-                      const projected = projectModuleFeaturesSum(mod.features) + w;
-                      if (!confirmWeightSumDeviation(projected, `Funcionalidades do módulo «${mod.name}»`)) {
+                        setError("Selecione um módulo válido.");
                         return;
                       }
                       void run(async () => {
                         const c = await createContractFeature(cid, mod.id, {
+                          itemCode: modalFeatCode.trim() || null,
                           name: modalFeatName.trim(),
-                          weight: w,
+                          criticality: modalFeatCriticality,
                           status: modalFeatStatus,
                           deliveryStatus: modalFeatDelivery
                         });
@@ -581,22 +618,26 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 function ModuleBlock(props: {
   contractId: string;
   module: ModuleRow;
-  allModules: ModuleRow[];
   busy: boolean;
   onError: (m: string | null) => void;
   onBusy: (b: boolean) => void;
   onUpdated: (c: Contract) => void;
+  validators: Array<{ id: string; email: string; role: string }>;
 }): JSX.Element {
-  const { contractId, module: mod, allModules, busy, onError, onBusy, onUpdated } = props;
+  const { contractId, module: mod, busy, onError, onBusy, onUpdated, validators } = props;
   const [name, setName] = useState(mod.name);
-  const [weight, setWeight] = useState(String(mod.weight));
+  const [criticality, setCriticality] = useState<ContractItemCriticality>(mod.criticality ?? "MEDIA");
+  const [validatorId, setValidatorId] = useState(mod.validatorId ?? "");
+  const [fCode, setFCode] = useState("");
   const [fName, setFName] = useState("");
+  const [featuresOpen, setFeaturesOpen] = useState(false);
 
   useEffect(() => {
     setName(mod.name);
-    setWeight(String(mod.weight));
-  }, [mod.name, mod.weight]);
-  const [fWeight, setFWeight] = useState("");
+    setCriticality(mod.criticality ?? "MEDIA");
+    setValidatorId(mod.validatorId ?? "");
+  }, [mod.name, mod.criticality, mod.validatorId]);
+  const [fCriticality, setFCriticality] = useState<ContractItemCriticality>("MEDIA");
   const [fStatus, setFStatus] = useState<ContractFeatureStatus>("NOT_STARTED");
   const [fDelivery, setFDelivery] = useState<ContractItemDeliveryStatus>("NOT_DELIVERED");
 
@@ -613,14 +654,25 @@ function ModuleBlock(props: {
   }
 
   const featureSumSaved = projectModuleFeaturesSum(mod.features);
-  const featuresSumAlert = mod.features.length > 0 && !weightSumMatchesTarget(featureSumSaved);
+  const deliveredCount = mod.features.filter((f) => f.deliveryStatus === "DELIVERED").length;
+  const partialCount = mod.features.filter((f) => f.deliveryStatus === "PARTIALLY_DELIVERED").length;
+  const notDeliveredCount = mod.features.filter((f) => (f.deliveryStatus ?? "NOT_DELIVERED") === "NOT_DELIVERED").length;
+  const validatorLabel = mod.validator?.email ?? validators.find((user) => user.id === validatorId)?.email ?? "Sem responsável";
 
   return (
-    <div
-      className={`rounded-lg border bg-slate-50/50 p-3 ${
-        featuresSumAlert ? "border-amber-300 border-l-4 border-l-amber-500" : "border-slate-200"
-      }`}
-    >
+    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-semibold text-slate-900">{mod.features.length} itens</span>
+          <span className="text-emerald-700">{deliveredCount} entregues</span>
+          <span className="text-amber-700">{partialCount} parciais</span>
+          <span className="text-red-700">{notDeliveredCount} não entregues</span>
+        </div>
+        <div className="min-w-0">
+          <span className="font-medium text-slate-900">Fiscal responsável: </span>
+          <span className="break-all text-slate-600">{validatorLabel}</span>
+        </div>
+      </div>
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-[10rem] flex-col text-xs text-slate-600">
           Módulo
@@ -631,33 +683,52 @@ function ModuleBlock(props: {
             disabled={busy}
           />
         </label>
-        <label className="flex w-28 flex-col text-xs text-slate-600">
-          Peso
-          <input
+        <label className="flex min-w-[10rem] flex-col text-xs text-slate-600">
+          Criticidade
+          <select
             className={`mt-0.5 ${formControlClass}`}
-            type="number"
-            step="0.0001"
-            min={0}
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
+            value={criticality}
+            onChange={(e) => setCriticality(e.target.value as ContractItemCriticality)}
             disabled={busy}
-          />
+          >
+            {criticalityOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {criticalityLabels[opt]}
+              </option>
+            ))}
+          </select>
         </label>
+        <label className="flex min-w-[14rem] flex-col text-xs text-slate-600">
+          Fiscal responsável
+          <select
+            className={`mt-0.5 ${formControlClass}`}
+            value={validatorId}
+            onChange={(e) => setValidatorId(e.target.value)}
+            disabled={busy}
+          >
+            <option value="">Sem responsável</option>
+            {validators.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.email}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
+          Peso automático: {formatWeightPt(Number(mod.weight))}
+        </span>
         <button
           type="button"
           className={`${buttonSmallClass} text-xs`}
           disabled={busy}
           onClick={() => {
-            const w = parseContractWeight(weight);
-            if (!Number.isFinite(w)) {
-              onError("Peso inválido.");
-              return;
-            }
-            const projected = projectContractModulesSum(allModules, { id: mod.id, weight: w });
-            if (!confirmWeightSumDeviation(projected, "Pesos dos módulos")) {
-              return;
-            }
-            void exec(async () => updateContractModule(contractId, mod.id, { name: name.trim(), weight: w }));
+            void exec(async () =>
+              updateContractModule(contractId, mod.id, {
+                name: name.trim(),
+                criticality,
+                validatorId: validatorId || null
+              })
+            );
           }}
         >
           Salvar módulo
@@ -668,10 +739,6 @@ function ModuleBlock(props: {
           disabled={busy}
           onClick={() => {
             if (!confirm("Remover este módulo e todas as funcionalidades?")) return;
-            const projected = projectContractModulesSum(allModules.filter((m) => m.id !== mod.id));
-            if (!confirmWeightSumDeviation(projected, "Pesos dos módulos (após remover o módulo)")) {
-              return;
-            }
             void exec(() => deleteContractModule(contractId, mod.id));
           }}
         >
@@ -680,107 +747,115 @@ function ModuleBlock(props: {
       </div>
 
       <div className="mt-3 border-t border-slate-200 pt-3">
-        <p className="mb-2 text-xs font-medium text-slate-700">Funcionalidades</p>
-        {mod.features.length > 0 ? (
-          <p className={`mb-2 text-xs ${featuresSumAlert ? "font-medium text-amber-900" : "text-slate-600"}`}>
-            Soma dos pesos das funcionalidades (salva):{" "}
+        <button
+          type="button"
+          className="flex w-full items-center justify-between rounded-md bg-slate-100 px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-200"
+          aria-expanded={featuresOpen}
+          onClick={() => setFeaturesOpen((open) => !open)}
+        >
+          <span>
+            Funcionalidades ({mod.features.length}) · soma dos pesos{" "}
             <span className="tabular-nums">{formatWeightPt(featureSumSaved)}</span>
-            {weightSumMatchesTarget(featureSumSaved) ? " — alinhado à meta 1" : " — ajuste para somar 1 ou confirme ao salvar"}
-          </p>
-        ) : (
-          <p className="mb-2 text-xs text-slate-500">
-            Sem funcionalidades neste módulo. Ao incluir, a soma dos pesos das funcionalidades deve ser 1.
-          </p>
-        )}
-        <ul className="space-y-2">
-          {mod.features.map((f) => (
-            <FeatureRow
-              key={f.id}
-              contractId={contractId}
-              moduleId={mod.id}
-              moduleName={mod.name}
-              moduleFeatures={mod.features}
-              feature={f}
-              busy={busy}
-              onError={onError}
-              onBusy={onBusy}
-              onUpdated={onUpdated}
+          </span>
+          <span>{featuresOpen ? "Ocultar" : "Mostrar"}</span>
+        </button>
+
+        <div className={featuresOpen ? "mt-3 block" : "hidden"}>
+          {mod.features.length === 0 ? (
+            <p className="mb-2 text-xs text-slate-500">
+              Sem funcionalidades neste módulo. Ao incluir, os pesos serão calculados automaticamente pela criticidade.
+            </p>
+          ) : null}
+          <ul className="space-y-2">
+            {mod.features.map((f) => (
+              <FeatureRow
+                key={f.id}
+                contractId={contractId}
+                moduleId={mod.id}
+                feature={f}
+                busy={busy}
+                onError={onError}
+                onBusy={onBusy}
+                onUpdated={onUpdated}
+              />
+            ))}
+          </ul>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <input
+              className={`w-32 ${formControlClass}`}
+              placeholder="Código do item"
+              value={fCode}
+              onChange={(e) => setFCode(e.target.value)}
+              disabled={busy}
             />
-          ))}
-        </ul>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <input
-            className={`min-w-[10rem] ${formControlClass}`}
-            placeholder="Nova funcionalidade"
-            value={fName}
-            onChange={(e) => setFName(e.target.value)}
-            disabled={busy}
-          />
-          <input
-            className={`w-24 ${formControlClass}`}
-            placeholder="Peso"
-            type="number"
-            step="0.0001"
-            min={0}
-            value={fWeight}
-            onChange={(e) => setFWeight(e.target.value)}
-            disabled={busy}
-          />
-          <select
-            className={`${formControlClass} text-sm`}
-            value={fStatus}
-            onChange={(e) => setFStatus(e.target.value as ContractFeatureStatus)}
-            disabled={busy}
-          >
-            {featureStatuses.map((s) => (
-              <option key={s} value={s}>
-                {featureStatusLabels[s]}
-              </option>
-            ))}
-          </select>
-          <select
-            className={`${formControlClass} text-sm`}
-            value={fDelivery}
-            onChange={(e) => setFDelivery(e.target.value as ContractItemDeliveryStatus)}
-            disabled={busy}
-          >
-            {itemDeliveryOptions.map((s) => (
-              <option key={s} value={s}>
-                {itemDeliveryLabels[s]}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="rounded bg-slate-700 px-2 py-1 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
-            disabled={busy || !fName.trim()}
-            onClick={() => {
-              const w = parseContractWeight(fWeight);
-              if (!Number.isFinite(w)) {
-                onError("Peso da funcionalidade inválido.");
-                return;
-              }
-              const projected = projectModuleFeaturesSum(mod.features) + w;
-              if (!confirmWeightSumDeviation(projected, `Funcionalidades do módulo «${mod.name}»`)) {
-                return;
-              }
-              void exec(async () => {
-                const c = await createContractFeature(contractId, mod.id, {
-                  name: fName.trim(),
-                  weight: w,
-                  status: fStatus,
-                  deliveryStatus: fDelivery
+            <input
+              className={`min-w-[10rem] ${formControlClass}`}
+              placeholder="Nova funcionalidade"
+              value={fName}
+              onChange={(e) => setFName(e.target.value)}
+              disabled={busy}
+            />
+            <select
+              className={`${formControlClass} text-sm`}
+              value={fCriticality}
+              onChange={(e) => setFCriticality(e.target.value as ContractItemCriticality)}
+              disabled={busy}
+            >
+              {criticalityOptions.map((s) => (
+                <option key={s} value={s}>
+                  {criticalityLabels[s]}
+                </option>
+              ))}
+            </select>
+            <select
+              className={`${formControlClass} text-sm`}
+              value={fStatus}
+              onChange={(e) => setFStatus(e.target.value as ContractFeatureStatus)}
+              disabled={busy}
+            >
+              {featureStatuses.map((s) => (
+                <option key={s} value={s}>
+                  {featureStatusLabels[s]}
+                </option>
+              ))}
+            </select>
+            <select
+              className={`${formControlClass} text-sm`}
+              value={fDelivery}
+              onChange={(e) => setFDelivery(e.target.value as ContractItemDeliveryStatus)}
+              disabled={busy}
+            >
+              {itemDeliveryOptions.map((s) => (
+                <option key={s} value={s}>
+                  {itemDeliveryLabels[s]}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="rounded bg-slate-700 px-2 py-1 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
+              disabled={busy || !fName.trim()}
+              onClick={() => {
+                void exec(async () => {
+                  const c = await createContractFeature(contractId, mod.id, {
+                    itemCode: fCode.trim() || null,
+                    name: fName.trim(),
+                    criticality: fCriticality,
+                    status: fStatus,
+                    deliveryStatus: fDelivery
+                  });
+                  setFCode("");
+                  setFName("");
+                  setFCriticality("MEDIA");
+                  setFStatus("NOT_STARTED");
+                  setFDelivery("NOT_DELIVERED");
+                  return c;
                 });
-                setFName("");
-                setFWeight("");
-                setFStatus("NOT_STARTED");
-                setFDelivery("NOT_DELIVERED");
-                return c;
-              });
-            }}
-          >
-            Adicionar
-          </button>
+              }}
+            >
+              Adicionar
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -790,28 +865,28 @@ function ModuleBlock(props: {
 function FeatureRow(props: {
   contractId: string;
   moduleId: string;
-  moduleName: string;
-  moduleFeatures: ModuleRow["features"];
   feature: ModuleRow["features"][number];
   busy: boolean;
   onError: (m: string | null) => void;
   onBusy: (b: boolean) => void;
   onUpdated: (c: Contract) => void;
 }): JSX.Element {
-  const { contractId, moduleId, moduleName, moduleFeatures, feature: f, busy, onError, onBusy, onUpdated } = props;
+  const { contractId, moduleId, feature: f, busy, onError, onBusy, onUpdated } = props;
+  const [itemCode, setItemCode] = useState(f.itemCode ?? "");
   const [name, setName] = useState(f.name);
-  const [weight, setWeight] = useState(String(f.weight));
+  const [criticality, setCriticality] = useState<ContractItemCriticality>(f.criticality ?? "MEDIA");
   const [status, setStatus] = useState<ContractFeatureStatus>(f.status as ContractFeatureStatus);
   const [deliveryStatus, setDeliveryStatus] = useState<ContractItemDeliveryStatus>(
     (f.deliveryStatus as ContractItemDeliveryStatus | undefined) ?? "NOT_DELIVERED"
   );
 
   useEffect(() => {
+    setItemCode(f.itemCode ?? "");
     setName(f.name);
-    setWeight(String(f.weight));
+    setCriticality(f.criticality ?? "MEDIA");
     setStatus(f.status as ContractFeatureStatus);
     setDeliveryStatus((f.deliveryStatus as ContractItemDeliveryStatus | undefined) ?? "NOT_DELIVERED");
-  }, [f.name, f.weight, f.status, f.deliveryStatus]);
+  }, [f.itemCode, f.name, f.criticality, f.status, f.deliveryStatus]);
 
   async function exec(op: () => Promise<Contract>): Promise<void> {
     onError(null);
@@ -827,16 +902,27 @@ function FeatureRow(props: {
 
   return (
     <li className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-sm">
-      <input className={`min-w-[8rem] flex-1 ${formControlClass}`} value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
       <input
-        className={`w-24 ${formControlClass}`}
-        type="number"
-        step="0.0001"
-        min={0}
-        value={weight}
-        onChange={(e) => setWeight(e.target.value)}
+        className={`w-32 ${formControlClass}`}
+        placeholder="Código"
+        value={itemCode}
+        onChange={(e) => setItemCode(e.target.value)}
         disabled={busy}
       />
+      <input className={`min-w-[8rem] flex-1 ${formControlClass}`} value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
+      <select
+        className={`${formControlClass} py-1.5 text-xs`}
+        value={criticality}
+        onChange={(e) => setCriticality(e.target.value as ContractItemCriticality)}
+        disabled={busy}
+      >
+        {criticalityOptions.map((s) => (
+          <option key={s} value={s}>
+            {criticalityLabels[s]}
+          </option>
+        ))}
+      </select>
+      <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">Peso {formatWeightPt(Number(f.weight))}</span>
       <select className={`${formControlClass} py-1.5 text-xs`} value={status} onChange={(e) => setStatus(e.target.value as ContractFeatureStatus)} disabled={busy}>
         {featureStatuses.map((s) => (
           <option key={s} value={s}>
@@ -861,19 +947,11 @@ function FeatureRow(props: {
         className={`${buttonSmallClass} py-0.5 text-xs`}
         disabled={busy}
         onClick={() => {
-          const w = parseContractWeight(weight);
-          if (!Number.isFinite(w)) {
-            onError("Peso inválido.");
-            return;
-          }
-          const projected = projectModuleFeaturesSum(moduleFeatures, { id: f.id, weight: w });
-          if (!confirmWeightSumDeviation(projected, `Funcionalidades do módulo «${moduleName}»`)) {
-            return;
-          }
           void exec(async () =>
             updateContractFeature(contractId, moduleId, f.id, {
+              itemCode: itemCode.trim() || null,
               name: name.trim(),
-              weight: w,
+              criticality,
               status,
               deliveryStatus
             })
@@ -888,10 +966,6 @@ function FeatureRow(props: {
         disabled={busy}
         onClick={() => {
           if (!confirm("Remover esta funcionalidade?")) return;
-          const projected = projectModuleFeaturesSum(moduleFeatures.filter((x) => x.id !== f.id));
-          if (!confirmWeightSumDeviation(projected, `Funcionalidades do módulo «${moduleName}» (após remover)`)) {
-            return;
-          }
           void exec(() => deleteContractFeature(contractId, moduleId, f.id));
         }}
       >

@@ -1,6 +1,7 @@
 import {
   ContractFeatureStatus,
   ContractItemDeliveryStatus,
+  ContractItemCriticality,
   ContractStatus,
   ContractType,
   LawType
@@ -9,9 +10,12 @@ import {
 /** Linha validada para importação em massa de módulos/funcionalidades (planilha). */
 export type ContractStructureImportRow = {
   moduleName: string;
-  moduleWeight: number;
+  moduleWeight?: number;
+  moduleCriticality?: ContractItemCriticality;
+  featureCode?: string | null;
   featureName: string;
-  featureWeight: number;
+  featureWeight?: number;
+  featureCriticality?: ContractItemCriticality;
   featureStatus?: ContractFeatureStatus;
   featureDelivery?: ContractItemDeliveryStatus;
   /** Número da linha na folha Excel (para mensagens de erro). */
@@ -38,9 +42,18 @@ export class CreateContractModuleDto {
   name!: string;
 
   @Type(() => Number)
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  weight!: number;
+  weight?: number;
+
+  @IsOptional()
+  @IsEnum(ContractItemCriticality)
+  criticality?: ContractItemCriticality;
+
+  @IsOptional()
+  @IsString()
+  validatorId?: string;
 }
 
 export class UpdateContractModuleDto {
@@ -54,9 +67,25 @@ export class UpdateContractModuleDto {
   @IsNumber()
   @Min(0)
   weight?: number;
+
+  @IsOptional()
+  @IsEnum(ContractItemCriticality)
+  criticality?: ContractItemCriticality;
+
+  @IsOptional()
+  @IsString()
+  validatorId?: string | null;
 }
 
 export class CreateContractFeatureDto {
+  @IsOptional()
+  @IsString()
+  itemCode?: string;
+
+  @IsOptional()
+  @IsEnum(ContractItemCriticality)
+  criticality?: ContractItemCriticality;
+
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -76,6 +105,14 @@ export class CreateContractFeatureDto {
 }
 
 export class UpdateContractFeatureDto {
+  @IsOptional()
+  @IsString()
+  itemCode?: string;
+
+  @IsOptional()
+  @IsEnum(ContractItemCriticality)
+  criticality?: ContractItemCriticality;
+
   @IsOptional()
   @IsString()
   @IsNotEmpty()

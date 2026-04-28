@@ -182,6 +182,9 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "glpi-assigned-groups" && method === "GET") {
       return jsonOk(await loadContractGlpiGroupCatalog());
     }
+    if (seg.length === 2 && seg[1] === "module-validators" && method === "GET") {
+      return jsonOk(await gestaoContracts.findModuleValidators());
+    }
     if (seg.length === 3 && seg[1] === "overview" && seg[2] === "modules-delivery" && method === "GET") {
       return jsonOk(await gestaoContracts.findModulesDeliveryOverview());
     }
