@@ -243,7 +243,7 @@ export function AgingOpenDashboard({
           tone="week"
           value={buckets.week}
           title="Esta semana"
-          hint="Abertos ha ate 7 dias"
+          hint="Abertos há até 7 dias"
           total={total}
           href={ageBucketHref(kanbanHrefQuery, "week")}
           active={activeAgeBucket === "week"}
@@ -257,7 +257,7 @@ export function AgingOpenDashboard({
         <AgingCard
           tone="d15"
           value={buckets.days15}
-          title="A 15 dias"
+          title="Há 15 dias"
           hint="Entre 8 e 15 dias abertos"
           total={total}
           href={ageBucketHref(kanbanHrefQuery, "days15")}
@@ -272,7 +272,7 @@ export function AgingOpenDashboard({
         <AgingCard
           tone="d30"
           value={buckets.days30}
-          title="A 30 dias"
+          title="Há 30 dias"
           hint="Entre 16 e 30 dias abertos"
           total={total}
           href={ageBucketHref(kanbanHrefQuery, "days30")}
@@ -288,7 +288,7 @@ export function AgingOpenDashboard({
         <AgingCard
           tone="d60"
           value={buckets.days60}
-          title="A 60 dias"
+          title="Há 60 dias"
           hint="Entre 31 e 60 dias abertos"
           total={total}
           href={ageBucketHref(kanbanHrefQuery, "days60")}
