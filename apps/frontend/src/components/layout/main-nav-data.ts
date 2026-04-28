@@ -3,11 +3,13 @@ import {
   BarChart3,
   BookOpen,
   ClipboardList,
+  ClipboardCheck,
   FileSpreadsheet,
   FileText,
   Flag,
   LayoutDashboard,
   ListChecks,
+  Megaphone,
   Package,
   Shield,
   Target,
@@ -38,6 +40,7 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
     label: "Painel e operação",
     items: [
       { href: "/dashboard", label: "Painel executivo", icon: LayoutDashboard },
+      { href: "/resumo-operacional", label: "Resumo operacional", icon: ClipboardCheck },
       { href: "/chamados", label: "Chamados (GLPI)", icon: Ticket }
     ]
   },
@@ -52,8 +55,8 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
     ]
   },
   {
-    id: "governanca-planeamento",
-    label: "Governança e planeamento",
+    id: "governanca-planejamento",
+    label: "Governança e planejamento",
     items: [
       { href: "/governance/tickets", label: "Governança SLA", icon: Shield },
       { href: "/goals", label: "Metas", icon: Target },
@@ -68,7 +71,8 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
       { href: "/fiscais", label: "Fiscais", icon: UserCog },
       { href: "/exports", label: "Exportações", icon: FileSpreadsheet, hideForViewer: true },
       { href: "/reports", label: "Relatórios", icon: BarChart3 },
-      { href: "/manual", label: "Manual do sistema", icon: BookOpen }
+      { href: "/manual", label: "Manual do sistema", icon: BookOpen },
+      { href: "/notas-versao", label: "Notas de versão", icon: Megaphone }
     ]
   },
   {

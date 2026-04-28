@@ -40,6 +40,16 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         ]
       },
       {
+        kind: "p",
+        parts: [
+          "Na barra superior da área autenticada, use os botões ",
+          { href: "/manual", label: "Manual" },
+          " e ",
+          { href: "/notas-versao", label: "Notas de versão" },
+          " para consultar ajuda e mudanças recentes do sistema."
+        ]
+      },
+      {
         kind: "tip",
         text: "Se algo não carregar, verifique a sessão (voltar a entrar) e, em caso de erro persistente, contate a equipe de suporte com o texto do erro apresentado na tela."
       }
@@ -96,6 +106,27 @@ export const MANUAL_SECTIONS: ManualSection[] = [
     ]
   },
   {
+    id: "resumo-operacional",
+    title: "Resumo operacional",
+    blocks: [
+      {
+        kind: "p",
+        parts: [
+          { href: "/resumo-operacional", label: "Resumo operacional" },
+          " — Visão diária, semanal ou mensal da produção da equipe, reunindo chamados GLPI abertos e fechados, tarefas de projetos concluídas e mudanças relevantes em contratos."
+        ]
+      },
+      {
+        kind: "ul",
+        items: [
+          "Use os filtros Hoje, Ontem, Últimos 7 dias e Últimos 30 dias para acompanhar rapidamente o que foi produzido.",
+          "Os chamados GLPI são lidos do cache sincronizado; para fechamentos, o sistema usa o status do chamado e a data de modificação registrada no cache.",
+          "Eventos internos, como conclusão de tarefas e alterações em contratos, passam a ser registrados a partir desta versão."
+        ]
+      }
+    ]
+  },
+  {
     id: "contratos",
     title: "Contratos",
     blocks: [
@@ -114,7 +145,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Proporção de implantação por funcionalidade: repartição do valor de implantação alinhada às funcionalidades do contrato.",
           "Grupos GLPI: associação de grupos do GLPI ao contrato, para contagem de chamados nos relatórios.",
           "Aditivos: registro de alterações contratuais.",
-          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir."
+          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir.",
+          "Histórico auditável dos itens: registra quem inseriu, excluiu ou alterou status de módulos, funcionalidades e serviços, apoiando a conferência antes de medições e pagamentos."
         ]
       },
       {

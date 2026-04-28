@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronsRight, LogOut } from "lucide-react";
+import { BookOpen, ChevronsRight, LogOut, Megaphone } from "lucide-react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PropsWithChildren, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { getAuthMe } from "@/lib/api";
@@ -27,6 +28,7 @@ const titles: Record<string, string> = {
   "/reports": "Relatórios",
   "/reports/fechamento-mensal": "Fechamento mensal",
   "/manual": "Manual do sistema",
+  "/notas-versao": "Notas de versão",
   "/users": "Usuários",
   "/exports": "Exportações"
 };
@@ -110,7 +112,21 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
               <MobileNav groups={visibleNavGroups} />
               <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight text-primary">{title}</h2>
             </div>
-            <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
+              <Link
+                href="/manual"
+                className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary/50 hover:text-primary"
+              >
+                <BookOpen className="h-3.5 w-3.5" aria-hidden />
+                Manual
+              </Link>
+              <Link
+                href="/notas-versao"
+                className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 font-medium text-foreground transition hover:border-primary/50 hover:text-primary"
+              >
+                <Megaphone className="h-3.5 w-3.5" aria-hidden />
+                Notas de versão
+              </Link>
               <span className="hidden sm:inline">Área autenticada</span>
               <a
                 href="/api/auth/logout"

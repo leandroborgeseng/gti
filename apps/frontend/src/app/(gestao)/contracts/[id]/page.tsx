@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ContractFinancialSnapshotsPanel } from "@/components/contracts/contract-financial-snapshots-panel";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractGlpiGroupsPanel } from "@/components/contracts/contract-glpi-groups-panel";
+import { ContractItemChangeHistoryPanel } from "@/components/contracts/contract-item-change-history-panel";
 import { ContractStatusControl } from "@/components/contracts/contract-status-control";
 import { ContractImplantationProportionPanel } from "@/components/contracts/contract-implantation-proportion-panel";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
@@ -196,6 +197,8 @@ export default async function ContractDetailPage({ params }: { params: { id: str
       <ContractAmendmentsPanel contract={contract} />
 
       <ContractStructureEditor contract={contract} />
+
+      <ContractItemChangeHistoryPanel logs={contract.itemChangeLogs ?? []} />
     </div>
   );
 }

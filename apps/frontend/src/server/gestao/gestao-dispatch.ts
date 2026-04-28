@@ -16,6 +16,7 @@ import {
   gestaoGovernance,
   gestaoMeasurements,
   gestaoMonthlyClosureReport,
+  gestaoOperationalEvents,
   gestaoProjects,
   gestaoSuppliers,
   gestaoUsers
@@ -160,6 +161,20 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg[1] === "summary" && method === "GET") return jsonOk(await gestaoDashboard.summary());
     if (seg[1] === "alerts" && method === "GET") return jsonOk(await gestaoDashboard.alerts());
     if (seg[1] === "notifications" && method === "GET") return jsonOk(await gestaoDashboard.notificationsPlaceholder());
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "operational-summary") {
+    if (seg.length === 1 && method === "GET") {
+      const u = new URL(req.url);
+      return jsonOk(
+        await gestaoOperationalEvents.summary({
+          preset: (u.searchParams.get("preset") ?? undefined) as never,
+          from: u.searchParams.get("from"),
+          to: u.searchParams.get("to")
+        })
+      );
+    }
     return jsonErr(404, "Não encontrado");
   }
 

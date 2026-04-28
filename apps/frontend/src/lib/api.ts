@@ -240,6 +240,24 @@ export type Contract = {
   featureImplantationProportion?: FeatureImplantationProportion;
   /** Memória dos valores antes de renovações ou reajustes (mais recente primeiro). */
   financialSnapshots?: ContractFinancialSnapshot[];
+  /** Histórico auditável de inserção, exclusão e mudança de status dos itens contratuais. */
+  itemChangeLogs?: ContractItemChangeLog[];
+};
+
+export type ContractItemChangeLog = {
+  id: string;
+  contractId: string;
+  itemType: "MODULE" | "FEATURE" | "SERVICE";
+  itemId?: string | null;
+  itemName: string;
+  action: "CREATED" | "DELETED" | "STATUS_CHANGED" | "UPDATED" | "BULK_IMPORTED";
+  statusBefore?: string | null;
+  statusAfter?: string | null;
+  deliveryStatusBefore?: string | null;
+  deliveryStatusAfter?: string | null;
+  actorId?: string | null;
+  actorLabel?: string | null;
+  changedAt: string;
 };
 
 export type GlpiAssignedGroupOption = {
@@ -375,6 +393,58 @@ export async function getDashboardSummary(): Promise<Record<string, unknown>> {
 
 export async function getDashboardAlerts(): Promise<Record<string, unknown>> {
   return request("/dashboard/alerts");
+}
+
+export type OperationalSummaryPreset = "today" | "yesterday" | "week" | "month";
+
+export type OperationalSummaryEvent = {
+  id: string;
+  type: string;
+  category: string;
+  entity: string;
+  entityId?: string | null;
+  title: string;
+  description?: string | null;
+  actorLabel?: string | null;
+  occurredAt: string;
+  metadata?: unknown;
+};
+
+export type OperationalSummaryTicket = {
+  glpiTicketId: number;
+  title?: string | null;
+  status?: string | null;
+  assignedUserName?: string | null;
+  contractGroupName?: string | null;
+  occurredAt?: string | null;
+};
+
+export type OperationalSummary = {
+  period: { preset: string; from: string; to: string };
+  totals: {
+    openedTickets: number;
+    closedTickets: number;
+    completedTasks: number;
+    contractChanges: number;
+    totalEvents: number;
+  };
+  eventsByCategory: Record<string, number>;
+  openedTickets: OperationalSummaryTicket[];
+  closedTickets: OperationalSummaryTicket[];
+  events: OperationalSummaryEvent[];
+};
+
+export async function getOperationalSummary(params: {
+  preset?: OperationalSummaryPreset;
+  from?: string;
+  to?: string;
+} = {}): Promise<OperationalSummary> {
+  const sp = new URLSearchParams();
+  if (params.preset) sp.set("preset", params.preset);
+  if (params.from) sp.set("from", params.from);
+  if (params.to) sp.set("to", params.to);
+  const query = sp.toString();
+  return request(`/operational-summary${query ? `?${query}` : ""}`);
 }
 
 /** Linha do relatório de fechamento mensal (medições + OS GLPI por contrato). */

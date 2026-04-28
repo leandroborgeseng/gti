@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { getAuditActorId, getAuditActorLabel } from "../../common/audit-actor";
 import { PrismaService } from "../../prisma/prisma.service";
 import { StorageService } from "../../storage/storage.service";
 import {
@@ -348,7 +349,7 @@ export class ProjectsService {
     const title = dto.title.trim();
     if (!title) throw new BadRequestException("O título da tarefa é obrigatório.");
 
-    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } });
     if (!project) throw new NotFoundException("Projeto não encontrado.");
 
     const groupId = await this.resolveTaskGroup(projectId, dto);
@@ -380,6 +381,13 @@ export class ProjectsService {
         effort: dto.effort != null && Number.isFinite(dto.effort) ? new Prisma.Decimal(dto.effort) : null,
         sortOrder: (last?.sortOrder ?? -1) + 1
       }
+    });
+    await this.recordProjectEvent({
+      type: "PROJECT_TASK_CREATED",
+      entityId: created.id,
+      title: `Tarefa criada: ${created.title}`,
+      description: `Projeto: ${project.name}`,
+      metadata: { projectId, projectName: project.name, status: created.status }
     });
     return {
       id: created.id,
@@ -773,7 +781,7 @@ export class ProjectsService {
 
     const exists = await this.prisma.projectTask.findFirst({
       where: { id: taskId, projectId },
-      select: { id: true }
+      select: { id: true, title: true, status: true, project: { select: { id: true, name: true } } }
     });
     if (!exists) {
       throw new NotFoundException("Tarefa não encontrada neste projeto.");
@@ -830,6 +838,36 @@ export class ProjectsService {
         }
       }
     });
+
+    const wasDone = this.classifyTaskStatusForDashboard(exists.status) === "done";
+    const isDone = this.classifyTaskStatusForDashboard(updated.status) === "done";
+    if (!wasDone && isDone) {
+      await this.recordProjectEvent({
+        type: "PROJECT_TASK_COMPLETED",
+        entityId: updated.id,
+        title: `Tarefa concluída: ${updated.title}`,
+        description: `Projeto: ${exists.project.name}`,
+        metadata: {
+          projectId,
+          projectName: exists.project.name,
+          statusBefore: exists.status,
+          statusAfter: updated.status
+        }
+      });
+    } else if (dto.status !== undefined && exists.status !== updated.status) {
+      await this.recordProjectEvent({
+        type: "PROJECT_TASK_STATUS_CHANGED",
+        entityId: updated.id,
+        title: `Status de tarefa alterado: ${updated.title}`,
+        description: `Projeto: ${exists.project.name} · ${exists.status || "sem status"} → ${updated.status || "sem status"}`,
+        metadata: {
+          projectId,
+          projectName: exists.project.name,
+          statusBefore: exists.status,
+          statusAfter: updated.status
+        }
+      });
+    }
 
     return {
       id: updated.id,
@@ -957,5 +995,27 @@ export class ProjectsService {
     );
 
     return this.findOne(created);
+  }
+
+  private async recordProjectEvent(input: {
+    type: string;
+    entityId: string;
+    title: string;
+    description?: string | null;
+    metadata?: Prisma.InputJsonValue;
+  }): Promise<void> {
+    await this.prisma.operationalEvent.create({
+      data: {
+        type: input.type,
+        category: "PROJECTS",
+        entity: "ProjectTask",
+        entityId: input.entityId,
+        title: input.title,
+        description: input.description ?? null,
+        actorId: getAuditActorId(),
+        actorLabel: getAuditActorLabel(),
+        metadata: input.metadata
+      }
+    });
   }
 }

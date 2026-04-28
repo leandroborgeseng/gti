@@ -23,6 +23,7 @@ RUN apt-get update \
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/frontend/node_modules ./apps/frontend/node_modules
 COPY package.json package-lock.json ./
+COPY NOTAS_DE_VERSAO.md ./NOTAS_DE_VERSAO.md
 COPY apps ./apps
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -55,6 +56,7 @@ COPY --from=builder /app/apps/frontend/package.json /app/apps/frontend/package-l
 COPY --from=builder /app/apps/frontend/.next ./apps/frontend/.next
 COPY --from=builder /app/apps/frontend/public ./apps/frontend/public
 COPY --from=builder /app/apps/frontend/node_modules ./apps/frontend/node_modules
+COPY --from=builder /app/NOTAS_DE_VERSAO.md ./NOTAS_DE_VERSAO.md
 
 COPY scripts/docker-entrypoint.sh scripts/prisma-entry-preflight.cjs ./scripts/
 RUN chmod +x ./scripts/docker-entrypoint.sh

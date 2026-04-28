@@ -1,6 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { getAuditActorId } from "../../common/audit-actor";
-import { ContractFeatureStatus, ContractItemDeliveryStatus, ContractStatus, ContractType, LawType, Prisma } from "@prisma/client";
+import { getAuditActorId, getAuditActorLabel } from "../../common/audit-actor";
+import {
+  ContractFeatureStatus,
+  ContractItemChangeAction,
+  ContractItemChangeType,
+  ContractItemDeliveryStatus,
+  ContractStatus,
+  ContractType,
+  LawType,
+  Prisma
+} from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   CreateContractAmendmentDto,
@@ -325,7 +334,8 @@ export class ContractsService {
         supplier: true,
         glpiGroups: { orderBy: { glpiGroupName: "asc" } },
         amendments: { orderBy: { createdAt: "desc" } },
-        financialSnapshots: { orderBy: { recordedAt: "desc" }, take: 50 }
+        financialSnapshots: { orderBy: { recordedAt: "desc" }, take: 50 },
+        itemChangeLogs: { orderBy: { changedAt: "desc" }, take: 100 }
       }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");
@@ -561,6 +571,14 @@ export class ContractsService {
     );
 
     await this.createAudit("Contract", contractId, "IMPORT_STRUCTURE", null, { rows: rows.length, replace: opts.replace });
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.FEATURE,
+      itemId: null,
+      itemName: "Importação de módulos e funcionalidades",
+      action: ContractItemChangeAction.BULK_IMPORTED,
+      newData: { rows: rows.length, replace: opts.replace }
+    });
     return this.findOne(contractId);
   }
 
@@ -574,6 +592,14 @@ export class ContractsService {
       }
     });
     await this.createAudit("ContractModule", created.id, "CREATE", null, created);
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.MODULE,
+      itemId: created.id,
+      itemName: created.name,
+      action: ContractItemChangeAction.CREATED,
+      newData: created
+    });
     return this.findOne(contractId);
   }
 
@@ -588,6 +614,15 @@ export class ContractsService {
       }
     });
     await this.createAudit("ContractModule", moduleId, "UPDATE", prev, updated);
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.MODULE,
+      itemId: moduleId,
+      itemName: updated.name,
+      action: ContractItemChangeAction.UPDATED,
+      oldData: prev,
+      newData: updated
+    });
     return this.findOne(contractId);
   }
 
@@ -609,6 +644,14 @@ export class ContractsService {
       throw e;
     }
     await this.createAudit("ContractModule", moduleId, "DELETE", prev, null);
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.MODULE,
+      itemId: moduleId,
+      itemName: prev?.name ?? moduleId,
+      action: ContractItemChangeAction.DELETED,
+      oldData: prev
+    });
     return this.findOne(contractId);
   }
 
@@ -624,6 +667,16 @@ export class ContractsService {
       }
     });
     await this.createAudit("ContractFeature", created.id, "CREATE", null, created);
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.FEATURE,
+      itemId: created.id,
+      itemName: created.name,
+      action: ContractItemChangeAction.CREATED,
+      statusAfter: created.status,
+      deliveryStatusAfter: created.deliveryStatus,
+      newData: created
+    });
     return this.findOne(contractId);
   }
 
@@ -645,6 +698,22 @@ export class ContractsService {
       }
     });
     await this.createAudit("ContractFeature", featureId, "UPDATE", prev, updated);
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.FEATURE,
+      itemId: featureId,
+      itemName: updated.name,
+      action:
+        prev?.status !== updated.status || prev?.deliveryStatus !== updated.deliveryStatus
+          ? ContractItemChangeAction.STATUS_CHANGED
+          : ContractItemChangeAction.UPDATED,
+      statusBefore: prev?.status ?? null,
+      statusAfter: updated.status,
+      deliveryStatusBefore: prev?.deliveryStatus ?? null,
+      deliveryStatusAfter: updated.deliveryStatus,
+      oldData: prev,
+      newData: updated
+    });
     return this.findOne(contractId);
   }
 
@@ -660,6 +729,16 @@ export class ContractsService {
       throw e;
     }
     await this.createAudit("ContractFeature", featureId, "DELETE", prev, null);
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.FEATURE,
+      itemId: featureId,
+      itemName: prev?.name ?? featureId,
+      action: ContractItemChangeAction.DELETED,
+      statusBefore: prev?.status ?? null,
+      deliveryStatusBefore: prev?.deliveryStatus ?? null,
+      oldData: prev
+    });
     return this.findOne(contractId);
   }
 
@@ -674,6 +753,14 @@ export class ContractsService {
       }
     });
     await this.createAudit("ContractService", created.id, "CREATE", null, created);
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.SERVICE,
+      itemId: created.id,
+      itemName: created.name,
+      action: ContractItemChangeAction.CREATED,
+      newData: created
+    });
     return this.findOne(contractId);
   }
 
@@ -689,6 +776,15 @@ export class ContractsService {
       }
     });
     await this.createAudit("ContractService", serviceId, "UPDATE", prev, updated);
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.SERVICE,
+      itemId: serviceId,
+      itemName: updated.name,
+      action: ContractItemChangeAction.UPDATED,
+      oldData: prev,
+      newData: updated
+    });
     return this.findOne(contractId);
   }
 
@@ -704,6 +800,14 @@ export class ContractsService {
       throw e;
     }
     await this.createAudit("ContractService", serviceId, "DELETE", prev, null);
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.SERVICE,
+      itemId: serviceId,
+      itemName: prev?.name ?? serviceId,
+      action: ContractItemChangeAction.DELETED,
+      oldData: prev
+    });
     return this.findOne(contractId);
   }
 
@@ -737,6 +841,91 @@ export class ContractsService {
         userId: getAuditActorId(),
         oldData: oldData ? (oldData as Prisma.InputJsonValue) : undefined,
         newData: newData ? (newData as Prisma.InputJsonValue) : undefined
+      }
+    });
+    await this.createOperationalEvent(entity, entityId, action, oldData, newData);
+  }
+
+  private async createContractItemChangeLog(input: {
+    contractId: string;
+    itemType: ContractItemChangeType;
+    itemId?: string | null;
+    itemName: string;
+    action: ContractItemChangeAction;
+    statusBefore?: string | null;
+    statusAfter?: string | null;
+    deliveryStatusBefore?: string | null;
+    deliveryStatusAfter?: string | null;
+    oldData?: unknown;
+    newData?: unknown;
+  }): Promise<void> {
+    await this.prisma.contractItemChangeLog.create({
+      data: {
+        contractId: input.contractId,
+        itemType: input.itemType,
+        itemId: input.itemId ?? null,
+        itemName: input.itemName,
+        action: input.action,
+        statusBefore: input.statusBefore ?? null,
+        statusAfter: input.statusAfter ?? null,
+        deliveryStatusBefore: input.deliveryStatusBefore ?? null,
+        deliveryStatusAfter: input.deliveryStatusAfter ?? null,
+        actorId: getAuditActorId(),
+        actorLabel: getAuditActorLabel(),
+        oldData: input.oldData ? (input.oldData as Prisma.InputJsonValue) : undefined,
+        newData: input.newData ? (input.newData as Prisma.InputJsonValue) : undefined
+      }
+    });
+  }
+
+  private async createOperationalEvent(
+    entity: string,
+    entityId: string,
+    action: string,
+    oldData: unknown,
+    newData: unknown
+  ): Promise<void> {
+    const oldRecord = oldData && typeof oldData === "object" ? (oldData as Record<string, unknown>) : {};
+    const newRecord = newData && typeof newData === "object" ? (newData as Record<string, unknown>) : {};
+    const name = String(newRecord.name ?? oldRecord.name ?? newRecord.number ?? oldRecord.number ?? entityId);
+    const title =
+      entity === "ContractFeature" && action === "UPDATE"
+        ? `Funcionalidade alterada: ${name}`
+        : entity === "Contract" && action === "UPDATE"
+          ? `Contrato alterado: ${name}`
+          : entity === "Contract" && action === "CREATE"
+            ? `Contrato criado: ${name}`
+            : entity === "Contract" && action === "AMEND"
+              ? `Aditivo registrado no contrato ${name}`
+              : `${entity} ${action.toLowerCase()}: ${name}`;
+    const statusBefore = oldRecord.status != null ? String(oldRecord.status) : null;
+    const statusAfter = newRecord.status != null ? String(newRecord.status) : null;
+    const deliveryBefore = oldRecord.deliveryStatus != null ? String(oldRecord.deliveryStatus) : null;
+    const deliveryAfter = newRecord.deliveryStatus != null ? String(newRecord.deliveryStatus) : null;
+    const descriptionParts = [
+      statusBefore !== statusAfter && statusAfter ? `Status: ${statusBefore ?? "sem status"} → ${statusAfter}` : null,
+      deliveryBefore !== deliveryAfter && deliveryAfter
+        ? `Entrega: ${deliveryBefore ?? "sem status"} → ${deliveryAfter}`
+        : null
+    ].filter((part): part is string => Boolean(part));
+
+    await this.prisma.operationalEvent.create({
+      data: {
+        type: `CONTRACT_${action}`,
+        category: "CONTRACTS",
+        entity,
+        entityId,
+        title,
+        description: descriptionParts.join(" · ") || null,
+        actorId: getAuditActorId(),
+        actorLabel: getAuditActorLabel(),
+        metadata: {
+          action,
+          statusBefore,
+          statusAfter,
+          deliveryBefore,
+          deliveryAfter
+        }
       }
     });
   }

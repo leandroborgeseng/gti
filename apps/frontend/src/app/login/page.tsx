@@ -234,16 +234,6 @@ function LoginForm(): JSX.Element {
             </CardContent>
           </Card>
         </div>
-        <p className="lg:col-span-2 text-center text-sm text-muted-foreground">
-          Após entrar, consulte o{" "}
-          <Link
-            href={"/manual" as Route}
-            className="font-medium text-foreground underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground"
-          >
-            manual do sistema
-          </Link>{" "}
-          para conhecer os principais fluxos de operação.
-        </p>
       </motion.div>
     </div>
   );
