@@ -33,9 +33,25 @@ export class UpdateUserDto {
 export class UpdateMyProfileDto {
   @IsOptional()
   @IsString()
-  displayName?: string | null;
+  firstName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  lastName?: string | null;
 
   @IsOptional()
   @IsString()
   profileColor?: string | null;
+
+  @IsOptional()
+  @IsString()
+  jobTitle?: string | null;
+
+  @IsOptional()
+  @IsString()
+  department?: string | null;
+
+  @IsOptional()
+  @IsString()
+  phone?: string | null;
 }

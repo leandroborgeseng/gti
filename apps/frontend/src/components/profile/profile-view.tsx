@@ -17,29 +17,41 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function displayName(user: AuthMe | undefined): string {
-  return user?.displayName?.trim() || user?.email || "Usuário";
-}
-
 export function ProfileView(): JSX.Element {
   const qc = useQueryClient();
   const { data: me, isLoading } = useQuery({
     queryKey: queryKeys.authMe,
     queryFn: getAuthMe
   });
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [department, setDepartment] = useState("");
+  const [phone, setPhone] = useState("");
   const [color, setColor] = useState(USER_PROFILE_COLORS[0]);
 
   useEffect(() => {
     if (!me) return;
-    setName(me.displayName ?? "");
+    setFirstName(me.firstName ?? me.displayName?.split(/\s+/)[0] ?? "");
+    setLastName(me.lastName ?? me.displayName?.split(/\s+/).slice(1).join(" ") ?? "");
+    setJobTitle(me.jobTitle ?? "");
+    setDepartment(me.department ?? "");
+    setPhone(me.phone ?? "");
     setColor((me.profileColor as typeof USER_PROFILE_COLORS[number] | undefined) ?? USER_PROFILE_COLORS[0]);
   }, [me]);
 
-  const previewName = useMemo(() => name.trim() || me?.email || "Usuário", [me?.email, name]);
+  const previewName = useMemo(() => [firstName, lastName].map((part) => part.trim()).filter(Boolean).join(" ") || me?.email || "Usuário", [firstName, lastName, me?.email]);
 
   const mutation = useMutation({
-    mutationFn: () => updateMyProfile({ displayName: name.trim() || null, profileColor: color }),
+    mutationFn: () =>
+      updateMyProfile({
+        firstName: firstName.trim() || null,
+        lastName: lastName.trim() || null,
+        jobTitle: jobTitle.trim() || null,
+        department: department.trim() || null,
+        phone: phone.trim() || null,
+        profileColor: color
+      }),
     onSuccess: () => {
       toast.success("Perfil atualizado.");
       void qc.invalidateQueries({ queryKey: queryKeys.authMe });
@@ -61,7 +73,7 @@ export function ProfileView(): JSX.Element {
       <div className="space-y-1">
         <h1 className="text-xl font-semibold text-foreground">Meu perfil</h1>
         <p className="text-sm text-muted-foreground">
-          Defina o nome e a cor que aparecerão nas tarefas, projetos e demais áreas que exibem pessoas.
+          Defina nome, sobrenome, dados de contato e a cor que aparecerão nas tarefas, projetos e demais áreas que exibem pessoas.
         </p>
       </div>
 
@@ -74,21 +86,68 @@ export function ProfileView(): JSX.Element {
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{previewName}</p>
-          <p className="truncate text-xs text-muted-foreground">{me?.email}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {[jobTitle, department].map((part) => part.trim()).filter(Boolean).join(" · ") || me?.email}
+          </p>
         </div>
       </div>
 
       <form className="space-y-5" onSubmit={submit}>
-        <label className="block space-y-2 text-sm font-medium">
-          <span>Nome que aparece no sistema</span>
-          <Input
-            value={name}
-            maxLength={80}
-            placeholder={isLoading ? "Carregando..." : displayName(me)}
-            disabled={mutation.isPending}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block space-y-2 text-sm font-medium">
+            <span>Nome</span>
+            <Input
+              value={firstName}
+              maxLength={40}
+              placeholder={isLoading ? "Carregando..." : "Nome"}
+              disabled={mutation.isPending}
+              onChange={(event) => setFirstName(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-2 text-sm font-medium">
+            <span>Sobrenome</span>
+            <Input
+              value={lastName}
+              maxLength={60}
+              placeholder={isLoading ? "Carregando..." : "Sobrenome"}
+              disabled={mutation.isPending}
+              onChange={(event) => setLastName(event.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block space-y-2 text-sm font-medium">
+            <span>Cargo/Função</span>
+            <Input
+              value={jobTitle}
+              maxLength={80}
+              placeholder="Ex.: Analista de sistemas"
+              disabled={mutation.isPending}
+              onChange={(event) => setJobTitle(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-2 text-sm font-medium">
+            <span>Setor/Unidade</span>
+            <Input
+              value={department}
+              maxLength={80}
+              placeholder="Ex.: GTI"
+              disabled={mutation.isPending}
+              onChange={(event) => setDepartment(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-2 text-sm font-medium sm:col-span-2">
+            <span>Telefone/Ramal</span>
+            <Input
+              value={phone}
+              maxLength={40}
+              placeholder="Ex.: (00) 0000-0000 / ramal 123"
+              disabled={mutation.isPending}
+              onChange={(event) => setPhone(event.target.value)}
+            />
+          </label>
+        </div>
 
         <div className="space-y-2">
           <p className="text-sm font-medium">Cor do nome</p>

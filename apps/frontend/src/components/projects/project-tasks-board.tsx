@@ -153,8 +153,9 @@ function PmfPill({ name }: { name: string }): JSX.Element | null {
   );
 }
 
-function userDisplay(user: Pick<ProjectSupervisor, "email" | "displayName"> | null | undefined): string {
-  return user?.displayName?.trim() || user?.email?.trim() || "";
+function userDisplay(user: Pick<ProjectSupervisor, "email" | "firstName" | "lastName" | "displayName"> | null | undefined): string {
+  const fullName = [user?.firstName, user?.lastName].map((part) => part?.trim()).filter(Boolean).join(" ");
+  return fullName || user?.displayName?.trim() || user?.email?.trim() || "";
 }
 
 function UserBadge({
@@ -162,12 +163,13 @@ function UserBadge({
   fallback,
   compact = false
 }: {
-  user?: Pick<ProjectSupervisor, "email" | "displayName" | "profileColor"> | null;
+  user?: Pick<ProjectSupervisor, "email" | "firstName" | "lastName" | "displayName" | "profileColor" | "jobTitle" | "department" | "phone"> | null;
   fallback?: string;
   compact?: boolean;
 }): JSX.Element {
   const label = userDisplay(user) || fallback?.trim() || "";
   const color = user?.profileColor || "#475569";
+  const title = [user?.email, user?.jobTitle, user?.department, user?.phone].map((part) => part?.trim()).filter(Boolean).join(" · ") || label;
   return (
     <span
       className={cn(
@@ -175,7 +177,7 @@ function UserBadge({
         compact && "px-1.5 text-[11px]"
       )}
       style={{ backgroundColor: color }}
-      title={user?.email ?? label}
+      title={title}
     >
       <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white/90 text-[9px] font-bold" style={{ color }}>
         {initials(label)}

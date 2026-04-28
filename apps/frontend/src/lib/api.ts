@@ -840,8 +840,13 @@ export const USER_PROFILE_COLORS: UserProfileColor[] = [
 export type AuthMe = {
   id: string;
   email: string;
+  firstName?: string | null;
+  lastName?: string | null;
   displayName?: string | null;
   profileColor?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  phone?: string | null;
   role: string;
   mustChangePassword?: boolean;
 };
@@ -850,7 +855,14 @@ export async function getAuthMe(): Promise<AuthMe> {
   return request("/auth/me");
 }
 
-export async function updateMyProfile(payload: { displayName?: string | null; profileColor?: string | null }): Promise<AuthMe> {
+export async function updateMyProfile(payload: {
+  firstName?: string | null;
+  lastName?: string | null;
+  profileColor?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  phone?: string | null;
+}): Promise<AuthMe> {
   return request("/profile", { method: "PATCH", body: JSON.stringify(payload) });
 }
 
@@ -972,8 +984,13 @@ export async function getMyAssignments(): Promise<MyAssignments> {
 export type UserRecord = {
   id: string;
   email: string;
+  firstName?: string | null;
+  lastName?: string | null;
   displayName?: string | null;
   profileColor?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  phone?: string | null;
   role: string;
   approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
   mustChangePassword?: boolean;
@@ -1179,8 +1196,13 @@ export async function setManualGoalProgress(id: string, progress: number): Promi
 export type ProjectSupervisor = {
   id: string;
   email: string;
+  firstName?: string | null;
+  lastName?: string | null;
   displayName?: string | null;
   profileColor?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  phone?: string | null;
   role: string;
 };
 

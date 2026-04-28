@@ -7,8 +7,13 @@ import { CreateUserDto, UpdateMyProfileDto, UpdateUserDto } from "./users.dto";
 const USER_SELECT = {
   id: true,
   email: true,
+  firstName: true,
+  lastName: true,
   displayName: true,
   profileColor: true,
+  jobTitle: true,
+  department: true,
+  phone: true,
   role: true,
   approvalStatus: true,
   mustChangePassword: true,
@@ -33,14 +38,14 @@ const PROFILE_COLORS = new Set([
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(): Promise<Array<{ id: string; email: string; displayName: string | null; profileColor: string | null; role: UserRole; approvalStatus: UserApprovalStatus; mustChangePassword: boolean; createdAt: Date; updatedAt: Date }>> {
+  async findAll(): Promise<Array<{ id: string; email: string; firstName: string | null; lastName: string | null; displayName: string | null; profileColor: string | null; jobTitle: string | null; department: string | null; phone: string | null; role: UserRole; approvalStatus: UserApprovalStatus; mustChangePassword: boolean; createdAt: Date; updatedAt: Date }>> {
     return this.prisma.user.findMany({
       orderBy: { email: "asc" },
       select: USER_SELECT
     });
   }
 
-  async create(dto: CreateUserDto): Promise<{ id: string; email: string; displayName: string | null; profileColor: string | null; role: UserRole; approvalStatus: UserApprovalStatus; mustChangePassword: boolean; createdAt: Date; updatedAt: Date }> {
+  async create(dto: CreateUserDto): Promise<{ id: string; email: string; firstName: string | null; lastName: string | null; displayName: string | null; profileColor: string | null; jobTitle: string | null; department: string | null; phone: string | null; role: UserRole; approvalStatus: UserApprovalStatus; mustChangePassword: boolean; createdAt: Date; updatedAt: Date }> {
     const email = dto.email.trim().toLowerCase();
     const exists = await this.prisma.user.findUnique({ where: { email } });
     if (exists) {
@@ -63,7 +68,7 @@ export class UsersService {
   async update(
     id: string,
     dto: UpdateUserDto
-  ): Promise<{ id: string; email: string; displayName: string | null; profileColor: string | null; role: UserRole; approvalStatus: UserApprovalStatus; mustChangePassword: boolean; createdAt: Date; updatedAt: Date }> {
+  ): Promise<{ id: string; email: string; firstName: string | null; lastName: string | null; displayName: string | null; profileColor: string | null; jobTitle: string | null; department: string | null; phone: string | null; role: UserRole; approvalStatus: UserApprovalStatus; mustChangePassword: boolean; createdAt: Date; updatedAt: Date }> {
     const prev = await this.prisma.user.findUnique({ where: { id } });
     if (!prev) {
       throw new NotFoundException("Usuário não encontrado");
@@ -85,11 +90,28 @@ export class UsersService {
   async updateMyProfile(
     id: string,
     dto: UpdateMyProfileDto
-  ): Promise<{ id: string; email: string; displayName: string | null; profileColor: string | null; role: UserRole; approvalStatus: UserApprovalStatus; mustChangePassword: boolean; createdAt: Date; updatedAt: Date }> {
-    const displayName = typeof dto.displayName === "string" ? dto.displayName.trim() : "";
+  ): Promise<{ id: string; email: string; firstName: string | null; lastName: string | null; displayName: string | null; profileColor: string | null; jobTitle: string | null; department: string | null; phone: string | null; role: UserRole; approvalStatus: UserApprovalStatus; mustChangePassword: boolean; createdAt: Date; updatedAt: Date }> {
+    const firstName = typeof dto.firstName === "string" ? dto.firstName.trim() : "";
+    const lastName = typeof dto.lastName === "string" ? dto.lastName.trim() : "";
+    const displayName = [firstName, lastName].filter(Boolean).join(" ");
     const profileColor = typeof dto.profileColor === "string" ? dto.profileColor.trim().toLowerCase() : "";
-    if (displayName.length > 80) {
-      throw new BadRequestException("O nome de exibição deve ter no máximo 80 caracteres.");
+    const jobTitle = typeof dto.jobTitle === "string" ? dto.jobTitle.trim() : "";
+    const department = typeof dto.department === "string" ? dto.department.trim() : "";
+    const phone = typeof dto.phone === "string" ? dto.phone.trim() : "";
+    if (firstName.length > 40) {
+      throw new BadRequestException("O nome deve ter no máximo 40 caracteres.");
+    }
+    if (lastName.length > 60) {
+      throw new BadRequestException("O sobrenome deve ter no máximo 60 caracteres.");
+    }
+    if (jobTitle.length > 80) {
+      throw new BadRequestException("O cargo/função deve ter no máximo 80 caracteres.");
+    }
+    if (department.length > 80) {
+      throw new BadRequestException("O setor/unidade deve ter no máximo 80 caracteres.");
+    }
+    if (phone.length > 40) {
+      throw new BadRequestException("O telefone/ramal deve ter no máximo 40 caracteres.");
     }
     if (profileColor && !PROFILE_COLORS.has(profileColor)) {
       throw new BadRequestException("Selecione uma cor válida da paleta.");
@@ -97,8 +119,13 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id },
       data: {
+        firstName: firstName || null,
+        lastName: lastName || null,
         displayName: displayName || null,
-        profileColor: profileColor || null
+        profileColor: profileColor || null,
+        jobTitle: jobTitle || null,
+        department: department || null,
+        phone: phone || null
       },
       select: USER_SELECT
     });

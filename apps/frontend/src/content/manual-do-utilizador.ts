@@ -48,7 +48,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           { href: "/notas-versao", label: "Notas de versão" },
           " para consultar ajuda e mudanças recentes do sistema. Use ",
           { href: "/perfil", label: "Meu perfil" },
-          " para definir o nome de exibição e a cor que identificam você nas telas do sistema."
+          " para definir nome, sobrenome, cargo/função, setor/unidade, telefone/ramal e a cor que identificam você nas telas do sistema."
         ]
       },
       {

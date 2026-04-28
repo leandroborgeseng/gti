@@ -176,7 +176,7 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): 
         header: "E-mail",
         cell: (info) => <span className="font-medium text-foreground">{info.getValue()}</span>
       }),
-      columnHelper.accessor((row) => row.displayName ?? "", {
+      columnHelper.accessor((row) => [row.firstName, row.lastName].map((part) => part?.trim()).filter(Boolean).join(" ") || row.displayName || "", {
         id: "displayName",
         header: "Nome",
         cell: (info) => {

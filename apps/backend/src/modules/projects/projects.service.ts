@@ -20,7 +20,18 @@ import {
 } from "./projects.dto";
 
 const MAX_TASKS_FLAT_FETCH = 8000;
-const PROJECT_USER_SELECT = { id: true, email: true, displayName: true, profileColor: true, role: true } as const;
+const PROJECT_USER_SELECT = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  displayName: true,
+  profileColor: true,
+  jobTitle: true,
+  department: true,
+  phone: true,
+  role: true
+} as const;
 
 function parseProjectDate(value: string | null | undefined, fieldLabel: string): Date | null {
   if (value == null) return null;

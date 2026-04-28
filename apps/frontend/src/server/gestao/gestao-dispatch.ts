@@ -28,8 +28,13 @@ import { loadContractGlpiGroupCatalog } from "./contract-glpi-groups-catalog";
 type JwtUser = {
   sub: string;
   email: string;
+  firstName: string | null;
+  lastName: string | null;
   displayName: string | null;
   profileColor: string | null;
+  jobTitle: string | null;
+  department: string | null;
+  phone: string | null;
   role: UserRole;
   mustChangePassword: boolean;
 };
@@ -70,14 +75,31 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
     const { prisma } = await import("@/glpi/config/prisma");
     const user = await prisma.user.findUnique({
       where: { id: sub },
-      select: { id: true, email: true, displayName: true, profileColor: true, role: true, mustChangePassword: true }
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        displayName: true,
+        profileColor: true,
+        jobTitle: true,
+        department: true,
+        phone: true,
+        role: true,
+        mustChangePassword: true
+      }
     });
     if (!user || user.email !== email) return null;
     return {
       sub: user.id,
       email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
       displayName: user.displayName,
       profileColor: user.profileColor,
+      jobTitle: user.jobTitle,
+      department: user.department,
+      phone: user.phone,
       role: user.role as UserRole,
       mustChangePassword: user.mustChangePassword
     };
@@ -158,8 +180,13 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
     return jsonOk({
       id: user.sub,
       email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
       displayName: user.displayName,
       profileColor: user.profileColor,
+      jobTitle: user.jobTitle,
+      department: user.department,
+      phone: user.phone,
       role: user.role,
       mustChangePassword: user.mustChangePassword
     });
@@ -193,8 +220,13 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       return jsonOk({
         id: user.sub,
         email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
         displayName: user.displayName,
         profileColor: user.profileColor,
+        jobTitle: user.jobTitle,
+        department: user.department,
+        phone: user.phone,
         role: user.role,
         mustChangePassword: user.mustChangePassword
       });

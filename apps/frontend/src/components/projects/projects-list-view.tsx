@@ -40,8 +40,9 @@ import { Textarea } from "@/components/ui/textarea";
 
 const columnHelper = createColumnHelper<ProjectListItem>();
 
-function projectUserLabel(user: { email: string; displayName?: string | null } | null | undefined): string {
-  return user?.displayName?.trim() || user?.email?.trim() || "";
+function projectUserLabel(user: { email: string; firstName?: string | null; lastName?: string | null; displayName?: string | null } | null | undefined): string {
+  const fullName = [user?.firstName, user?.lastName].map((part) => part?.trim()).filter(Boolean).join(" ");
+  return fullName || user?.displayName?.trim() || user?.email?.trim() || "";
 }
 const groupAccentColors = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#dc2626", "#0891b2"];
 
