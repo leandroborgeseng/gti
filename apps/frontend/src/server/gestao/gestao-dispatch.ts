@@ -19,6 +19,7 @@ import {
   gestaoOperationalEvents,
   gestaoProjects,
   gestaoSuppliers,
+  gestaoUserAccess,
   gestaoUsers
 } from "./gestao-services";
 import { loadContractGlpiGroupCatalog } from "./contract-glpi-groups-catalog";
@@ -104,6 +105,11 @@ function xlsxAttachment(buffer: Buffer, filename: string): NextResponse {
   });
 }
 
+function requestIp(req: Request): string | null {
+  const raw = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip");
+  return raw?.split(",")[0]?.trim() || null;
+}
+
 function uploadMaxBytes(): number {
   const n = Number(process.env.UPLOAD_MAX_MB ?? "10");
   return (Number.isFinite(n) && n > 0 ? n : 10) * 1024 * 1024;
@@ -156,6 +162,45 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
 
 async function routeWithUser(req: Request, method: string, seg: string[], user: JwtUser): Promise<Response> {
   const root = seg[0];
+
+  if (root === "usage") {
+    if (seg.length === 2 && seg[1] === "track" && method === "POST") {
+      const body = (await readJsonBody(req)) as {
+        eventType?: string;
+        path?: string | null;
+        pathLabel?: string | null;
+        sessionId?: string | null;
+        durationSeconds?: number | null;
+        metadata?: unknown;
+      } | undefined;
+      const eventType = body?.eventType === "HEARTBEAT" || body?.eventType === "PAGE_VIEW" ? body.eventType : "PAGE_VIEW";
+      await gestaoUserAccess.record({
+        actor: { userId: user.sub, email: user.email, role: user.role },
+        eventType,
+        path: body?.path,
+        pathLabel: body?.pathLabel,
+        sessionId: body?.sessionId,
+        durationSeconds: body?.durationSeconds,
+        ipAddress: requestIp(req),
+        userAgent: req.headers.get("user-agent")
+      });
+      return jsonOk({ ok: true });
+    }
+    if (seg.length === 2 && seg[1] === "report" && method === "GET") {
+      const u = new URL(req.url);
+      return jsonOk(
+        await gestaoUserAccess.report(
+          {
+            preset: u.searchParams.get("preset"),
+            from: u.searchParams.get("from"),
+            to: u.searchParams.get("to")
+          },
+          { userId: user.sub, email: user.email, role: user.role }
+        )
+      );
+    }
+    return jsonErr(404, "Não encontrado");
+  }
 
   if (root === "dashboard") {
     if (seg[1] === "summary" && method === "GET") return jsonOk(await gestaoDashboard.summary());

@@ -124,7 +124,13 @@ export function OperationalSummaryView({
             </p>
             <p className="mt-2 text-sm text-muted-foreground">Período: {periodLabel}</p>
           </div>
-          <nav className="flex flex-wrap gap-2" aria-label="Período do resumo operacional">
+          <nav className="flex flex-wrap justify-start gap-2 lg:justify-end" aria-label="Ações e período do resumo operacional">
+            <Link
+              href={"/resumo-operacional/uso-usuarios" as Route}
+              className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary transition hover:bg-primary/15"
+            >
+              Uso por usuário
+            </Link>
             {(Object.keys(presetLabels) as OperationalSummaryPreset[]).map((preset) => (
               <Link
                 key={preset}

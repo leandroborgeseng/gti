@@ -4,7 +4,7 @@ import { BookOpen, ChevronsRight, LogOut, Megaphone } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PropsWithChildren, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { getAuthMe } from "@/lib/api";
+import { getAuthMe, trackUserAccessEvent } from "@/lib/api";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
 import { filterMainNavGroups, MAIN_NAV_GROUPS } from "./main-nav-data";
@@ -13,7 +13,9 @@ import { Sidebar } from "./sidebar";
 
 const SIDEBAR_STORAGE_KEY = "gti-sidebar-collapsed";
 const DEPLOY_VERSION_STORAGE_KEY = "gti-last-seen-deploy-version";
+const USAGE_SESSION_STORAGE_KEY = "gti-usage-session-id";
 const DEPLOY_CHECK_INTERVAL_MS = 60_000;
+const USAGE_HEARTBEAT_INTERVAL_MS = 60_000;
 
 const titles: Record<string, string> = {
   "/dashboard": "Painel executivo",
@@ -29,11 +31,24 @@ const titles: Record<string, string> = {
   "/fiscais": "Fiscais",
   "/reports": "Relatórios",
   "/reports/fechamento-mensal": "Fechamento mensal",
+  "/resumo-operacional/uso-usuarios": "Uso do sistema por usuário",
   "/manual": "Manual do sistema",
   "/notas-versao": "Notas de versão",
   "/users": "Usuários",
   "/exports": "Exportações"
 };
+
+function usageSessionId(): string {
+  try {
+    const current = sessionStorage.getItem(USAGE_SESSION_STORAGE_KEY);
+    if (current) return current;
+    const next = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    sessionStorage.setItem(USAGE_SESSION_STORAGE_KEY, next);
+    return next;
+  } catch {
+    return "sessao-indisponivel";
+  }
+}
 
 type AppShellProps = PropsWithChildren<{
   initialRole?: string | null;
@@ -136,6 +151,45 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
                 : pathname?.startsWith("/reports/")
                   ? "Relatórios"
                   : "Gestão de Operações de TI");
+
+  useEffect(() => {
+    if (!pathname || pathname.startsWith("/trocar-senha")) return;
+    const sessionId = usageSessionId();
+    void trackUserAccessEvent({ eventType: "PAGE_VIEW", path: pathname, pathLabel: title, sessionId }).catch(() => undefined);
+  }, [pathname, title]);
+
+  useEffect(() => {
+    if (!pathname || pathname.startsWith("/trocar-senha")) return;
+    const sessionId = usageSessionId();
+    let lastSentAt = Date.now();
+
+    const sendHeartbeat = (force = false): void => {
+      if (!force && document.visibilityState !== "visible") return;
+      const now = Date.now();
+      const durationSeconds = Math.max(1, Math.round((now - lastSentAt) / 1000));
+      lastSentAt = now;
+      void trackUserAccessEvent({
+        eventType: "HEARTBEAT",
+        path: pathname,
+        pathLabel: title,
+        sessionId,
+        durationSeconds
+      }).catch(() => undefined);
+    };
+
+    const interval = window.setInterval(sendHeartbeat, USAGE_HEARTBEAT_INTERVAL_MS);
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === "hidden") sendHeartbeat(true);
+      else lastSentAt = Date.now();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      sendHeartbeat(true);
+    };
+  }, [pathname, title]);
 
   return (
     <div className="flex min-h-screen bg-muted/30">

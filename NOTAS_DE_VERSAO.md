@@ -18,6 +18,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionado fiscal responsável por módulo, vinculado a usuários do sistema para validação da entrega.
 - Adicionada sanfona nos módulos do contrato para ocultar/mostrar funcionalidades e reduzir rolagem em contratos extensos.
 - Adicionado resumo no topo de cada módulo com total de itens, entregues, parciais, não entregues e fiscal responsável.
+- Adicionado relatório administrativo de uso por usuário dentro do Resumo Operacional, com logins, tempo aproximado de uso ativo e áreas acessadas.
 
 ### Alterado
 

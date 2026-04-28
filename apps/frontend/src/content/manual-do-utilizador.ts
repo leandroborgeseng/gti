@@ -119,7 +119,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/resumo-operacional", label: "Resumo operacional" },
-          " — Visão diária, semanal ou mensal da produção da equipe, reunindo chamados GLPI abertos e fechados, tarefas de projetos concluídas e mudanças relevantes em contratos."
+          " — Visão diária, semanal ou mensal da produção da equipe, reunindo chamados GLPI abertos e fechados, tarefas de projetos concluídas, mudanças relevantes em contratos e o acesso ao relatório administrativo de uso do sistema por usuário."
         ]
       },
       {

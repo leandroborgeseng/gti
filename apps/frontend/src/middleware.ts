@@ -7,6 +7,7 @@ import { publicAbsoluteUrl } from "@/lib/public-site-url";
 
 const gestaoPrefixes = [
   "/dashboard",
+  "/resumo-operacional",
   "/contracts",
   "/measurements",
   "/glosas",
@@ -81,6 +82,8 @@ export const config = {
   matcher: [
     "/dashboard",
     "/dashboard/:path*",
+    "/resumo-operacional",
+    "/resumo-operacional/:path*",
     "/contracts",
     "/contracts/:path*",
     "/measurements",

@@ -12,6 +12,7 @@ import { OperationalEventsService } from "@gestao/modules/operational-events/ope
 import { ProjectsService } from "@gestao/modules/projects/projects.service";
 import { SuppliersService } from "@gestao/modules/suppliers/suppliers.service";
 import { UsersService } from "@gestao/modules/users/users.service";
+import { UserAccessService } from "@gestao/modules/users/user-access.service";
 import { StorageService } from "@gestao/storage/storage.service";
 import type { PrismaService } from "@gestao/prisma/prisma.service";
 
@@ -28,6 +29,7 @@ export const gestaoGoals = new GoalsService(prismaSvc);
 export const gestaoSuppliers = new SuppliersService(prismaSvc);
 export const gestaoFiscais = new FiscaisService(prismaSvc);
 export const gestaoUsers = new UsersService(prismaSvc);
+export const gestaoUserAccess = new UserAccessService(prismaSvc);
 export const gestaoExports = new ExportsService(prismaSvc);
 export const gestaoMonthlyClosureReport = new MonthlyContractClosureReportService(prismaSvc);
 export const gestaoOperationalEvents = new OperationalEventsService(prismaSvc);

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
+import type { UserRole } from "@prisma/client";
 import { loginWithDatabase } from "@/lib/auth-issue-token";
 import { GTI_TOKEN_COOKIE } from "@/lib/auth-cookie-name";
 import { ensureBootstrapAdminIfNoUsers } from "@/lib/ensure-bootstrap-admin";
+import { gestaoUserAccess } from "@/server/gestao/gestao-services";
+
+function requestIp(req: Request): string | null {
+  const raw = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip");
+  return raw?.split(",")[0]?.trim() || null;
+}
 
 export async function POST(req: Request): Promise<NextResponse> {
   let body: { email?: string; password?: string };
@@ -19,6 +26,16 @@ export async function POST(req: Request): Promise<NextResponse> {
   try {
     await ensureBootstrapAdminIfNoUsers();
     const { access_token, expires_in, user } = await loginWithDatabase(email, password);
+    void gestaoUserAccess
+      .record({
+        actor: { userId: user.id, email: user.email, role: user.role as UserRole },
+        eventType: "LOGIN",
+        path: "/login",
+        pathLabel: "Login",
+        ipAddress: requestIp(req),
+        userAgent: req.headers.get("user-agent")
+      })
+      .catch((err) => console.warn("[user-access] falha ao registrar login", err));
     const redirectTo = user.mustChangePassword ? "/trocar-senha" : null;
     const res = NextResponse.json({ ok: true, expires_in, user, redirectTo });
     res.cookies.set(GTI_TOKEN_COOKIE, access_token, {

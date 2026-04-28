@@ -806,6 +806,51 @@ export async function getAuthMe(): Promise<AuthMe> {
   return request("/auth/me");
 }
 
+export type UserAccessEventInput = {
+  eventType: "PAGE_VIEW" | "HEARTBEAT";
+  path?: string | null;
+  pathLabel?: string | null;
+  sessionId?: string | null;
+  durationSeconds?: number | null;
+  metadata?: unknown;
+};
+
+export async function trackUserAccessEvent(payload: UserAccessEventInput): Promise<void> {
+  await request("/usage/track", { method: "POST", body: JSON.stringify(payload), keepalive: true });
+}
+
+export type UserUsageReport = {
+  period: { preset: string; from: string; to: string };
+  users: Array<{
+    userId?: string | null;
+    userEmail: string;
+    role?: string | null;
+    approvalStatus?: string | null;
+    loginCount: number;
+    pageViewCount: number;
+    totalActiveSeconds: number;
+    firstSeenAt?: string | null;
+    lastSeenAt?: string | null;
+    topPaths: Array<{ path: string; pathLabel: string; count: number; activeSeconds: number }>;
+    recentEvents: Array<{
+      eventType: string;
+      path?: string | null;
+      pathLabel?: string | null;
+      occurredAt: string;
+      durationSeconds: number;
+    }>;
+  }>;
+};
+
+export async function getUserUsageReport(params: { preset?: string; from?: string; to?: string } = {}): Promise<UserUsageReport> {
+  const sp = new URLSearchParams();
+  if (params.preset) sp.set("preset", params.preset);
+  if (params.from) sp.set("from", params.from);
+  if (params.to) sp.set("to", params.to);
+  const qs = sp.toString();
+  return request(`/usage/report${qs ? `?${qs}` : ""}`);
+}
+
 export type UserRecord = {
   id: string;
   email: string;
