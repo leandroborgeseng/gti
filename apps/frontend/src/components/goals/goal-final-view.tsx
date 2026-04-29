@@ -27,6 +27,8 @@ export function GoalFinalView({ goal, projects, tasks }: Props): JSX.Element {
   const [definition, setDefinition] = useState(goal.description ?? "");
   const [projectId, setProjectId] = useState(goal.projectId ?? "");
   const [taskFilter, setTaskFilter] = useState("");
+  const [taskProjectFilter, setTaskProjectFilter] = useState("");
+  const [taskResponsibleFilter, setTaskResponsibleFilter] = useState("");
   const [savingDefinition, setSavingDefinition] = useState(false);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
 
@@ -34,16 +36,43 @@ export function GoalFinalView({ goal, projects, tasks }: Props): JSX.Element {
   const linkedTasks = goal.projectTasks ?? [];
   const average = goal.calculatedProgress ?? 0;
   const normalizedFilter = taskFilter.trim().toLowerCase();
+  const taskProjectOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const task of tasks) {
+      byId.set(task.projectId, task.projectName);
+    }
+    return Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt", { sensitivity: "base" }));
+  }, [tasks]);
+  const taskResponsibleOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const task of tasks) {
+      for (const raw of [task.assigneeExternal, task.internalResponsible]) {
+        raw
+          ?.split(",")
+          .map((part) => part.trim())
+          .filter(Boolean)
+          .forEach((name) => names.add(name));
+      }
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "pt", { sensitivity: "base" }));
+  }, [tasks]);
   const filteredTasks = useMemo(() => {
-    if (!normalizedFilter) return tasks.slice(0, 80);
     return tasks
-      .filter((task) =>
-        [task.title, task.projectName, task.groupName, task.status, task.goalTitle ?? ""].some((value) =>
+      .filter((task) => {
+        if (taskProjectFilter && task.projectId !== taskProjectFilter) return false;
+        if (taskResponsibleFilter) {
+          const responsibleText = [task.assigneeExternal ?? "", task.internalResponsible ?? ""].join(" ").toLowerCase();
+          if (!responsibleText.includes(taskResponsibleFilter.toLowerCase())) return false;
+        }
+        if (!normalizedFilter) return true;
+        return [task.title, task.projectName, task.groupName, task.status, task.goalTitle ?? ""].some((value) =>
           value.toLowerCase().includes(normalizedFilter)
-        )
-      )
+        );
+      })
       .slice(0, 80);
-  }, [normalizedFilter, tasks]);
+  }, [normalizedFilter, taskProjectFilter, taskResponsibleFilter, tasks]);
 
   const saveGoal = async (): Promise<void> => {
     setSavingDefinition(true);
@@ -129,7 +158,53 @@ export function GoalFinalView({ goal, projects, tasks }: Props): JSX.Element {
             Vincule uma ou várias tarefas, mesmo que estejam em projetos diferentes.
           </p>
         </div>
-        <Input value={taskFilter} onChange={(event) => setTaskFilter(event.target.value)} placeholder="Pesquisar tarefa, projeto, grupo ou status..." />
+        <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_auto] lg:items-end">
+          <label className="space-y-1.5 text-sm font-medium">
+            <span>Pesquisar</span>
+            <Input value={taskFilter} onChange={(event) => setTaskFilter(event.target.value)} placeholder="Tarefa, grupo, status..." />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            <span>Projeto</span>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+              value={taskProjectFilter}
+              onChange={(event) => setTaskProjectFilter(event.target.value)}
+            >
+              <option value="">Todos os projetos</option>
+              {taskProjectOptions.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            <span>Responsável</span>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+              value={taskResponsibleFilter}
+              onChange={(event) => setTaskResponsibleFilter(event.target.value)}
+            >
+              <option value="">Todos os responsáveis</option>
+              {taskResponsibleOptions.map((responsible) => (
+                <option key={responsible} value={responsible}>
+                  {responsible}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setTaskFilter("");
+              setTaskProjectFilter("");
+              setTaskResponsibleFilter("");
+            }}
+          >
+            Limpar filtros
+          </Button>
+        </div>
         <div className="max-h-[520px] overflow-auto rounded-lg border border-slate-200">
           <table className="w-full min-w-[760px] border-collapse text-sm">
             <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
@@ -137,6 +212,7 @@ export function GoalFinalView({ goal, projects, tasks }: Props): JSX.Element {
                 <th className="w-12 p-2">Usar</th>
                 <th className="p-2">Tarefa</th>
                 <th className="p-2">Projeto</th>
+                <th className="p-2">Responsável</th>
                 <th className="p-2">Status</th>
                 <th className="p-2">Chamado</th>
               </tr>
@@ -161,6 +237,7 @@ export function GoalFinalView({ goal, projects, tasks }: Props): JSX.Element {
                         {task.projectName}
                       </Link>
                     </td>
+                    <td className="p-2 text-slate-600">{task.assigneeExternal || task.internalResponsible || "—"}</td>
                     <td className="p-2 text-slate-600">{task.status || "sem status"}</td>
                     <td className="p-2 text-slate-600">{task.glpiTicketId ? `#${task.glpiTicketId}` : "—"}</td>
                   </tr>
@@ -168,7 +245,7 @@ export function GoalFinalView({ goal, projects, tasks }: Props): JSX.Element {
               })}
               {filteredTasks.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-sm text-slate-500">
+                  <td colSpan={6} className="p-6 text-center text-sm text-slate-500">
                     Nenhuma tarefa encontrada.
                   </td>
                 </tr>

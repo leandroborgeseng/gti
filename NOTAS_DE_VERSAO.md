@@ -23,6 +23,8 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionado vínculo de tarefas de projeto a usuários do sistema: uma pessoa principal por tarefa e múltiplos responsáveis PMF por tarefa.
 - Adicionado perfil do usuário com nome, sobrenome, cargo/função, setor/unidade, telefone/ramal e cor escolhida em paleta, usados na identificação de pessoas vinculadas a projetos.
 - Adicionada tela final da meta, com definição textual da meta, vínculo opcional a um projeto inteiro e seleção de várias tarefas de projetos diferentes.
+- Adicionados filtros por projeto e responsável na seleção de tarefas vinculadas a uma meta.
+- A lista de fornecedores agora mostra os contratos vinculados como links para abrir diretamente o detalhe de cada contrato.
 
 ### Alterado
 

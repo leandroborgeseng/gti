@@ -1,8 +1,10 @@
 "use client";
 
+import type { Route } from "next";
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PackagePlus } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Supplier } from "@/lib/api";
 import { getSuppliers } from "@/lib/api";
@@ -40,10 +42,31 @@ export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = []
         header: "CNPJ",
         cell: (info) => <span className="whitespace-nowrap text-muted-foreground">{info.getValue()}</span>
       }),
-      columnHelper.accessor((row) => row.contracts?.length ?? 0, {
-        id: "contractsCount",
-        header: () => <span className="flex w-full justify-end">Contratos vinculados</span>,
-        cell: (info) => <div className="text-right tabular-nums">{info.getValue()}</div>
+      columnHelper.display({
+        id: "contracts",
+        header: "Contratos vinculados",
+        cell: (info) => {
+          const contracts = info.row.original.contracts ?? [];
+          if (contracts.length === 0) {
+            return <span className="text-sm text-muted-foreground">Nenhum contrato vinculado</span>;
+          }
+          return (
+            <ul className="m-0 flex max-w-[520px] list-none flex-col gap-1 p-0">
+              {contracts.map((contract) => (
+                <li key={contract.id}>
+                  <Link
+                    href={`/contracts/${contract.id}` as Route}
+                    className="inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-sm font-medium text-primary underline-offset-2 hover:bg-primary/5 hover:underline"
+                    title={`${contract.number} — ${contract.name}`}
+                  >
+                    <span className="shrink-0 tabular-nums">{contract.number}</span>
+                    <span className="truncate">— {contract.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          );
+        }
       })
     ],
     []

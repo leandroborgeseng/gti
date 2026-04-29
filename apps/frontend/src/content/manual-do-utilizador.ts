@@ -260,7 +260,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/goals", label: "Metas" },
-          " — Definição e acompanhamento de metas. No detalhe da meta, registre em texto exatamente o que ela representa e escolha se ela fica vinculada a um projeto inteiro ou a tarefas específicas. As tarefas vinculadas podem pertencer a projetos diferentes."
+          " — Definição e acompanhamento de metas. No detalhe da meta, registre em texto exatamente o que ela representa e escolha se ela fica vinculada a um projeto inteiro ou a tarefas específicas. As tarefas vinculadas podem pertencer a projetos diferentes; use os filtros por projeto, responsável e texto para localizar as tarefas antes de vinculá-las."
         ]
       }
     ]
@@ -288,7 +288,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/suppliers", label: "Fornecedores" },
-          " — Cadastro de empresas fornecedoras utilizadas nos contratos.",
+          " — Cadastro de empresas fornecedoras utilizadas nos contratos. A lista mostra os contratos vinculados a cada fornecedor; clique em um contrato para abrir o detalhe.",
           " ",
           { href: "/fiscais", label: "Fiscais" },
           " — Cadastro e edição de fiscais e gestores do contrato. Ambos alimentam campos de seleção no detalhe do contrato e podem, opcionalmente, ser vinculados a uma conta de usuário do sistema."
