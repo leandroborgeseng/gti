@@ -5,18 +5,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { addGoalLink, createGoalAction, setManualGoalProgress } from "@/lib/api";
+import { createGoalAction, setManualGoalProgress } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import {
   GOAL_MANUAL_PROGRESS_DEFAULTS,
   GOAL_NEW_ACTION_DEFAULTS,
-  GOAL_NEW_LINK_DEFAULTS,
   goalManualProgressSchema,
   goalNewActionSchema,
-  goalNewLinkSchema,
   type GoalManualProgressValues,
-  type GoalNewActionValues,
-  type GoalNewLinkValues
+  type GoalNewActionValues
 } from "@/modules/goals/goal-actions-schemas";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -36,11 +33,6 @@ export function GoalActions({ goalId }: Props): JSX.Element {
   const formAction = useForm<GoalNewActionValues>({
     resolver: zodResolver(goalNewActionSchema),
     defaultValues: GOAL_NEW_ACTION_DEFAULTS
-  });
-
-  const formLink = useForm<GoalNewLinkValues>({
-    resolver: zodResolver(goalNewLinkSchema),
-    defaultValues: GOAL_NEW_LINK_DEFAULTS
   });
 
   const formManual = useForm<GoalManualProgressValues>({
@@ -69,19 +61,6 @@ export function GoalActions({ goalId }: Props): JSX.Element {
     }
   });
 
-  const addLinkMut = useMutation({
-    mutationFn: (values: GoalNewLinkValues) => addGoalLink(goalId, { type: values.type, referenceId: values.referenceId.trim() }),
-    onSuccess: () => {
-      toast.success("Vínculo adicionado.");
-      void qc.invalidateQueries({ queryKey: queryKeys.goals });
-      formLink.reset(GOAL_NEW_LINK_DEFAULTS);
-      router.refresh();
-    },
-    onError: (e: unknown) => {
-      toast.error(e instanceof Error ? e.message : "Erro ao adicionar vínculo.");
-    }
-  });
-
   const manualProgressMut = useMutation({
     mutationFn: (values: GoalManualProgressValues) => setManualGoalProgress(goalId, values.progress),
     onSuccess: () => {
@@ -95,7 +74,7 @@ export function GoalActions({ goalId }: Props): JSX.Element {
     }
   });
 
-  const crossBusy = createActionMut.isPending || addLinkMut.isPending || manualProgressMut.isPending;
+  const crossBusy = createActionMut.isPending || manualProgressMut.isPending;
 
   return (
     <div className="space-y-6">
@@ -192,50 +171,6 @@ export function GoalActions({ goalId }: Props): JSX.Element {
           </FormSection>
           <Button type="submit" disabled={crossBusy}>
             {createActionMut.isPending ? "Salvando…" : "Adicionar ação"}
-          </Button>
-        </form>
-      </Form>
-
-      <Form {...formLink}>
-        <form className="space-y-4" onSubmit={formLink.handleSubmit((v) => addLinkMut.mutate(v))}>
-          <FormSection title="Novo vínculo" description="Ligação a contrato ou identificador de ticket (conforme tipo).">
-            <FormField
-              control={formLink.control}
-              name="type"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tipo</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="CONTRACT">Contrato</SelectItem>
-                      <SelectItem value="TICKET">Ticket</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={formLink.control}
-              name="referenceId"
-              render={({ field }) => (
-                <FormItem className="sm:col-span-2">
-                  <FormLabel>ID de referência</FormLabel>
-                  <FormControl>
-                    <Input placeholder="UUID ou identificador" autoComplete="off" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </FormSection>
-          <Button type="submit" disabled={crossBusy}>
-            {addLinkMut.isPending ? "Salvando…" : "Adicionar vínculo"}
           </Button>
         </form>
       </Form>

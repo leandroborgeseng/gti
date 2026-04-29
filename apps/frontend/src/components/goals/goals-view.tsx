@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Target } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { Goal, UserRecord } from "@/lib/api";
+import type { Goal, ProjectListItem, UserRecord } from "@/lib/api";
 import { getGoals } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { GoalCreateForm } from "@/components/actions/goal-create-form";
@@ -27,10 +27,11 @@ const columnHelper = createColumnHelper<Goal>();
 type Props = {
   goals: Goal[];
   users?: UserRecord[];
+  projects?: ProjectListItem[];
   dataLoadErrors?: string[];
 };
 
-export function GoalsView({ goals: initialGoals, users = [], dataLoadErrors = [] }: Props): JSX.Element {
+export function GoalsView({ goals: initialGoals, users = [], projects = [], dataLoadErrors = [] }: Props): JSX.Element {
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -64,6 +65,11 @@ export function GoalsView({ goals: initialGoals, users = [], dataLoadErrors = []
       columnHelper.accessor("year", {
         header: "Ano",
         cell: (info) => <span className="tabular-nums text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor((row) => row.project?.name ?? "Sem projeto", {
+        id: "project",
+        header: "Projeto",
+        cell: (info) => <span className="text-sm text-muted-foreground">{info.getValue()}</span>
       }),
       columnHelper.accessor("status", {
         header: "Status",
@@ -103,8 +109,8 @@ export function GoalsView({ goals: initialGoals, users = [], dataLoadErrors = []
           <div>
             <h1 className="page-title">Metas estratégicas</h1>
             <p className="page-lead">
-              Acompanhamento resumido do andamento. Use <strong>Nova meta</strong> para cadastrar; o detalhe e as ações
-              ficam na página da meta.
+              Acompanhamento resumido do andamento. Use <strong>Nova meta</strong> para cadastrar; no detalhe você define
+              exatamente a meta e vincula projeto ou tarefas.
             </p>
           </div>
           <Button type="button" className="shrink-0 gap-2 shadow-sm" onClick={() => setModalOpen(true)}>
@@ -127,10 +133,11 @@ export function GoalsView({ goals: initialGoals, users = [], dataLoadErrors = []
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title="Nova meta"
-        description="Cadastro inicial. Na página da meta pode adicionar ações, vínculos e progresso manual."
+        description="Cadastro inicial. Na página da meta pode adicionar ações e progresso manual."
       >
         <GoalCreateForm
           users={users}
+          projects={projects}
           onSuccess={() => {
             setModalOpen(false);
             void qc.invalidateQueries({ queryKey: queryKeys.goals });

@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-04-28";
+export const MANUAL_LAST_UPDATED = "2026-04-29";
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -260,7 +260,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/goals", label: "Metas" },
-          " — Definição e acompanhamento de metas. Na lista vê o estado global; em cada meta, o detalhe e a evolução."
+          " — Definição e acompanhamento de metas. No detalhe da meta, registre em texto exatamente o que ela representa e escolha se ela fica vinculada a um projeto inteiro ou a tarefas específicas. As tarefas vinculadas podem pertencer a projetos diferentes."
         ]
       }
     ]
@@ -273,7 +273,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/projetos", label: "Projetos" },
-          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor, data de início, fim planejado e grupo dos projetos existentes, criar, editar e excluir tarefas manualmente, adicionar comentários no histórico de cada tarefa ou importar tarefas por Excel do Monday.com. Nas tarefas, o campo Pessoa seleciona um usuário principal e o campo Responsável PMF permite selecionar um ou mais usuários do sistema; quando a pessoa tem perfil preenchido, aparecem o nome de exibição e a cor escolhida, em vez do e-mail. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios e atrasos; na linha de cada projeto aparecem as datas de início e fim planejado. A lista agrupada por sanfonas ajuda a acompanhar os projetos por grupo. Pode existir uma vista de ",
+          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor, data de início, fim planejado e grupo dos projetos existentes, criar, editar e excluir tarefas manualmente, adicionar comentários no histórico de cada tarefa ou importar tarefas por Excel do Monday.com. O detalhe do projeto mostra as metas vinculadas ao projeto inteiro; nas tarefas, além de Pessoa e Responsável PMF, é possível selecionar uma meta e informar o número do chamado GLPI quando aquela tarefa estiver ligada a um atendimento. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios e atrasos; na linha de cada projeto aparecem as datas de início e fim planejado. A lista agrupada por sanfonas ajuda a acompanhar os projetos por grupo. Pode existir uma vista de ",
           { href: "/projetos/tarefas", label: "tarefas" },
           " para trabalho transversal. Abra um projeto para ver contexto, fases, tarefas e informação associada."
         ]

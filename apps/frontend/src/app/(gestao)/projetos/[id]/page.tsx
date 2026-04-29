@@ -1,7 +1,7 @@
 import { ProjectDetailView, type ProjectBoardQuery } from "@/components/projects/project-detail-view";
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
-import { getProject } from "@/lib/api";
+import { getGoals, getProject } from "@/lib/api";
 import { safeLoadNullable } from "@/lib/api-load";
 import Link from "next/link";
 
@@ -25,7 +25,7 @@ export default async function ProjetoDetailPage({
     statusKind: firstSearchParam(searchParams.statusKind) || undefined,
     sort: firstSearchParam(searchParams.sort) || undefined
   };
-  const { data: project, error } = await safeLoadNullable(() => getProject(params.id));
+  const [{ data: project, error }, goals] = await Promise.all([safeLoadNullable(() => getProject(params.id)), getGoals().catch(() => [])]);
   if (error) {
     return (
       <div className="space-y-4">
@@ -48,5 +48,5 @@ export default async function ProjetoDetailPage({
       </Card>
     );
   }
-  return <ProjectDetailView project={project} boardQuery={boardQuery} />;
+  return <ProjectDetailView project={project} allGoals={goals} boardQuery={boardQuery} />;
 }

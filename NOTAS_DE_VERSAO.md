@@ -22,6 +22,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionados comentários nas tarefas de projeto, com histórico por tarefa, autor e data de registro.
 - Adicionado vínculo de tarefas de projeto a usuários do sistema: uma pessoa principal por tarefa e múltiplos responsáveis PMF por tarefa.
 - Adicionado perfil do usuário com nome, sobrenome, cargo/função, setor/unidade, telefone/ramal e cor escolhida em paleta, usados na identificação de pessoas vinculadas a projetos.
+- Adicionada tela final da meta, com definição textual da meta, vínculo opcional a um projeto inteiro e seleção de várias tarefas de projetos diferentes.
 
 ### Alterado
 
@@ -35,6 +36,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Fiscais e gestores agora podem ser vinculados opcionalmente a uma conta de usuário do sistema.
 - O botão Relatórios foi removido temporariamente do menu principal.
 - Adicionada a tela Minhas atribuições para o usuário acompanhar chamados, tarefas, projetos, contratos e módulos vinculados a ele.
+- O fluxo de metas deixou de usar vínculos diretos a contratos ou tickets; agora a meta pode apontar para um projeto inteiro ou para tarefas específicas, e a relação com chamado ocorre pela tarefa do projeto.
 
 ### Como manter
 

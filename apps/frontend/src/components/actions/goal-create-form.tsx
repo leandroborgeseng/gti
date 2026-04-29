@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
-import type { UserRecord } from "@/lib/api";
+import type { ProjectListItem, UserRecord } from "@/lib/api";
 import { createGoal } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { goalCreateFormSchema, type GoalCreateFormValues } from "@/modules/goals/goal-create-form-schema";
@@ -22,9 +22,10 @@ import { FormSection } from "@/components/ui/form-primitives";
 type Props = {
   onSuccess?: () => void;
   users?: UserRecord[];
+  projects?: ProjectListItem[];
 };
 
-export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
+export function GoalCreateForm({ onSuccess, users = [], projects = [] }: Props): JSX.Element {
   const qc = useQueryClient();
   const [localUsers, setLocalUsers] = useState<UserRecord[]>(users);
   const [userModalOpen, setUserModalOpen] = useState(false);
@@ -48,7 +49,8 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
       year: defaultYear,
       status: "PLANNED",
       priority: "",
-      responsibleId: ""
+      responsibleId: "",
+      projectId: ""
     } satisfies GoalCreateFormValues
   });
 
@@ -60,7 +62,8 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
         year: parseInt(values.year, 10),
         status: values.status,
         priority: values.priority?.trim() || undefined,
-        responsibleId: values.responsibleId
+        responsibleId: values.responsibleId,
+        projectId: values.projectId?.trim() || null
       }),
     onSuccess: () => {
       toast.success("Meta cadastrada.");
@@ -71,7 +74,8 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
         year: defaultYear,
         status: "PLANNED",
         priority: "",
-        responsibleId: ""
+        responsibleId: "",
+        projectId: ""
       });
       onSuccess?.();
     },
@@ -117,7 +121,7 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Estado</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select onValueChange={(value) => field.onChange(value === "__none__" ? "" : value)} value={field.value || "__none__"}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue />
@@ -151,10 +155,43 @@ export function GoalCreateForm({ onSuccess, users = [] }: Props): JSX.Element {
               name="description"
               render={({ field }) => (
                 <FormItem className="sm:col-span-2">
-                  <FormLabel>Descrição (opcional)</FormLabel>
+                  <FormLabel>Definição da meta (opcional)</FormLabel>
                   <FormControl>
-                    <Textarea rows={2} placeholder="Detalhes ou contexto" className="min-h-[72px] resize-y" {...field} />
+                    <Textarea
+                      rows={4}
+                      placeholder="Descreva exatamente o que é esta meta"
+                      className="min-h-[120px] resize-y"
+                      {...field}
+                    />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </FormSection>
+
+          <FormSection title="Projeto" description="Opcional: vincule a meta a um projeto inteiro ou deixe em branco para ligar tarefas específicas depois.">
+            <FormField
+              control={form.control}
+              name="projectId"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                  <FormLabel>Projeto da meta (opcional)</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sem projeto específico" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sem projeto específico</SelectItem>
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

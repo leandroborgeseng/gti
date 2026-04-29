@@ -1,4 +1,4 @@
-import { GoalActionStatus, GoalLinkType, GoalStatus } from "@prisma/client";
+import { GoalActionStatus, GoalStatus } from "@prisma/client";
 import { IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from "class-validator";
 
 export class CreateGoalDto {
@@ -26,6 +26,10 @@ export class CreateGoalDto {
   @IsString()
   @IsNotEmpty()
   responsibleId!: string;
+
+  @IsOptional()
+  @IsString()
+  projectId?: string | null;
 }
 
 export class UpdateGoalDto {
@@ -56,6 +60,10 @@ export class UpdateGoalDto {
   @IsString()
   @IsNotEmpty()
   responsibleId?: string;
+
+  @IsOptional()
+  @IsString()
+  projectId?: string | null;
 }
 
 export class CreateGoalActionDto {
@@ -85,15 +93,6 @@ export class CreateGoalActionDto {
 }
 
 export class UpdateGoalActionDto extends CreateGoalActionDto {}
-
-export class LinkGoalDto {
-  @IsEnum(GoalLinkType)
-  type!: GoalLinkType;
-
-  @IsString()
-  @IsNotEmpty()
-  referenceId!: string;
-}
 
 export class ManualProgressDto {
   @IsInt()

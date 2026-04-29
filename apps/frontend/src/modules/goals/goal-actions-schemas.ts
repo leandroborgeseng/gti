@@ -20,18 +20,6 @@ export const GOAL_NEW_ACTION_DEFAULTS: GoalNewActionValues = {
   responsibleId: ""
 };
 
-export const goalNewLinkSchema = z.object({
-  type: z.enum(["CONTRACT", "TICKET"]),
-  referenceId: z.string().min(1, "Informe o ID de referência.")
-});
-
-export type GoalNewLinkValues = z.infer<typeof goalNewLinkSchema>;
-
-export const GOAL_NEW_LINK_DEFAULTS: GoalNewLinkValues = {
-  type: "CONTRACT",
-  referenceId: ""
-};
-
 export const goalManualProgressSchema = z.object({
   progress: z.coerce.number().min(0, "Mínimo 0%.").max(100, "Máximo 100%.")
 });

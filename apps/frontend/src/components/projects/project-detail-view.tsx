@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ProjectDetail } from "@/lib/api";
+import type { Goal, ProjectDetail } from "@/lib/api";
 import { ProjectTasksBoard } from "@/components/projects/project-tasks-board";
 
 export type ProjectBoardQuery = { filter?: string; statusKind?: string; sort?: string };
@@ -13,9 +13,11 @@ function formatProjectDate(value?: string | null): string {
 
 export function ProjectDetailView({
   project,
+  allGoals = [],
   boardQuery
 }: {
   project: ProjectDetail;
+  allGoals?: Goal[];
   boardQuery?: ProjectBoardQuery;
 }): JSX.Element {
   return (
@@ -55,6 +57,31 @@ export function ProjectDetailView({
       </header>
 
       <section className="rounded-xl border bg-card p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-foreground">Metas vinculadas</h2>
+          <span className="text-xs tabular-nums text-muted-foreground">{project.goals?.length ?? 0}</span>
+        </div>
+        {project.goals?.length ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {project.goals.map((goal) => (
+              <Link
+                key={goal.id}
+                href={`/goals/${goal.id}`}
+                className="rounded-lg border bg-background p-3 text-sm shadow-sm transition hover:border-primary/50 hover:bg-accent"
+              >
+                <span className="block font-semibold text-foreground">{goal.title}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {goal.year} · {goal.status}
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="m-0 text-sm text-muted-foreground">Nenhuma meta cadastrada para este projeto.</p>
+        )}
+      </section>
+
+      <section className="rounded-xl border bg-card p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-foreground">Contexto do projeto</h2>
         {project.context?.trim() ? (
           <p className="mt-2 whitespace-pre-line text-sm leading-6 text-muted-foreground">{project.context}</p>
@@ -89,7 +116,7 @@ export function ProjectDetailView({
         </section>
       ) : null}
 
-      <ProjectTasksBoard projectId={project.id} groups={project.groups} boardQuery={boardQuery} />
+      <ProjectTasksBoard projectId={project.id} groups={project.groups} goals={allGoals} boardQuery={boardQuery} />
     </div>
   );
 }

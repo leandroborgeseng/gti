@@ -161,6 +161,25 @@ export class ProjectsService {
     };
   }
 
+  private async normalizeTaskGoal(_projectId: string, goalId: string | null | undefined): Promise<string | null> {
+    const id = typeof goalId === "string" ? goalId.trim() : "";
+    if (!id) return null;
+    const goal = await this.prisma.goal.findUnique({ where: { id }, select: { id: true } });
+    if (!goal) throw new NotFoundException("Meta não encontrada.");
+    return goal.id;
+  }
+
+  private async normalizeTaskTicket(glpiTicketId: number | null | undefined): Promise<number | null> {
+    if (glpiTicketId == null) return null;
+    const id = Number(glpiTicketId);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new BadRequestException("Número do chamado inválido.");
+    }
+    const ticket = await this.prisma.ticket.findUnique({ where: { glpiTicketId: id }, select: { glpiTicketId: true } });
+    if (!ticket) throw new NotFoundException("Chamado GLPI não encontrado na base sincronizada.");
+    return ticket.glpiTicketId;
+  }
+
   private userLabel(user: { email: string; displayName?: string | null } | null | undefined): string | null {
     return user?.displayName?.trim() || user?.email?.trim() || null;
   }
@@ -291,6 +310,7 @@ export class ProjectsService {
       include: {
         supervisor: { select: PROJECT_USER_SELECT },
         projectCollection: { select: { id: true, name: true } },
+        goals: { select: { id: true, title: true, status: true, year: true } },
         _count: { select: { groups: true, tasks: true } }
       }
     });
@@ -417,6 +437,8 @@ export class ProjectsService {
     const assigneeUserId = dto.assigneeUserId?.trim() || null;
     const responsibleUserIds = this.normalizeUserIds(dto.responsibleUserIds);
     const assignmentUsers = await this.loadTaskAssignmentUsers(assigneeUserId, responsibleUserIds);
+    const goalId = await this.normalizeTaskGoal(projectId, dto.goalId);
+    const glpiTicketId = await this.normalizeTaskTicket(dto.glpiTicketId);
 
     const created = await this.prisma.projectTask.create({
       data: {
@@ -431,6 +453,8 @@ export class ProjectsService {
         assigneeUserId,
         internalResponsible: (this.taskResponsibleLabel(assignmentUsers.responsible) ?? dto.internalResponsible?.trim() ?? null) || null,
         effort: dto.effort != null && Number.isFinite(dto.effort) ? new Prisma.Decimal(dto.effort) : null,
+        goalId,
+        glpiTicketId,
         sortOrder: (last?.sortOrder ?? -1) + 1
       }
     });
@@ -461,6 +485,8 @@ export class ProjectsService {
       description: created.description,
       effort: created.effort != null ? String(created.effort) : null,
       internalResponsible: created.internalResponsible,
+      goalId: created.goalId,
+      glpiTicketId: created.glpiTicketId,
       responsibleUsers: assignmentUsers.responsible.map((user) => ({ userId: user.id, user })),
       sortOrder: created.sortOrder,
       attachments: [],
@@ -598,7 +624,8 @@ export class ProjectsService {
       take: MAX_TASKS_FLAT_FETCH,
       include: {
         project: { select: { id: true, name: true } },
-        group: { select: { id: true, name: true } }
+        group: { select: { id: true, name: true } },
+        goal: { select: { id: true, title: true } }
       },
       orderBy: [{ projectId: "asc" }, { groupId: "asc" }, { sortOrder: "asc" }]
     });
@@ -616,6 +643,9 @@ export class ProjectsService {
       assigneeExternal: string | null;
       internalResponsible: string | null;
       dueDate: Date | null;
+      goalId: string | null;
+      goalTitle: string | null;
+      glpiTicketId: number | null;
       sortOrder: number;
     };
 
@@ -632,6 +662,9 @@ export class ProjectsService {
       assigneeExternal: t.assigneeExternal,
       internalResponsible: t.internalResponsible,
       dueDate: t.dueDate,
+      goalId: t.goalId,
+      goalTitle: t.goal?.title ?? null,
+      glpiTicketId: t.glpiTicketId,
       sortOrder: t.sortOrder
     }));
 
@@ -664,6 +697,9 @@ export class ProjectsService {
       assigneeExternal: r.assigneeExternal,
       internalResponsible: r.internalResponsible,
       dueDate: r.dueDate ? r.dueDate.toISOString() : null,
+      goalId: r.goalId,
+      goalTitle: r.goalTitle,
+      glpiTicketId: r.glpiTicketId,
       sortOrder: r.sortOrder
     }));
 
@@ -783,6 +819,8 @@ export class ProjectsService {
           }
         },
         groups: { orderBy: { sortOrder: "asc" } }
+        ,
+        goals: { orderBy: [{ year: "desc" }, { createdAt: "desc" }], select: { id: true, title: true, status: true, year: true } }
       }
     });
     if (!project) throw new NotFoundException("Projeto não encontrado");
@@ -803,7 +841,9 @@ export class ProjectsService {
         comments: {
           orderBy: { createdAt: "asc" },
           select: { id: true, body: true, authorId: true, authorEmail: true, createdAt: true }
-        }
+        },
+        goal: { select: { id: true, title: true, status: true, year: true } },
+        glpiTicket: { select: { glpiTicketId: true, title: true, status: true } }
       }
     });
 
@@ -846,6 +886,8 @@ export class ProjectsService {
       dto.description !== undefined ||
       dto.internalResponsible !== undefined ||
       dto.responsibleUserIds !== undefined ||
+      dto.goalId !== undefined ||
+      dto.glpiTicketId !== undefined ||
       dto.dueDate !== undefined ||
       dto.effort !== undefined;
     if (!hasPatch) {
@@ -897,6 +939,14 @@ export class ProjectsService {
     if (responsiblePatch) {
       data.internalResponsible = this.taskResponsibleLabel(assignmentUsers.responsible);
     }
+    if (dto.goalId !== undefined) {
+      const goalId = await this.normalizeTaskGoal(projectId, dto.goalId);
+      data.goal = goalId ? { connect: { id: goalId } } : { disconnect: true };
+    }
+    if (dto.glpiTicketId !== undefined) {
+      const glpiTicketId = await this.normalizeTaskTicket(dto.glpiTicketId);
+      data.glpiTicket = glpiTicketId ? { connect: { glpiTicketId } } : { disconnect: true };
+    }
     if (dto.dueDate !== undefined) {
       const raw = dto.dueDate.trim();
       if (raw === "") {
@@ -945,7 +995,9 @@ export class ProjectsService {
         comments: {
           orderBy: { createdAt: "asc" },
           select: { id: true, body: true, authorId: true, authorEmail: true, createdAt: true }
-        }
+        },
+        goal: { select: { id: true, title: true, status: true, year: true } },
+        glpiTicket: { select: { glpiTicketId: true, title: true, status: true } }
       }
     });
 
@@ -993,6 +1045,10 @@ export class ProjectsService {
       description: updated.description,
       effort: updated.effort != null ? String(updated.effort) : null,
       internalResponsible: updated.internalResponsible,
+      goalId: updated.goalId,
+      goal: updated.goal,
+      glpiTicketId: updated.glpiTicketId,
+      glpiTicket: updated.glpiTicket,
       responsibleUsers: updated.responsibleUsers.map((responsible) => ({
         userId: responsible.userId,
         user: responsible.user

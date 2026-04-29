@@ -2,7 +2,6 @@ import { Body, Controller, Get, Param, Post, Put } from "@nestjs/common";
 import {
   CreateGoalActionDto,
   CreateGoalDto,
-  LinkGoalDto,
   ManualProgressDto,
   UpdateGoalActionDto,
   UpdateGoalDto
@@ -51,10 +50,5 @@ export class GoalsController {
   @Post(":id/manual-progress")
   setManualProgress(@Param("id") id: string, @Body() dto: ManualProgressDto): Promise<unknown> {
     return this.service.setManualProgress(id, dto);
-  }
-
-  @Post(":id/links")
-  link(@Param("id") id: string, @Body() dto: LinkGoalDto): Promise<unknown> {
-    return this.service.link(id, dto);
   }
 }

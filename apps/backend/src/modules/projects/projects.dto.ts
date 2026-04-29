@@ -35,6 +35,9 @@ export interface ProjectFlatTaskRow {
   assigneeExternal: string | null;
   internalResponsible: string | null;
   dueDate: string | null;
+  goalId: string | null;
+  goalTitle: string | null;
+  glpiTicketId: number | null;
   sortOrder: number;
 }
 
@@ -154,6 +157,15 @@ export class CreateProjectTaskDto {
   internalResponsible?: string;
 
   @IsOptional()
+  @IsString()
+  goalId?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  glpiTicketId?: number | null;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   responsibleUserIds?: string[];
@@ -212,6 +224,15 @@ export class UpdateProjectTaskDto {
   @IsOptional()
   @IsString()
   internalResponsible?: string;
+
+  @IsOptional()
+  @IsString()
+  goalId?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  glpiTicketId?: number | null;
 
   @IsOptional()
   @IsArray()

@@ -50,6 +50,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const STATUS_PRESETS = ["Feito", "Em progresso", "Não iniciado", "Bloqueado", "Parado", "Em validação"];
+type ProjectGoalOption = { id: string; title: string; status: string; year: number };
 
 /** Paleta de grupos alinhada ao Monday (cores por grupo). */
 const GROUP_ACCENTS = ["#ff007f", "#00c875", "#579bfc", "#fdab3d", "#a358df", "#7c3aed", "#ff6900"] as const;
@@ -749,6 +750,78 @@ function ObservationCell({
   );
 }
 
+function GoalCell({
+  task,
+  goals,
+  canEdit,
+  busy,
+  onPatch
+}: {
+  task: ProjectTaskTree;
+  goals: ProjectGoalOption[];
+  canEdit: boolean;
+  busy: boolean;
+  onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
+}): JSX.Element {
+  const label = task.goal?.title ?? goals.find((goal) => goal.id === task.goalId)?.title ?? "";
+  if (!canEdit) {
+    return label ? <span className="block max-w-[180px] truncate text-xs text-[#323338]">{label}</span> : <span className="text-[#c5c7d0]">—</span>;
+  }
+  return (
+    <select
+      className="h-8 w-full min-w-[150px] rounded border border-input bg-background px-2 py-1 text-xs shadow-sm"
+      value={task.goalId ?? ""}
+      disabled={busy}
+      aria-label="Meta vinculada"
+      onChange={(e) => {
+        void onPatch(task.id, { goalId: e.target.value || null });
+      }}
+    >
+      <option value="">Sem meta</option>
+      {goals.map((goal) => (
+        <option key={goal.id} value={goal.id}>
+          {goal.title}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function TicketCell({
+  task,
+  canEdit,
+  busy,
+  onPatch
+}: {
+  task: ProjectTaskTree;
+  canEdit: boolean;
+  busy: boolean;
+  onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
+}): JSX.Element {
+  if (!canEdit) {
+    return task.glpiTicketId ? <span className="text-xs tabular-nums text-[#323338]">#{task.glpiTicketId}</span> : <span className="text-[#c5c7d0]">—</span>;
+  }
+  return (
+    <Input
+      type="number"
+      min={1}
+      inputMode="numeric"
+      className="h-8 w-[100px] text-xs"
+      defaultValue={task.glpiTicketId ?? ""}
+      disabled={busy}
+      placeholder="Chamado"
+      aria-label="Chamado GLPI"
+      onBlur={(e) => {
+        const raw = e.target.value.trim();
+        const next = raw ? Number(raw) : null;
+        if ((next ?? null) !== (task.glpiTicketId ?? null)) {
+          void onPatch(task.id, { glpiTicketId: next });
+        }
+      }}
+    />
+  );
+}
+
 type TaskRowsProps = {
   projectId: string;
   task: ProjectTaskTree;
@@ -756,6 +829,7 @@ type TaskRowsProps = {
   accentHex: string;
   expanded: Record<string, boolean>;
   userOptions: ProjectSupervisor[];
+  goals: ProjectGoalOption[];
   onToggleExpand: (taskId: string) => void;
   canEdit: boolean;
   savingTaskId: string | null;
@@ -772,6 +846,7 @@ function TaskRows({
   accentHex,
   expanded,
   userOptions,
+  goals,
   onToggleExpand,
   canEdit,
   savingTaskId,
@@ -939,6 +1014,12 @@ function TaskRows({
         <td className="w-[120px] border-r border-[#ececf0] bg-white p-2 align-middle">
           <ResponsibleUsersCell task={task} canEdit={canEdit} busy={busy} users={userOptions} onPatch={onPatch} />
         </td>
+        <td className="min-w-[170px] border-r border-[#ececf0] bg-white p-2 align-middle">
+          <GoalCell task={task} goals={goals} canEdit={canEdit} busy={busy} onPatch={onPatch} />
+        </td>
+        <td className="w-[110px] border-r border-[#ececf0] bg-white p-2 align-middle">
+          <TicketCell task={task} canEdit={canEdit} busy={busy} onPatch={onPatch} />
+        </td>
         <td className="w-[88px] border-l border-transparent p-2 align-middle">
           <FilesCell projectId={projectId} task={task} canEdit={canEdit} busy={busy} onUploaded={onFilesUploaded} />
         </td>
@@ -953,6 +1034,7 @@ function TaskRows({
               accentHex={accentHex}
               expanded={expanded}
               userOptions={userOptions}
+              goals={goals}
               onToggleExpand={onToggleExpand}
               canEdit={canEdit}
               savingTaskId={savingTaskId}
@@ -973,6 +1055,7 @@ function GroupBoard({
   groupIndex,
   defaultExpanded,
   userOptions,
+  goals,
   canEdit,
   savingTaskId,
   onPatch,
@@ -985,6 +1068,7 @@ function GroupBoard({
   groupIndex: number;
   defaultExpanded: boolean;
   userOptions: ProjectSupervisor[];
+  goals: ProjectGoalOption[];
   canEdit: boolean;
   savingTaskId: string | null;
   onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
@@ -1064,13 +1148,15 @@ function GroupBoard({
                 <th className="w-[110px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Data</th>
                 <th className="min-w-[200px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Observação</th>
                 <th className="w-[120px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Resp. PMF</th>
+                <th className="min-w-[170px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Meta</th>
+                <th className="w-[110px] border-r border-[#ececf0] p-2 dark:border-neutral-800">Chamado</th>
                 <th className="w-[88px] p-2">Arquivos</th>
               </tr>
             </thead>
             <tbody>
               {group.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-sm text-[#676879]">
+                  <td colSpan={10} className="p-6 text-center text-sm text-[#676879]">
                     Sem tarefas neste grupo.
                   </td>
                 </tr>
@@ -1084,6 +1170,7 @@ function GroupBoard({
                     accentHex={accentHex}
                     expanded={mergedExpanded}
                     userOptions={userOptions}
+                    goals={goals}
                     onToggleExpand={toggleTaskExpand}
                     canEdit={canEdit}
                     savingTaskId={savingTaskId}
@@ -1109,7 +1196,7 @@ function GroupBoard({
                   <td className="w-[130px] border-r border-[#ececf0] p-2 align-middle dark:border-neutral-800">
                     <StatusDistributionFooterBar counts={statusAgg} />
                   </td>
-                  <td colSpan={5} className="p-2 align-middle">
+                  <td colSpan={7} className="p-2 align-middle">
                     <FooterStatusLegend counts={statusAgg} />
                   </td>
                 </tr>
@@ -1136,11 +1223,12 @@ function parseBoardStatusKind(v: string | undefined): ProjectTaskStatusKind | ""
 type Props = {
   projectId: string;
   groups: ProjectGroupWithTasks[];
+  goals?: ProjectGoalOption[];
   /** Filtros iniciais a partir da URL (`?filter=overdue`, `statusKind`, `sort`). */
   boardQuery?: { filter?: string; statusKind?: string; sort?: string };
 };
 
-export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX.Element {
+export function ProjectTasksBoard({ projectId, groups, goals = [], boardQuery }: Props): JSX.Element {
   const router = useRouter();
   const pathname = usePathname();
   const qc = useQueryClient();
@@ -1161,6 +1249,8 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskAssigneeUserId, setNewTaskAssigneeUserId] = useState("");
   const [newTaskResponsibleUserIds, setNewTaskResponsibleUserIds] = useState<string[]>([]);
+  const [newTaskGoalId, setNewTaskGoalId] = useState("");
+  const [newTaskGlpiTicketId, setNewTaskGlpiTicketId] = useState("");
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [creatingTask, setCreatingTask] = useState(false);
 
@@ -1219,6 +1309,8 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
     setNewTaskDueDate("");
     setNewTaskAssigneeUserId("");
     setNewTaskResponsibleUserIds([]);
+    setNewTaskGoalId("");
+    setNewTaskGlpiTicketId("");
     setNewTaskDescription("");
   }, []);
 
@@ -1292,6 +1384,8 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
           dueDate: newTaskDueDate ? dateInputToPayload(newTaskDueDate) : undefined,
           assigneeUserId: newTaskAssigneeUserId || undefined,
           responsibleUserIds: newTaskResponsibleUserIds,
+          goalId: newTaskGoalId || undefined,
+          glpiTicketId: newTaskGlpiTicketId.trim() ? Number(newTaskGlpiTicketId.trim()) : undefined,
           description: newTaskDescription.trim() || undefined
         });
         toast.success(newTaskParentId ? "Subtarefa criada." : "Tarefa criada.");
@@ -1315,6 +1409,8 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
       newTaskParentId,
       newTaskAssigneeUserId,
       newTaskResponsibleUserIds,
+      newTaskGoalId,
+      newTaskGlpiTicketId,
       newTaskStatus,
       newTaskTitle,
       projectId,
@@ -1477,6 +1573,7 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
           groupIndex={idx}
           defaultExpanded
           userOptions={userOptions}
+          goals={goals}
           canEdit={canEdit}
           savingTaskId={savingTaskId}
           onPatch={onPatch}
@@ -1630,6 +1727,34 @@ export function ProjectTasksBoard({ projectId, groups, boardQuery }: Props): JSX
                   </PopoverContent>
                 </Popover>
               </div>
+              <label className="space-y-2 text-sm font-medium">
+                <span>Meta vinculada</span>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  value={newTaskGoalId}
+                  disabled={creatingTask}
+                  onChange={(event) => setNewTaskGoalId(event.target.value)}
+                >
+                  <option value="">Sem meta</option>
+                  {goals.map((goal) => (
+                    <option key={goal.id} value={goal.id}>
+                      {goal.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                <span>Chamado GLPI (opcional)</span>
+                <Input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  value={newTaskGlpiTicketId}
+                  disabled={creatingTask}
+                  placeholder="Número do chamado"
+                  onChange={(event) => setNewTaskGlpiTicketId(event.target.value)}
+                />
+              </label>
               <label className="space-y-2 text-sm font-medium sm:col-span-2">
                 <span>Observação</span>
                 <textarea

@@ -393,9 +393,19 @@ export type Goal = {
   status: string;
   priority: string;
   responsibleId: string;
+  projectId?: string | null;
+  project?: { id: string; name: string } | null;
   calculatedProgress?: number;
   actions?: Array<{ id: string; title: string; description?: string | null; status: string; progress: number; dueDate?: string | null; responsibleId: string }>;
-  links?: Array<{ id: string; type: string; referenceId: string }>;
+  projectTasks?: Array<{
+    id: string;
+    projectId: string;
+    title: string;
+    status: string;
+    glpiTicketId?: number | null;
+    dueDate?: string | null;
+    project?: { id: string; name: string };
+  }>;
 };
 
 export type Supplier = {
@@ -1168,6 +1178,7 @@ export async function createGoal(payload: {
   status?: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
   priority?: string;
   responsibleId: string;
+  projectId?: string | null;
 }): Promise<Goal> {
   return request("/goals", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -1176,15 +1187,26 @@ export async function getGoal(id: string): Promise<Goal> {
   return request(`/goals/${id}`);
 }
 
+export async function updateGoal(
+  id: string,
+  payload: {
+    title?: string;
+    description?: string | null;
+    year?: number;
+    status?: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+    priority?: string | null;
+    responsibleId?: string;
+    projectId?: string | null;
+  }
+): Promise<Goal> {
+  return request(`/goals/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
 export async function createGoalAction(
   id: string,
   payload: { title: string; description?: string; status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED"; progress: number; dueDate?: string; responsibleId: string }
 ): Promise<Record<string, unknown>> {
   return request(`/goals/${id}/actions`, { method: "POST", body: JSON.stringify(payload) });
-}
-
-export async function addGoalLink(id: string, payload: { type: "CONTRACT" | "TICKET"; referenceId: string }): Promise<Record<string, unknown>> {
-  return request(`/goals/${id}/links`, { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function setManualGoalProgress(id: string, progress: number): Promise<Record<string, unknown>> {
@@ -1216,6 +1238,7 @@ export type ProjectListItem = {
   plannedEndDate?: string | null;
   projectCollectionId?: string | null;
   projectCollection?: { id: string; name: string } | null;
+  goals?: Array<{ id: string; title: string; status: string; year: number }>;
   createdAt: string;
   updatedAt: string;
   _count?: { groups: number; tasks: number };
@@ -1255,6 +1278,9 @@ export type ProjectFlatTaskRow = {
   assigneeExternal: string | null;
   internalResponsible: string | null;
   dueDate: string | null;
+  goalId: string | null;
+  goalTitle: string | null;
+  glpiTicketId: number | null;
   sortOrder: number;
 };
 
@@ -1339,6 +1365,10 @@ export type ProjectTaskTree = {
   description: string | null;
   effort: string | null;
   internalResponsible: string | null;
+  goalId?: string | null;
+  goal?: { id: string; title: string; status: string; year: number } | null;
+  glpiTicketId?: number | null;
+  glpiTicket?: { glpiTicketId: number; title?: string | null; status?: string | null } | null;
   responsibleUsers?: ProjectTaskResponsibleUser[];
   sortOrder: number;
   /** Anexos da tarefa (quando o backend devolve na árvore). */
@@ -1355,6 +1385,8 @@ export type ProjectTaskPatchPayload = {
   assigneeUserId?: string | null;
   description?: string;
   internalResponsible?: string;
+  goalId?: string | null;
+  glpiTicketId?: number | null;
   responsibleUserIds?: string[];
   /** ISO 8601 ou string vazia para limpar. */
   dueDate?: string;
@@ -1386,6 +1418,7 @@ export type ProjectDetail = {
   createdAt: string;
   updatedAt: string;
   projectCollection?: ({ id: string; name: string; projects?: ProjectListItem[] }) | null;
+  goals?: Array<{ id: string; title: string; status: string; year: number }>;
   groups: ProjectGroupWithTasks[];
 };
 
@@ -1512,6 +1545,8 @@ export async function createProjectTask(
     assigneeExternal?: string;
     assigneeUserId?: string | null;
     internalResponsible?: string;
+    goalId?: string | null;
+    glpiTicketId?: number | null;
     responsibleUserIds?: string[];
     effort?: number;
   }

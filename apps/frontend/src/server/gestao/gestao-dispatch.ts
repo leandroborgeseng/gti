@@ -680,10 +680,6 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertMutation(user, method);
       return jsonOk(await gestaoGoals.setManualProgress(seg[1], (await readJsonBody(req)) as never));
     }
-    if (seg.length === 4 && seg[2] === "links" && method === "POST") {
-      assertMutation(user, method);
-      return jsonOk(await gestaoGoals.link(seg[1], (await readJsonBody(req)) as never));
-    }
     return jsonErr(404, "Não encontrado");
   }
 

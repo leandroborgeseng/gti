@@ -5,7 +5,6 @@ import { PrismaService } from "../../prisma/prisma.service";
 import {
   CreateGoalActionDto,
   CreateGoalDto,
-  LinkGoalDto,
   ManualProgressDto,
   UpdateGoalActionDto,
   UpdateGoalDto
@@ -26,9 +25,17 @@ export class GoalsService implements OnModuleInit {
   }
 
   async create(dto: CreateGoalDto): Promise<unknown> {
+    const projectId = dto.projectId?.trim() || null;
+    if (projectId) {
+      await this.requireProject(projectId);
+    }
     const created = await this.prisma.goal.create({
       data: {
-        ...dto,
+        title: dto.title,
+        description: dto.description,
+        year: dto.year,
+        responsibleId: dto.responsibleId,
+        projectId,
         status: dto.status ?? "PLANNED",
         priority: dto.priority?.trim() || "MÉDIA"
       }
@@ -38,16 +45,35 @@ export class GoalsService implements OnModuleInit {
   }
 
   async findAll(): Promise<unknown> {
-    return this.prisma.goal.findMany({
-      include: { actions: true, links: true },
+    const goals = await this.prisma.goal.findMany({
+      include: { actions: true, project: { select: { id: true, name: true } } },
       orderBy: [{ year: "desc" }, { createdAt: "desc" }]
     });
+    return goals.map((goal) => ({
+      ...goal,
+      calculatedProgress: this.calculateProgress(goal.actions.map((a) => a.progress))
+    }));
   }
 
   async findOne(id: string): Promise<unknown> {
     const goal = await this.prisma.goal.findUnique({
       where: { id },
-      include: { actions: true, links: true }
+      include: {
+        actions: true,
+        project: { select: { id: true, name: true } },
+        projectTasks: {
+          orderBy: [{ projectId: "asc" }, { sortOrder: "asc" }],
+          select: {
+            id: true,
+            projectId: true,
+            title: true,
+            status: true,
+            glpiTicketId: true,
+            dueDate: true,
+            project: { select: { id: true, name: true } }
+          }
+        }
+      }
     });
     if (!goal) throw new NotFoundException("Meta não encontrada");
     const calculatedProgress = this.calculateProgress(goal.actions.map((a) => a.progress));
@@ -56,10 +82,19 @@ export class GoalsService implements OnModuleInit {
 
   async update(id: string, dto: UpdateGoalDto): Promise<unknown> {
     const prev = await this.requireGoal(id);
+    const projectId = dto.projectId?.trim() || null;
+    if (projectId) {
+      await this.requireProject(projectId);
+    }
     const updated = await this.prisma.goal.update({
       where: { id },
       data: {
-        ...dto,
+        title: dto.title,
+        description: dto.description,
+        year: dto.year,
+        status: dto.status,
+        responsibleId: dto.responsibleId,
+        projectId: dto.projectId !== undefined ? projectId : undefined,
         priority: dto.priority?.trim() || undefined
       }
     });
@@ -121,15 +156,6 @@ export class GoalsService implements OnModuleInit {
     await this.recalculateGoalStatus(goalId);
     await this.createAudit("Goal", goalId, "MANUAL_PROGRESS", null, { progress: dto.progress });
     return updated;
-  }
-
-  async link(goalId: string, dto: LinkGoalDto): Promise<unknown> {
-    await this.requireGoal(goalId);
-    const created = await this.prisma.goalLink.create({
-      data: { goalId, type: dto.type, referenceId: dto.referenceId }
-    });
-    await this.createAudit("GoalLink", created.id, "CREATE", null, created);
-    return created;
   }
 
   async dashboard(): Promise<unknown> {
@@ -209,6 +235,12 @@ export class GoalsService implements OnModuleInit {
     const goal = await this.prisma.goal.findUnique({ where: { id }, select: { id: true } });
     if (!goal) throw new NotFoundException("Meta não encontrada");
     return goal;
+  }
+
+  private async requireProject(id: string): Promise<{ id: string }> {
+    const project = await this.prisma.project.findUnique({ where: { id }, select: { id: true } });
+    if (!project) throw new NotFoundException("Projeto não encontrado");
+    return project;
   }
 
   private async createAudit(entity: string, entityId: string, action: string, oldData: unknown, newData: unknown): Promise<void> {

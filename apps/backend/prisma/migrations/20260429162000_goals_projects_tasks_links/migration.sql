@@ -1,0 +1,11 @@
+ALTER TABLE "Goal" ADD COLUMN "projectId" TEXT;
+ALTER TABLE "ProjectTask" ADD COLUMN "goalId" TEXT;
+ALTER TABLE "ProjectTask" ADD COLUMN "glpiTicketId" INTEGER;
+CREATE INDEX "Goal_projectId_idx" ON "Goal"("projectId");
+CREATE INDEX "ProjectTask_goalId_idx" ON "ProjectTask"("goalId");
+CREATE INDEX "ProjectTask_glpiTicketId_idx" ON "ProjectTask"("glpiTicketId");
+ALTER TABLE "Goal" ADD CONSTRAINT "Goal_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "ProjectTask" ADD CONSTRAINT "ProjectTask_goalId_fkey" FOREIGN KEY ("goalId") REFERENCES "Goal"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "ProjectTask" ADD CONSTRAINT "ProjectTask_glpiTicketId_fkey" FOREIGN KEY ("glpiTicketId") REFERENCES "Ticket"("glpiTicketId") ON DELETE SET NULL ON UPDATE CASCADE;
+DROP TABLE IF EXISTS "GoalLink";
+DROP TYPE IF EXISTS "GoalLinkType";

@@ -111,11 +111,6 @@ enum GoalActionStatus {
   COMPLETED
 }
 
-enum GoalLinkType {
-  CONTRACT
-  TICKET
-}
-
 enum UserRole {
   ADMIN
   EDITOR
@@ -520,11 +515,14 @@ model Goal {
   status        GoalStatus   @default(PLANNED)
   priority      String
   responsibleId String
+  projectId     String?
   createdAt     DateTime     @default(now())
   actions       GoalAction[]
-  links         GoalLink[]
+  project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectTasks  ProjectTask[]
 
   @@index([year, status])
+  @@index([projectId])
 }
 
 model GoalAction {
@@ -537,14 +535,6 @@ model GoalAction {
   dueDate        DateTime?
   responsibleId  String
   goal           Goal           @relation(fields: [goalId], references: [id], onDelete: Restrict)
-}
-
-model GoalLink {
-  id          String      @id @default(uuid())
-  goalId      String
-  type        GoalLinkType
-  referenceId String
-  goal        Goal        @relation(fields: [goalId], references: [id], onDelete: Restrict)
 }
 
 model Attachment {
@@ -581,6 +571,7 @@ model Project {
   projectCollection   ProjectCollection? @relation(fields: [projectCollectionId], references: [id], onDelete: SetNull)
   groups              ProjectGroup[]
   tasks               ProjectTask[]
+  goals               Goal[]
 
   @@index([supervisorId])
   @@index([projectCollectionId])
@@ -618,11 +609,15 @@ model ProjectTask {
   description         String?   @db.Text
   effort              Decimal?  @db.Decimal(18, 4)
   internalResponsible String?
+  goalId              String?
+  glpiTicketId        Int?
   sortOrder           Int       @default(0)
   project             Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   group               ProjectGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
   assigneeUser        User?         @relation("ProjectTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   parent              ProjectTask?  @relation("ProjectTaskHierarchy", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  goal                Goal?         @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  glpiTicket          Ticket?       @relation(fields: [glpiTicketId], references: [glpiTicketId], onDelete: SetNull)
   children            ProjectTask[] @relation("ProjectTaskHierarchy")
   attachments         Attachment[]
   comments            ProjectTaskComment[]
@@ -631,6 +626,8 @@ model ProjectTask {
   @@index([projectId, groupId])
   @@index([parentTaskId])
   @@index([assigneeUserId])
+  @@index([goalId])
+  @@index([glpiTicketId])
 }
 
 model ProjectTaskResponsible {
@@ -687,6 +684,7 @@ model Ticket {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   attributes         TicketAttribute[]
+  projectTasks       ProjectTask[]
 
   @@index([waitingParty])
   @@index([requesterEmail])
