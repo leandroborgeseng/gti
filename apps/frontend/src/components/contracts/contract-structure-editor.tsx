@@ -3,6 +3,7 @@
 import { Plus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -60,6 +61,7 @@ const criticalityLabels: Record<ContractItemCriticality, string> = {
 };
 
 const criticalityOptions: ContractItemCriticality[] = ["CRITICA", "ALTA", "MEDIA", "BAIXA", "APOIO"];
+const REQUIRED_ITEM_CODE_MESSAGE = "O campo obrigatório Código do Item deve ser preenchido antes de gravar a informação.";
 
 function showsModules(contractType: string): boolean {
   return ["SOFTWARE", "INFRA", "SERVICO"].includes(contractType);
@@ -70,6 +72,32 @@ function showsServices(contractType: string): boolean {
 }
 
 type ModuleRow = NonNullable<Contract["modules"]>[number];
+type FeatureRowData = ModuleRow["features"][number];
+type FeatureFilters = {
+  deliveryStatus: "" | ContractItemDeliveryStatus;
+  criticality: "" | ContractItemCriticality;
+  query: string;
+};
+
+function normalizeFilterText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function featureMatchesFilters(feature: FeatureRowData, filters: FeatureFilters): boolean {
+  const deliveryStatus = (feature.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus;
+  const criticality = (feature.criticality ?? "MEDIA") as ContractItemCriticality;
+  const query = normalizeFilterText(filters.query);
+
+  if (filters.deliveryStatus && deliveryStatus !== filters.deliveryStatus) return false;
+  if (filters.criticality && criticality !== filters.criticality) return false;
+  if (!query) return true;
+
+  return normalizeFilterText(`${feature.itemCode ?? ""} ${feature.name}`).includes(query);
+}
 
 function ModuleWeightsSummary(props: { modules: ModuleRow[] }): JSX.Element {
   if (props.modules.length === 0) {
@@ -132,6 +160,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const [modalModValidatorId, setModalModValidatorId] = useState("");
   const [modalFeatModuleId, setModalFeatModuleId] = useState("");
   const [modalFeatCode, setModalFeatCode] = useState("");
+  const [modalFeatCodeError, setModalFeatCodeError] = useState(false);
   const [modalFeatName, setModalFeatName] = useState("");
   const [modalFeatCriticality, setModalFeatCriticality] = useState<ContractItemCriticality>("MEDIA");
   const [modalFeatStatus, setModalFeatStatus] = useState<ContractFeatureStatus>("NOT_STARTED");
@@ -140,6 +169,11 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const [replaceOnImport, setReplaceOnImport] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const fileImportRef = useRef<HTMLInputElement>(null);
+  const [featureFilters, setFeatureFilters] = useState<FeatureFilters>({
+    deliveryStatus: "",
+    criticality: "",
+    query: ""
+  });
 
   const [newSvcName, setNewSvcName] = useState("");
   const [newSvcUnit, setNewSvcUnit] = useState("");
@@ -147,6 +181,15 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 
   const modules = contract.modules ?? [];
   const services = contract.services ?? [];
+  const hasFeatureFilters = Boolean(featureFilters.deliveryStatus || featureFilters.criticality || featureFilters.query.trim());
+  const visibleModules = hasFeatureFilters
+    ? modules.filter((mod) => mod.features.some((feature) => featureMatchesFilters(feature, featureFilters)))
+    : modules;
+  const visibleFeaturesCount = visibleModules.reduce(
+    (total, mod) => total + mod.features.filter((feature) => featureMatchesFilters(feature, featureFilters)).length,
+    0
+  );
+  const totalFeaturesCount = modules.reduce((total, mod) => total + mod.features.length, 0);
 
   function openStructureModal(): void {
     setModalModName("");
@@ -154,6 +197,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
     setModalModValidatorId("");
     setModalFeatName("");
     setModalFeatCode("");
+    setModalFeatCodeError(false);
     setModalFeatCriticality("MEDIA");
     setModalFeatStatus("NOT_STARTED");
     setModalFeatDelivery("NOT_DELIVERED");
@@ -287,6 +331,75 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                   Novo módulo ou funcionalidade
                 </Button>
               </div>
+              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3">
+                <div className="grid gap-3 md:grid-cols-[1.3fr_1fr_1fr_auto] md:items-end">
+                  <label className="flex flex-col text-xs font-medium text-slate-700">
+                    Pesquisar por código ou descrição
+                    <input
+                      className={`mt-1 ${formControlClass}`}
+                      value={featureFilters.query}
+                      onChange={(event) => setFeatureFilters((filters) => ({ ...filters, query: event.target.value }))}
+                      placeholder="Ex.: 33.1, legado, processo físico..."
+                      disabled={busy}
+                    />
+                  </label>
+                  <label className="flex flex-col text-xs font-medium text-slate-700">
+                    Status de entrega
+                    <select
+                      className={`mt-1 ${formControlClass}`}
+                      value={featureFilters.deliveryStatus}
+                      onChange={(event) =>
+                        setFeatureFilters((filters) => ({
+                          ...filters,
+                          deliveryStatus: event.target.value as FeatureFilters["deliveryStatus"]
+                        }))
+                      }
+                      disabled={busy}
+                    >
+                      <option value="">Todos os status</option>
+                      {itemDeliveryOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {itemDeliveryLabels[status]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col text-xs font-medium text-slate-700">
+                    Criticidade
+                    <select
+                      className={`mt-1 ${formControlClass}`}
+                      value={featureFilters.criticality}
+                      onChange={(event) =>
+                        setFeatureFilters((filters) => ({
+                          ...filters,
+                          criticality: event.target.value as FeatureFilters["criticality"]
+                        }))
+                      }
+                      disabled={busy}
+                    >
+                      <option value="">Todas as criticidades</option>
+                      {criticalityOptions.map((criticality) => (
+                        <option key={criticality} value={criticality}>
+                          {criticalityLabels[criticality]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className={`${buttonSmallClass} h-10 justify-center`}
+                    disabled={busy || !hasFeatureFilters}
+                    onClick={() => setFeatureFilters({ deliveryStatus: "", criticality: "", query: "" })}
+                  >
+                    Limpar filtros
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  {hasFeatureFilters
+                    ? `Exibindo ${visibleFeaturesCount} de ${totalFeaturesCount} funcionalidade(s).`
+                    : "Use os filtros para priorizar itens por entrega, criticidade ou localizar rapidamente pelo código e descrição."}
+                </p>
+              </div>
               <div className="space-y-6">
                 {modules.length === 0 ? (
                   <p className="text-sm text-slate-500">
@@ -294,11 +407,17 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     Importação.
                   </p>
                 ) : null}
-                {modules.map((mod) => (
+                {modules.length > 0 && visibleModules.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+                    Nenhuma funcionalidade encontrada para os filtros aplicados.
+                  </p>
+                ) : null}
+                {visibleModules.map((mod) => (
                   <ModuleBlock
                     key={mod.id}
                     contractId={cid}
                     module={mod}
+                    featureFilters={featureFilters}
                     busy={busy}
                     onError={setError}
                     onBusy={setBusy}
@@ -431,14 +550,23 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                   </select>
                 </label>
                 <label className="block text-xs font-medium text-slate-700">
-                  Código do Item
+                  Código do Item <span className="text-destructive">*</span>
                   <input
-                    className={`mt-1 w-full ${formControlClass}`}
+                    className={cn(
+                      "mt-1 w-full",
+                      formControlClass,
+                      modalFeatCodeError && "border-destructive focus-visible:ring-destructive"
+                    )}
                     placeholder="Ex.: 1.2.3"
                     value={modalFeatCode}
-                    onChange={(e) => setModalFeatCode(e.target.value)}
+                    aria-invalid={modalFeatCodeError}
+                    onChange={(e) => {
+                      setModalFeatCode(e.target.value);
+                      if (e.target.value.trim()) setModalFeatCodeError(false);
+                    }}
                     disabled={busy}
                   />
+                  {modalFeatCodeError ? <span className="mt-1 block text-xs text-destructive">{REQUIRED_ITEM_CODE_MESSAGE}</span> : null}
                 </label>
                 <label className="block text-xs font-medium text-slate-700">
                   Nome da funcionalidade
@@ -506,6 +634,11 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     size="sm"
                     disabled={busy || !modalFeatName.trim() || !modalFeatModuleId}
                     onClick={() => {
+                      if (!modalFeatCode.trim()) {
+                        setModalFeatCodeError(true);
+                        toast.error(REQUIRED_ITEM_CODE_MESSAGE);
+                        return;
+                      }
                       const mod = modules.find((m) => m.id === modalFeatModuleId);
                       if (!mod) {
                         setError("Selecione um módulo válido.");
@@ -618,17 +751,19 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 function ModuleBlock(props: {
   contractId: string;
   module: ModuleRow;
+  featureFilters: FeatureFilters;
   busy: boolean;
   onError: (m: string | null) => void;
   onBusy: (b: boolean) => void;
   onUpdated: (c: Contract) => void;
   validators: Array<{ id: string; email: string; role: string }>;
 }): JSX.Element {
-  const { contractId, module: mod, busy, onError, onBusy, onUpdated, validators } = props;
+  const { contractId, module: mod, featureFilters, busy, onError, onBusy, onUpdated, validators } = props;
   const [name, setName] = useState(mod.name);
   const [criticality, setCriticality] = useState<ContractItemCriticality>(mod.criticality ?? "MEDIA");
   const [validatorId, setValidatorId] = useState(mod.validatorId ?? "");
   const [fCode, setFCode] = useState("");
+  const [fCodeError, setFCodeError] = useState(false);
   const [fName, setFName] = useState("");
   const [featuresOpen, setFeaturesOpen] = useState(false);
 
@@ -658,6 +793,8 @@ function ModuleBlock(props: {
   const partialCount = mod.features.filter((f) => f.deliveryStatus === "PARTIALLY_DELIVERED").length;
   const notDeliveredCount = mod.features.filter((f) => (f.deliveryStatus ?? "NOT_DELIVERED") === "NOT_DELIVERED").length;
   const validatorLabel = mod.validator?.email ?? validators.find((user) => user.id === validatorId)?.email ?? "Sem responsável";
+  const filteredFeatures = mod.features.filter((feature) => featureMatchesFilters(feature, featureFilters));
+  const hasFeatureFilters = Boolean(featureFilters.deliveryStatus || featureFilters.criticality || featureFilters.query.trim());
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
@@ -754,7 +891,7 @@ function ModuleBlock(props: {
           onClick={() => setFeaturesOpen((open) => !open)}
         >
           <span>
-            Funcionalidades ({mod.features.length}) · soma dos pesos{" "}
+            Funcionalidades ({hasFeatureFilters ? `${filteredFeatures.length}/${mod.features.length}` : mod.features.length}) · soma dos pesos{" "}
             <span className="tabular-nums">{formatWeightPt(featureSumSaved)}</span>
           </span>
           <span>{featuresOpen ? "Ocultar" : "Mostrar"}</span>
@@ -767,7 +904,7 @@ function ModuleBlock(props: {
             </p>
           ) : null}
           <ul className="space-y-2">
-            {mod.features.map((f) => (
+            {filteredFeatures.map((f) => (
               <FeatureRow
                 key={f.id}
                 contractId={contractId}
@@ -782,10 +919,14 @@ function ModuleBlock(props: {
           </ul>
           <div className="mt-2 flex flex-wrap gap-2">
             <input
-              className={`w-32 ${formControlClass}`}
+              className={cn("w-32", formControlClass, fCodeError && "border-destructive focus-visible:ring-destructive")}
               placeholder="Código do item"
               value={fCode}
-              onChange={(e) => setFCode(e.target.value)}
+              aria-invalid={fCodeError}
+              onChange={(e) => {
+                setFCode(e.target.value);
+                if (e.target.value.trim()) setFCodeError(false);
+              }}
               disabled={busy}
             />
             <input
@@ -836,6 +977,11 @@ function ModuleBlock(props: {
               className="rounded bg-slate-700 px-2 py-1 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
               disabled={busy || !fName.trim()}
               onClick={() => {
+                if (!fCode.trim()) {
+                  setFCodeError(true);
+                  toast.error(REQUIRED_ITEM_CODE_MESSAGE);
+                  return;
+                }
                 void exec(async () => {
                   const c = await createContractFeature(contractId, mod.id, {
                     itemCode: fCode.trim() || null,
@@ -845,6 +991,7 @@ function ModuleBlock(props: {
                     deliveryStatus: fDelivery
                   });
                   setFCode("");
+                  setFCodeError(false);
                   setFName("");
                   setFCriticality("MEDIA");
                   setFStatus("NOT_STARTED");
@@ -873,6 +1020,7 @@ function FeatureRow(props: {
 }): JSX.Element {
   const { contractId, moduleId, feature: f, busy, onError, onBusy, onUpdated } = props;
   const [itemCode, setItemCode] = useState(f.itemCode ?? "");
+  const [itemCodeError, setItemCodeError] = useState(false);
   const [name, setName] = useState(f.name);
   const [criticality, setCriticality] = useState<ContractItemCriticality>(f.criticality ?? "MEDIA");
   const [status, setStatus] = useState<ContractFeatureStatus>(f.status as ContractFeatureStatus);
@@ -882,6 +1030,7 @@ function FeatureRow(props: {
 
   useEffect(() => {
     setItemCode(f.itemCode ?? "");
+    setItemCodeError(false);
     setName(f.name);
     setCriticality(f.criticality ?? "MEDIA");
     setStatus(f.status as ContractFeatureStatus);
@@ -903,10 +1052,14 @@ function FeatureRow(props: {
   return (
     <li className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-sm">
       <input
-        className={`w-32 ${formControlClass}`}
+        className={cn("w-32", formControlClass, itemCodeError && "border-destructive focus-visible:ring-destructive")}
         placeholder="Código"
         value={itemCode}
-        onChange={(e) => setItemCode(e.target.value)}
+        aria-invalid={itemCodeError}
+        onChange={(e) => {
+          setItemCode(e.target.value);
+          if (e.target.value.trim()) setItemCodeError(false);
+        }}
         disabled={busy}
       />
       <input className={`min-w-[8rem] flex-1 ${formControlClass}`} value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
@@ -947,6 +1100,11 @@ function FeatureRow(props: {
         className={`${buttonSmallClass} py-0.5 text-xs`}
         disabled={busy}
         onClick={() => {
+          if (!itemCode.trim()) {
+            setItemCodeError(true);
+            toast.error(REQUIRED_ITEM_CODE_MESSAGE);
+            return;
+          }
           void exec(async () =>
             updateContractFeature(contractId, moduleId, f.id, {
               itemCode: itemCode.trim() || null,

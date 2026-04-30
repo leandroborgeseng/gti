@@ -47,17 +47,44 @@ function statusText(value?: string | null, labels: Record<string, string> = {}):
   return labels[value] ?? value;
 }
 
+function fieldText(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "NULL";
+  return String(value);
+}
+
+function stringField(record: Record<string, unknown> | null | undefined, key: string): string | null {
+  if (!record || !(key in record)) return null;
+  return fieldText(record[key]);
+}
+
 function ChangeDetails({ log }: { log: ContractItemChangeLog }): JSX.Element | null {
   const statusChanged = log.statusBefore !== log.statusAfter && (log.statusBefore || log.statusAfter);
   const deliveryChanged =
     log.deliveryStatusBefore !== log.deliveryStatusAfter && (log.deliveryStatusBefore || log.deliveryStatusAfter);
   const criticalityChanged =
     log.criticalityBefore !== log.criticalityAfter && (log.criticalityBefore || log.criticalityAfter);
+  const oldCode = stringField(log.oldData, "itemCode");
+  const newCode = stringField(log.newData, "itemCode");
+  const codeChanged = log.itemType === "FEATURE" && oldCode !== newCode && (oldCode !== null || newCode !== null);
+  const oldName = stringField(log.oldData, "name");
+  const newName = stringField(log.newData, "name");
+  const nameChanged = oldName !== newName && (oldName !== null || newName !== null);
 
-  if (!statusChanged && !deliveryChanged && !criticalityChanged) return null;
+  if (!statusChanged && !deliveryChanged && !criticalityChanged && !codeChanged && !nameChanged) return null;
 
   return (
     <div className="mt-2 space-y-1 text-xs text-slate-600">
+      {codeChanged ? (
+        <p>
+          Código: <strong>{oldCode}</strong> → <strong>{newCode}</strong>
+        </p>
+      ) : null}
+      {nameChanged ? (
+        <p>
+          {log.itemType === "FEATURE" ? "Descrição da Funcionalidade" : "Nome"}: <strong>{oldName}</strong> →{" "}
+          <strong>{newName}</strong>
+        </p>
+      ) : null}
       {statusChanged ? (
         <p>
           Status: <strong>{statusText(log.statusBefore, featureStatusLabel)}</strong> →{" "}

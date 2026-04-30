@@ -25,6 +25,9 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionada tela final da meta, com definição textual da meta, vínculo opcional a um projeto inteiro e seleção de várias tarefas de projetos diferentes.
 - Adicionados filtros por projeto e responsável na seleção de tarefas vinculadas a uma meta.
 - A lista de fornecedores agora mostra os contratos vinculados como links para abrir diretamente o detalhe de cada contrato.
+- Adicionado alerta visual e mensagem em pop-up quando o Código do Item obrigatório de uma funcionalidade contratual não é preenchido antes de salvar.
+- O histórico auditável dos itens contratuais passou a mostrar o antes e depois de alterações no Código do Item e na descrição/nome da funcionalidade.
+- Adicionados filtros por status de entrega, criticidade e texto na gestão de módulos e funcionalidades dos contratos.
 
 ### Alterado
 

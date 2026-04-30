@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import type {
   ContractFeatureStatus,
   ContractItemCriticality,
@@ -31,6 +32,7 @@ const deliveryLabels: Record<ContractItemDeliveryStatus, string> = {
 };
 
 const deliveryOptions: ContractItemDeliveryStatus[] = ["NOT_DELIVERED", "PARTIALLY_DELIVERED", "DELIVERED"];
+const REQUIRED_ITEM_CODE_MESSAGE = "O campo obrigatório Código do Item deve ser preenchido antes de gravar a informação.";
 
 const featureStatusLabels: Record<ContractFeatureStatus, string> = {
   NOT_STARTED: "Não iniciada",
@@ -216,6 +218,35 @@ type EditFeatureDraft = {
   deliveryStatus: ContractItemDeliveryStatus;
 };
 
+type DeliveryFilters = {
+  deliveryStatus: "" | ContractItemDeliveryStatus;
+  criticality: "" | ContractItemCriticality;
+  query: string;
+};
+
+function normalizeFilterText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function featureMatchesFilters(
+  item: ContractModulesDeliveryOverview["modules"][number]["features"][number],
+  filters: DeliveryFilters
+): boolean {
+  const deliveryStatus = (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus;
+  const criticality = (item.criticality ?? "MEDIA") as ContractItemCriticality;
+  const query = normalizeFilterText(filters.query);
+
+  if (filters.deliveryStatus && deliveryStatus !== filters.deliveryStatus) return false;
+  if (filters.criticality && criticality !== filters.criticality) return false;
+  if (!query) return true;
+
+  return normalizeFilterText(`${item.itemCode ?? ""} ${item.name}`).includes(query);
+}
+
 export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props): JSX.Element {
   const qc = useQueryClient();
   /** Contratos expandidos (ausente = colapsado). Por padrão todos fechados — expanda para ver módulos e ações. */
@@ -226,6 +257,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
   );
   const [editDraft, setEditDraft] = useState<EditFeatureDraft | null>(null);
   const [editHint, setEditHint] = useState<string | null>(null);
+  const [filters, setFilters] = useState<DeliveryFilters>({ deliveryStatus: "", criticality: "", query: "" });
   const moduleKeysSnapshotRef = useRef<Set<string> | null>(null);
 
   const { data: rows = initialRows } = useQuery({
@@ -376,6 +408,22 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
 
   const totalContracts = rows.length;
   const totalItems = useMemo(() => rows.reduce((s, r) => s + countItems(r.modules), 0), [rows]);
+  const hasFilters = Boolean(filters.deliveryStatus || filters.criticality || filters.query.trim());
+  const visibleRows = useMemo(() => {
+    if (!hasFilters) return rows;
+    return rows
+      .map((contract) => ({
+        ...contract,
+        modules: contract.modules
+          .map((mod) => ({
+            ...mod,
+            features: mod.features.filter((item) => featureMatchesFilters(item, filters))
+          }))
+          .filter((mod) => mod.features.length > 0)
+      }))
+      .filter((contract) => contract.modules.length > 0);
+  }, [filters, hasFilters, rows]);
+  const visibleItems = useMemo(() => visibleRows.reduce((s, r) => s + countItems(r.modules), 0), [visibleRows]);
 
   function openEdit(
     contractId: string,
@@ -408,6 +456,12 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
   function submitEdit(): void {
     if (!editDraft) return;
     setEditHint(null);
+    const itemCode = editDraft.itemCode.trim();
+    if (!itemCode) {
+      setEditHint(REQUIRED_ITEM_CODE_MESSAGE);
+      toast.error(REQUIRED_ITEM_CODE_MESSAGE);
+      return;
+    }
     const name = editDraft.name.trim();
     if (!name) {
       setEditHint("Indique um nome.");
@@ -417,7 +471,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       contractId: editDraft.contractId,
       moduleId: editDraft.moduleId,
       featureId: editDraft.featureId,
-      itemCode: editDraft.itemCode.trim() || null,
+      itemCode,
       name,
       criticality: editDraft.criticality,
       status: editDraft.status,
@@ -453,13 +507,83 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
         </p>
       </div>
 
+      <div className="rounded-xl border bg-card px-4 py-3 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-[1.3fr_1fr_1fr_auto] md:items-end">
+          <Label className="space-y-1.5 text-xs font-medium">
+            <span>Pesquisar por código ou descrição</span>
+            <Input
+              value={filters.query}
+              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+              placeholder="Ex.: 33.1, legado, processo físico..."
+            />
+          </Label>
+          <Label className="space-y-1.5 text-xs font-medium">
+            <span>Status de entrega</span>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+              value={filters.deliveryStatus}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  deliveryStatus: event.target.value as DeliveryFilters["deliveryStatus"]
+                }))
+              }
+            >
+              <option value="">Todos os status</option>
+              {deliveryOptions.map((status) => (
+                <option key={status} value={status}>
+                  {deliveryLabels[status]}
+                </option>
+              ))}
+            </select>
+          </Label>
+          <Label className="space-y-1.5 text-xs font-medium">
+            <span>Criticidade</span>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+              value={filters.criticality}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  criticality: event.target.value as DeliveryFilters["criticality"]
+                }))
+              }
+            >
+              <option value="">Todas as criticidades</option>
+              {criticalityOptions.map((criticality) => (
+                <option key={criticality} value={criticality}>
+                  {criticalityLabels[criticality]}
+                </option>
+              ))}
+            </select>
+          </Label>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!hasFilters}
+            onClick={() => setFilters({ deliveryStatus: "", criticality: "", query: "" })}
+          >
+            Limpar filtros
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {hasFilters
+            ? `Exibindo ${visibleItems} de ${totalItems} funcionalidade(s), preservando os respectivos módulos.`
+            : "Use os filtros para priorizar itens por entrega, criticidade ou localizar rapidamente pelo código e descrição."}
+        </p>
+      </div>
+
       {rows.length === 0 ? (
         <p className="rounded-lg border border-dashed bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
           Nenhum contrato destes tipos. Os módulos aplicam-se a contratos Software, Infraestrutura ou Serviço.
         </p>
+      ) : visibleRows.length === 0 ? (
+        <p className="rounded-lg border border-dashed bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
+          Nenhuma funcionalidade encontrada para os filtros aplicados.
+        </p>
       ) : (
         <div className="space-y-2">
-          {rows.map((contract) => {
+          {visibleRows.map((contract) => {
             const isOpen = openContractIds.has(contract.id);
             const itemsN = countItems(contract.modules);
             const nNot = countByDelivery(contract.modules, "NOT_DELIVERED");
@@ -786,13 +910,20 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
         {editDraft ? (
           <div className="space-y-4 pt-1">
             <div className="space-y-2">
-              <Label htmlFor="modulos-edit-codigo">Código do Item</Label>
+              <Label htmlFor="modulos-edit-codigo">
+                Código do Item <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="modulos-edit-codigo"
                 value={editDraft.itemCode}
                 placeholder="Ex.: 1.2.3"
                 disabled={saveFeatureMut.isPending}
-                onChange={(e) => setEditDraft((d) => (d ? { ...d, itemCode: e.target.value } : d))}
+                aria-invalid={editHint === REQUIRED_ITEM_CODE_MESSAGE}
+                className={cn(editHint === REQUIRED_ITEM_CODE_MESSAGE && "border-destructive focus-visible:ring-destructive")}
+                onChange={(e) => {
+                  setEditDraft((d) => (d ? { ...d, itemCode: e.target.value } : d));
+                  if (e.target.value.trim() && editHint === REQUIRED_ITEM_CODE_MESSAGE) setEditHint(null);
+                }}
               />
             </div>
             <div className="space-y-2">

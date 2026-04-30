@@ -733,10 +733,14 @@ export class ContractsService {
 
   async createFeature(contractId: string, moduleId: string, dto: CreateContractFeatureDto): Promise<unknown> {
     await this.ensureModule(contractId, moduleId);
+    const itemCode = dto.itemCode?.trim();
+    if (!itemCode) {
+      throw new BadRequestException("O campo obrigatório Código do Item deve ser preenchido antes de gravar a informação.");
+    }
     const created = await this.prisma.contractFeature.create({
       data: {
         moduleId,
-        itemCode: dto.itemCode?.trim() || null,
+        itemCode,
         name: dto.name,
         criticality: dto.criticality ?? ContractItemCriticality.MEDIA,
         weight: new Prisma.Decimal(dto.weight ?? 0),
@@ -768,11 +772,14 @@ export class ContractsService {
     dto: UpdateContractFeatureDto
   ): Promise<unknown> {
     await this.ensureFeature(contractId, moduleId, featureId);
+    if (dto.itemCode !== undefined && !dto.itemCode.trim()) {
+      throw new BadRequestException("O campo obrigatório Código do Item deve ser preenchido antes de gravar a informação.");
+    }
     const prev = await this.prisma.contractFeature.findUnique({ where: { id: featureId } });
     const updated = await this.prisma.contractFeature.update({
       where: { id: featureId },
       data: {
-        itemCode: dto.itemCode !== undefined ? dto.itemCode.trim() || null : undefined,
+        itemCode: dto.itemCode !== undefined ? dto.itemCode.trim() : undefined,
         name: dto.name ?? undefined,
         weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : undefined,
         criticality: dto.criticality ?? undefined,

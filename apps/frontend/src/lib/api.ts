@@ -272,6 +272,8 @@ export type ContractItemChangeLog = {
   actorId?: string | null;
   actorLabel?: string | null;
   changedAt: string;
+  oldData?: Record<string, unknown> | null;
+  newData?: Record<string, unknown> | null;
 };
 
 export type GlpiAssignedGroupOption = {
