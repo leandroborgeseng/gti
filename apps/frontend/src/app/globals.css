@@ -62,3 +62,8 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* Minhas atribuições: checkbox «Ocultar secções sem itens» (toolbar cliente em `#conteudo-minhas-atribuicoes`) */
+#conteudo-minhas-atribuicoes[data-ocultar-vazias="1"] [data-assign-section-empty="1"] {
+  display: none !important;
+}

@@ -874,7 +874,10 @@ function TaskRows({
 
   return (
     <>
-      <tr className={cn("min-h-9 border-b border-[#ececf0] bg-white transition-colors hover:bg-[#f6f7fb]", busy && "opacity-70")}>
+      <tr
+        id={`project-task-${task.id}`}
+        className={cn("min-h-9 border-b border-[#ececf0] bg-white transition-colors hover:bg-[#f6f7fb]", busy && "opacity-70")}
+      >
         <td className="w-9 shrink-0 border-r border-[#ececf0] p-1 align-middle">
           <input
             type="checkbox"

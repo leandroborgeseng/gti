@@ -987,6 +987,13 @@ export type MyAssignments = {
     contractGroupName?: string | null;
     open: boolean;
   }>;
+  /** Limites de paginação do servidor nestas listas (caps aplicados antes dos filtros adicionais em GLPI). */
+  listLimits: {
+    maxItemsPerList: number;
+    tasksTruncated: boolean;
+    governanceTruncated: boolean;
+    glpiTruncated: boolean;
+  };
 };
 
 export async function getMyAssignments(): Promise<MyAssignments> {

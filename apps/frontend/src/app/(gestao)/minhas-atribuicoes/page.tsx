@@ -4,7 +4,17 @@ import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { getMyAssignments, type MyAssignments } from "@/lib/api";
 import { safeLoad } from "@/lib/api-load";
-import { classifyStatus } from "@/lib/projects-task-status";
+import { classifyStatus, isOverdueNotDoneUtc } from "@/lib/projects-task-status";
+import {
+  AssignmentRowCard,
+  AssignmentSection,
+  AssignmentSummaryStatLink,
+  ListTruncationFooter,
+  taskAssignmentFootnote
+} from "./assignment-cards";
+import { AssignmentsCriteriaNote } from "./assignments-criteria-note";
+import { CompletedProjectTasksAccordion } from "./completed-project-tasks-accordion";
+import { HideEmptyAssignmentsToolbar } from "./hide-empty-assignments-toolbar";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,6 +22,12 @@ export const revalidate = 0;
 const emptyAssignments: MyAssignments = {
   user: { id: "", email: "" },
   totals: { contracts: 0, modules: 0, projects: 0, tasks: 0, governanceTickets: 0, glpiTickets: 0 },
+  listLimits: {
+    maxItemsPerList: 100,
+    tasksTruncated: false,
+    governanceTruncated: false,
+    glpiTruncated: false
+  },
   contracts: [],
   modules: [],
   projects: [],
@@ -27,38 +43,14 @@ function formatDate(value?: string | null): string {
   return d.toLocaleDateString("pt-BR");
 }
 
-function StatusPill({ children, tone = "neutral" }: { children: string; tone?: "neutral" | "green" | "amber" | "red" }): JSX.Element {
-  const cls =
-    tone === "green"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : tone === "amber"
-        ? "border-amber-200 bg-amber-50 text-amber-800"
-        : tone === "red"
-          ? "border-rose-200 bg-rose-50 text-rose-800"
-          : "border-border bg-muted/40 text-muted-foreground";
-  return <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>{children}</span>;
-}
-
-function Section({
-  title,
-  count,
-  children,
-  empty
-}: {
-  title: string;
-  count: number;
-  children: JSX.Element;
-  empty: string;
-}): JSX.Element {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">{count}</span>
-      </div>
-      {count === 0 ? <p className="mt-3 text-sm text-muted-foreground">{empty}</p> : <div className="mt-4 space-y-3">{children}</div>}
-    </Card>
-  );
+function formatDateTimeShort(value?: string | null): string {
+  if (!value?.trim()) return "—";
+  const d = new Date(value.trim());
+  if (Number.isNaN(d.getTime())) return value.trim();
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(d);
 }
 
 function partitionProjectTasks(tasks: MyAssignments["tasks"]): { pending: MyAssignments["tasks"]; completed: MyAssignments["tasks"] } {
@@ -70,191 +62,262 @@ function partitionProjectTasks(tasks: MyAssignments["tasks"]): { pending: MyAssi
 export default async function MyAssignmentsPage(): Promise<JSX.Element> {
   const { data, error } = await safeLoad(() => getMyAssignments(), emptyAssignments);
   const { pending: tasksPending, completed: tasksCompleted } = partitionProjectTasks(data.tasks);
+  const LM = data.listLimits ?? emptyAssignments.listLimits;
+  const tasksSectionEmpty = tasksPending.length === 0 && tasksCompleted.length === 0;
 
   return (
-    <div className="space-y-6">
+    <main id="conteudo-minhas-atribuicoes" className="space-y-6">
       {error ? <DataLoadAlert messages={[error]} /> : null}
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Minhas atribuições</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Tudo que está ligado ao seu usuário: chamados, tarefas, projetos, contratos, módulos de contrato e governança.
-        </p>
-        {data.user.fiscalProfile ? (
-          <p className="text-xs text-muted-foreground">
-            Perfil de fiscal/gestor vinculado: {data.user.fiscalProfile.name} · {data.user.fiscalProfile.email}
+      <header className="space-y-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Minhas atribuições</h1>
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Tudo que está ligado ao seu utilizador: chamados, tarefas, projetos, contratos, módulos de contrato e governança.
           </p>
-        ) : (
-          <p className="text-xs text-amber-700">
-            Nenhum cadastro de fiscal/gestor está vinculado ao seu usuário; contratos como fiscal/gestor só aparecem após esse vínculo.
-          </p>
-        )}
+          {data.user.fiscalProfile ? (
+            <p className="text-xs text-muted-foreground">
+              Perfil de fiscal/gestor vinculado: {data.user.fiscalProfile.name} · {data.user.fiscalProfile.email}
+            </p>
+          ) : (
+            <p className="text-xs text-amber-700">
+              Nenhum cadastro de fiscal/gestor está vinculado ao seu utilizador; contratos como fiscal ou gestor só aparecem após esse vínculo.{" "}
+              <Link href="/perfil" className="font-medium text-amber-900 underline underline-offset-2 hover:text-foreground">
+                Abrir meu perfil
+              </Link>
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <HideEmptyAssignmentsToolbar />
+          <AssignmentsCriteriaNote />
+        </div>
       </header>
 
-      <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Card className="p-4"><p className="text-xs text-muted-foreground">Chamados GLPI</p><strong className="mt-1 block text-2xl">{data.totals.glpiTickets}</strong></Card>
-        <Card className="p-4"><p className="text-xs text-muted-foreground">Tarefas</p><strong className="mt-1 block text-2xl">{data.totals.tasks}</strong></Card>
-        <Card className="p-4"><p className="text-xs text-muted-foreground">Projetos</p><strong className="mt-1 block text-2xl">{data.totals.projects}</strong></Card>
-        <Card className="p-4"><p className="text-xs text-muted-foreground">Contratos</p><strong className="mt-1 block text-2xl">{data.totals.contracts}</strong></Card>
-        <Card className="p-4"><p className="text-xs text-muted-foreground">Módulos</p><strong className="mt-1 block text-2xl">{data.totals.modules}</strong></Card>
-        <Card className="p-4"><p className="text-xs text-muted-foreground">Governança</p><strong className="mt-1 block text-2xl">{data.totals.governanceTickets}</strong></Card>
+      <section id="resumo-atribuicoes" aria-label="Resumo por tipo de atribuição" className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <AssignmentSummaryStatLink anchor="lista-chamados-glpi">
+          <Card className="p-4 transition-colors hover:bg-muted/40">
+            <p className="text-xs text-muted-foreground">Chamados GLPI</p>
+            <strong className="mt-1 block text-2xl">{data.totals.glpiTickets}</strong>
+          </Card>
+        </AssignmentSummaryStatLink>
+        <AssignmentSummaryStatLink anchor="lista-tarefas-projetos">
+          <Card className="p-4 transition-colors hover:bg-muted/40">
+            <p className="text-xs text-muted-foreground">Tarefas de projeto</p>
+            <strong className="mt-1 block text-2xl">{data.totals.tasks}</strong>
+            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">Só pendentes (não concluídas)</p>
+          </Card>
+        </AssignmentSummaryStatLink>
+        <AssignmentSummaryStatLink anchor="lista-projetos-supervisionados">
+          <Card className="p-4 transition-colors hover:bg-muted/40">
+            <p className="text-xs text-muted-foreground">Projetos</p>
+            <strong className="mt-1 block text-2xl">{data.totals.projects}</strong>
+          </Card>
+        </AssignmentSummaryStatLink>
+        <AssignmentSummaryStatLink anchor="lista-contratos">
+          <Card className="p-4 transition-colors hover:bg-muted/40">
+            <p className="text-xs text-muted-foreground">Contratos</p>
+            <strong className="mt-1 block text-2xl">{data.totals.contracts}</strong>
+          </Card>
+        </AssignmentSummaryStatLink>
+        <AssignmentSummaryStatLink anchor="lista-modulos">
+          <Card className="p-4 transition-colors hover:bg-muted/40">
+            <p className="text-xs text-muted-foreground">Módulos</p>
+            <strong className="mt-1 block text-2xl">{data.totals.modules}</strong>
+          </Card>
+        </AssignmentSummaryStatLink>
+        <AssignmentSummaryStatLink anchor="lista-governanca">
+          <Card className="p-4 transition-colors hover:bg-muted/40">
+            <p className="text-xs text-muted-foreground">Governança</p>
+            <strong className="mt-1 block text-2xl">{data.totals.governanceTickets}</strong>
+          </Card>
+        </AssignmentSummaryStatLink>
       </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Section title="Chamados GLPI atribuídos ou relacionados" count={data.glpiTickets.length} empty="Nenhum chamado relacionado encontrado.">
+        <AssignmentSection
+          sectionId="lista-chamados-glpi"
+          title="Chamados GLPI atribuídos ou relacionados"
+          count={data.glpiTickets.length}
+          empty="Nenhum chamado relacionado encontrado."
+          footer={<ListTruncationFooter truncated={LM.glpiTruncated} label="Chamados GLPI" maxItems={LM.maxItemsPerList} />}
+        >
           <>
             {data.glpiTickets.map((ticket) => (
-              <div key={ticket.glpiTicketId} className="rounded-lg border bg-background p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
+              <AssignmentRowCard
+                key={ticket.glpiTicketId}
+                pill={ticket.status || "Sem status"}
+                pillTone={ticket.open ? "amber" : "green"}
+                title={
                   <Link href={`/chamados?ticket=${ticket.glpiTicketId}` as Route} className="font-medium text-foreground underline-offset-4 hover:underline">
                     #{ticket.glpiTicketId} · {ticket.title || "Chamado sem título"}
                   </Link>
-                  <StatusPill tone={ticket.open ? "amber" : "green"}>{ticket.status || "Sem status"}</StatusPill>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Técnico: {ticket.assignedUserName || "—"} · Grupo: {ticket.contractGroupName || "—"} · Atualizado em {ticket.dateModification || "—"}
-                </p>
-              </div>
+                }
+                meta={`Técnico: ${ticket.assignedUserName || "—"} · Grupo: ${ticket.contractGroupName || "—"} · Atualizado em ${formatDateTimeShort(ticket.dateModification)}`}
+              />
             ))}
           </>
-        </Section>
+        </AssignmentSection>
 
-        <Card className="p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <section id="lista-tarefas-projetos" data-assign-section-empty={tasksSectionEmpty ? "1" : undefined}>
+          <Card className="p-5">
             <h2 className="text-base font-semibold text-foreground">Tarefas de projetos</h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
-                title="Tarefas ainda não marcadas como feitas / concluídas"
-              >
-                {tasksPending.length} pendente(s)
-              </span>
-              {tasksCompleted.length > 0 ? (
-                <span className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                  {tasksCompleted.length} concluída(s)
-                </span>
-              ) : null}
-            </div>
-          </div>
-          {tasksPending.length === 0 && tasksCompleted.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">Nenhuma tarefa relacionada encontrada.</p>
-          ) : (
-            <div className="mt-4 space-y-3">
-              {tasksPending.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma tarefa pendente; abaixo aparecem apenas as já concluídas.</p>
-              ) : null}
-              {tasksPending.map((task) => (
-                <div key={task.id} className="rounded-lg border bg-background p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <Link href={`/projetos/${task.project.id}` as Route} className="font-medium text-foreground underline-offset-4 hover:underline">
-                      {task.title}
-                    </Link>
-                    <StatusPill>{task.status}</StatusPill>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Projeto: {task.project.name} · Grupo: {task.group.name} · Prazo: {formatDate(task.dueDate)}
+            {tasksSectionEmpty ? (
+              <p className="mt-3 text-sm text-muted-foreground">Nenhuma tarefa relacionada encontrada.</p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {tasksPending.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma tarefa pendente; abra a sanfona «Concluídas ({tasksCompleted.length})» para ver as finalizadas.
                   </p>
-                </div>
-              ))}
-              {tasksCompleted.length > 0 ? (
-                <div className="space-y-3 border-t border-border pt-4 mt-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Concluídas</p>
-                  {tasksCompleted.map((task) => (
-                    <div
+                ) : null}
+                {tasksPending.length > 0 ? (
+                  <div className="rounded-lg border border-border bg-muted/25 px-3 py-2.5">
+                    <h3 className="text-sm font-semibold text-foreground">Não concluídas ({tasksPending.length})</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Tarefas ainda não marcadas como feitas ou concluídas no projeto.
+                    </p>
+                  </div>
+                ) : null}
+                {tasksPending.map((task) => {
+                  const overdue = isOverdueNotDoneUtc(task.dueDate ?? null, task.status);
+                  const foot = taskAssignmentFootnote(task);
+                  return (
+                    <AssignmentRowCard
                       key={task.id}
-                      className="rounded-lg border border-muted bg-muted/35 p-3 text-muted-foreground shadow-none"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
+                      pill={task.status}
+                      pillTone={overdue ? "amber" : "neutral"}
+                      className={overdue ? "border-amber-400 bg-amber-50/45" : undefined}
+                      title={
                         <Link
-                          href={`/projetos/${task.project.id}` as Route}
-                          className="font-medium text-foreground/85 underline-offset-4 hover:underline"
+                          href={`/projetos/${task.project.id}#task-${task.id}` as Route}
+                          className="font-medium text-foreground underline-offset-4 hover:underline"
                         >
                           {task.title}
                         </Link>
-                        <StatusPill tone="green">{task.status}</StatusPill>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Projeto: {task.project.name} · Grupo: {task.group.name} · Prazo: {formatDate(task.dueDate)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </Card>
+                      }
+                      meta={`Projeto: ${task.project.name} · Grupo: ${task.group.name} · Prazo: ${formatDate(task.dueDate)}${overdue ? " · Prazo ultrapassado (UTC)" : ""}`}
+                      extraBelowMeta={foot}
+                    />
+                  );
+                })}
+                {tasksCompleted.length > 0 ? (
+                  <CompletedProjectTasksAccordion count={tasksCompleted.length}>
+                    {tasksCompleted.map((task) => (
+                      <AssignmentRowCard
+                        key={task.id}
+                        pill={task.status}
+                        pillTone="green"
+                        className="border-muted bg-muted/35 text-muted-foreground shadow-none"
+                        title={
+                          <Link
+                            href={`/projetos/${task.project.id}#task-${task.id}` as Route}
+                            className="font-medium text-foreground/85 underline-offset-4 hover:underline"
+                          >
+                            {task.title}
+                          </Link>
+                        }
+                        meta={`Projeto: ${task.project.name} · Grupo: ${task.group.name} · Prazo: ${formatDate(task.dueDate)}`}
+                        extraBelowMeta={taskAssignmentFootnote(task)}
+                      />
+                    ))}
+                  </CompletedProjectTasksAccordion>
+                ) : null}
+              </div>
+            )}
+          </Card>
+          <ListTruncationFooter truncated={LM.tasksTruncated} label="Tarefas de projetos" maxItems={LM.maxItemsPerList} />
+        </section>
 
-        <Section title="Projetos supervisionados" count={data.projects.length} empty="Nenhum projeto supervisionado encontrado.">
+        <AssignmentSection
+          sectionId="lista-projetos-supervisionados"
+          title="Projetos supervisionados"
+          count={data.projects.length}
+          empty="Nenhum projeto supervisionado encontrado."
+        >
           <>
             {data.projects.map((project) => (
-              <div key={project.id} className="rounded-lg border bg-background p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
+              <AssignmentRowCard
+                key={project.id}
+                pill={project.status}
+                pillTone={project.overdue > 0 ? "red" : "green"}
+                title={
                   <Link href={`/projetos/${project.id}` as Route} className="font-medium text-foreground underline-offset-4 hover:underline">
                     {project.name}
                   </Link>
-                  <StatusPill tone={project.overdue > 0 ? "red" : "green"}>{project.status}</StatusPill>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Início: {formatDate(project.startDate)} · Fim planejado: {formatDate(project.plannedEndDate)}
-                </p>
-              </div>
+                }
+                meta={`Início: ${formatDate(project.startDate)} · Fim planejado: ${formatDate(project.plannedEndDate)}`}
+              />
             ))}
           </>
-        </Section>
+        </AssignmentSection>
 
-        <Section title="Contratos como fiscal ou gestor" count={data.contracts.length} empty="Nenhum contrato vinculado ao seu usuário.">
+        <AssignmentSection
+          sectionId="lista-contratos"
+          title="Contratos como fiscal ou gestor"
+          count={data.contracts.length}
+          empty="Nenhum contrato vinculado ao seu utilizador."
+        >
           <>
             {data.contracts.map((contract) => (
-              <div key={contract.id} className="rounded-lg border bg-background p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
+              <AssignmentRowCard
+                key={contract.id}
+                pill={contract.status}
+                title={
                   <Link href={`/contracts/${contract.id}` as Route} className="font-medium text-foreground underline-offset-4 hover:underline">
                     {contract.number} · {contract.name}
                   </Link>
-                  <StatusPill>{contract.status}</StatusPill>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Papel: {contract.role} · Vigência até {formatDate(contract.endDate)}
-                </p>
-              </div>
+                }
+                meta={`Papel: ${contract.role} · Vigência até ${formatDate(contract.endDate)}`}
+              />
             ))}
           </>
-        </Section>
+        </AssignmentSection>
 
-        <Section title="Módulos sob sua validação" count={data.modules.length} empty="Nenhum módulo contratual sob sua validação.">
+        <AssignmentSection
+          sectionId="lista-modulos"
+          title="Módulos sob sua validação"
+          count={data.modules.length}
+          empty="Nenhum módulo contratual sob sua validação."
+        >
           <>
             {data.modules.map((mod) => (
-              <div key={mod.id} className="rounded-lg border bg-background p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
+              <AssignmentRowCard
+                key={mod.id}
+                pill={mod.status}
+                title={
                   <Link href={`/contracts/${mod.contract.id}` as Route} className="font-medium text-foreground underline-offset-4 hover:underline">
                     {mod.name}
                   </Link>
-                  <StatusPill>{mod.status}</StatusPill>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Contrato: {mod.contract.number} · {mod.contract.name} · Criticidade: {mod.criticality}
-                </p>
-              </div>
+                }
+                meta={`Contrato: ${mod.contract.number} · ${mod.contract.name} · Criticidade: ${mod.criticality}`}
+              />
             ))}
           </>
-        </Section>
+        </AssignmentSection>
 
-        <Section title="Chamados de governança" count={data.governanceTickets.length} empty="Nenhum chamado de governança vinculado.">
+        <AssignmentSection
+          sectionId="lista-governanca"
+          title="Chamados de governança"
+          count={data.governanceTickets.length}
+          empty="Nenhum chamado de governança vinculado."
+          footer={<ListTruncationFooter truncated={LM.governanceTruncated} label="Governança" maxItems={LM.maxItemsPerList} />}
+        >
           <>
             {data.governanceTickets.map((ticket) => (
-              <div key={ticket.id} className="rounded-lg border bg-background p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
+              <AssignmentRowCard
+                key={ticket.id}
+                pill={ticket.status}
+                title={
                   <Link href={`/governance/tickets/${ticket.id}` as Route} className="font-medium text-foreground underline-offset-4 hover:underline">
                     Chamado {ticket.ticketId}
                   </Link>
-                  <StatusPill>{ticket.status}</StatusPill>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Papel: {ticket.role} · Contrato: {ticket.contract.number} · SLA: {formatDate(ticket.slaDeadline)}
-                </p>
-              </div>
+                }
+                meta={`Papel: ${ticket.role} · Contrato: ${ticket.contract.number} · SLA: ${formatDateTimeShort(ticket.slaDeadline)}`}
+              />
             ))}
           </>
-        </Section>
+        </AssignmentSection>
       </div>
-    </div>
+    </main>
   );
 }

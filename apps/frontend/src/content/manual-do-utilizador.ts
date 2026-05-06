@@ -142,12 +142,24 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/minhas-atribuicoes", label: "Minhas atribuições" },
-          " — Janela única para o usuário logado acompanhar chamados GLPI, tarefas de projetos, projetos supervisionados, contratos como fiscal ou gestor, módulos sob sua validação e chamados de governança vinculados ao seu usuário. Nas tarefas de projeto, as pendentes aparecem primeiro e as já concluídas ficam listadas abaixo, em bloco separado e com estilo mais discreto; o contador «Tarefas» no topo resume apenas as pendentes."
+          " — Janela única para o usuário logado acompanhar chamados GLPI, tarefas de projetos, projetos supervisionados, contratos como fiscal ou gestor, módulos sob sua validação e chamados de governança vinculados ao seu usuário."
+        ]
+      },
+      {
+        kind: "ul",
+        items: [
+          "Os números do resumo no topo são clicáveis e levam à secção correspondente na mesma página.",
+          "Use «Ocultar secções sem itens» para esconder blocos vazios e reduzir rolagem.",
+          "O ícone de ajuda «Como apareço aqui?» resume os critérios de inclusão de cada tipo de item.",
+          "Se alguma lista tiver mais entradas do que o limite exibido na página (100 por tipo), aparece um aviso de truncagem.",
+          "Nas tarefas de projeto, «Não concluídas» mostra a quantidade de pendentes; pendentes em atraso ficam destacadas. As concluídas ficam na sanfona «Concluídas»; abrir ou fechar essa sanfona é lembrado neste navegador. No resumo, o cartão «Tarefas de projeto» refere-se só às pendentes. Cada linha pode mostrar responsável interno e responsáveis externos (PMF), quando existirem.",
+          "Ao abrir um projeto a partir de uma tarefa, o link pode incluir `#task-…` no final do endereço; na página do projeto, o quadro de tarefas rola até essa linha depois de carregar.",
+          "Nos chamados GLPI e na governança, datas relevantes aparecem em português com data e hora quando aplicável."
         ]
       },
       {
         kind: "tip",
-        text: "Para contratos aparecerem nesta tela, o cadastro de Fiscal/Gestor precisa estar vinculado ao usuário correspondente."
+        text: "Para contratos aparecerem nesta tela, o cadastro de Fiscal/Gestor precisa estar vinculado ao usuário correspondente. Se o contrato ainda não tiver fiscal nem gestor definidos, pode usar «Abrir meu perfil» para completar dados úteis ao vínculo."
       }
     ]
   },

@@ -29,6 +29,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - O histórico auditável dos itens contratuais passou a mostrar o antes e depois de alterações no Código do Item e na descrição/nome da funcionalidade.
 - Adicionados filtros por status de entrega, criticidade e texto na gestão de módulos e funcionalidades dos contratos.
 - No quadro de chamados GLPI, segundo painel métrico («Tempo desde a última interação»), no mesmo formato do painel de idade dos abertos: mostra quantos chamados estão em cada faixa de dias desde a última alteração vista no GLPI (cache). Ao clicar numa faixa, o Kanban filtra apenas esses chamados.
+- Adicionada a tela Minhas atribuições para o usuário acompanhar chamados, tarefas, projetos, contratos e módulos vinculados a ele.
 
 ### Alterado
 
@@ -41,8 +42,16 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - A tela de Fiscais e gestores passou a permitir editar nome, e-mail e telefone dos cadastros existentes.
 - Fiscais e gestores agora podem ser vinculados opcionalmente a uma conta de usuário do sistema.
 - O botão Relatórios foi removido temporariamente do menu principal.
-- Adicionada a tela Minhas atribuições para o usuário acompanhar chamados, tarefas, projetos, contratos e módulos vinculados a ele.
-- Em Minhas atribuições, a secção «Tarefas de projetos» lista primeiro as tarefas pendentes; as concluídas (status reconhecido como feito/concluído, alinhado ao quadro de projetos) ficam abaixo, com fundo mais suave. O número «Tarefas» no resumo do topo passa a contar só pendentes.
+- Em Minhas atribuições, os cartões do resumo levam à secção correspondente na mesma página (âncoras).
+- Em Minhas atribuições, quando alguma lista atinge o limite de exibição (100 itens por tipo), aparece um aviso de truncagem.
+- Em Minhas atribuições, o ícone de ajuda «Como apareço aqui?» explica os critérios pelos quais cada tipo de item é incluído na página.
+- Em Minhas atribuições, foi incluída a opção «Ocultar secções sem itens», para reduzir rolagem quando há poucos tipos de atribuição ativos.
+- Em Minhas atribuições, o estado aberto ou fechado da sanfona «Concluídas» nas tarefas de projeto é memorizado neste navegador.
+- Em Minhas atribuições, tarefas de projeto pendentes com prazo ultrapassado aparecem destacadas como em atraso; cada linha pode indicar responsável interno e responsáveis externos (PMF), quando configurados.
+- Ao abrir o detalhe de um projeto a partir de uma tarefa listada em Minhas atribuições, o URL pode incluir `#task-{identificador}` e a página faz scroll até a linha dessa tarefa no quadro assim que os dados estiverem carregados.
+- Nos chamados de governança da mesma página, datas do SLA passam a ser mostradas com data e hora em português (Brasil).
+- Quando um contrato não tem fiscal nem gestor definidos, a área correspondente sugere «Abrir meu perfil» para completar dados úteis ao vínculo.
+- Em Minhas atribuições, «Tarefas de projetos» usa cabeçalhos com quantidades («Não concluídas (n)» e sanfona «Concluídas (n)»; mesmo critério de status que o quadro de projetos); no resumo do topo, o cartão dessas tarefas esclarece que o número é só de pendentes. A linha de atualização dos chamados GLPI mostra data e hora formatadas em português (Brasil).
 
 ### Como manter
 

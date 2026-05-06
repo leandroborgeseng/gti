@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Goal, ProjectDetail } from "@/lib/api";
 import { ProjectTasksBoard } from "@/components/projects/project-tasks-board";
+import { ScrollToTaskAnchor } from "@/components/projects/scroll-to-task-anchor";
 
 export type ProjectBoardQuery = { filter?: string; statusKind?: string; sort?: string };
 
@@ -116,6 +117,7 @@ export function ProjectDetailView({
         </section>
       ) : null}
 
+      <ScrollToTaskAnchor />
       <ProjectTasksBoard projectId={project.id} groups={project.groups} goals={allGoals} boardQuery={boardQuery} />
     </div>
   );

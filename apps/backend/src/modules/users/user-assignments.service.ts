@@ -42,6 +42,8 @@ function compareTaskDueDesc(a: { dueDate: Date | null }, b: { dueDate: Date | nu
   return compareTaskDueAsc(b, a);
 }
 
+const ASSIGNMENTS_LIST_CAP = 100;
+
 @Injectable()
 export class UserAssignmentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -85,7 +87,7 @@ export class UserAssignmentsService {
       ticketMatches.push({ assignedUserName: { contains: fiscalProfile.name, mode: insensitive } });
     }
 
-    const [contracts, modules, projects, tasks, governanceTickets, glpiTickets] = await Promise.all([
+    const [contracts, modules, projects, tasks, governanceTickets, glpiTicketRows] = await Promise.all([
       fiscalProfile
         ? this.prisma.contract.findMany({
             where: {
@@ -131,7 +133,7 @@ export class UserAssignmentsService {
       this.prisma.projectTask.findMany({
         where: { OR: taskMatches },
         orderBy: [{ dueDate: "asc" }, { sortOrder: "asc" }],
-        take: 100,
+        take: ASSIGNMENTS_LIST_CAP,
         select: {
           id: true,
           title: true,
@@ -146,7 +148,7 @@ export class UserAssignmentsService {
       this.prisma.ticketGovernance.findMany({
         where: { watchers: { some: { userId: actor.userId } } },
         orderBy: [{ status: "asc" }, { slaDeadline: "asc" }],
-        take: 100,
+        take: ASSIGNMENTS_LIST_CAP,
         select: {
           id: true,
           ticketId: true,
@@ -160,7 +162,7 @@ export class UserAssignmentsService {
       this.prisma.ticket.findMany({
         where: { OR: ticketMatches },
         orderBy: [{ dateModification: "desc" }],
-        take: 100,
+        take: ASSIGNMENTS_LIST_CAP,
         select: {
           glpiTicketId: true,
           title: true,
@@ -175,11 +177,22 @@ export class UserAssignmentsService {
       })
     ]);
 
+    const tasksTruncated = tasks.length >= ASSIGNMENTS_LIST_CAP;
+    const governanceTruncated = governanceTickets.length >= ASSIGNMENTS_LIST_CAP;
+    const glpiTruncated = glpiTicketRows.length >= ASSIGNMENTS_LIST_CAP;
+
     const tasksPending = tasks.filter((t) => !projectTaskCompleted(t.status)).sort(compareTaskDueAsc);
     const tasksDone = tasks.filter((t) => projectTaskCompleted(t.status)).sort(compareTaskDueDesc);
     const tasksOrdered = [...tasksPending, ...tasksDone];
 
     const now = new Date();
+
+    const glpiTicketsFiltered = glpiTicketRows.filter(
+      (ticket) =>
+        ticket.requesterEmail?.toLowerCase() === actor.email.toLowerCase() ||
+        containsAny(ticket.assignedUserName, candidates) ||
+        containsAny(ticket.requesterEmail, candidates)
+    );
 
     return {
       user: {
@@ -187,13 +200,19 @@ export class UserAssignmentsService {
         email: actor.email,
         fiscalProfile
       },
+      listLimits: {
+        maxItemsPerList: ASSIGNMENTS_LIST_CAP,
+        tasksTruncated,
+        governanceTruncated,
+        glpiTruncated
+      },
       totals: {
         contracts: contracts.length,
         modules: modules.length,
         projects: projects.length,
         tasks: tasksPending.length,
         governanceTickets: governanceTickets.length,
-        glpiTickets: glpiTickets.length
+        glpiTickets: glpiTicketsFiltered.length
       },
       contracts: contracts.map((contract) => ({
         ...contract,
@@ -256,16 +275,10 @@ export class UserAssignmentsService {
         slaDeadline: ticket.slaDeadline?.toISOString() ?? null,
         role: ticket.watchers.map((watcher) => watcher.role).join(", ") || "Observador"
       })),
-      glpiTickets: glpiTickets
-        .filter((ticket) =>
-          ticket.requesterEmail?.toLowerCase() === actor.email.toLowerCase() ||
-          containsAny(ticket.assignedUserName, candidates) ||
-          containsAny(ticket.requesterEmail, candidates)
-        )
-        .map((ticket) => ({
-          ...ticket,
-          open: openTicketStatus(ticket.status)
-        }))
+      glpiTickets: glpiTicketsFiltered.map((ticket) => ({
+        ...ticket,
+        open: openTicketStatus(ticket.status)
+      }))
     };
   }
 }
