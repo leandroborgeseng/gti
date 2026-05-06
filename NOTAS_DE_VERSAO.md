@@ -28,6 +28,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionado alerta visual e mensagem em pop-up quando o Código do Item obrigatório de uma funcionalidade contratual não é preenchido antes de salvar.
 - O histórico auditável dos itens contratuais passou a mostrar o antes e depois de alterações no Código do Item e na descrição/nome da funcionalidade.
 - Adicionados filtros por status de entrega, criticidade e texto na gestão de módulos e funcionalidades dos contratos.
+- No quadro de chamados GLPI, segundo painel métrico («Tempo desde a última interação»), no mesmo formato do painel de idade dos abertos: mostra quantos chamados estão em cada faixa de dias desde a última alteração vista no GLPI (cache). Ao clicar numa faixa, o Kanban filtra apenas esses chamados.
 
 ### Alterado
 

@@ -326,6 +326,7 @@ export type KanbanBoardPayload = {
   orderedStatusKeys: string[];
   columns: Array<{ statusKey: string; count: number; columnStyle: string; cards: KanbanCardDto[] }>;
   ageBuckets: OpenAgeBuckets;
+  idleBuckets: OpenAgeBuckets;
   ageTotal: number;
   statuses: string[];
   groups: string[];
@@ -333,6 +334,7 @@ export type KanbanBoardPayload = {
   /** Eco da URL / estado derivado para o formulário e links. */
   cohortParam: string;
   ageBucketParam: string;
+  idleBucketParam: string;
   idleMin: string;
   groupInJson: string;
   groupNull: boolean;
@@ -415,6 +417,8 @@ function requesterPatchFromTopRequesterLabel(label: string): { requesterEmail?: 
 const OPS_TABLE_LINK_PATCH: Record<string, string | undefined> = {
   open: "1",
   cohort: "",
+  ageBucket: "",
+  idleBucket: "",
   idleMin: "",
   groupInJson: "",
   groupNull: "",
@@ -435,10 +439,12 @@ function readChamadosFilterParts(sp: URLSearchParams): {
   groupInJson: string;
   groupNull: boolean;
   ageBucketParam: string;
+  idleBucketParam: string;
   noAssignee: boolean;
   assignedUserId: number | undefined;
   cohort: ReturnType<typeof parseOpsCohortParam>;
   ageBucket: OpenAgeBucketKey | null;
+  idleBucket: OpenAgeBucketKey | null;
   idleMinDays: number | undefined;
   groupInNames: string[] | undefined;
   onlyOpenEffective: boolean;
@@ -465,13 +471,16 @@ function readChamadosFilterParts(sp: URLSearchParams): {
   const groupInJson = (sp.get("groupInJson") || "").trim();
   const groupNull = sp.get("groupNull") === "1";
   const ageBucketParam = (sp.get("ageBucket") || "").trim();
+  const idleBucketParam = (sp.get("idleBucket") || "").trim();
   const cohort = parseOpsCohortParam(cohortParam);
   const ageBucket = parseOpenAgeBucketParam(ageBucketParam);
+  const idleBucket = parseOpenAgeBucketParam(idleBucketParam);
   const idleMinDays = parseIdleMinParam(idleMinRaw);
   const groupInNames = parseGroupInJsonParam(groupInJson);
   const drillSlice = Boolean(
     cohort ||
       ageBucket ||
+      idleBucket ||
       idleMinDays ||
       (groupInNames && groupInNames.length > 0) ||
       (groupNull && !(groupInNames && groupInNames.length > 0))
@@ -508,8 +517,10 @@ function readChamadosFilterParts(sp: URLSearchParams): {
     groupInJson,
     groupNull,
     ageBucketParam,
+    idleBucketParam,
     cohort,
     ageBucket,
+    idleBucket,
     idleMinDays,
     groupInNames,
     onlyOpenEffective,
@@ -839,12 +850,14 @@ export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): 
     orderedStatusKeys: [],
     columns: [],
     ageBuckets: EMPTY_OPEN_AGE_BUCKETS,
+    idleBuckets: EMPTY_OPEN_AGE_BUCKETS,
     ageTotal: 0,
     statuses: [],
     groups: [],
     operationsSummary: emptyOperationsSummary(),
     cohortParam: p.cohortParam,
     ageBucketParam: p.ageBucketParam,
+    idleBucketParam: p.idleBucketParam,
     idleMin: p.idleMinRaw,
     groupInJson: p.groupInJson,
     groupNull: p.groupNull,
@@ -861,6 +874,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
   const narrowOpts = {
     cohort: p.cohort ?? undefined,
     ageBucket: p.ageBucket ?? undefined,
+    idleBucket: p.idleBucket ?? undefined,
     idleMinDays: p.idleMinDays
   };
 
@@ -922,6 +936,7 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
   ]);
   const operationsSummary = await buildChamadosOperationsSummary(whereAge, whereClosed, operationalMetrics);
   const ageBucketsResult = operationalMetrics.buckets;
+  const idleBucketsResult = operationalMetrics.idleBuckets;
   const latestTicketRows = latestTicketRowsRaw as KanbanTicketListRow[];
 
   const assignedUsers = (assigneeRowsRaw as { assignedUserId: number | null; assignedUserName: string | null }[])
@@ -1043,12 +1058,14 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     orderedStatusKeys,
     columns,
     ageBuckets: ageBucketsResult,
+    idleBuckets: idleBucketsResult,
     ageTotal: sumOpenAgeBuckets(ageBucketsResult),
     statuses,
     groups,
     operationsSummary,
     cohortParam: p.cohortParam,
     ageBucketParam: p.ageBucketParam,
+    idleBucketParam: p.idleBucketParam,
     idleMin: p.idleMinRaw,
     groupInJson: p.groupInJson,
     groupNull: p.groupNull,

@@ -11,7 +11,7 @@ import type { HistoryTimelineItemDto, TicketHistoryBundleDto } from "@/glpi/serv
 import { sanitizeAndProxyTicketHtml } from "@/lib/glpi-ticket-html";
 import { TicketHtmlPreview } from "@/components/chamados/ticket-html-preview";
 import { TicketRichEditor } from "@/components/chamados/ticket-rich-editor";
-import { AgingOpenDashboard } from "./aging-open-dashboard";
+import { AgingOpenDashboard, IdleSinceIterationDashboard } from "./aging-open-dashboard";
 import { ChamadosOperationsPanel } from "./chamados-operations-panel";
 
 type TicketSidebarDto = {
@@ -353,6 +353,8 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
             : {}),
           ...(initial.noAssignee ? { noAssignee: true } : {}),
           cohort: initial.cohortParam,
+          ageBucket: initial.ageBucketParam,
+          idleBucket: initial.idleBucketParam,
           idleMin: initial.idleMin,
           groupInJson: initial.groupInJson,
           groupNull: initial.groupNull
@@ -406,6 +408,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     }
     if (initial.cohortParam) sp.set("cohort", initial.cohortParam);
     if (initial.ageBucketParam) sp.set("ageBucket", initial.ageBucketParam);
+    if (initial.idleBucketParam) sp.set("idleBucket", initial.idleBucketParam);
     if (initial.idleMin) sp.set("idleMin", initial.idleMin);
     if (initial.groupInJson?.trim()) sp.set("groupInJson", initial.groupInJson);
     if (initial.groupNull) sp.set("groupNull", "1");
@@ -422,6 +425,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     initial.noAssignee,
     initial.cohortParam,
     initial.ageBucketParam,
+    initial.idleBucketParam,
     initial.idleMin,
     initial.groupInJson,
     initial.groupNull
@@ -447,6 +451,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
     const sp = new URLSearchParams(kanbanHrefQuery);
     sp.delete("cohort");
     sp.delete("ageBucket");
+    sp.delete("idleBucket");
     sp.delete("idleMin");
     sp.delete("groupInJson");
     sp.delete("groupNull");
@@ -487,7 +492,21 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                 : initial.ageBucketParam === "noDate"
                   ? "Sem data de abertura"
                   : "";
-    const idlePill = initial.idleMin ? `Inatividade GLPI ≥ ${initial.idleMin} d` : "";
+    const idleBucketPill =
+      initial.idleBucketParam === "week"
+        ? "Interação: até 7 dias (GLPI)"
+        : initial.idleBucketParam === "days15"
+          ? "Interação: 8 a 15 dias"
+          : initial.idleBucketParam === "days30"
+            ? "Interação: 16 a 30 dias"
+            : initial.idleBucketParam === "days60"
+              ? "Interação: 31 a 60 dias"
+              : initial.idleBucketParam === "over60"
+                ? "Interação: mais de 60 dias"
+                : initial.idleBucketParam === "noDate"
+                  ? "Interação: sem data"
+                  : "";
+    const idleMinPill = initial.idleMin ? `Inatividade GLPI ≥ ${initial.idleMin} d` : "";
     const groupInPill = initial.groupInJson?.trim() ? "Top 3 grupos (concentração)" : "";
     const groupNullPill = initial.groupNull ? "Sem grupo (contrato)" : "";
     const assigneePill = initial.noAssignee
@@ -514,7 +533,8 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       pill("Atribuído", assigneePill || "Todos", !assigneePill && !initial.noAssignee),
       pill("Coorte idade", cohortPill || "—", !cohortPill),
       pill("Faixa de idade", ageBucketPill || "—", !ageBucketPill),
-      pill("Inatividade", idlePill || "—", !idlePill),
+      pill("Faixa desde última interação", idleBucketPill || "—", !idleBucketPill),
+      pill("Inatividade (mín. dias)", idleMinPill || "—", !idleMinPill),
       pill("Grupos (IN)", groupInPill || "—", !groupInPill),
       pill("Sem grupo", groupNullPill || "—", !groupNullPill),
       pill(
@@ -549,6 +569,12 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
         activeAgeBucket={initial.ageBucketParam}
       />
 
+      <IdleSinceIterationDashboard
+        buckets={initial.idleBuckets}
+        kanbanHrefQuery={kanbanHrefQuery}
+        activeIdleBucket={initial.idleBucketParam}
+      />
+
       <ChamadosOperationsPanel
         summary={initial.operationsSummary}
         ticketSyncScope={initial.ticketSyncScope}
@@ -560,8 +586,8 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
           <header className="filters-shell__head">
             <h2 className="filters-shell__title">Filtros do Kanban</h2>
             <p className="filters-shell__lede">
-              Aplicam ao quadro, ao painel de idade, aos indicadores de operação (stock aberto) e ao recálculo de pendência
-              (até 200 cards por coluna)
+              Aplicam ao quadro, aos painéis de idade e de tempo desde a última interação GLPI, aos indicadores de operação (stock
+              aberto) e ao recálculo de pendência (até 200 cards por coluna)
             </p>
           </header>
           <div className="filters-shell__pills" aria-label="Filtros aplicados">
@@ -583,10 +609,15 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
               </Link>
             </p>
           ) : null}
-          {initial.cohortParam || initial.ageBucketParam || initial.idleMin || initial.groupInJson?.trim() || initial.groupNull ? (
+          {initial.cohortParam ||
+          initial.ageBucketParam ||
+          initial.idleBucketParam ||
+          initial.idleMin ||
+          initial.groupInJson?.trim() ||
+          initial.groupNull ? (
             <p className="filters-shell__requester-clear">
               <Link href={chamadosHrefClearOpsDrill} className="filters-shell__requester-clear-link">
-                Remover coorte / faixa de idade / inatividade / top 3 grupos
+                Remover coorte / faixas de idade ou interação / inatividade mínima / top 3 grupos
               </Link>
             </p>
           ) : null}
@@ -678,6 +709,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
             {initial.requesterName ? <input type="hidden" name="requesterName" value={initial.requesterName} /> : null}
             {initial.cohortParam ? <input type="hidden" name="cohort" value={initial.cohortParam} /> : null}
             {initial.ageBucketParam ? <input type="hidden" name="ageBucket" value={initial.ageBucketParam} /> : null}
+            {initial.idleBucketParam ? <input type="hidden" name="idleBucket" value={initial.idleBucketParam} /> : null}
             {initial.idleMin ? <input type="hidden" name="idleMin" value={initial.idleMin} /> : null}
             {initial.groupInJson?.trim() ? (
               <input type="hidden" name="groupInJson" value={initial.groupInJson} />

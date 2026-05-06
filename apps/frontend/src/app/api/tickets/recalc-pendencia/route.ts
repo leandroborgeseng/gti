@@ -4,6 +4,7 @@ import { logger } from "@/glpi/config/logger";
 import { toErrorLog } from "@/glpi/errors";
 import { buildKanbanWhere, parseOpsCohortParam, type KanbanFilterInput } from "@/glpi/utils/kanban-filters";
 import { narrowTicketWhereByComputedOpts } from "@/glpi/utils/kanban-narrow-computed";
+import { parseOpenAgeBucketParam } from "@/glpi/utils/open-ticket-aging";
 import { loadAndPersistWaitingParty } from "@/glpi/services/glpi-ticket-history.service";
 
 export const runtime = "nodejs";
@@ -34,10 +35,14 @@ export async function POST(req: Request): Promise<NextResponse> {
           : undefined;
     const onlyOpenRaw = body.open === true || body.open === 1 || body.open === "1";
     const cohortParam = typeof body.cohort === "string" ? body.cohort : "";
+    const ageBucketParam = typeof body.ageBucket === "string" ? body.ageBucket : "";
+    const idleBucketParam = typeof body.idleBucket === "string" ? body.idleBucket : "";
     const idleMinRaw = typeof body.idleMin === "string" ? body.idleMin : "";
     const groupInJson = typeof body.groupInJson === "string" ? body.groupInJson : "";
     const groupNull = body.groupNull === true || body.groupNull === 1 || body.groupNull === "1";
     const cohort = parseOpsCohortParam(cohortParam);
+    const ageBucket = parseOpenAgeBucketParam(ageBucketParam);
+    const idleBucket = parseOpenAgeBucketParam(idleBucketParam);
     const idleMinDays = Number.parseInt(String(idleMinRaw).trim(), 10);
     const idleOk = Number.isFinite(idleMinDays) && idleMinDays > 0 ? idleMinDays : undefined;
     let groupInNames: string[] | undefined;
@@ -49,6 +54,8 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
     const drillSlice = Boolean(
       cohort ||
+        ageBucket ||
+        idleBucket ||
         idleOk ||
         (groupInNames && groupInNames.length > 0) ||
         (groupNull && !(groupInNames && groupInNames.length > 0))
@@ -71,6 +78,8 @@ export async function POST(req: Request): Promise<NextResponse> {
     let where = buildKanbanWhere(filterBase);
     where = await narrowTicketWhereByComputedOpts(where, {
       cohort: cohort ?? undefined,
+      ageBucket: ageBucket ?? undefined,
+      idleBucket: idleBucket ?? undefined,
       idleMinDays: idleOk
     });
     const rows = await prisma.ticket.findMany({

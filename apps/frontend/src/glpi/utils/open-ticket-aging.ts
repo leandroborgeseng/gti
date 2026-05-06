@@ -82,8 +82,29 @@ export function ticketInOpenAgeBucket(
   return d > 60;
 }
 
+/**
+ * Mesmas faixas que `ticketInOpenAgeBucket`, aplicadas aos dias desde a última alteração GLPI
+ * (`dateModification`, com fallback para abertura — ver `ticketIdleDaysFloor`).
+ */
+export function ticketInIdleBucket(
+  dateCreation: string | null | undefined,
+  dateModification: string | null | undefined,
+  refMs: number,
+  bucket: OpenAgeBucketKey
+): boolean {
+  const idle = ticketIdleDaysFloor(dateCreation, dateModification, refMs);
+  if (idle == null) return bucket === "noDate";
+  if (bucket === "week") return idle <= 7;
+  if (bucket === "days15") return idle >= 8 && idle <= 15;
+  if (bucket === "days30") return idle >= 16 && idle <= 30;
+  if (bucket === "days60") return idle >= 31 && idle <= 60;
+  return idle > 60;
+}
+
 export type OpenTicketOperationalMetrics = {
   buckets: OpenAgeBuckets;
+  /** Distribuição pelos dias desde a última alteração GLPI (`dateModification`). */
+  idleBuckets: OpenAgeBuckets;
   /** Somatório de min(dias_abertos, 90) por ticket com data de abertura válida. */
   weightedDaysCapped90: number;
   /** Última alteração no GLPI há ≥ 7 dias (usa `dateModification`; se inválida, usa abertura). */
@@ -93,7 +114,7 @@ export type OpenTicketOperationalMetrics = {
 };
 
 /**
- * Uma leitura à base: faixas de idade, peso–idade (soma cap 90) e inatividade pela última alteração GLPI.
+ * Uma leitura à base: faixas de idade, faixas de inatividade GLPI (última alteração), peso–idade (soma cap 90) e contagem de tickets parados ≥7/≥14 dias.
  * @param filterWhere Critérios adicionais (ex.: mesmo `buildKanbanWhere` com `forceNonClosed: true`).
  */
 export async function getOpenTicketOperationalMetrics(filterWhere?: TicketWhereInput): Promise<OpenTicketOperationalMetrics> {
@@ -112,11 +133,34 @@ export async function getOpenTicketOperationalMetrics(filterWhere?: TicketWhereI
     over60: 0,
     noDate: 0
   };
+  const idleBuckets: OpenAgeBuckets = {
+    week: 0,
+    days15: 0,
+    days30: 0,
+    days60: 0,
+    over60: 0,
+    noDate: 0
+  };
   let weightedDaysCapped90 = 0;
   let idleGlpiModDays7Plus = 0;
   let idleGlpiModDays14Plus = 0;
 
   for (const row of rows) {
+    const idleDaysAll = ticketIdleDaysFloor(row.dateCreation, row.dateModification, now);
+    if (idleDaysAll == null) {
+      idleBuckets.noDate += 1;
+    } else if (idleDaysAll <= 7) {
+      idleBuckets.week += 1;
+    } else if (idleDaysAll <= 15) {
+      idleBuckets.days15 += 1;
+    } else if (idleDaysAll <= 30) {
+      idleBuckets.days30 += 1;
+    } else if (idleDaysAll <= 60) {
+      idleBuckets.days60 += 1;
+    } else {
+      idleBuckets.over60 += 1;
+    }
+
     const daysOpen = ticketDaysOpenFloor(row.dateCreation, now);
     if (daysOpen == null) {
       buckets.noDate += 1;
@@ -136,16 +180,15 @@ export async function getOpenTicketOperationalMetrics(filterWhere?: TicketWhereI
       buckets.over60 += 1;
     }
 
-    const idleDays = ticketIdleDaysFloor(row.dateCreation, row.dateModification, now);
-    if (idleDays != null && idleDays >= 7) {
+    if (idleDaysAll != null && idleDaysAll >= 7) {
       idleGlpiModDays7Plus += 1;
     }
-    if (idleDays != null && idleDays >= 14) {
+    if (idleDaysAll != null && idleDaysAll >= 14) {
       idleGlpiModDays14Plus += 1;
     }
   }
 
-  return { buckets, weightedDaysCapped90, idleGlpiModDays7Plus, idleGlpiModDays14Plus };
+  return { buckets, idleBuckets, weightedDaysCapped90, idleGlpiModDays7Plus, idleGlpiModDays14Plus };
 }
 
 /**

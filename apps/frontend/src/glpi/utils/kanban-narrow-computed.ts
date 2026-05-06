@@ -3,6 +3,7 @@ import type { TicketWhereInput } from "../types/ticket-where";
 import {
   type OpenAgeBucketKey,
   ticketIdleDaysFloor,
+  ticketInIdleBucket,
   ticketInOpenAgeBucket,
   ticketInOpsOver30PctCohort,
   ticketInOpsOver60PctCohort
@@ -11,6 +12,8 @@ import {
 export type KanbanComputedNarrowOpts = {
   cohort?: "ops_over30" | "ops_over60";
   ageBucket?: OpenAgeBucketKey;
+  /** Faixa de dias desde a última alteração GLPI (`idleBucket` na URL). */
+  idleBucket?: OpenAgeBucketKey;
   idleMinDays?: number;
 };
 
@@ -28,6 +31,9 @@ function rowMatchesComputed(
   if (opts.ageBucket) {
     ok = ok && ticketInOpenAgeBucket(row.dateCreation, refMs, opts.ageBucket);
   }
+  if (opts.idleBucket) {
+    ok = ok && ticketInIdleBucket(row.dateCreation, row.dateModification, refMs, opts.idleBucket);
+  }
   if (opts.idleMinDays != null && opts.idleMinDays > 0) {
     const idle = ticketIdleDaysFloor(row.dateCreation, row.dateModification, refMs);
     ok = ok && idle != null && idle >= opts.idleMinDays;
@@ -43,7 +49,7 @@ export async function narrowTicketWhereByComputedOpts(
   baseWhere: TicketWhereInput,
   opts: KanbanComputedNarrowOpts
 ): Promise<TicketWhereInput> {
-  if (!opts.cohort && !opts.ageBucket && (opts.idleMinDays == null || opts.idleMinDays <= 0)) {
+  if (!opts.cohort && !opts.ageBucket && !opts.idleBucket && (opts.idleMinDays == null || opts.idleMinDays <= 0)) {
     return baseWhere;
   }
   const refMs = Date.now();

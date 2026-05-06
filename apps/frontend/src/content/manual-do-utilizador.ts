@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-04-29";
+export const MANUAL_LAST_UPDATED = "2026-05-05";
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -104,7 +104,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/chamados", label: "Chamados (GLPI)" },
-          " — Quadro tipo Kanban com chamados sincronizados a partir do GLPI. Pode filtrar por texto, estado, grupo e outras opções. Serve à operação diária (quem trata o quê) e complementa a visão por contrato nas ligações GLPI do detalhe do contrato."
+          " — Quadro tipo Kanban com chamados sincronizados a partir do GLPI. No topo há dois painéis sobre o stock aberto com os filtros atuais: idade desde a abertura e tempo desde a última alteração vista no GLPI (proxy de «última interação» no ticket); em cada faixa pode clicar para filtrar o quadro. Também pode filtrar por texto, estado, grupo, pendência inferida, técnico atribuído e outras opções. Serve à operação diária (quem trata o quê) e complementa a visão por contrato nas ligações GLPI do detalhe do contrato."
         ]
       },
       {
