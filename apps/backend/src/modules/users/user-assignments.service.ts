@@ -25,6 +25,23 @@ function openTicketStatus(status: string | null | undefined): boolean {
   return !["solved", "closed", "fechado", "resolvido", "6", "5"].includes(normalizeText(status));
 }
 
+/** Alinhado ao frontend (`classifyStatus` === done): feito / concluído / done. */
+function projectTaskCompleted(status: string | null | undefined): boolean {
+  const n = normalizeText(status);
+  if (!n) return false;
+  return n.includes("feito") || n.includes("conclu") || n.includes("done");
+}
+
+function compareTaskDueAsc(a: { dueDate: Date | null }, b: { dueDate: Date | null }): number {
+  const ta = a.dueDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  const tb = b.dueDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  return ta - tb;
+}
+
+function compareTaskDueDesc(a: { dueDate: Date | null }, b: { dueDate: Date | null }): number {
+  return compareTaskDueAsc(b, a);
+}
+
 @Injectable()
 export class UserAssignmentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -158,6 +175,10 @@ export class UserAssignmentsService {
       })
     ]);
 
+    const tasksPending = tasks.filter((t) => !projectTaskCompleted(t.status)).sort(compareTaskDueAsc);
+    const tasksDone = tasks.filter((t) => projectTaskCompleted(t.status)).sort(compareTaskDueDesc);
+    const tasksOrdered = [...tasksPending, ...tasksDone];
+
     const now = new Date();
 
     return {
@@ -170,7 +191,7 @@ export class UserAssignmentsService {
         contracts: contracts.length,
         modules: modules.length,
         projects: projects.length,
-        tasks: tasks.length,
+        tasks: tasksPending.length,
         governanceTickets: governanceTickets.length,
         glpiTickets: glpiTickets.length
       },
@@ -201,8 +222,13 @@ export class UserAssignmentsService {
       }),
       projects: projects.map((project) => {
         const total = project.tasks.length;
-        const done = project.tasks.filter((task) => normalizeText(task.status).includes("conclu") || normalizeText(task.status).includes("done")).length;
-        const overdue = project.tasks.filter((task) => task.dueDate && task.dueDate < now && !(normalizeText(task.status).includes("conclu") || normalizeText(task.status).includes("done"))).length;
+        const done = project.tasks.filter((task) => projectTaskCompleted(task.status)).length;
+        const overdue = project.tasks.filter(
+          (task) =>
+            task.dueDate &&
+            task.dueDate < now &&
+            !projectTaskCompleted(task.status)
+        ).length;
         return {
           id: project.id,
           name: project.name,
@@ -215,7 +241,7 @@ export class UserAssignmentsService {
           overdue
         };
       }),
-      tasks: tasks.map((task) => ({
+      tasks: tasksOrdered.map((task) => ({
         id: task.id,
         title: task.title,
         status: task.status || "Sem status",

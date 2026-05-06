@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { getMyAssignments, type MyAssignments } from "@/lib/api";
 import { safeLoad } from "@/lib/api-load";
+import { classifyStatus } from "@/lib/projects-task-status";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -60,8 +61,15 @@ function Section({
   );
 }
 
+function partitionProjectTasks(tasks: MyAssignments["tasks"]): { pending: MyAssignments["tasks"]; completed: MyAssignments["tasks"] } {
+  const pending = tasks.filter((t) => classifyStatus(t.status) !== "done");
+  const completed = tasks.filter((t) => classifyStatus(t.status) === "done");
+  return { pending, completed };
+}
+
 export default async function MyAssignmentsPage(): Promise<JSX.Element> {
   const { data, error } = await safeLoad(() => getMyAssignments(), emptyAssignments);
+  const { pending: tasksPending, completed: tasksCompleted } = partitionProjectTasks(data.tasks);
 
   return (
     <div className="space-y-6">
@@ -110,23 +118,70 @@ export default async function MyAssignmentsPage(): Promise<JSX.Element> {
           </>
         </Section>
 
-        <Section title="Tarefas de projetos" count={data.tasks.length} empty="Nenhuma tarefa relacionada encontrada.">
-          <>
-            {data.tasks.map((task) => (
-              <div key={task.id} className="rounded-lg border bg-background p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <Link href={`/projetos/${task.project.id}` as Route} className="font-medium text-foreground underline-offset-4 hover:underline">
-                    {task.title}
-                  </Link>
-                  <StatusPill>{task.status}</StatusPill>
+        <Card className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground">Tarefas de projetos</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                title="Tarefas ainda não marcadas como feitas / concluídas"
+              >
+                {tasksPending.length} pendente(s)
+              </span>
+              {tasksCompleted.length > 0 ? (
+                <span className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                  {tasksCompleted.length} concluída(s)
+                </span>
+              ) : null}
+            </div>
+          </div>
+          {tasksPending.length === 0 && tasksCompleted.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">Nenhuma tarefa relacionada encontrada.</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {tasksPending.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma tarefa pendente; abaixo aparecem apenas as já concluídas.</p>
+              ) : null}
+              {tasksPending.map((task) => (
+                <div key={task.id} className="rounded-lg border bg-background p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <Link href={`/projetos/${task.project.id}` as Route} className="font-medium text-foreground underline-offset-4 hover:underline">
+                      {task.title}
+                    </Link>
+                    <StatusPill>{task.status}</StatusPill>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Projeto: {task.project.name} · Grupo: {task.group.name} · Prazo: {formatDate(task.dueDate)}
+                  </p>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Projeto: {task.project.name} · Grupo: {task.group.name} · Prazo: {formatDate(task.dueDate)}
-                </p>
-              </div>
-            ))}
-          </>
-        </Section>
+              ))}
+              {tasksCompleted.length > 0 ? (
+                <div className="space-y-3 border-t border-border pt-4 mt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Concluídas</p>
+                  {tasksCompleted.map((task) => (
+                    <div
+                      key={task.id}
+                      className="rounded-lg border border-muted bg-muted/35 p-3 text-muted-foreground shadow-none"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <Link
+                          href={`/projetos/${task.project.id}` as Route}
+                          className="font-medium text-foreground/85 underline-offset-4 hover:underline"
+                        >
+                          {task.title}
+                        </Link>
+                        <StatusPill tone="green">{task.status}</StatusPill>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Projeto: {task.project.name} · Grupo: {task.group.name} · Prazo: {formatDate(task.dueDate)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </Card>
 
         <Section title="Projetos supervisionados" count={data.projects.length} empty="Nenhum projeto supervisionado encontrado.">
           <>

@@ -42,7 +42,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Fiscais e gestores agora podem ser vinculados opcionalmente a uma conta de usuário do sistema.
 - O botão Relatórios foi removido temporariamente do menu principal.
 - Adicionada a tela Minhas atribuições para o usuário acompanhar chamados, tarefas, projetos, contratos e módulos vinculados a ele.
-- O fluxo de metas deixou de usar vínculos diretos a contratos ou tickets; agora a meta pode apontar para um projeto inteiro ou para tarefas específicas, e a relação com chamado ocorre pela tarefa do projeto.
+- Em Minhas atribuições, a secção «Tarefas de projetos» lista primeiro as tarefas pendentes; as concluídas (status reconhecido como feito/concluído, alinhado ao quadro de projetos) ficam abaixo, com fundo mais suave. O número «Tarefas» no resumo do topo passa a contar só pendentes.
 
 ### Como manter
 

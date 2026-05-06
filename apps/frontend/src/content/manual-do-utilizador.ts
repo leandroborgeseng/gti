@@ -142,7 +142,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/minhas-atribuicoes", label: "Minhas atribuições" },
-          " — Janela única para o usuário logado acompanhar chamados GLPI, tarefas de projetos, projetos supervisionados, contratos como fiscal ou gestor, módulos sob sua validação e chamados de governança vinculados ao seu usuário."
+          " — Janela única para o usuário logado acompanhar chamados GLPI, tarefas de projetos, projetos supervisionados, contratos como fiscal ou gestor, módulos sob sua validação e chamados de governança vinculados ao seu usuário. Nas tarefas de projeto, as pendentes aparecem primeiro e as já concluídas ficam listadas abaixo, em bloco separado e com estilo mais discreto; o contador «Tarefas» no topo resume apenas as pendentes."
         ]
       },
       {
