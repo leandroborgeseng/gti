@@ -1,4 +1,5 @@
 import { buildFallbackKanbanBoardPayload, loadKanbanBoardPayload } from "@/glpi/kanban-load";
+import { getJwtRoleFromCookies } from "@/lib/session-role-server";
 import { ChamadosBoard } from "./chamados-board";
 
 export const dynamic = "force-dynamic";
@@ -36,10 +37,12 @@ function buildSearchParams(raw: Search): URLSearchParams {
 
 export default async function ChamadosPage({ searchParams }: { searchParams: Search }): Promise<JSX.Element> {
   const sp = buildSearchParams(searchParams);
-  let payload = buildFallbackKanbanBoardPayload(sp);
+  const role = await getJwtRoleFromCookies();
+  const canForceGlpiSync = role === "ADMIN" || role === "EDITOR";
+  let payload = buildFallbackKanbanBoardPayload(sp, { canForceGlpiSync });
   let loadError: string | null = null;
   try {
-    payload = await loadKanbanBoardPayload(sp);
+    payload = await loadKanbanBoardPayload(sp, { canForceGlpiSync });
   } catch (err) {
     loadError = err instanceof Error ? err.message : String(err);
   }

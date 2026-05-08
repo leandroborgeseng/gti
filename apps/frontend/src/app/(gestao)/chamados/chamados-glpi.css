@@ -66,6 +66,53 @@
 .chamados-glpi-page .page-title { font-size: clamp(1.65rem, 3vw, 2.1rem); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.5rem 0; color: var(--ink); }
 .chamados-glpi-page .page-lead { margin: 0; max-width: 62ch; font-size: 0.95rem; line-height: 1.55; color: var(--ink-muted); }
 .chamados-glpi-page .muted { color: var(--ink-muted); font-size: 0.9rem; }
+
+.chamados-glpi-page .chamados-glpi-sync-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  margin: 0 0 1.25rem 0;
+  padding: 0.95rem 1.15rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow-sm);
+}
+.chamados-glpi-page .chamados-glpi-sync-banner__text {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.chamados-glpi-page .chamados-glpi-sync-banner__main {
+  margin: 0 0 0.35rem 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.chamados-glpi-page .chamados-glpi-sync-banner__err {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #b45309;
+  font-weight: 500;
+}
+.chamados-glpi-page .chamados-glpi-sync-banner__muted {
+  margin: 0.45rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+.chamados-glpi-page .chamados-glpi-sync-banner__actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+.chamados-glpi-page .chamados-glpi-sync-banner__btn {
+  white-space: nowrap;
+}
+
 .chamados-glpi-page .kanban-filters-stack {
   margin: 0 0 1.35rem 0;
 }

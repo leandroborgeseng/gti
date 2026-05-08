@@ -17,6 +17,12 @@ import {
   type OpenAgeBuckets,
   type OpenTicketOperationalMetrics
 } from "./utils/open-ticket-aging";
+import { getTicketSyncScope } from "./utils/ticket-sync-scope";
+import {
+  mergeGlpiSyncStatusForApi,
+  readGlpiSyncStatusFromDbDetailed
+} from "./glpi-sync-status-persistence";
+import { mergeColumnOrder, readKanbanSettings, type KanbanSettings } from "./kanban-settings";
 
 const EMPTY_OPEN_AGE_BUCKETS: OpenAgeBuckets = {
   week: 0,
@@ -26,8 +32,6 @@ const EMPTY_OPEN_AGE_BUCKETS: OpenAgeBuckets = {
   over60: 0,
   noDate: 0
 };
-import { getTicketSyncScope } from "./utils/ticket-sync-scope";
-import { mergeColumnOrder, readKanbanSettings, type KanbanSettings } from "./kanban-settings";
 
 const KANBAN_SYNC_STALE_MS = 24 * 60 * 60 * 1000;
 
@@ -311,6 +315,59 @@ export type ChamadosAssigneeWorkloadRow = {
   filterHrefPatch?: Record<string, string | undefined>;
 };
 
+/** Estado combinado BD + processo atual, para faixa «última sync» nos chamados. */
+export type KanbanGlpiSyncBanner = {
+  lastSuccessAt: string | null;
+  lastFinishedAt: string | null;
+  isRunning: boolean;
+  lastError: string | null;
+  /** `GLPI_CRON_DISABLED=1` neste processo (apenas informativo). */
+  cronDisabled: boolean;
+};
+
+const EMPTY_GLPI_SYNC_BANNER: KanbanGlpiSyncBanner = {
+  lastSuccessAt: null,
+  lastFinishedAt: null,
+  isRunning: false,
+  lastError: null,
+  cronDisabled: false
+};
+
+async function loadGlpiSyncBannerState(): Promise<KanbanGlpiSyncBanner> {
+  const cronDisabled = process.env.GLPI_CRON_DISABLED === "1";
+  try {
+    const dbRead = await readGlpiSyncStatusFromDbDetailed();
+    try {
+      const mod = await import("./sync-cron");
+      const merged = mergeGlpiSyncStatusForApi(dbRead.snapshot, { ...mod.syncStatus });
+      const { persistedAt: _p, ...rest } = merged;
+      return {
+        lastSuccessAt: rest.lastSuccessAt ?? null,
+        lastFinishedAt: rest.lastFinishedAt ?? null,
+        isRunning: rest.isRunning,
+        lastError: rest.lastError ?? null,
+        cronDisabled
+      };
+    } catch {
+      const snap = dbRead.snapshot;
+      return {
+        lastSuccessAt: snap?.lastSuccessAt ?? null,
+        lastFinishedAt: snap?.lastFinishedAt ?? null,
+        isRunning: snap?.isRunning ?? false,
+        lastError: snap?.lastError ?? null,
+        cronDisabled
+      };
+    }
+  } catch {
+    return { ...EMPTY_GLPI_SYNC_BANNER, cronDisabled };
+  }
+}
+
+export type LoadKanbanBoardOptions = {
+  /** ADMIN e EDITOR podem usar «Sincronizar agora» na página de chamados. */
+  canForceGlpiSync?: boolean;
+};
+
 export type KanbanBoardPayload = {
   q: string;
   statusFilter: string;
@@ -344,6 +401,9 @@ export type KanbanBoardPayload = {
   noAssignee: boolean;
   /** Opções para o filtro «Atribuído» (distintos no cache). */
   assignedUsers: Array<{ id: number; label: string }>;
+  /** Resumo para a faixa de última sincronização GLPI. */
+  glpiSyncBanner: KanbanGlpiSyncBanner;
+  canForceGlpiSync: boolean;
 };
 
 /**
@@ -833,7 +893,10 @@ async function buildChamadosOperationsSummary(
   };
 }
 
-export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): KanbanBoardPayload {
+export function buildFallbackKanbanBoardPayload(
+  searchParams: URLSearchParams,
+  options?: LoadKanbanBoardOptions
+): KanbanBoardPayload {
   const p = readChamadosFilterParts(searchParams);
   return {
     q: p.q,
@@ -863,11 +926,16 @@ export function buildFallbackKanbanBoardPayload(searchParams: URLSearchParams): 
     groupNull: p.groupNull,
     assignedUserId: p.assignedUserId ?? null,
     noAssignee: p.noAssignee,
-    assignedUsers: []
+    assignedUsers: [],
+    glpiSyncBanner: { ...EMPTY_GLPI_SYNC_BANNER, cronDisabled: process.env.GLPI_CRON_DISABLED === "1" },
+    canForceGlpiSync: options?.canForceGlpiSync === true
   };
 }
 
-export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Promise<KanbanBoardPayload> {
+export async function loadKanbanBoardPayload(
+  searchParams: URLSearchParams,
+  options?: LoadKanbanBoardOptions
+): Promise<KanbanBoardPayload> {
   const p = readChamadosFilterParts(searchParams);
   const { q, statusFilter, groupFilter, requesterEmail, requesterName, pendenciaParam, filterBase } = p;
 
@@ -886,10 +954,11 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
 
   const whereClosed = buildKanbanWhereClosed(filterBase);
 
-  const [totalFiltered, kanbanStored, scope] = await Promise.all([
+  const [totalFiltered, kanbanStored, scope, glpiSyncBanner] = await Promise.all([
     prisma.ticket.count({ where }),
     readKanbanSettings(),
-    getTicketSyncScope()
+    getTicketSyncScope(),
+    loadGlpiSyncBannerState()
   ]);
 
   const [operationalMetrics, latestTicketRowsRaw, statusRows, groupRows, assigneeRowsRaw] = await Promise.all([
@@ -1071,6 +1140,8 @@ export async function loadKanbanBoardPayload(searchParams: URLSearchParams): Pro
     groupNull: p.groupNull,
     assignedUserId: p.assignedUserId ?? null,
     noAssignee: p.noAssignee,
-    assignedUsers
+    assignedUsers,
+    glpiSyncBanner,
+    canForceGlpiSync: options?.canForceGlpiSync === true
   };
 }

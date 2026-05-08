@@ -682,9 +682,13 @@ export async function deleteContractService(contractId: string, serviceId: strin
   return request(`/contracts/${contractId}/services/${serviceId}`, { method: "DELETE" });
 }
 
-/** Download same-origin com cookie de sessão (evita expor JWT na URL do Nest). */
-export function attachmentDownloadUrl(attachmentId: string): string {
-  return `/api/attachments/${attachmentId}/download`;
+/** Download do ficheiro (cookie de sessão). Use `inline=1` para pré-visualização no navegador (PDF/imagens). */
+export function attachmentDownloadUrl(
+  attachmentId: string,
+  options?: { inline?: boolean }
+): string {
+  const q = options?.inline ? "?inline=1" : "";
+  return `/api/attachments/${attachmentId}/download${q}`;
 }
 
 async function parseUploadError(response: Response): Promise<string> {
@@ -734,6 +738,14 @@ export async function uploadGlosaAttachment(glosaId: string, file: File): Promis
     throw new Error(await parseUploadError(response));
   }
   return (await response.json()) as AttachmentRecord;
+}
+
+export async function deleteMeasurementAttachment(measurementId: string, attachmentId: string): Promise<{ ok: true }> {
+  return request(`/measurements/${measurementId}/attachments/${attachmentId}`, { method: "DELETE" });
+}
+
+export async function deleteGlosaAttachment(glosaId: string, attachmentId: string): Promise<{ ok: true }> {
+  return request(`/glosas/${glosaId}/attachments/${attachmentId}`, { method: "DELETE" });
 }
 
 export async function getMeasurements(): Promise<Measurement[]> {
@@ -1582,6 +1594,14 @@ export async function uploadProjectTaskAttachment(projectId: string, taskId: str
     throw new Error(await parseUploadError(response));
   }
   return (await response.json()) as ProjectTaskFile;
+}
+
+export async function deleteProjectTaskAttachment(
+  projectId: string,
+  taskId: string,
+  attachmentId: string
+): Promise<{ ok: true }> {
+  return request(`/projects/${projectId}/tasks/${taskId}/attachments/${attachmentId}`, { method: "DELETE" });
 }
 
 export async function createProjectTaskComment(projectId: string, taskId: string, body: string): Promise<ProjectTaskComment> {

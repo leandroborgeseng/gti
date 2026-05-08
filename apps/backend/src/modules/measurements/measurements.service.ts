@@ -263,6 +263,17 @@ export class MeasurementsService {
     return attachment;
   }
 
+  async removeAttachment(measurementId: string, attachmentId: string): Promise<{ ok: true }> {
+    const att = await this.prisma.attachment.findFirst({
+      where: { id: attachmentId, measurementId }
+    });
+    if (!att) throw new NotFoundException("Anexo não encontrado nesta medição");
+    await this.storage.unlinkStoredByRelativeSafe(att.filePath);
+    await this.prisma.attachment.delete({ where: { id: attachmentId } });
+    await this.audit("Attachment", attachmentId, "DELETE", att, null);
+    return { ok: true };
+  }
+
   private async audit(entity: string, entityId: string, action: string, oldData: unknown, newData: unknown): Promise<void> {
     await this.prisma.auditLog.create({
       data: {

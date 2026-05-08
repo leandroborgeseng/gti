@@ -22,6 +22,7 @@
 
 ## Docker
 
-- `docker compose up --build` na raiz: **só** a imagem da app Next (ver `Dockerfile` e `docker-compose.yml`). O Postgres fica fora (ex.: Railway); defina `DATABASE_URL` no `.env` ou nas variáveis do ambiente.
+- **`docker-compose up --build`** na raiz: **só** a imagem da app Next (ver `Dockerfile` e `docker-compose.yml`). O Postgres fica fora (ex.: Railway); defina `DATABASE_URL` no `.env` ou nas variáveis do ambiente. O Compose declara volume **`gti_uploads`** → **`/app/apps/frontend/uploads`** para persistir anexos entre recriações do contentor.
+- **Railway (disco de anexos):** Volume com montagem **`/app/apps/frontend/uploads`** e **`RAILWAY_RUN_UID=0`** no serviço (sem isso, `EACCES` ao escrever no disco). O **`docker-entrypoint.sh`** exporta **`UPLOAD_ROOT`** a partir de **`RAILWAY_VOLUME_MOUNT_PATH`** quando omitido e aplica permissões antes de correr como **`node`**.
 - Arquivo `.env` na raiz (referenciado por `docker-compose.yml`) com `DATABASE_URL` (Postgres externo, ex.: Railway) e `GLPI_*`.
 - **Railway / migrações órfãs:** `scripts/prisma-entry-preflight.cjs` roda antes do `migrate deploy`. Se `_prisma_migrations` tiver nomes que já não existem em `prisma/migrations`, o schema `public` é **reiniciado automaticamente** (sem variável). **Em bases com dados reais**, defina sempre `PRISMA_NO_AUTO_WIPE_ON_LEGACY_DRIFT=1` até o drift estar resolvido manualmente. Reinício forçado em todo o arranque: `PRISMA_FRESH_PUBLIC_SCHEMA_ON_BOOT=1`. Baseline: `20260419100000_baseline_full_schema`.

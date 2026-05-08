@@ -8,7 +8,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ProjectGroupWithTasks, ProjectSupervisor, ProjectTaskPatchPayload, ProjectTaskTree } from "@/lib/api";
 import {
-  attachmentDownloadUrl,
   createProjectTask,
   createProjectTaskComment,
   deleteProjectTask,
@@ -18,6 +17,7 @@ import {
   uploadProjectTaskAttachment
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import { GestaoAttachmentsList } from "@/components/attachments/attachment-preview-modal";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -381,20 +381,13 @@ function FilesCell({ projectId, task, canEdit, busy, onUploaded }: FilesCellProp
         {list.length === 0 ? (
           <p className="text-xs text-muted-foreground">Sem arquivos.</p>
         ) : (
-          <ul className="max-h-40 space-y-1 overflow-y-auto text-xs">
-            {list.map((a) => (
-              <li key={a.id} className="truncate">
-                <Link
-                  href={attachmentDownloadUrl(a.id)}
-                  className="font-medium text-primary underline-offset-2 hover:underline"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {a.fileName}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <GestaoAttachmentsList
+            attachments={list}
+            canMutate={canEdit}
+            gestaoCtx={{ scope: "projectTask", projectId, taskId: task.id }}
+            onDeleted={() => void onUploaded()}
+            compact
+          />
         )}
         {canEdit ? (
           <div className="border-t border-border pt-2">

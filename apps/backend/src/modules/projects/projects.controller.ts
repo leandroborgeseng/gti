@@ -155,6 +155,16 @@ export class ProjectsController {
     return this.service.addTaskAttachment(projectId, taskId, file);
   }
 
+  @Delete(":id/tasks/:taskId/attachments/:attachmentId")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  removeTaskAttachment(
+    @Param("id") projectId: string,
+    @Param("taskId") taskId: string,
+    @Param("attachmentId") attachmentId: string
+  ): Promise<{ ok: true }> {
+    return this.service.removeTaskAttachment(projectId, taskId, attachmentId);
+  }
+
   @Get(":id")
   findOne(@Param("id") id: string): Promise<unknown> {
     return this.service.findOne(id);

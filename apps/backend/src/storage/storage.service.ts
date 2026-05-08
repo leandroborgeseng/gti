@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, normalize, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -99,6 +99,27 @@ export class StorageService {
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, buffer);
     return { filePath: rel, storedFileName };
+  }
+
+  /**
+   * Remove o ficheiro em disco quando existir; ignora ENOENT (já não há ficheiro).
+   * Usa o mesmo critério de caminho seguro que `resolveAbsoluteSafe`.
+   */
+  async unlinkStoredByRelativeSafe(relativePath: string): Promise<void> {
+    let abs: string;
+    try {
+      abs = this.resolveAbsoluteSafe(relativePath);
+    } catch {
+      return;
+    }
+    try {
+      await unlink(abs);
+    } catch (e: unknown) {
+      const code = e && typeof e === "object" && "code" in e ? (e as NodeJS.ErrnoException).code : undefined;
+      if (code !== "ENOENT") {
+        throw e;
+      }
+    }
   }
 
   /** Caminho absoluto seguro para leitura (evita path traversal). */

@@ -30,9 +30,19 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionados filtros por status de entrega, criticidade e texto na gestão de módulos e funcionalidades dos contratos.
 - No quadro de chamados GLPI, segundo painel métrico («Tempo desde a última interação»), no mesmo formato do painel de idade dos abertos: mostra quantos chamados estão em cada faixa de dias desde a última alteração vista no GLPI (cache). Ao clicar numa faixa, o Kanban filtra apenas esses chamados.
 - Adicionada a tela Minhas atribuições para o usuário acompanhar chamados, tarefas, projetos, contratos e módulos vinculados a ele.
+- Anexos de medições, glosas e tarefas de projeto: pré-visualização em modal para PDF e imagens; outros tipos abrem apenas a opção de descarregar o ficheiro. Utilizadores com permissão de edição ou administração podem remover um anexo após confirmar.
+- Quadro de chamados GLPI: é mostrada a **última sincronização** com o servidor (bem-sucedida ou última tentativa) e, para **administradores e editores**, um botão que **dispara já** uma nova sincronização com o GLPI (refresh do cache).
+
+### Corrigido
+
+- Imagem Docker: o diretório de anexos (`uploads` sob `apps/frontend`) passa a ser criado com permissão para o utilizador `node`, corrigindo o erro «permission denied» ao enviar ficheiros em contentores.
+- Railway com volume persistente: documentação e `docker-entrypoint.sh` reforçados com **`RAILWAY_RUN_UID=0`**, diagnóstico se o volume não for gravável e **`chmod`** permissivo no caminho de anexos quando o contentor arranca como root (evita `EACCES` em subpastas como `project-tasks` quando o `chown` não é aceite pelo driver do disco).
+- Chamadas desde a app ao endpoint unificado **`/api/...`** (Next) para **calcular** ou **aprovar** medições e para **enviar anexos** de medições e glosas falhavam porque o despacho esperava mais segmentos de URL do que os que o Next expõe; o reconhecimento das rotas foi alinhado ao caminho real.
 
 ### Alterado
 
+- `docker-compose.yml`: volume nomeado `gti_uploads` em `/app/apps/frontend/uploads` para persistência de anexos; o script de entrada ajusta dono/grupo antes de iniciar como utilizador `node`.
+- Arranque em Docker/Railway: se existir **`RAILWAY_VOLUME_MOUNT_PATH`** (volume no serviço) e **`UPLOAD_ROOT`** não estiver definida, o entrypoint exporta **`UPLOAD_ROOT`** com esse caminho para a app gravar anexos no disco persistente.
 - A tela de login foi redesenhada com identidade visual da BlueBeaver e textos voltados ao uso do sistema.
 - O manual do produto deve ser atualizado junto com mudanças que impactem menus, fluxos da interface, permissões por papel ou formas de uso.
 - Revisados textos da interface, mensagens de erro e documentação do produto para padronizar o português do Brasil.

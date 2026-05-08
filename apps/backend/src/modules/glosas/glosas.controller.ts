@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   MaxFileSizeValidator,
   Param,
@@ -56,5 +57,13 @@ export class GlosasController {
     file: Express.Multer.File
   ): Promise<unknown> {
     return this.service.addAttachmentUpload(id, file);
+  }
+
+  @Delete(":id/attachments/:attachmentId")
+  removeAttachment(
+    @Param("id") id: string,
+    @Param("attachmentId") attachmentId: string
+  ): Promise<{ ok: true }> {
+    return this.service.removeAttachment(id, attachmentId);
   }
 }

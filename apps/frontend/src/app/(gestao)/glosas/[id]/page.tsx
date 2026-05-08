@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { getGlosa } from "@/lib/api";
 import { safeLoadNullable } from "@/lib/api-load";
+import { gestaoMayMutateAttachments } from "@/lib/session-role-server";
 
 const typeLabel: Record<string, string> = {
   ATRASO: "Atraso",
@@ -41,6 +42,7 @@ export default async function GlosaDetailPage({ params }: { params: { id: string
     med != null
       ? `${String(med.referenceMonth).padStart(2, "0")}/${med.referenceYear}${med.contract?.name ? ` · ${med.contract.name}` : ""}`
       : glosa.measurementId;
+  const mayMutateAnexos = await gestaoMayMutateAttachments();
 
   return (
     <div className="space-y-4">
@@ -75,7 +77,7 @@ export default async function GlosaDetailPage({ params }: { params: { id: string
       </Card>
       <Card>
         <h4 className="mb-2 font-medium">Anexos</h4>
-        <GlosaAttachments glosaId={glosa.id} attachments={glosa.attachments ?? []} />
+        <GlosaAttachments glosaId={glosa.id} attachments={glosa.attachments ?? []} canMutate={mayMutateAnexos} />
       </Card>
     </div>
   );

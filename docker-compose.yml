@@ -1,4 +1,9 @@
 # Só a aplicação Next. Postgres fora (ex.: Railway): defina `DATABASE_URL` no `.env` na raiz.
+#
+# Volume `gti_uploads`: persiste anexos (medições, glosas, tarefas de projeto). O entrypoint ajusta dono/grupo para `node`.
+# Para usar outro caminho no disco da máquina, troque por um bind mount, por exemplo:
+#   volumes:
+#     - /caminho/no/host/uploads:/app/apps/frontend/uploads
 services:
   app:
     build:
@@ -8,3 +13,8 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    volumes:
+      - gti_uploads:/app/apps/frontend/uploads
+
+volumes:
+  gti_uploads:

@@ -74,7 +74,9 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 5. **Opcional:** segundo serviço com `npm run start:worker` e as mesmas variáveis (só sync GLPI).
 6. **Teste:** `GET /health` no domínio publicado.
 7. **Gestão contratual:** use o mesmo **`JWT_SECRET`** que o login Next (`/api/auth/login`). Opcional: `NEXT_PUBLIC_BACKEND_URL` só se a API estiver noutro domínio.
-8. **Imagem Docker presa ao proxy Nest (logs `[gti/api-proxy]` / timeout 25s):** isso é o bundle **antigo** de `app/api/[...path]` (antes da API no Next). Na Railway, no serviço da app, defina **`NO_CACHE=1`** (variável de serviço), faça **um redeploy**, espere o build terminar e **remova `NO_CACHE`** para voltar a usar cache. Confirme nos **Build logs** a linha `GTI builder tag=` e nos **Deploy logs** `[gti-contratos] entrypoint`. Se o **ID do deploy ativo** não muda há dias, o Git pode não estar a disparar builds: em **Railway → serviço gti → Settings → Source** verifique o ramo e use **Redeploy** manual; no **GitHub → Settings → Webhooks** confirme entregas recentes sem erro.
+8. **Anexos (medições, glosas, tarefas) com imagem Docker:** no serviço da app, crie um **Volume** com montagem **`/app/apps/frontend/uploads`**. Defina também **`RAILWAY_RUN_UID=0`** nas variáveis do serviço; sem arranque como root, o entrypoint não consegue ajustar permissões do disco e aparecem erros **`EACCES`** ao criar pastas dentro do volume (`project-tasks`, `measurements`, etc.). Com **`RAILWAY_RUN_UID=0`**, o script faz `mkdir`/`chown`/`chmod` nesse caminho e inicia o Next como utilizador `node`. A Railway injeta **`RAILWAY_VOLUME_MOUNT_PATH`**; o entrypoint associa **`UPLOAD_ROOT`** a esse valor quando omitido.
+9. **Limitações do volume:** um disco por serviço; não combina com réplicas múltiplas no mesmo serviço. Se montar outro caminho que não o predefinido, defina **`UPLOAD_ROOT`** com o mesmo absoluto que o disco.
+10. **Imagem Docker presa ao proxy Nest (logs `[gti/api-proxy]` / timeout 25s):** isso é o bundle **antigo** de `app/api/[...path]` (antes da API no Next). Na Railway, no serviço da app, defina **`NO_CACHE=1`** (variável de serviço), faça **um redeploy**, espere o build terminar e **remova `NO_CACHE`** para voltar a usar cache. Confirme nos **Build logs** a linha `GTI builder tag=` e nos **Deploy logs** `[gti-contratos] entrypoint`. Se o **ID do deploy ativo** não muda há dias, o Git pode não estar a disparar builds: em **Railway → serviço gti → Settings → Source** verifique o ramo e use **Redeploy** manual; no **GitHub → Settings → Webhooks** confirme entregas recentes sem erro.
 
 ## Scripts úteis (`npm run`)
 
@@ -217,9 +219,13 @@ No GitHub Actions existe o workflow **Smoke (manual)** (`.github/workflows/smoke
 - **Primeiro acesso:** após migrações, `npx prisma db seed` na raiz cria o administrador (`BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` por padrão no exemplo).
 - **Frontend:** `/login`, cookie `gti_token`, rotas de contratos/medições/etc. protegidas por middleware; **Chamados GLPI** (`/chamados`) e a página inicial permanecem sem login obrigatório.
 
-## Anexos (medições e glosas)
+## Anexos (medições, glosas e tarefas de projeto)
 
-O backend salva arquivos no disco sob `UPLOAD_ROOT` (ver `apps/backend/.env.example`: `UPLOAD_ROOT`, `UPLOAD_MAX_MB`). Em produção (ex.: Railway), use **volume persistente** ou caminho montado; sem isso, os anexos são perdidos entre deploys. Na app Next, anexos por medição em `/measurements/[id]` e por glosa em `/glosas/[id]`.
+Os ficheiros gravam‑se no disco com **`UPLOAD_ROOT`** (omitindo, usa `./uploads` relativamente ao processo Next em `apps/frontend`, ou seja **`/app/apps/frontend/uploads`** na imagem Docker). Ver **`apps/backend/.env.example`** (`UPLOAD_ROOT`, `UPLOAD_MAX_MB`).
+
+Na **Railway** (deploy com **`Dockerfile` / `railway.json`**): acrescente um **Volume** ao serviço da app com montagem **`/app/apps/frontend/uploads`**. Nas variáveis do serviço defina **`RAILWAY_RUN_UID=0`**; sem isso, o contentor pode arrancar sem root e é impossível ajustar permissões do disco (**`EACCES`** ao criar `project-tasks`, etc.). Com root no arranque, o `docker-entrypoint.sh` exporta **`UPLOAD_ROOT`** a partir de **`RAILWAY_VOLUME_MOUNT_PATH`** quando necessário e aplica permissões antes de iniciar como **`node`**. Para outro caminho de montagem, defina **`UPLOAD_ROOT`** igual a esse **caminho absoluto**.
+
+**Docker Compose local:** volume nomeado **`gti_uploads`** → **`/app/apps/frontend/uploads`** (ver `docker-compose.yml`).
 
 ## Verificação de tipos (local)
 

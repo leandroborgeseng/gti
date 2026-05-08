@@ -95,7 +95,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     if (mode === "fechados") {
-      await runSyncWithGuard({ persistFilter: "closed", enrichWaitingParty: false });
+      const ran = await runSyncWithGuard({ persistFilter: "closed", enrichWaitingParty: false });
+      if (!ran) {
+        return NextResponse.json(
+          { ok: false, skipped: true, message: "Outra sincronização GLPI já estava em curso neste processo; tente daqui a alguns minutos." },
+          { status: 409 }
+        );
+      }
       return NextResponse.json({
         ok: true,
         mode: "fechados",
@@ -104,7 +110,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     if (mode === "abertos") {
-      await runSyncWithGuard({ persistFilter: "open", enrichWaitingParty: true });
+      const ran = await runSyncWithGuard({ persistFilter: "open", enrichWaitingParty: true });
+      if (!ran) {
+        return NextResponse.json(
+          { ok: false, skipped: true, message: "Outra sincronização GLPI já estava em curso neste processo; tente daqui a alguns minutos." },
+          { status: 409 }
+        );
+      }
       return NextResponse.json({
         ok: true,
         mode: "abertos",
@@ -112,7 +124,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    await runSyncWithGuard();
+    const ran = await runSyncWithGuard();
+    if (!ran) {
+      return NextResponse.json(
+        { ok: false, skipped: true, message: "Outra sincronização GLPI já estava em curso neste processo; tente daqui a alguns minutos." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ ok: true, mode: "full", message: "Sincronização GLPI completa executada." });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

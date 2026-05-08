@@ -177,6 +177,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
   const [modalSection, setModalSection] = useState<"chamado" | "historico">("chamado");
   const [syncScopeDraft, setSyncScopeDraft] = useState<"open" | "all">(initial.ticketSyncScope);
   const [isClearingFilters, startClearingFiltersTransition] = useTransition();
+  const [syncNowBusy, setSyncNowBusy] = useState(false);
 
   useEffect(() => {
     setSyncScopeDraft(initial.ticketSyncScope);
@@ -207,6 +208,50 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       setBusy(null);
     }
   }, []);
+
+  const forceGlpiSyncNow = useCallback(async () => {
+    if (!initial.canForceGlpiSync) return;
+    setSyncNowBusy(true);
+    try {
+      const res = await fetch("/api/glpi/sync-now", { method: "POST", credentials: "same-origin" });
+      let message = "";
+      try {
+        const data = (await res.json()) as { message?: string };
+        message =
+          typeof data.message === "string" && data.message.trim()
+            ? data.message.trim()
+            : res.ok
+              ? "Pedido processado."
+              : "O pedido de sincronização falhou.";
+      } catch {
+        message = res.ok ? "Pedido processado." : "Resposta inválida do servidor.";
+      }
+      setToast(message);
+      if (res.ok) {
+        router.refresh();
+      }
+      window.setTimeout(() => setToast(null), 5200);
+    } catch {
+      setToast("Não foi possível contactar o servidor para sincronizar.");
+      window.setTimeout(() => setToast(null), 5200);
+    } finally {
+      setSyncNowBusy(false);
+    }
+  }, [initial.canForceGlpiSync, router]);
+
+  const glpiSyncMainLine = useMemo(() => {
+    const b = initial.glpiSyncBanner;
+    if (b.isRunning) {
+      return "Sincronização com o GLPI em curso neste momento.";
+    }
+    if (b.lastSuccessAt?.trim()) {
+      return `Última sincronização bem-sucedida: ${formatDateTimePtBr(b.lastSuccessAt)}.`;
+    }
+    if (b.lastFinishedAt?.trim()) {
+      return `Última tentativa de sincronização: ${formatDateTimePtBr(b.lastFinishedAt)}.`;
+    }
+    return "Ainda não há registo de sincronização neste ambiente (primeira execução ou estado ainda não guardado).";
+  }, [initial.glpiSyncBanner]);
 
   const onDropOnColumn = useCallback(
     (targetKey: string) => {
@@ -580,6 +625,34 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
         ticketSyncScope={initial.ticketSyncScope}
         kanbanHrefQuery={kanbanHrefQuery}
       />
+
+      <div className="chamados-glpi-sync-banner" role="region" aria-label="Estado da sincronização GLPI">
+        <div className="chamados-glpi-sync-banner__text">
+          <p className="chamados-glpi-sync-banner__main">{glpiSyncMainLine}</p>
+          {!initial.glpiSyncBanner.isRunning && initial.glpiSyncBanner.lastError?.trim() ? (
+            <p className="chamados-glpi-sync-banner__err">{initial.glpiSyncBanner.lastError}</p>
+          ) : null}
+          {initial.glpiSyncBanner.cronDisabled ? (
+            <p className="chamados-glpi-sync-banner__muted">
+              O ciclo automático de sincronização está desativado neste servidor (
+              <code>GLPI_CRON_DISABLED=1</code>). Ainda assim pode disparar sincronização manual se tiver permissão.
+            </p>
+          ) : null}
+        </div>
+        {initial.canForceGlpiSync ? (
+          <div className="chamados-glpi-sync-banner__actions">
+            <button
+              type="button"
+              className="btn-secondary chamados-glpi-sync-banner__btn"
+              disabled={syncNowBusy || initial.glpiSyncBanner.isRunning || Boolean(busy)}
+              title="Pedido imediato de sincronização com o GLPI (atualiza o cache deste servidor)"
+              onClick={() => void forceGlpiSyncNow()}
+            >
+              {syncNowBusy ? "A sincronizar…" : "Sincronizar agora"}
+            </button>
+          </div>
+        ) : null}
+      </div>
 
       <div className="kanban-filters-stack">
         <div className="filters-shell">

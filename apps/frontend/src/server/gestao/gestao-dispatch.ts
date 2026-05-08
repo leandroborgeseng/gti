@@ -424,21 +424,25 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       const body = (await readJsonBody(req)) as { quantity?: unknown };
       return jsonOk(await gestaoMeasurements.patchItem(seg[1], seg[3], body?.quantity as never));
     }
-    if (seg.length === 4 && seg[2] === "calculate" && method === "POST") {
+    if (seg.length === 3 && seg[2] === "calculate" && method === "POST") {
       assertMutation(user, method);
       return jsonOk(await gestaoMeasurements.calculate(seg[1]));
     }
-    if (seg.length === 4 && seg[2] === "approve" && method === "POST") {
+    if (seg.length === 3 && seg[2] === "approve" && method === "POST") {
       assertMutation(user, method);
       return jsonOk(await gestaoMeasurements.approve(seg[1]));
     }
-    if (seg.length === 4 && seg[2] === "attachments" && method === "POST") {
+    if (seg.length === 3 && seg[2] === "attachments" && method === "POST") {
       assertMutation(user, method);
       const form = await req.formData();
       const file = form.get("file");
       if (!(file instanceof File)) return jsonErr(400, "Arquivo ausente");
       if (file.size > uploadMaxBytes()) return jsonErr(400, "Arquivo demasiado grande");
       return jsonOk(await gestaoMeasurements.addAttachmentUpload(seg[1], await multerLikeFromFile(file)));
+    }
+    if (seg.length === 4 && seg[2] === "attachments" && method === "DELETE") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoMeasurements.removeAttachment(seg[1], seg[3]));
     }
     if (seg.length === 2 && method === "GET") return jsonOk(await gestaoMeasurements.findOne(seg[1]));
     return jsonErr(404, "Não encontrado");
@@ -451,13 +455,17 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       return jsonOk(await gestaoGlosas.create((await readJsonBody(req)) as never));
     }
     if (seg.length === 2 && method === "GET") return jsonOk(await gestaoGlosas.findOne(seg[1]));
-    if (seg.length === 4 && seg[2] === "attachments" && method === "POST") {
+    if (seg.length === 3 && seg[2] === "attachments" && method === "POST") {
       assertMutation(user, method);
       const form = await req.formData();
       const file = form.get("file");
       if (!(file instanceof File)) return jsonErr(400, "Arquivo ausente");
       if (file.size > uploadMaxBytes()) return jsonErr(400, "Arquivo demasiado grande");
       return jsonOk(await gestaoGlosas.addAttachmentUpload(seg[1], await multerLikeFromFile(file)));
+    }
+    if (seg.length === 4 && seg[2] === "attachments" && method === "DELETE") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoGlosas.removeAttachment(seg[1], seg[3]));
     }
     return jsonErr(404, "Não encontrado");
   }
@@ -611,6 +619,11 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       if (!(file instanceof File)) return jsonErr(400, "Arquivo ausente");
       if (file.size > uploadMaxBytes()) return jsonErr(400, "Arquivo demasiado grande");
       return jsonOk(await gestaoProjects.addTaskAttachment(seg[1], seg[3], await multerLikeFromFile(file)));
+    }
+    if (seg.length === 6 && seg[2] === "tasks" && seg[4] === "attachments" && method === "DELETE") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      assertMutation(user, method);
+      return jsonOk(await gestaoProjects.removeTaskAttachment(seg[1], seg[3], seg[5]));
     }
     if (seg.length === 5 && seg[2] === "tasks" && seg[4] === "comments" && method === "POST") {
       assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);

@@ -99,12 +99,12 @@ export type RunGlpiSyncOptions = {
   enrichWaitingParty?: boolean;
 };
 
-export async function runSyncWithGuard(options: RunGlpiSyncOptions = {}): Promise<void> {
+export async function runSyncWithGuard(options: RunGlpiSyncOptions = {}): Promise<boolean> {
   await limparSyncOrfaNaBdSeNecessario();
   const store = getGlpiStore();
   if (store.isSyncRunning) {
     logger.warn("Sincronização anterior ainda em andamento, pulando execução");
-    return;
+    return false;
   }
 
   const persistFilter = options.persistFilter ?? "inherit";
@@ -183,6 +183,7 @@ export async function runSyncWithGuard(options: RunGlpiSyncOptions = {}): Promis
     store.syncStatus.lastFinishedAt = new Date().toISOString();
     await persistGlpiSyncStatusSafe({ ...store.syncStatus });
   }
+  return true;
 }
 
 async function resolveMainCronPersistFilter(): Promise<SyncTicketsPersistFilter> {

@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-05-05";
+export const MANUAL_LAST_UPDATED = "2026-05-06";
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -104,7 +104,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/chamados", label: "Chamados (GLPI)" },
-          " — Quadro tipo Kanban com chamados sincronizados a partir do GLPI. No topo há dois painéis sobre o stock aberto com os filtros atuais: idade desde a abertura e tempo desde a última alteração vista no GLPI (proxy de «última interação» no ticket); em cada faixa pode clicar para filtrar o quadro. Também pode filtrar por texto, estado, grupo, pendência inferida, técnico atribuído e outras opções. Serve à operação diária (quem trata o quê) e complementa a visão por contrato nas ligações GLPI do detalhe do contrato."
+          " — Quadro tipo Kanban com chamados sincronizados a partir do GLPI. É mostrada uma faixa com **quando foi a última sincronização** bem-sucedida (ou última tentativa); administradores e editores podem **sincronizar agora**, pedindo atualização imediata do cache. No topo há dois painéis sobre o stock aberto com os filtros atuais: idade desde a abertura e tempo desde a última alteração vista no GLPI (proxy de «última interação» no ticket); em cada faixa pode clicar para filtrar o quadro. Também pode filtrar por texto, estado, grupo, pendência inferida, técnico atribuído e outras opções. Serve à operação diária (quem trata o quê) e complementa a visão por contrato nas ligações GLPI do detalhe do contrato."
         ]
       },
       {
@@ -225,7 +225,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "ul",
         items: [
           "Utilize «Nova medição» para abrir o mês seguinte ou a competência ausente.",
-          "Na página da medição, calcule e finalize o fluxo conforme o processo interno (revisão, glosa, aprovação)."
+          "Na página da medição, calcule e finalize o fluxo conforme o processo interno (revisão, glosa, aprovação).",
+          "Os anexos da medição permitem clicar no nome do ficheiro para abrir um modal: PDF e imagens podem ser pré-visualizados; outros tipos mostram apenas a opção de descarregar. Administradores e editores podem eliminar um anexo (com confirmação)."
         ]
       },
       {
@@ -246,7 +247,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/glosas", label: "Glosas" },
-          " — Gestão de glosas associadas ao acompanhamento financeiro e contratual. Consulte a lista e abra cada registro para ver detalhe, histórico e ações disponíveis para o seu papel."
+          " — Gestão de glosas associadas ao acompanhamento financeiro e contratual. Consulte a lista e abra cada registro para ver detalhe, histórico e ações disponíveis para o seu papel.",
+          " Os anexos da glosa seguem o mesmo padrão que na medição: pré-visualização de PDF/imagem num modal quando aplicável e possibilidade de remover (papéis com permissão de edição)."
         ]
       }
     ]
@@ -285,7 +287,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/projetos", label: "Projetos" },
-          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor, data de início, fim planejado e grupo dos projetos existentes, criar, editar e excluir tarefas manualmente, adicionar comentários no histórico de cada tarefa ou importar tarefas por Excel do Monday.com. O detalhe do projeto mostra as metas vinculadas ao projeto inteiro; nas tarefas, além de Pessoa e Responsável PMF, é possível selecionar uma meta e informar o número do chamado GLPI quando aquela tarefa estiver ligada a um atendimento. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios e atrasos; na linha de cada projeto aparecem as datas de início e fim planejado. A lista agrupada por sanfonas ajuda a acompanhar os projetos por grupo. Pode existir uma vista de ",
+          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor, data de início, fim planejado e grupo dos projetos existentes, criar, editar e excluir tarefas manualmente, adicionar comentários no histórico de cada tarefa, anexos às tarefas (através do ícone de clipe na linha ou no quadro) — com o mesmo comportamento de modal de pré-visualização e remoção de ficheiros — ou importar tarefas por Excel do Monday.com. O detalhe do projeto mostra as metas vinculadas ao projeto inteiro; nas tarefas, além de Pessoa e Responsável PMF, é possível selecionar uma meta e informar o número do chamado GLPI quando aquela tarefa estiver ligada a um atendimento. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios e atrasos; na linha de cada projeto aparecem as datas de início e fim planejado. A lista agrupada por sanfonas ajuda a acompanhar os projetos por grupo. Pode existir uma vista de ",
           { href: "/projetos/tarefas", label: "tarefas" },
           " para trabalho transversal. Abra um projeto para ver contexto, fases, tarefas e informação associada."
         ]

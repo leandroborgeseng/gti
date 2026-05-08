@@ -83,6 +83,17 @@ export class GlosasService {
     return attachment;
   }
 
+  async removeAttachment(glosaId: string, attachmentId: string): Promise<{ ok: true }> {
+    const att = await this.prisma.attachment.findFirst({
+      where: { id: attachmentId, glosaId }
+    });
+    if (!att) throw new NotFoundException("Anexo não encontrado nesta glosa");
+    await this.storage.unlinkStoredByRelativeSafe(att.filePath);
+    await this.prisma.attachment.delete({ where: { id: attachmentId } });
+    await this.audit("Attachment", attachmentId, "DELETE", getAuditActorId(), att, null);
+    return { ok: true };
+  }
+
   private async audit(
     entity: string,
     entityId: string,

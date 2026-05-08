@@ -1111,6 +1111,22 @@ export class ProjectsService {
     };
   }
 
+  async removeTaskAttachment(projectId: string, taskId: string, attachmentId: string): Promise<{ ok: true }> {
+    const att = await this.prisma.attachment.findFirst({
+      where: {
+        id: attachmentId,
+        projectTaskId: taskId,
+        projectTask: { projectId }
+      }
+    });
+    if (!att) {
+      throw new NotFoundException("Anexo não encontrado nesta tarefa.");
+    }
+    await this.storage.unlinkStoredByRelativeSafe(att.filePath);
+    await this.prisma.attachment.delete({ where: { id: attachmentId } });
+    return { ok: true };
+  }
+
   async addTaskComment(projectId: string, taskId: string, dto: CreateProjectTaskCommentDto): Promise<unknown> {
     const body = dto.body.trim();
     if (!body) {

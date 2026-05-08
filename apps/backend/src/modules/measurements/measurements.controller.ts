@@ -80,6 +80,14 @@ export class MeasurementsController {
     return this.service.addAttachmentUpload(id, file);
   }
 
+  @Delete(":id/attachments/:attachmentId")
+  removeAttachment(
+    @Param("id") id: string,
+    @Param("attachmentId") attachmentId: string
+  ): Promise<{ ok: true }> {
+    return this.service.removeAttachment(id, attachmentId);
+  }
+
   @Get(":id")
   findOne(@Param("id") id: string): Promise<unknown> {
     return this.service.findOne(id);

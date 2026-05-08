@@ -8,6 +8,7 @@ import { MeasurementActions } from "@/components/actions/measurement-actions";
 import { formatBrl } from "@/lib/format-brl";
 import { getMeasurement } from "@/lib/api";
 import { safeLoadNullable } from "@/lib/api-load";
+import { gestaoMayMutateAttachments } from "@/lib/session-role-server";
 
 const statusLabel: Record<string, string> = {
   OPEN: "Aberta",
@@ -82,6 +83,7 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
     measurement.items?.filter((i) => i.type === "SERVICE").map((i) => i.referenceId) ?? [];
   const showAddLines =
     measurement.status === "OPEN" && (tipo === "DATACENTER" || tipo === "INFRA");
+  const mayMutateAnexos = await gestaoMayMutateAttachments();
 
   return (
     <div className="space-y-4">
@@ -128,7 +130,11 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
       </Card>
       <Card className="p-5">
         <h4 className="mb-2 font-medium text-slate-900">Anexos</h4>
-        <MeasurementAttachments measurementId={measurement.id} attachments={measurement.attachments ?? []} />
+        <MeasurementAttachments
+          measurementId={measurement.id}
+          attachments={measurement.attachments ?? []}
+          canMutate={mayMutateAnexos}
+        />
       </Card>
       <Card className="p-5">
         <h4 className="mb-2 font-medium text-slate-900">Itens da medição</h4>
