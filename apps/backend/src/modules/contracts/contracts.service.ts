@@ -11,6 +11,7 @@ import {
   LawType,
   Prisma
 } from "@prisma/client";
+import { compareItemCodes, sortFeaturesByItemCode } from "../../common/item-code-order";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   CreateContractAmendmentDto,
@@ -47,6 +48,13 @@ function dedupeGlpiGroupLinks(links: ContractGlpiGroupLinkDto[]): { glpiGroupId:
 function featureDisplayName(itemCode: string | null | undefined, name: string): string {
   const code = itemCode?.trim();
   return code ? `${code} — ${name}` : name;
+}
+
+function sortModuleListFeatures<T extends { features: Array<{ itemCode?: string | null; name?: string }> }>(modules: T[]): T[] {
+  return modules.map((module) => ({
+    ...module,
+    features: sortFeaturesByItemCode(module.features)
+  }));
 }
 
 const CRITICALITY_SCORE: Record<ContractItemCriticality, number> = {
@@ -329,17 +337,21 @@ export class ContractsService {
       },
       orderBy: { number: "asc" }
     });
-    return rows.map((row) => ({
-      ...row,
-      featureImplantationProportion: buildFeatureImplantationProportion({
-        monthlyValue: row.monthlyValue,
-        installationValue: row.installationValue ?? null,
-        implementationPeriodStart: row.implementationPeriodStart ?? null,
-        implementationPeriodEnd: row.implementationPeriodEnd ?? null,
-        modules: row.modules,
-        at: new Date()
-      })
-    }));
+    return rows.map((row) => {
+      const modules = sortModuleListFeatures(row.modules);
+      return {
+        ...row,
+        modules,
+        featureImplantationProportion: buildFeatureImplantationProportion({
+          monthlyValue: row.monthlyValue,
+          installationValue: row.installationValue ?? null,
+          implementationPeriodStart: row.implementationPeriodStart ?? null,
+          implementationPeriodEnd: row.implementationPeriodEnd ?? null,
+          modules,
+          at: new Date()
+        })
+      };
+    });
   }
 
   async findAll(): Promise<unknown> {
@@ -372,14 +384,16 @@ export class ContractsService {
       }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");
+    const modules = sortModuleListFeatures(contract.modules);
     return {
       ...contract,
+      modules,
       featureImplantationProportion: buildFeatureImplantationProportion({
         monthlyValue: contract.monthlyValue,
         installationValue: contract.installationValue,
         implementationPeriodStart: contract.implementationPeriodStart,
         implementationPeriodEnd: contract.implementationPeriodEnd,
-        modules: contract.modules,
+        modules,
         at: new Date()
       })
     };
@@ -604,6 +618,11 @@ export class ContractsService {
           }
           const mid = moduleId!;
           affected.push(mid);
+          group.features.sort((a, b) => {
+            const byCode = compareItemCodes(a.featureCode, b.featureCode);
+            if (byCode !== 0) return byCode;
+            return a.featureName.localeCompare(b.featureName, "pt-BR", { sensitivity: "base" });
+          });
           const featureRows = group.features.map((fr) => ({
             moduleId: mid,
             itemCode: fr.featureCode?.trim() || null,

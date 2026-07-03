@@ -34,6 +34,7 @@ import {
 import { queryKeys } from "@/lib/query-keys";
 import { buttonSmallClass, buttonSmallPrimaryClass, formControlClass } from "@/components/ui/form-primitives";
 import { cn } from "@/lib/utils";
+import { orderFeaturesByItemCode } from "@/lib/item-code-order";
 
 const featureStatusLabels: Record<ContractFeatureStatus, string> = {
   NOT_STARTED: "Não iniciada",
@@ -793,8 +794,9 @@ function ModuleBlock(props: {
   const partialCount = mod.features.filter((f) => f.deliveryStatus === "PARTIALLY_DELIVERED").length;
   const notDeliveredCount = mod.features.filter((f) => (f.deliveryStatus ?? "NOT_DELIVERED") === "NOT_DELIVERED").length;
   const validatorLabel = mod.validator?.email ?? validators.find((user) => user.id === validatorId)?.email ?? "Sem responsável";
-  const filteredFeatures = mod.features.filter((feature) => featureMatchesFilters(feature, featureFilters));
   const hasFeatureFilters = Boolean(featureFilters.deliveryStatus || featureFilters.criticality || featureFilters.query.trim());
+  const filteredFeatures = mod.features.filter((feature) => featureMatchesFilters(feature, featureFilters));
+  const orderedFeatures = orderFeaturesByItemCode(filteredFeatures, { flatDepth: hasFeatureFilters });
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
@@ -904,12 +906,13 @@ function ModuleBlock(props: {
             </p>
           ) : null}
           <ul className="space-y-2">
-            {filteredFeatures.map((f) => (
+            {orderedFeatures.map(({ feature: f, depth }) => (
               <FeatureRow
                 key={f.id}
                 contractId={contractId}
                 moduleId={mod.id}
                 feature={f}
+                depth={depth}
                 busy={busy}
                 onError={onError}
                 onBusy={onBusy}
@@ -1013,12 +1016,13 @@ function FeatureRow(props: {
   contractId: string;
   moduleId: string;
   feature: ModuleRow["features"][number];
+  depth?: number;
   busy: boolean;
   onError: (m: string | null) => void;
   onBusy: (b: boolean) => void;
   onUpdated: (c: Contract) => void;
 }): JSX.Element {
-  const { contractId, moduleId, feature: f, busy, onError, onBusy, onUpdated } = props;
+  const { contractId, moduleId, feature: f, depth = 0, busy, onError, onBusy, onUpdated } = props;
   const [itemCode, setItemCode] = useState(f.itemCode ?? "");
   const [itemCodeError, setItemCodeError] = useState(false);
   const [name, setName] = useState(f.name);
@@ -1050,7 +1054,10 @@ function FeatureRow(props: {
   }
 
   return (
-    <li className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-sm">
+    <li
+      className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-sm"
+      style={depth > 0 ? { marginLeft: `${depth * 1.25}rem`, borderLeftWidth: "3px", borderLeftColor: "rgb(203 213 225)" } : undefined}
+    >
       <input
         className={cn("w-32", formControlClass, itemCodeError && "border-destructive focus-visible:ring-destructive")}
         placeholder="Código"

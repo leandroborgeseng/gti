@@ -15,6 +15,7 @@ import type {
 import { formatBrl } from "@/lib/format-brl";
 import { itemDeliveryLabelClass, itemDeliverySelectItemClass, itemDeliverySelectTriggerClass } from "@/lib/item-delivery-styles";
 import { deleteContractFeature, getModulesDeliveryOverview, updateContractFeature } from "@/lib/api";
+import { orderFeaturesByItemCode } from "@/lib/item-code-order";
 import { queryKeys } from "@/lib/query-keys";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -749,7 +750,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                         <p className="text-xs text-muted-foreground">Nenhum item neste módulo.</p>
                                       ) : (
                                         <ul className="space-y-2">
-                                          {mod.features.map((item) => {
+                                          {orderFeaturesByItemCode(mod.features, { flatDepth: hasFilters }).map(({ feature: item, depth }) => {
                                             const ds = (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus;
                                             const criticality = (item.criticality ?? "MEDIA") as ContractItemCriticality;
                                             const rowBusy = busyRowKey === rowKey(contract.id, mod.id, item.id);
@@ -757,6 +758,11 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                                               <li
                                                 key={item.id}
                                                 className="flex flex-col gap-3 rounded-md border border-border/40 bg-background/80 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
+                                                style={
+                                                  depth > 0
+                                                    ? { marginLeft: `${depth * 1.25}rem`, borderLeftWidth: "3px", borderLeftColor: "hsl(var(--border))" }
+                                                    : undefined
+                                                }
                                               >
                                                 <div className="min-w-0 flex-1">
                                                   <p className="text-sm font-medium text-foreground">
