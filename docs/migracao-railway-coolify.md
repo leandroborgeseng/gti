@@ -2,19 +2,79 @@
 
 Guia operacional para mover a aplicação **Next + Prisma + GLPI** e o **PostgreSQL** da Railway para um servidor com **Coolify**, usando este repositório GitHub como fonte de deploy.
 
-## O que vai para o GitHub (seguro)
+## O que vai para o GitHub
 
 | Artefacto | Repositório | Motivo |
 |-----------|-------------|--------|
-| `Dockerfile`, `docker-compose.yml`, `docker-compose.coolify.yml` | Sim | Build e deploy reproduzível |
-| `.env.example`, `.env.coolify.example` | Sim | Modelo **sem segredos** |
-| Scripts `scripts/db-export.sh`, `scripts/db-import.sh` | Sim | Automatizar dump/restore |
-| Documentação (este ficheiro) | Sim | Checklist da equipa |
-| Dump `.sql` da base Railway | **Não** | Dados sensíveis + tamanho; risco GDPR |
-| Ficheiro `.env` de produção | **Não** | Segredos (JWT, GLPI, Postgres) |
-| Pasta `uploads/` (anexos) | **Não** | Binários grandes; transferir por SFTP/rsync |
+| `Dockerfile`, `docker-compose.coolify.yml`, scripts | Sim | Deploy Coolify |
+| **`migration/gti-railway.dump`** | **Sim, temporário** | Fluxo pedido: dump no Git → restore no Coolify (`GTI_IMPORT_MIGRATION_DUMP=1`) |
+| `.env` de produção | **Não** | Segredos |
+| `uploads/` (anexos) | **Não** | Transferir por rsync/volume |
 
-Os dumps gerados localmente ficam em `backups/` (ignorado pelo Git). Guarde cópias num disco seguro ou num **GitHub Release privado** só se forem **encriptados** (ex.: `gpg`).
+**Segurança:** o dump tem dados reais — repositório **privado** obrigatório. Após migração, **apague** `migration/gti-railway.dump` do Git. Dumps > 50 MB: Git LFS ou `backups/` local.
+
+---
+
+## Fluxo via Git (Railway → Git → Coolify)
+
+```mermaid
+sequenceDiagram
+  participant R as Railway Postgres
+  participant GH as GitHub
+  participant C as Coolify
+
+  Note over R,GH: 1. Export
+  R->>GH: workflow ou railway run → migration/gti-railway.dump
+  Note over GH,C: 2. Deploy Coolify
+  GH->>C: clone com dump na imagem
+  C->>C: GTI_IMPORT_MIGRATION_DUMP=1 → pg_restore
+  Note over GH: 3. Limpeza
+  GH->>GH: remover dump + GTI_IMPORT_MIGRATION_DUMP
+```
+
+### Passo 1 — Dump no Git (escolha uma opção)
+
+**A — GitHub Actions (mais simples)**
+
+1. Secret **`RAILWAY_DATABASE_URL`** no repo (Settings → Secrets → Actions).
+2. **Actions → Export DB migration dump → Run workflow**.
+3. Confirme commit de `migration/gti-railway.dump` em `main`.
+
+**B — Railway CLI**
+
+```bash
+railway link
+railway run npm run db:export:migration
+git add migration/gti-railway.dump && git commit -m "chore(migration): dump Railway" && git push
+```
+
+**C — Export no deploy Railway (one-shot)**
+
+1. Variável **`GTI_EXPORT_MIGRATION_DUMP=1`** no serviço Railway (+ volume opcional em `/app/migration`).
+2. Redeploy; nos logs aparece o dump criado.
+3. Copie o ficheiro para o repo e faça `git push` (o deploy **não** envia ao Git sozinho).
+
+### Passo 2 — Restore no Coolify
+
+1. Crie Postgres no Coolify (vazio).
+2. Deploy da app a partir do GitHub (`main` com o dump commitado).
+3. Variáveis no Coolify:
+   - `DATABASE_URL` → Postgres Coolify
+   - **`GTI_IMPORT_MIGRATION_DUMP=1`** (só no primeiro deploy)
+   - restantes (`JWT_SECRET`, `GLPI_*`, `UPLOAD_ROOT`, …)
+4. Volume: `/app/apps/frontend/uploads`, arranque como root (`user: 0:0`).
+5. Deploy; nos logs: `importação migration/gti-railway.dump concluída`.
+6. Teste login e `/chamados`.
+7. **Limpeza:** remova `GTI_IMPORT_MIGRATION_DUMP`, apague `migration/gti-railway.dump`, commit e redeploy.
+
+---
+
+## O que vai para o GitHub (referência legada / alternativas)
+
+| Artefacto | Repositório | Motivo |
+|-----------|-------------|--------|
+| Scripts `scripts/db-export.sh`, `scripts/db-import.sh` | Sim | Import manual sem dump no repo |
+| Dump em `backups/` local | **Não** | Ignorado pelo Git |
 
 ---
 

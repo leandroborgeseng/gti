@@ -36,6 +36,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 ### Técnico
 
 - Documentação e scripts para **migração Railway → Coolify** (`docs/migracao-railway-coolify.md`, `docker-compose.coolify.yml`, `scripts/db-export.sh`, `scripts/db-import.sh`, `.env.coolify.example`). Dumps de base e anexos **não** devem ser versionados no Git.
+- Fluxo **dump no Git → restore Coolify**: workflow **Export DB migration dump**, ficheiro `migration/gti-railway.dump`, variáveis `GTI_EXPORT_MIGRATION_DUMP` (Railway) e `GTI_IMPORT_MIGRATION_DUMP` (Coolify, one-shot). Remover dump do repo após migração.
 
 ### Corrigido
 

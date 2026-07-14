@@ -41,7 +41,8 @@ services:
       PORT: "3000"
       DATABASE_URL: postgresql://${POSTGRES_USER:-gti}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gti_contratos}?schema=public
       UPLOAD_ROOT: /app/apps/frontend/uploads
-      # Copie o resto das variáveis (GLPI_*, JWT_*, RESEND_*) na UI Coolify ou env_file abaixo.
+      # Primeiro deploy Coolify após commit do dump no Git; remover depois do restore bem-sucedido.
+      # GTI_IMPORT_MIGRATION_DUMP: "1"
     env_file:
       - path: .env
         required: false

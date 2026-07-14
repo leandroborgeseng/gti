@@ -1,0 +1,40 @@
+name: Export DB migration dump
+
+# Gera migration/gti-railway.dump a partir do Postgres Railway e faz commit em main.
+# Secret obrigatório: RAILWAY_DATABASE_URL
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Export PostgreSQL
+        env:
+          DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Configure o secret RAILWAY_DATABASE_URL no repositório." >&2
+            exit 1
+          fi
+          chmod +x scripts/db-export-migration.sh
+          ./scripts/db-export-migration.sh
+
+      - name: Commit dump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add migration/gti-railway.dump
+          if git diff --staged --quiet; then
+            echo "Sem alterações no dump (já igual ao anterior)."
+            exit 0
+          fi
+          git commit -m "chore(migration): dump Railway para restore no Coolify"
+          git push

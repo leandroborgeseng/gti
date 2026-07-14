@@ -47,7 +47,7 @@ ENV PORT=3000
 # Não definir HOSTNAME=0.0.0.0: o Next usa isso em redirects e o browser acaba em https://0.0.0.0/… . O bind em todas as interfaces fica a cargo de `next start -H 0.0.0.0`.
 # util-linux disponibiliza `runuser` no entrypoint (root → permissões no volume de anexos → processo como `node`).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates util-linux \
+  && apt-get install -y --no-install-recommends openssl ca-certificates util-linux postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/package.json /app/package-lock.json ./
@@ -60,6 +60,7 @@ COPY --from=builder /app/apps/frontend/node_modules ./apps/frontend/node_modules
 COPY --from=builder /app/NOTAS_DE_VERSAO.md ./NOTAS_DE_VERSAO.md
 
 COPY scripts/docker-entrypoint.sh scripts/prisma-entry-preflight.cjs ./scripts/
+COPY migration ./migration
 RUN chmod +x ./scripts/docker-entrypoint.sh
 
 # Anexos (medições, glosas, tarefas): o processo corre como `node` e não pode criar pastas sob

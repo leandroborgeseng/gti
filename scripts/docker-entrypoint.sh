@@ -8,6 +8,8 @@
 #   PRISMA_RESOLVE_APPLIED — nome da pasta da migração
 #   RUN_SEED_OUTSOURCED=1 — roda o seed dos contratos «sistemas terceirizados» no arranque
 #   SKIP_SEED_OUTSOURCED=0 — compatibilidade: também força o seed no arranque
+#   GTI_EXPORT_MIGRATION_DUMP=1 — (Railway, one-shot) pg_dump → migration/gti-railway.dump no arranque; copie e commite no Git
+#   GTI_IMPORT_MIGRATION_DUMP=1 — (Coolify, one-shot) pg_restore ← migration/gti-railway.dump do repo antes das migrações
 #
 # Depois de recuperação com sucesso, remove variáveis de um uso único e volta a fazer deploy.
 #
@@ -85,6 +87,33 @@ fi
 
 # Diagnóstico: se nos Deploy Logs não aparecer esta linha, o contêiner não é a imagem deste repositório (ou há outro processo a logar por cima).
 echo "[gti-contratos] entrypoint imagem monorepo Next+Prisma (sem proxy Nest no repo)"
+
+MIGRATION_DUMP="/app/migration/gti-railway.dump"
+
+if [ "${GTI_EXPORT_MIGRATION_DUMP:-0}" = "1" ]; then
+  if [ -z "${DATABASE_URL:-}" ]; then
+    echo "[gti-contratos] GTI_EXPORT_MIGRATION_DUMP=1 mas DATABASE_URL está vazia." >&2
+    exit 1
+  fi
+  mkdir -p /app/migration
+  echo "[gti-contratos] GTI_EXPORT_MIGRATION_DUMP=1: a exportar para $MIGRATION_DUMP …"
+  pg_dump "$DATABASE_URL" --no-owner --no-acl --format=custom --file="$MIGRATION_DUMP"
+  echo "[gti-contratos] Dump criado ($(du -h "$MIGRATION_DUMP" | cut -f1)). Copie para o Git (Actions ou git add migration/gti-railway.dump). O deploy Railway não faz push automático."
+fi
+
+if [ "${GTI_IMPORT_MIGRATION_DUMP:-0}" = "1" ]; then
+  if [ -z "${DATABASE_URL:-}" ]; then
+    echo "[gti-contratos] GTI_IMPORT_MIGRATION_DUMP=1 mas DATABASE_URL está vazia." >&2
+    exit 1
+  fi
+  if [ ! -f "$MIGRATION_DUMP" ]; then
+    echo "[gti-contratos] GTI_IMPORT_MIGRATION_DUMP=1 mas não existe $MIGRATION_DUMP no repo/imagem." >&2
+    exit 1
+  fi
+  echo "[gti-contratos] GTI_IMPORT_MIGRATION_DUMP=1: a importar $MIGRATION_DUMP …"
+  pg_restore --no-owner --no-acl --clean --if-exists -d "$DATABASE_URL" "$MIGRATION_DUMP"
+  echo "[gti-contratos] Importação migration/gti-railway.dump concluída. Remova GTI_IMPORT_MIGRATION_DUMP e apague o dump do Git após validar."
+fi
 
 node ./scripts/prisma-entry-preflight.cjs
 
