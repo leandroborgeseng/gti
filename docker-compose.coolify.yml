@@ -1,0 +1,59 @@
+# Stack completo para Coolify (ou teste local): PostgreSQL + app GTI.
+#
+# No Coolify: New Resource → Docker Compose → apontar para este ficheiro.
+# Variáveis sensíveis via UI Coolify ou ficheiro .env (NÃO versionar .env).
+#
+# Alternativa recomendada em produção: Postgres como recurso Database separado
+# e só a app via Dockerfile — ver docs/migracao-railway-coolify.md.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gti}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-gti_contratos}
+    volumes:
+      - gti_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gti} -d ${POSTGRES_DB:-gti_contratos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - gti
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Equivalente ao RAILWAY_RUN_UID=0: entrypoint ajusta permissões em uploads antes de correr como node.
+    user: "0:0"
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gti}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gti_contratos}?schema=public
+      UPLOAD_ROOT: /app/apps/frontend/uploads
+      # Copie o resto das variáveis (GLPI_*, JWT_*, RESEND_*) na UI Coolify ou env_file abaixo.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - gti_uploads:/app/apps/frontend/uploads
+    networks:
+      - gti
+
+volumes:
+  gti_postgres_data:
+  gti_uploads:
+
+networks:
+  gti:
+    driver: bridge

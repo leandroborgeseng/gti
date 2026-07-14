@@ -19,3 +19,8 @@ apps/frontend/.next/
 apps/frontend/tsconfig.tsbuildinfo
 # Segredos GLPI / Postgres em JSON local (nunca versionar)
 apps/frontend/config/glpi-env.local.json
+
+# Backups de migração (Railway → Coolify) — gerados por scripts/db-export.sh
+backups/
+*.dump
+.env.migracao

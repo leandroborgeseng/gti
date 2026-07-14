@@ -78,6 +78,17 @@ Na **Railway**, com repositório na raiz: deixe o comando de arranque como **`np
 9. **Limitações do volume:** um disco por serviço; não combina com réplicas múltiplas no mesmo serviço. Se montar outro caminho que não o predefinido, defina **`UPLOAD_ROOT`** com o mesmo absoluto que o disco.
 10. **Imagem Docker presa ao proxy Nest (logs `[gti/api-proxy]` / timeout 25s):** isso é o bundle **antigo** de `app/api/[...path]` (antes da API no Next). Na Railway, no serviço da app, defina **`NO_CACHE=1`** (variável de serviço), faça **um redeploy**, espere o build terminar e **remova `NO_CACHE`** para voltar a usar cache. Confirme nos **Build logs** a linha `GTI builder tag=` e nos **Deploy logs** `[gti-contratos] entrypoint`. Se o **ID do deploy ativo** não muda há dias, o Git pode não estar a disparar builds: em **Railway → serviço gti → Settings → Source** verifique o ramo e use **Redeploy** manual; no **GitHub → Settings → Webhooks** confirme entregas recentes sem erro.
 
+### Migração para Coolify
+
+Guia completo: **`docs/migracao-railway-coolify.md`**.
+
+1. **Repositório GitHub** (este repo): Coolify faz build do **`Dockerfile`** na raiz ou usa **`docker-compose.coolify.yml`** (app + Postgres no mesmo stack).
+2. **Base de dados:** exporte da Railway com **`./scripts/db-export.sh`** (`RAILWAY_DATABASE_URL`); importe no Postgres Coolify com **`./scripts/db-import.sh`**. **Não** commite dumps SQL no Git (pasta `backups/` está no `.gitignore`).
+3. **Variáveis:** copie **`.env.coolify.example`** para o painel Coolify; inclua `DATABASE_URL`, `JWT_SECRET`, `GLPI_*`, `UPLOAD_ROOT=/app/apps/frontend/uploads`.
+4. **Anexos:** volume persistente montado em **`/app/apps/frontend/uploads`**; copie ficheiros da Railway por `rsync`/`docker cp` (não vão para o GitHub).
+5. **Arranque:** contentor como **root** (`user: 0:0` no compose) para o entrypoint ajustar permissões do volume.
+6. **Teste:** `GET /health`, login, `/chamados`, anexo numa medição.
+
 ## Scripts úteis (`npm run`)
 
 | Script | Descrição |

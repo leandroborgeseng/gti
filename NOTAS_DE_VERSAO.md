@@ -33,6 +33,10 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Anexos de medições, glosas e tarefas de projeto: pré-visualização em modal para PDF e imagens; outros tipos abrem apenas a opção de descarregar o ficheiro. Utilizadores com permissão de edição ou administração podem remover um anexo após confirmar.
 - Quadro de chamados GLPI: é mostrada a **última sincronização** com o servidor (bem-sucedida ou última tentativa) e, para **administradores e editores**, um botão que **dispara já** uma nova sincronização com o GLPI (refresh do cache).
 
+### Técnico
+
+- Documentação e scripts para **migração Railway → Coolify** (`docs/migracao-railway-coolify.md`, `docker-compose.coolify.yml`, `scripts/db-export.sh`, `scripts/db-import.sh`, `.env.coolify.example`). Dumps de base e anexos **não** devem ser versionados no Git.
+
 ### Corrigido
 
 - Imagem Docker: o diretório de anexos (`uploads` sob `apps/frontend`) passa a ser criado com permissão para o utilizador `node`, corrigindo o erro «permission denied» ao enviar ficheiros em contentores.
