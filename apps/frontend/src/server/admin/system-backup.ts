@@ -80,6 +80,35 @@ export function backupMaxBytes(): number {
   return Math.floor(mb * 1024 * 1024);
 }
 
+/** Remove URLs/credenciais de mensagens de erro do pg_dump/pg_restore. */
+function sanitizePgToolMessage(raw: string, databaseUrl?: string): string {
+  let msg = raw;
+  if (databaseUrl) {
+    msg = msg.split(databaseUrl).join("[DATABASE_URL]");
+  }
+  msg = msg.replace(/postgres(?:ql)?:\/\/[^\s"'\\]+/gi, "[DATABASE_URL]");
+  if (/server version mismatch|version mismatch/i.test(msg)) {
+    return (
+      "Versão do pg_dump incompatível com o PostgreSQL do servidor. " +
+      "A imagem Docker precisa do cliente PostgreSQL ≥ versão do servidor (ex.: 18). " +
+      "Faça redeploy da imagem atualizada."
+    );
+  }
+  return msg.slice(0, 1500);
+}
+
+function resolvePgBin(name: "pg_dump" | "pg_restore"): string {
+  const fromEnv =
+    name === "pg_dump"
+      ? process.env.PG_DUMP_PATH?.trim()
+      : process.env.PG_RESTORE_PATH?.trim();
+  if (fromEnv) return fromEnv;
+  // Preferir cliente 18 instalado via PGDG na imagem Docker.
+  const v18 = `/usr/lib/postgresql/18/bin/${name}`;
+  if (existsSync(v18)) return v18;
+  return name;
+}
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);
@@ -91,17 +120,18 @@ async function pathExists(path: string): Promise<boolean> {
 
 async function runPgDump(dumpPath: string): Promise<void> {
   const databaseUrl = requireDatabaseUrl();
+  const bin = resolvePgBin("pg_dump");
   try {
     await execFileAsync(
-      "pg_dump",
+      bin,
       [databaseUrl, "--no-owner", "--no-acl", "--format=custom", `--file=${dumpPath}`],
       { maxBuffer: 8 * 1024 * 1024, env: process.env as NodeJS.ProcessEnv }
     );
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("ENOENT") || msg.includes("spawn pg_dump")) {
+    const msg = sanitizePgToolMessage(e instanceof Error ? e.message : String(e), databaseUrl);
+    if (msg.includes("ENOENT") || /spawn .*pg_dump/.test(msg)) {
       throw new Error(
-        "pg_dump não está disponível neste ambiente. Em Docker use a imagem oficial (já inclui postgresql-client)."
+        "pg_dump não está disponível neste ambiente. Em Docker use a imagem oficial (cliente PostgreSQL 18)."
       );
     }
     throw new Error(`Falha ao exportar a base de dados: ${msg}`);
@@ -114,15 +144,16 @@ async function runPgDump(dumpPath: string): Promise<void> {
 async function runPgRestore(dumpPath: string): Promise<string[]> {
   const databaseUrl = requireDatabaseUrl();
   const warnings: string[] = [];
+  const bin = resolvePgBin("pg_restore");
   try {
     const { stderr } = await execFileAsync(
-      "pg_restore",
+      bin,
       ["--no-owner", "--no-acl", "--clean", "--if-exists", "-d", databaseUrl, dumpPath],
       { maxBuffer: 16 * 1024 * 1024, env: process.env as NodeJS.ProcessEnv }
     );
     const errText = typeof stderr === "string" ? stderr.trim() : "";
     if (errText) {
-      warnings.push(errText.slice(0, 2000));
+      warnings.push(sanitizePgToolMessage(errText, databaseUrl).slice(0, 2000));
     }
   } catch (e: unknown) {
     const err = e as { code?: number | string; message?: string; stderr?: string };
@@ -130,16 +161,18 @@ async function runPgRestore(dumpPath: string): Promise<string[]> {
     const stderr = typeof err.stderr === "string" ? err.stderr.trim() : "";
     // pg_restore costuma sair com 1 quando há avisos de dependências; 0 = ok; >1 = erro real.
     if (code === 1) {
-      if (stderr) warnings.push(stderr.slice(0, 2000));
+      if (stderr) warnings.push(sanitizePgToolMessage(stderr, databaseUrl).slice(0, 2000));
       return warnings;
     }
-    const msg = err.message || String(e);
-    if (msg.includes("ENOENT") || msg.includes("spawn pg_restore")) {
+    const msg = sanitizePgToolMessage(err.message || String(e), databaseUrl);
+    if (msg.includes("ENOENT") || /spawn .*pg_restore/.test(msg)) {
       throw new Error(
-        "pg_restore não está disponível neste ambiente. Em Docker use a imagem oficial (já inclui postgresql-client)."
+        "pg_restore não está disponível neste ambiente. Em Docker use a imagem oficial (cliente PostgreSQL 18)."
       );
     }
-    throw new Error(`Falha ao restaurar a base de dados: ${stderr || msg}`);
+    throw new Error(
+      `Falha ao restaurar a base de dados: ${sanitizePgToolMessage(stderr || msg, databaseUrl)}`
+    );
   }
   return warnings;
 }

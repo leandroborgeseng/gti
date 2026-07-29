@@ -36,7 +36,7 @@ case "$FILE" in
     if command -v pg_restore >/dev/null 2>&1; then
       pg_restore_local
     elif command -v docker >/dev/null 2>&1; then
-      docker run --rm -e TARGET_URL -v "$ABS_DIR:/backups:ro" postgres:16-alpine \
+      docker run --rm -e TARGET_URL -v "$ABS_DIR:/backups:ro" postgres:18-alpine \
         sh -c 'pg_restore --no-owner --no-acl --clean --if-exists -d "$TARGET_URL" "/backups/'"$BASE"'"'
     else
       echo "Instale postgresql-client ou Docker." >&2
@@ -48,7 +48,7 @@ case "$FILE" in
     if command -v psql >/dev/null 2>&1; then
       gunzip -c "$FILE" | psql "$TARGET_URL" -v ON_ERROR_STOP=1
     elif command -v docker >/dev/null 2>&1; then
-      gunzip -c "$FILE" | docker run --rm -i -e TARGET_URL postgres:16-alpine \
+      gunzip -c "$FILE" | docker run --rm -i -e TARGET_URL postgres:18-alpine \
         sh -c 'psql "$TARGET_URL" -v ON_ERROR_STOP=1'
     else
       echo "Instale postgresql-client ou Docker." >&2
@@ -60,7 +60,7 @@ case "$FILE" in
     if command -v psql >/dev/null 2>&1; then
       psql_file_local "$FILE"
     elif command -v docker >/dev/null 2>&1; then
-      docker run --rm -e TARGET_URL -v "$ABS_DIR:/backups:ro" postgres:16-alpine \
+      docker run --rm -e TARGET_URL -v "$ABS_DIR:/backups:ro" postgres:18-alpine \
         sh -c 'psql "$TARGET_URL" -v ON_ERROR_STOP=1 -f "/backups/'"$BASE"'"'
     else
       echo "Instale postgresql-client ou Docker." >&2

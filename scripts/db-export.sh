@@ -24,8 +24,8 @@ fi
 
 if command -v docker >/dev/null 2>&1; then
   OUT="$BACKUP_DIR/gti-${STAMP}.dump"
-  echo "pg_dump local não encontrado; a usar imagem postgres:16-alpine …"
-  docker run --rm -e SOURCE_URL -v "$BACKUP_DIR:/backups" postgres:16-alpine \
+  echo "pg_dump local não encontrado; a usar imagem postgres:18-alpine …"
+  docker run --rm -e SOURCE_URL -v "$BACKUP_DIR:/backups" postgres:18-alpine \
     sh -c 'pg_dump "$SOURCE_URL" --no-owner --no-acl --format=custom --file="/backups/gti-'"${STAMP}"'.dump"'
   echo "OK: $OUT"
   exit 0

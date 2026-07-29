@@ -45,10 +45,20 @@ ENV NODE_ENV=production
 ENV GLPI_SKIP_BOOTSTRAP=
 ENV PORT=3000
 # Não definir HOSTNAME=0.0.0.0: o Next usa isso em redirects e o browser acaba em https://0.0.0.0/… . O bind em todas as interfaces fica a cargo de `next start -H 0.0.0.0`.
-# util-linux disponibiliza `runuser` no entrypoint (root → permissões no volume de anexos → processo como `node`).
+# util-linux: `runuser` no entrypoint. Cliente PostgreSQL 18 (PGDG) para pg_dump/pg_restore
+# compatíveis com Postgres gerido recente (ex.: Railway 18.x); o pacote Debian `postgresql-client` é 15.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates util-linux postgresql-client \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get install -y --no-install-recommends openssl ca-certificates util-linux curl gnupg \
+  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg \
+  && echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client-18 \
+  && rm -rf /var/lib/apt/lists/* \
+  && ln -sf /usr/lib/postgresql/18/bin/pg_dump /usr/local/bin/pg_dump \
+  && ln -sf /usr/lib/postgresql/18/bin/pg_restore /usr/local/bin/pg_restore \
+  && ln -sf /usr/lib/postgresql/18/bin/psql /usr/local/bin/psql
 
 COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/node_modules ./node_modules

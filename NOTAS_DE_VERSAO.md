@@ -45,6 +45,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 ### Corrigido
 
 - Imagem Docker: o diretório de anexos (`uploads` sob `apps/frontend`) passa a ser criado com permissão para o utilizador `node`, corrigindo o erro «permission denied» ao enviar ficheiros em contentores.
+- Backup/exportação: a imagem passa a incluir o cliente **PostgreSQL 18** (`pg_dump`/`pg_restore`), compatível com bases Railway recentes; erros deixam de expor a URL da base de dados.
 - Railway com volume persistente: documentação e `docker-entrypoint.sh` reforçados com **`RAILWAY_RUN_UID=0`**, diagnóstico se o volume não for gravável e **`chmod`** permissivo no caminho de anexos quando o contentor arranca como root (evita `EACCES` em subpastas como `project-tasks` quando o `chown` não é aceite pelo driver do disco).
 - Chamadas desde a app ao endpoint unificado **`/api/...`** (Next) para **calcular** ou **aprovar** medições e para **enviar anexos** de medições e glosas falhavam porque o despacho esperava mais segmentos de URL do que os que o Next expõe; o reconhecimento das rotas foi alinhado ao caminho real.
 
