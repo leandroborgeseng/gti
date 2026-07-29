@@ -2,6 +2,9 @@ import {
   ContractFeatureStatus,
   ContractItemDeliveryStatus,
   ContractItemCriticality,
+  ContractPricingBillingKind,
+  ContractPricingItemStatus,
+  ContractPricingPeriodicity,
   ContractStatus,
   ContractType,
   LawType
@@ -22,7 +25,88 @@ export type ContractStructureImportRow = {
   sourceRow: number;
 };
 import { Type } from "class-transformer";
-import { IsArray, IsDateString, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateIf, ValidateNested } from "class-validator";
+import {
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateIf,
+  ValidateNested
+} from "class-validator";
+
+/** Item de precificação dinâmica do contrato. */
+export class PricingItemDto {
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  sequence?: number;
+
+  @IsString()
+  @IsNotEmpty()
+  typeId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  description!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  unitId!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  quantity!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  unitValue!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  totalValue?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  totalManual?: boolean;
+
+  @IsOptional()
+  @IsString()
+  totalJustification?: string | null;
+
+  @IsEnum(ContractPricingBillingKind)
+  billingKind!: ContractPricingBillingKind;
+
+  @IsOptional()
+  @IsEnum(ContractPricingPeriodicity)
+  periodicity?: ContractPricingPeriodicity | null;
+
+  @IsOptional()
+  @IsDateString()
+  periodStart?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  periodEnd?: string | null;
+
+  @IsOptional()
+  @IsEnum(ContractPricingItemStatus)
+  status?: ContractPricingItemStatus;
+}
 
 /** Grupo de trabalho GLPI (ID na instância; nome opcional para exibição). */
 export class ContractGlpiGroupLinkDto {
@@ -209,9 +293,10 @@ export class CreateContractDto {
   @Min(0)
   totalValue?: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  monthlyValue!: number;
+  monthlyValue?: number;
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null && v !== undefined)
@@ -253,6 +338,13 @@ export class CreateContractDto {
   @ValidateNested({ each: true })
   @Type(() => ContractGlpiGroupLinkDto)
   glpiGroups?: ContractGlpiGroupLinkDto[];
+
+  /** Itens de precificação dinâmica (substitui valores fixos quando informado). */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PricingItemDto)
+  pricingItems?: PricingItemDto[];
 }
 
 export class UpdateContractDto {
@@ -356,6 +448,13 @@ export class UpdateContractDto {
   @ValidateNested({ each: true })
   @Type(() => ContractGlpiGroupLinkDto)
   glpiGroups?: ContractGlpiGroupLinkDto[];
+
+  /** Substitui integralmente os itens de precificação quando informado. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PricingItemDto)
+  pricingItems?: PricingItemDto[];
 }
 
 /** Corpo opcional ao salvar uma memória financeira do contrato (valores atuais antes de alterar). */

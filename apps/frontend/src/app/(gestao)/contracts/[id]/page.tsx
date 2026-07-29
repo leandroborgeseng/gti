@@ -4,6 +4,7 @@ import { ContractFinancialSnapshotsPanel } from "@/components/contracts/contract
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractGlpiGroupsPanel } from "@/components/contracts/contract-glpi-groups-panel";
 import { ContractItemChangeHistoryPanel } from "@/components/contracts/contract-item-change-history-panel";
+import { ContractPricingItemsPanel } from "@/components/contracts/contract-pricing-items-panel";
 import { ContractStatusControl } from "@/components/contracts/contract-status-control";
 import { ContractImplantationProportionPanel } from "@/components/contracts/contract-implantation-proportion-panel";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
@@ -132,10 +133,11 @@ export default async function ContractDetailPage({ params }: { params: { id: str
             {new Date(contract.endDate).toLocaleDateString("pt-BR")}
           </p>
           <p>
-            <strong className="text-slate-900">Mensalidade:</strong> {formatBrl(contract.monthlyValue)}
+            <strong className="text-slate-900">Mensalidade (equivalente):</strong> {formatBrl(contract.monthlyValue)}
           </p>
           <p>
-            <strong className="text-slate-900">Implantação:</strong> {formatBrl(contract.installationValue)}
+            <strong className="text-slate-900">Valores únicos (impl./outros):</strong>{" "}
+            {formatBrl(contract.installationValue)}
           </p>
           {contract.implementationPeriodStart || contract.implementationPeriodEnd ? (
             <p>
@@ -183,6 +185,8 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           </div>
         </div>
       </Card>
+
+      <ContractPricingItemsPanel contract={contract} />
 
       <ContractFinancialSnapshotsPanel
         contractId={contract.id}

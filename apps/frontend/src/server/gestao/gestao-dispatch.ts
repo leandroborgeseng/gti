@@ -312,6 +312,17 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "glpi-assigned-groups" && method === "GET") {
       return jsonOk(await loadContractGlpiGroupCatalog());
     }
+    if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "pricing" && method === "GET") {
+      return jsonOk(await gestaoContracts.listPricingCatalog());
+    }
+    if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "measure-units" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContracts.createMeasureUnit((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "item-types" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContracts.createContractItemType((await readJsonBody(req)) as never));
+    }
     if (seg.length === 2 && seg[1] === "module-validators" && method === "GET") {
       return jsonOk(await gestaoContracts.findModuleValidators());
     }
@@ -371,6 +382,11 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 3 && seg[2] === "financial-snapshots" && method === "POST") {
       assertMutation(user, method);
       return jsonOk(await gestaoContracts.createFinancialSnapshot(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "pricing-items" && method === "PUT") {
+      assertMutation(user, method);
+      const body = (await readJsonBody(req)) as { items?: unknown };
+      return jsonOk(await gestaoContracts.replacePricingItems(seg[1], (body?.items ?? []) as never));
     }
     if (seg.length === 3 && seg[2] === "structure-template.xlsx" && method === "GET") {
       const { prisma } = await import("@/glpi/config/prisma");

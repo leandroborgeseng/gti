@@ -9,6 +9,7 @@ import {
   createContract,
   createFiscal,
   createSupplier,
+  getContract,
   getFiscais,
   getGlpiAssignedGroupsCatalog,
   getSuppliers,
@@ -18,6 +19,14 @@ import {
   type Supplier
 } from "@/lib/api";
 import { ContractGlpiGroupsField } from "@/components/contracts/contract-glpi-groups-field";
+import {
+  ContractPricingItemsEditor,
+  pricingItemsFromContract,
+  summarizePricingDraft,
+  toPricingItemInputs,
+  validatePricingDraft,
+  type PricingDraftItem
+} from "@/components/contracts/contract-pricing-items-editor";
 import { queryKeys } from "@/lib/query-keys";
 import {
   CONTRACT_FORM_DEFAULT_VALUES,
@@ -44,13 +53,6 @@ type Props = {
 };
 
 function contractToFormDefaults(c: Contract): ContractPageFormInput {
-  const mv = Number(String(c.monthlyValue).replace(",", "."));
-  const monthlyValueStr = Number.isFinite(mv) ? String(mv).replace(".", ",") : String(c.monthlyValue);
-  const iv =
-    c.installationValue != null && String(c.installationValue).trim() !== ""
-      ? Number(String(c.installationValue).replace(",", "."))
-      : NaN;
-  const installationValueStr = Number.isFinite(iv) ? String(iv).replace(".", ",") : "";
   const cnpjDigits = onlyDigitsCnpj(c.cnpj ?? c.supplier?.cnpj ?? "");
   const lt = (c.lawType ?? "") as ContractPageFormInput["lawType"];
   const ct = c.contractType as ContractPageFormInput["contractType"];
@@ -66,8 +68,8 @@ function contractToFormDefaults(c: Contract): ContractPageFormInput {
     lawType: lt === "LEI_8666" || lt === "LEI_14133" ? lt : "",
     startDate: c.startDate.slice(0, 10),
     endDate: c.endDate.slice(0, 10),
-    monthlyValue: monthlyValueStr,
-    installationValue: installationValueStr,
+    monthlyValue: "",
+    installationValue: "",
     implementationPeriodStart:
       c.implementationPeriodStart && String(c.implementationPeriodStart).trim().length >= 10
         ? String(c.implementationPeriodStart).slice(0, 10)
@@ -103,6 +105,13 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const qFiscais = useQuery({ queryKey: queryKeys.fiscais, queryFn: getFiscais });
   const qSuppliers = useQuery({ queryKey: queryKeys.suppliers, queryFn: getSuppliers });
   const qGlpiGroups = useQuery({ queryKey: queryKeys.glpiAssignedGroups, queryFn: getGlpiAssignedGroupsCatalog });
+  const qContractDetail = useQuery({
+    queryKey: [...queryKeys.contracts, "detail", initialContract?.id ?? ""] as const,
+    queryFn: () => getContract(initialContract!.id),
+    enabled: Boolean(initialContract?.id),
+    initialData: initialContract?.pricingItems ? initialContract : undefined
+  });
+  const editContract = qContractDetail.data ?? initialContract;
   const fiscais = qFiscais.data ?? [];
   const suppliers = qSuppliers.data ?? [];
   const listsLoading = qFiscais.isPending || qSuppliers.isPending;
@@ -118,6 +127,8 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
   const [newFiscalErr, setNewFiscalErr] = useState<string | null>(null);
   const [newSupplierErr, setNewSupplierErr] = useState<string | null>(null);
+  const [pricingItems, setPricingItems] = useState<PricingDraftItem[]>([]);
+  const [pricingError, setPricingError] = useState<string | null>(null);
 
   const form = useForm<ContractPageFormInput>({
     resolver: zodResolver(contractPageSchema),
@@ -125,12 +136,17 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   });
 
   useEffect(() => {
-    if (initialContract) {
-      form.reset(contractToFormDefaults(initialContract));
+    if (editContract) {
+      form.reset(contractToFormDefaults(editContract));
+      if (editContract.pricingItems) {
+        setPricingItems(pricingItemsFromContract(editContract.pricingItems));
+      }
     } else {
       form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+      setPricingItems([]);
     }
-  }, [initialContract?.id, form, initialContract]);
+    setPricingError(null);
+  }, [editContract?.id, editContract?.updatedAt, form, editContract]);
 
   const createFiscalMut = useMutation({
     mutationFn: async (vars: { name: string; email: string; phone: string; role: FiscalModalRole }) => {
@@ -183,6 +199,8 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
       toast.success("Contrato cadastrado.");
       void qc.invalidateQueries({ queryKey: queryKeys.contracts });
       form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+      setPricingItems([]);
+      setPricingError(null);
       onSuccess?.();
     },
     onError: (e: unknown) => {
@@ -191,10 +209,16 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   });
 
   const updateContractMut = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: ContractPageParsed }) => {
-      const mv = Number(String(data.monthlyValue).replace(",", "."));
-      const instStr = (data.installationValue ?? "").trim();
-      const installationValue = instStr === "" ? null : Number(instStr.replace(",", "."));
+    mutationFn: async ({
+      id,
+      data,
+      items
+    }: {
+      id: string;
+      data: ContractPageParsed;
+      items: PricingDraftItem[];
+    }) => {
+      const totals = summarizePricingDraft(items);
       const implS = (data.implementationPeriodStart ?? "").trim();
       const implE = (data.implementationPeriodEnd ?? "").trim();
       return updateContract(id, {
@@ -208,14 +232,15 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
         lawType: data.lawType || undefined,
         startDate: data.startDate,
         endDate: data.endDate,
-        monthlyValue: mv,
-        installationValue,
+        monthlyValue: totals.monthlyValue,
+        installationValue: totals.installationValue,
         implementationPeriodStart: implS ? implS : null,
         implementationPeriodEnd: implE ? implE : null,
         fiscalId: data.fiscalId,
         managerId: data.managerId.trim() || undefined,
         supplierId: data.supplierId.trim() || null,
-        glpiGroups: data.glpiGroups
+        glpiGroups: data.glpiGroups,
+        pricingItems: toPricingItemInputs(items)
       });
     },
     onSuccess: () => {
@@ -296,13 +321,18 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
 
   function onValidSubmit(raw: ContractPageFormInput): void {
     const data = contractPageSchema.parse(raw);
-    if (initialContract) {
-      updateContractMut.mutate({ id: initialContract.id, data });
+    const pricingMsg = validatePricingDraft(pricingItems);
+    setPricingError(pricingMsg);
+    if (pricingMsg) {
+      toast.error(pricingMsg);
       return;
     }
-    const mv = Number(String(data.monthlyValue).replace(",", "."));
-    const instStr = (data.installationValue ?? "").trim();
-    const installationValue = instStr === "" ? null : Number(instStr.replace(",", "."));
+    const totals = summarizePricingDraft(pricingItems);
+    const itemsPayload = toPricingItemInputs(pricingItems);
+    if (initialContract) {
+      updateContractMut.mutate({ id: initialContract.id, data, items: pricingItems });
+      return;
+    }
     const implS = (data.implementationPeriodStart ?? "").trim();
     const implE = (data.implementationPeriodEnd ?? "").trim();
     createContractMut.mutate({
@@ -316,14 +346,15 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
       lawType: data.lawType || undefined,
       startDate: data.startDate,
       endDate: data.endDate,
-      monthlyValue: mv,
-      ...(installationValue !== null ? { installationValue } : {}),
+      monthlyValue: totals.monthlyValue,
+      ...(totals.installationValue != null ? { installationValue: totals.installationValue } : {}),
       ...(implS ? { implementationPeriodStart: implS } : {}),
       ...(implE ? { implementationPeriodEnd: implE } : {}),
       fiscalId: data.fiscalId,
       managerId: data.managerId.trim() || undefined,
       supplierId: data.supplierId.trim() || undefined,
-      glpiGroups: data.glpiGroups.length > 0 ? data.glpiGroups : undefined
+      glpiGroups: data.glpiGroups.length > 0 ? data.glpiGroups : undefined,
+      pricingItems: itemsPayload
     });
   }
 
@@ -582,8 +613,8 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
         </FormSection>
 
         <FormSection
-          title="Vigência e valores"
-          description="Mensalidade e implantação são rubricas distintas. Defina o período de implantação (opcional) para o sistema indicar a fase: durante esse período a referência proporcional é a implantação; depois, a mensalidade."
+          title="Vigência"
+          description="Período de vigência do contrato. O período de implantação (opcional) orienta o painel de proporcionalidade entre implantação e mensalidade."
         >
           <FormField
             control={form.control}
@@ -613,34 +644,6 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
           />
           <FormField
             control={form.control}
-            name="monthlyValue"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Mensalidade (R$)</FormLabel>
-                <FormControl>
-                  <Input type="text" inputMode="decimal" placeholder="0,00" {...field} />
-                </FormControl>
-                <FormDescription>Valor recorrente mensal do contrato.</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="installationValue"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Implantação (R$)</FormLabel>
-                <FormControl>
-                  <Input type="text" inputMode="decimal" placeholder="Opcional" {...field} />
-                </FormControl>
-                <FormDescription>Valor único de implantação ou projeto, separado da mensalidade.</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
             name="implementationPeriodStart"
             render={({ field }) => (
               <FormItem>
@@ -648,7 +651,10 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                 <FormControl>
                   <Input type="date" {...field} value={field.value ?? ""} />
                 </FormControl>
-                <FormDescription>Opcional. Com início e fim definidos, o painel de proporcionalidade destaca implantação ou mensalidade conforme a data de hoje.</FormDescription>
+                <FormDescription>
+                  Opcional. Com início e fim definidos, o painel de proporcionalidade destaca implantação ou mensalidade
+                  conforme a data de hoje.
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -666,6 +672,24 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
               </FormItem>
             )}
           />
+        </FormSection>
+
+        <FormSection
+          title="Itens contratuais"
+          description="Registre mensalidade, implantação, horas, UST, equipamentos, licenças e demais itens precificados. A descrição livre e o tipo padronizado são complementares — não se substituem. O valor total é calculado automaticamente (quantidade × unitário), salvo indicação manual justificada."
+        >
+          <ContractPricingItemsEditor
+            value={pricingItems}
+            onChange={(next) => {
+              setPricingItems(next);
+              if (pricingError) setPricingError(validatePricingDraft(next));
+            }}
+            lockHardDelete={Boolean(editContract?.pricingLocked)}
+            error={pricingError}
+          />
+          {initialContract && qContractDetail.isPending && !editContract?.pricingItems ? (
+            <p className="sm:col-span-2 text-sm text-muted-foreground">Carregando itens contratuais…</p>
+          ) : null}
         </FormSection>
 
         <FormSection title="Descrição" description="Opcional — objeto ou observações.">

@@ -145,6 +145,27 @@ enum ContractItemCriticality {
   APOIO
 }
 
+/// Forma de cobrança do item de precificação do contrato.
+enum ContractPricingBillingKind {
+  RECURRING
+  ONE_TIME
+  ON_DEMAND
+}
+
+enum ContractPricingPeriodicity {
+  MONTHLY
+  BIMONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+  CUSTOM
+}
+
+enum ContractPricingItemStatus {
+  ACTIVE
+  CANCELLED
+}
+
 model User {
   id                  String               @id @default(uuid())
   email               String               @unique
@@ -266,6 +287,8 @@ model Contract {
   financialSnapshots ContractFinancialSnapshot[]
   /** Histórico auditável de inserção, exclusão e mudança de status dos itens contratuais. */
   itemChangeLogs ContractItemChangeLog[]
+  /** Itens de precificação dinâmica (mensalidade, horas, UST, equipamentos, etc.). */
+  pricingItems   ContractPricingItem[]
 
   @@index([status, endDate])
   @@index([deletedAt])
@@ -715,6 +738,67 @@ model SyncState {
   key       String   @id
   value     String?  @db.Text
   updatedAt DateTime @updatedAt
+}
+
+/// Tipo padronizado de item de precificação (catálogo Administração).
+model ContractItemType {
+  id        String                @id @default(uuid())
+  code      String                @unique
+  label     String
+  active    Boolean               @default(true)
+  sortOrder Int                   @default(0) @map("sort_order")
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+  items     ContractPricingItem[]
+
+  @@map("contract_item_type")
+}
+
+/// Unidade de medida do item de precificação.
+model MeasureUnit {
+  id        String                @id @default(uuid())
+  code      String                @unique
+  label     String
+  active    Boolean               @default(true)
+  sortOrder Int                   @default(0) @map("sort_order")
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+  items     ContractPricingItem[]
+
+  @@map("measure_unit")
+}
+
+/// Item de precificação dinâmica do contrato (mensalidade, horas, UST, equipamentos…).
+model ContractPricingItem {
+  id                 String                     @id @default(uuid())
+  contractId         String                     @map("contract_id")
+  sequence           Int
+  typeId             String                     @map("type_id")
+  description        String                     @db.Text
+  unitId             String                     @map("unit_id")
+  quantity           Decimal                    @db.Decimal(18, 4)
+  unitValue          Decimal                    @map("unit_value") @db.Decimal(18, 4)
+  totalValue         Decimal                    @map("total_value") @db.Decimal(18, 2)
+  /// Se true, o valor total foi informado manualmente (exige justificativa).
+  totalManual        Boolean                    @default(false) @map("total_manual")
+  totalJustification String?                    @map("total_justification") @db.Text
+  billingKind        ContractPricingBillingKind @map("billing_kind")
+  periodicity        ContractPricingPeriodicity?
+  periodStart        DateTime?                  @map("period_start")
+  periodEnd          DateTime?                  @map("period_end")
+  status             ContractPricingItemStatus  @default(ACTIVE)
+  /// Quantidade já consumida/medida (itens sob demanda).
+  consumedQuantity   Decimal                    @default(0) @map("consumed_quantity") @db.Decimal(18, 4)
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+  contract           Contract                   @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  type               ContractItemType           @relation(fields: [typeId], references: [id])
+  unit               MeasureUnit                @relation(fields: [unitId], references: [id])
+
+  @@unique([contractId, sequence])
+  @@index([contractId, status])
+  @@index([typeId])
+  @@map("contract_pricing_item")
 }
 
 /// Configuração singleton do backup automático para S3 (AWS, MinIO, R2…).

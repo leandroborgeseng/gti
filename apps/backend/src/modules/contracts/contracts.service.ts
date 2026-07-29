@@ -22,11 +22,13 @@ import {
   CreateContractServiceDto,
   ContractGlpiGroupLinkDto,
   ContractStructureImportRow,
+  PricingItemDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
   UpdateContractModuleDto,
   UpdateContractServiceDto
 } from "./contracts.dto";
+import { ContractPricingHelper, type PricingItemInput } from "./contract-pricing.helper";
 
 function moduleGroupKey(name: string): string {
   return name.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
@@ -226,11 +228,53 @@ function assertImplementationPeriodOrder(start: Date | null, end: Date | null): 
 
 @Injectable()
 export class ContractsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly pricing: ContractPricingHelper;
+
+  constructor(private readonly prisma: PrismaService) {
+    this.pricing = new ContractPricingHelper(prisma);
+  }
 
   async create(dto: CreateContractDto): Promise<unknown> {
-    const { glpiGroups, ...rest } = dto;
-    const totalValue = rest.totalValue ?? rest.monthlyValue * 12;
+    const { glpiGroups, pricingItems, ...rest } = dto;
+    let monthlyValue = rest.monthlyValue ?? 0;
+    let installationValue =
+      rest.installationValue === undefined || rest.installationValue === null
+        ? null
+        : rest.installationValue;
+    let totalValue = rest.totalValue ?? monthlyValue * 12;
+
+    if (pricingItems && pricingItems.length > 0) {
+      const { summarizePricingItems } = await import("./contract-pricing.helper");
+      // normalize via replace on temp — compute totals from inputs
+      const helperTotals = summarizePricingItems(
+        pricingItems.map((p, idx) => {
+          const qty = Number(p.quantity);
+          const uv = Number(p.unitValue);
+          const totalManual = Boolean(p.totalManual);
+          const expected = Math.round(qty * uv * 100) / 100;
+          const total = totalManual && p.totalValue != null ? Number(p.totalValue) : expected;
+          return {
+            quantity: qty,
+            unitValue: uv,
+            totalValue: total,
+            billingKind: p.billingKind as never,
+            periodicity: (p.periodicity ?? null) as never,
+            status: (p.status ?? "ACTIVE") as never
+          };
+        })
+      );
+      monthlyValue = helperTotals.monthlyValue;
+      installationValue = helperTotals.installationValue;
+      totalValue = helperTotals.globalEstimated || monthlyValue * 12;
+    }
+
+    if (!(monthlyValue > 0) && !(pricingItems && pricingItems.length > 0)) {
+      throw new BadRequestException("Informe a mensalidade ou ao menos um item contratual.");
+    }
+    if (!(monthlyValue > 0)) {
+      monthlyValue = 0.01; // schema/histórico esperam Decimal; medições SOFTWARE usam mensalidade
+    }
+
     const managerId = rest.managerId ?? rest.fiscalId;
     const implStart = rest.implementationPeriodStart ? new Date(rest.implementationPeriodStart) : null;
     const implEnd = rest.implementationPeriodEnd ? new Date(rest.implementationPeriodEnd) : null;
@@ -248,11 +292,8 @@ export class ContractsService {
         startDate: new Date(rest.startDate),
         endDate: new Date(rest.endDate),
         totalValue: new Prisma.Decimal(totalValue),
-        monthlyValue: new Prisma.Decimal(rest.monthlyValue),
-        installationValue:
-          rest.installationValue === undefined || rest.installationValue === null
-            ? null
-            : new Prisma.Decimal(rest.installationValue),
+        monthlyValue: new Prisma.Decimal(monthlyValue),
+        installationValue: installationValue === null ? null : new Prisma.Decimal(installationValue),
         implementationPeriodStart: implStart,
         implementationPeriodEnd: implEnd,
         status: rest.status ?? ContractStatus.ACTIVE,
@@ -265,6 +306,11 @@ export class ContractsService {
       }
     });
     await this.createAudit("Contract", created.id, "CREATE", null, created);
+    if (pricingItems && pricingItems.length > 0) {
+      await this.pricing.replaceItems(created.id, pricingItems as PricingItemInput[], (action, oldData, newData) =>
+        this.createAudit("ContractPricingItem", created.id, action, oldData, newData)
+      );
+    }
     return this.findOne(created.id);
   }
 
@@ -380,14 +426,23 @@ export class ContractsService {
         glpiGroups: { orderBy: { glpiGroupName: "asc" } },
         amendments: { orderBy: { createdAt: "desc" } },
         financialSnapshots: { orderBy: { recordedAt: "desc" }, take: 50 },
-        itemChangeLogs: { orderBy: { changedAt: "desc" }, take: 100 }
+        itemChangeLogs: { orderBy: { changedAt: "desc" }, take: 100 },
+        pricingItems: {
+          include: { type: true, unit: true },
+          orderBy: { sequence: "asc" }
+        }
       }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");
     const modules = sortModuleListFeatures(contract.modules);
+    const { summarizePricingItems } = await import("./contract-pricing.helper");
+    const pricingTotals = summarizePricingItems(contract.pricingItems);
+    const pricingLocked = await this.pricing.contractHasMovements(id);
     return {
       ...contract,
       modules,
+      pricingTotals,
+      pricingLocked,
       featureImplantationProportion: buildFeatureImplantationProportion({
         monthlyValue: contract.monthlyValue,
         installationValue: contract.installationValue,
@@ -497,7 +552,7 @@ export class ContractsService {
           : new Date(dto.implementationPeriodEnd)
         : prev.implementationPeriodEnd;
     assertImplementationPeriodOrder(nextImplStart, nextImplEnd);
-    const { glpiGroups, ...rest } = dto;
+    const { glpiGroups, pricingItems, ...rest } = dto;
     const totalValue = dto.totalValue ?? (dto.monthlyValue != null ? dto.monthlyValue * 12 : undefined);
     const updated = await this.prisma.contract.update({
       where: { id },
@@ -532,7 +587,33 @@ export class ContractsService {
       }
     });
     await this.createAudit("Contract", id, "UPDATE", prev, updated);
+    if (pricingItems !== undefined) {
+      await this.pricing.replaceItems(id, pricingItems as PricingItemInput[], (action, oldData, newData) =>
+        this.createAudit("ContractPricingItem", id, action, oldData, newData)
+      );
+    }
     return this.findOne(id);
+  }
+
+  async listPricingCatalog() {
+    // Inclui inativos para não quebrar edição de itens já vinculados a tipos/unidades desativados.
+    const [types, units] = await Promise.all([this.pricing.listTypes(true), this.pricing.listUnits(true)]);
+    return { types, units };
+  }
+
+  async createMeasureUnit(body: { code: string; label: string }) {
+    return this.pricing.createUnit(body);
+  }
+
+  async createContractItemType(body: { code: string; label: string }) {
+    return this.pricing.createType(body);
+  }
+
+  async replacePricingItems(contractId: string, items: PricingItemDto[]) {
+    await this.pricing.ensureContract(contractId);
+    return this.pricing.replaceItems(contractId, items as PricingItemInput[], (action, oldData, newData) =>
+      this.createAudit("ContractPricingItem", contractId, action, oldData, newData)
+    );
   }
 
   /**

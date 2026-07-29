@@ -7,6 +7,7 @@ import {
   CreateContractFinancialSnapshotDto,
   CreateContractModuleDto,
   CreateContractServiceDto,
+  PricingItemDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
   UpdateContractModuleDto,
@@ -31,6 +32,22 @@ export class ContractsController {
   @Get("catalog/glpi-assigned-groups")
   listGlpiAssignedGroups(): Promise<unknown> {
     return this.service.findDistinctGlpiAssignedGroupOptions();
+  }
+
+  /** Catálogo de tipos padronizados e unidades de medida dos itens contratuais. */
+  @Get("catalog/pricing")
+  listPricingCatalog(): Promise<unknown> {
+    return this.service.listPricingCatalog();
+  }
+
+  @Post("catalog/measure-units")
+  createMeasureUnit(@Body() body: { code: string; label: string }): Promise<unknown> {
+    return this.service.createMeasureUnit(body);
+  }
+
+  @Post("catalog/item-types")
+  createContractItemType(@Body() body: { code: string; label: string }): Promise<unknown> {
+    return this.service.createContractItemType(body);
   }
 
   /** Visão geral de módulos e itens (estado de entrega) para todos os contratos com estrutura modular. */
@@ -117,6 +134,14 @@ export class ContractsController {
     @Body() dto: CreateContractFinancialSnapshotDto
   ): Promise<unknown> {
     return this.service.createFinancialSnapshot(contractId, dto);
+  }
+
+  @Put(":id/pricing-items")
+  replacePricingItems(
+    @Param("id") contractId: string,
+    @Body() body: { items: PricingItemDto[] }
+  ): Promise<unknown> {
+    return this.service.replacePricingItems(contractId, body?.items ?? []);
   }
 
   @Get(":id")

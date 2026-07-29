@@ -10,6 +10,8 @@ export const queryKeys = {
   contractModuleValidators: ["gestao", "contract-module-validators"] as const,
   /** Grupos GLPI distintos nos tickets em cache (catálogo para vínculo ao contrato). */
   glpiAssignedGroups: ["gestao", "glpi-assigned-groups"] as const,
+  /** Catálogo de tipos padronizados e unidades de medida dos itens de precificação. */
+  contractPricingCatalog: ["gestao", "contract-pricing-catalog"] as const,
   measurements: ["gestao", "measurements"] as const,
   glosas: ["gestao", "glosas"] as const,
   goals: ["gestao", "goals"] as const,

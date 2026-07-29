@@ -29,22 +29,9 @@ export const contractPageSchema = z
     lawType: lawTypeFieldSchema,
     startDate: z.string().min(1, "Informe o início da vigência."),
     endDate: z.string().min(1, "Informe o fim da vigência."),
-    monthlyValue: z
-      .string()
-      .min(1, "Informe o valor mensal.")
-      .refine((s) => {
-        const n = Number(String(s).replace(",", "."));
-        return Number.isFinite(n) && n > 0;
-      }, { message: "Valor mensal deve ser maior que zero." }),
-    installationValue: z
-      .string()
-      .optional()
-      .transform((s) => (typeof s === "string" ? s.trim() : ""))
-      .refine((s) => {
-        if (s === "") return true;
-        const n = Number(String(s).replace(",", "."));
-        return Number.isFinite(n) && n >= 0;
-      }, { message: "Valor de implantação inválido." }),
+    /** Mantidos para compatibilidade; valores derivados dos itens contratuais no envio. */
+    monthlyValue: z.string().optional().default(""),
+    installationValue: z.string().optional().default(""),
     implementationPeriodStart: z.string().optional().default(""),
     implementationPeriodEnd: z.string().optional().default(""),
     fiscalId: z.string().min(1, "Selecione ou cadastre o fiscal."),

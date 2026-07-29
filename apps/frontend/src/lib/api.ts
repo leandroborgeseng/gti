@@ -254,6 +254,92 @@ export type Contract = {
   financialSnapshots?: ContractFinancialSnapshot[];
   /** Histórico auditável de inserção, exclusão e mudança de status dos itens contratuais. */
   itemChangeLogs?: ContractItemChangeLog[];
+  /** Itens de precificação dinâmica (mensalidade, horas, UST, etc.). */
+  pricingItems?: ContractPricingItem[];
+  /** Totais consolidados dos itens ativos. */
+  pricingTotals?: ContractPricingTotals;
+  /** Quando true, exclusão definitiva de itens é bloqueada (há medições/aditivos/snapshots). */
+  pricingLocked?: boolean;
+};
+
+export type ContractPricingBillingKind = "RECURRING" | "ONE_TIME" | "ON_DEMAND";
+export type ContractPricingPeriodicity =
+  | "MONTHLY"
+  | "BIMONTHLY"
+  | "QUARTERLY"
+  | "SEMIANNUAL"
+  | "ANNUAL"
+  | "CUSTOM";
+export type ContractPricingItemStatus = "ACTIVE" | "CANCELLED";
+
+export type ContractItemTypeCatalog = {
+  id: string;
+  code: string;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type MeasureUnitCatalog = {
+  id: string;
+  code: string;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type ContractPricingCatalog = {
+  types: ContractItemTypeCatalog[];
+  units: MeasureUnitCatalog[];
+};
+
+export type ContractPricingItem = {
+  id: string;
+  contractId: string;
+  sequence: number;
+  typeId: string;
+  description: string;
+  unitId: string;
+  quantity: string;
+  unitValue: string;
+  totalValue: string;
+  totalManual: boolean;
+  totalJustification?: string | null;
+  billingKind: ContractPricingBillingKind;
+  periodicity?: ContractPricingPeriodicity | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  status: ContractPricingItemStatus;
+  consumedQuantity?: string;
+  type?: ContractItemTypeCatalog;
+  unit?: MeasureUnitCatalog;
+};
+
+export type ContractPricingTotals = {
+  recurringPredicted: number;
+  oneTime: number;
+  onDemand: number;
+  globalEstimated: number;
+  monthlyValue: number;
+  installationValue: number | null;
+};
+
+export type ContractPricingItemInput = {
+  id?: string;
+  sequence?: number;
+  typeId: string;
+  description: string;
+  unitId: string;
+  quantity: number;
+  unitValue: number;
+  totalValue?: number;
+  totalManual?: boolean;
+  totalJustification?: string | null;
+  billingKind: ContractPricingBillingKind;
+  periodicity?: ContractPricingPeriodicity | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  status?: ContractPricingItemStatus;
 };
 
 export type ContractItemChangeLog = {
@@ -573,6 +659,8 @@ export async function updateContract(
     supplierId?: string | null;
     /** Se enviado (incluindo lista vazia), substitui todos os vínculos a grupos GLPI. */
     glpiGroups?: Array<{ glpiGroupId: number; glpiGroupName?: string }>;
+    /** Substitui integralmente os itens de precificação quando informado. */
+    pricingItems?: ContractPricingItemInput[];
   }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}`, { method: "PUT", body: JSON.stringify(payload) });
@@ -590,7 +678,7 @@ export async function createContract(payload: {
   startDate: string;
   endDate: string;
   totalValue?: number;
-  monthlyValue: number;
+  monthlyValue?: number;
   installationValue?: number | null;
   implementationPeriodStart?: string;
   implementationPeriodEnd?: string;
@@ -600,8 +688,34 @@ export async function createContract(payload: {
   managerId?: string;
   supplierId?: string;
   glpiGroups?: Array<{ glpiGroupId: number; glpiGroupName?: string }>;
+  pricingItems?: ContractPricingItemInput[];
 }): Promise<Contract> {
   return request("/contracts", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function getContractPricingCatalog(): Promise<ContractPricingCatalog> {
+  return request("/contracts/catalog/pricing");
+}
+
+export async function createMeasureUnit(payload: { code: string; label: string }): Promise<MeasureUnitCatalog> {
+  return request("/contracts/catalog/measure-units", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function createContractItemType(payload: {
+  code: string;
+  label: string;
+}): Promise<ContractItemTypeCatalog> {
+  return request("/contracts/catalog/item-types", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function replaceContractPricingItems(
+  contractId: string,
+  items: ContractPricingItemInput[]
+): Promise<{ items: ContractPricingItem[]; totals: ContractPricingTotals }> {
+  return request(`/contracts/${contractId}/pricing-items`, {
+    method: "PUT",
+    body: JSON.stringify({ items })
+  });
 }
 
 export type ContractFeatureStatus = "NOT_STARTED" | "IN_PROGRESS" | "DELIVERED" | "VALIDATED";
