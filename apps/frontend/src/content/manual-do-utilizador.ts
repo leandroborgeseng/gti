@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-05-06";
+export const MANUAL_LAST_UPDATED = "2026-07-29";
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -72,7 +72,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         parts: [
           "Existem três papéis: administrador, editor e leitor. O administrador gerencia usuários (ver ",
           { href: "/users", label: "Usuários" },
-          " abaixo) e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis."
+          "), pode exportar e restaurar backup completo do sistema (ver ",
+          { href: "/backup", label: "Backup e migração" },
+          ") e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis."
         ]
       },
       {
@@ -363,6 +365,39 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "roles",
         text: "Menu «Usuários» só é mostrado a administradores."
+      }
+    ]
+  },
+  {
+    id: "backup-migracao",
+    title: "Backup e migração",
+    blocks: [
+      {
+        kind: "p",
+        parts: [
+          { href: "/backup", label: "Backup e migração" },
+          " — Permite a administradores exportar e restaurar a base de dados PostgreSQL, preferências guardadas no sistema e, opcionalmente, os anexos em disco. Serve para migrar a aplicação para outro servidor (por exemplo Railway → Coolify)."
+        ]
+      },
+      {
+        kind: "ul",
+        items: [
+          "Na exportação, o sistema gera um ficheiro .tar.gz com o dump da base (pg_dump), um manifesto e uma checklist de variáveis de ambiente. Os valores secretos (JWT, senhas GLPI, chaves Resend, etc.) nunca entram no pacote.",
+          "Pode incluir ou omitir a pasta de anexos (medições, glosas e tarefas de projeto).",
+          "Backup automático S3: configure bucket, chaves, horário e retenção (diária / semanal / mensal) na própria tela. O secret fica criptografado na base; o envio corre todos os dias no horário escolhido e pode ser disparado manualmente.",
+          "É possível listar os pacotes no S3 e restaurar um deles neste servidor (com a palavra RESTAURAR), além da restauração a partir de um ficheiro local.",
+          "Na restauração por ficheiro, escolha o arquivo no servidor de destino, indique se quer restaurar anexos e digite a palavra RESTAURAR para confirmar. Esta operação substitui os dados da base atual.",
+          "Depois da restauração, confirme no painel do host que as variáveis de ambiente necessárias estão definidas (a tela mostra quais estão presentes ou em falta, sem revelar valores).",
+          "Faça a restauração em janela de manutenção: utilizadores ligados podem precisar de voltar a autenticar-se."
+        ]
+      },
+      {
+        kind: "tip",
+        text: "Para migrações operacionais pela linha de comando, continue a poder usar os scripts scripts/db-export.sh e scripts/db-import.sh descritos na documentação de migração."
+      },
+      {
+        kind: "roles",
+        text: "Menu «Backup e migração» só é mostrado a administradores."
       }
     ]
   },

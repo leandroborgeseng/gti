@@ -7,6 +7,8 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 ### Adicionado
 
 - Criada a rotina de manutenção das notas de versão para registrar mudanças funcionais, melhorias de interface, alterações de permissões e ajustes relevantes para operação.
+- Área administrativa **Backup e migração** (só administradores): exporta e restaura a base PostgreSQL, preferências do sistema e, opcionalmente, anexos, para facilitar a mudança de servidor. Segredos de ambiente não entram no ficheiro; a tela mostra quais variáveis estão definidas no destino.
+- Backup automático para **S3** (AWS, MinIO, R2): configuração pela interface, envio diário com retenção diária/semanal/mensal, execução manual, listagem e restauração a partir do bucket. A chave secreta fica criptografada na base.
 - Adicionada a opção de excluir tarefas dentro de um projeto, com confirmação antes da remoção.
 - Adicionado cadastro público pela tela de login, com aprovação ou recusa de novos usuários pela administração.
 - Adicionado o Resumo Operacional para acompanhar chamados abertos/fechados, tarefas concluídas e alterações em contratos por dia, semana ou mês.
@@ -37,6 +39,8 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 - Documentação e scripts para **migração Railway → Coolify** (`docs/migracao-railway-coolify.md`, `docker-compose.coolify.yml`, `scripts/db-export.sh`, `scripts/db-import.sh`, `.env.coolify.example`). Dumps de base e anexos **não** devem ser versionados no Git.
 - Fluxo **dump no Git → restore Coolify**: workflow **Export DB migration dump**, ficheiro `migration/gti-railway.dump`, variáveis `GTI_EXPORT_MIGRATION_DUMP` (Railway) e `GTI_IMPORT_MIGRATION_DUMP` (Coolify, one-shot). Remover dump do repo após migração.
+- Backup in-app (ADMIN): APIs `/api/admin/backup` (export `pg_dump` + tar.gz, import `pg_restore`); limite de upload configurável com `BACKUP_MAX_MB` (predefinição 512).
+- Backup S3: modelo `S3BackupConfig`, APIs `/api/admin/backup/s3` (+ `run`, `objects`, `restore`), cron via `instrumentation`/`node-cron`, crypto com `BACKUP_ENCRYPTION_KEY` (ou `JWT_SECRET`), bootstrap opcional `S3_BACKUP_*`.
 
 ### Corrigido
 

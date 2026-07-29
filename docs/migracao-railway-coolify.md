@@ -13,6 +13,8 @@ Guia operacional para mover a aplicação **Next + Prisma + GLPI** e o **Postgre
 
 **Segurança:** o dump tem dados reais — repositório **privado** obrigatório. Após migração, **apague** `migration/gti-railway.dump` do Git. Dumps > 50 MB: Git LFS ou `backups/` local.
 
+**Alternativa pela interface:** administradores podem usar **Administração → Backup e migração** (`/backup`) para exportar/restaurar dump + anexos e para configurar **backup periódico no S3** (retenção diária/semanal/mensal). Segredos de ambiente da app continuam a ser configurados no painel do host; as chaves S3 podem ser guardadas pela UI (criptografadas).
+
 ---
 
 ## Fluxo via Git (Railway → Git → Coolify)

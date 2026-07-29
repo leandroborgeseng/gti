@@ -1083,6 +1083,242 @@ export async function fetchContractAmendmentsCsvBlob(): Promise<Blob> {
   return fetchExportCsvBlob("/exports/contract-amendments.csv", "aditivos de contratos");
 }
 
+export type SystemBackupEnvItem = { key: string; present: boolean };
+
+export type SystemBackupInfo = {
+  ok: boolean;
+  formatVersion: number;
+  confirmPhrase: string;
+  maxUploadMb: number;
+  envKeysTracked: string[];
+  envChecklist: SystemBackupEnvItem[];
+  notes: string[];
+};
+
+export type SystemBackupImportResult = {
+  ok: boolean;
+  message: string;
+  databaseRestored: boolean;
+  uploadsRestored: boolean;
+  envChecklist: SystemBackupEnvItem[];
+  warnings: string[];
+};
+
+/** Metadados e checklist de variáveis (ADMIN). */
+export async function getSystemBackupInfo(): Promise<SystemBackupInfo> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/backup`, { headers: { ...auth }, cache: "no-store" });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const payload = (await res.json()) as { message?: string };
+      detail = typeof payload.message === "string" ? payload.message : "";
+    } catch {
+      detail = "";
+    }
+    throw new Error(detail || `Falha ao obter informações de backup (${res.status})`);
+  }
+  return (await res.json()) as SystemBackupInfo;
+}
+
+/** Descarrega pacote .tar.gz de backup do sistema (ADMIN). */
+export async function fetchSystemBackupBlob(
+  includeUploads: boolean
+): Promise<{ blob: Blob; filename: string }> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const q = includeUploads ? "?uploads=1" : "?uploads=0";
+  const res = await fetch(`${apiBase}/admin/backup/export${q}`, {
+    headers: { ...auth },
+    cache: "no-store"
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const payload = (await res.json()) as { message?: string };
+      detail = typeof payload.message === "string" ? payload.message : "";
+    } catch {
+      detail = "";
+    }
+    throw new Error(detail || `Falha ao exportar backup (${res.status})`);
+  }
+  const cd = res.headers.get("Content-Disposition") || "";
+  const match = /filename="([^"]+)"/i.exec(cd);
+  const filename = match?.[1] || `gti-backup-${Date.now()}.tar.gz`;
+  return { blob: await res.blob(), filename };
+}
+
+/** Restaura pacote de backup (ADMIN). confirm deve ser «RESTAURAR». */
+export async function importSystemBackup(
+  file: File,
+  options: { confirm: string; restoreUploads: boolean }
+): Promise<SystemBackupImportResult> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const form = new FormData();
+  form.append("file", file);
+  form.append("confirm", options.confirm);
+  form.append("restoreUploads", options.restoreUploads ? "true" : "false");
+  const res = await fetch(`${apiBase}/admin/backup/import`, {
+    method: "POST",
+    headers: { ...auth },
+    body: form,
+    cache: "no-store"
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const payload = (await res.json()) as { message?: string };
+      detail = typeof payload.message === "string" ? payload.message : "";
+    } catch {
+      detail = "";
+    }
+    throw new Error(detail || `Falha na restauração (${res.status})`);
+  }
+  return (await res.json()) as SystemBackupImportResult;
+}
+
+export type S3BackupStatus = {
+  ok: boolean;
+  enabled: boolean;
+  configured: boolean;
+  hasSecret: boolean;
+  status: "ativo" | "desabilitado" | "incompleto" | "em_execucao";
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  endpoint: string | null;
+  forcePathStyle: boolean;
+  prefix: string;
+  hour: number;
+  timezone: string;
+  cron: string;
+  cronRegistered: boolean;
+  keepDaily: number;
+  keepWeekly: number;
+  keepMonthly: number;
+  running: boolean;
+  lastRun: {
+    at: string;
+    ok: boolean;
+    error?: string;
+    triggeredBy: "cron" | "manual";
+    objectKey?: string | null;
+    bytes?: number | null;
+  } | null;
+};
+
+export type S3BackupConfigPayload = {
+  enabled: boolean;
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey?: string;
+  endpoint?: string | null;
+  forcePathStyle?: boolean;
+  prefix: string;
+  hour: number;
+  timezone: string;
+  keepDaily: number;
+  keepWeekly: number;
+  keepMonthly: number;
+};
+
+export type S3BackupObjectItem = {
+  tier: "daily" | "weekly" | "monthly";
+  key: string;
+  size: number;
+  lastModified: string | null;
+};
+
+async function parseBackupError(res: Response, fallback: string): Promise<never> {
+  let detail = "";
+  try {
+    const payload = (await res.json()) as { message?: string };
+    detail = typeof payload.message === "string" ? payload.message : "";
+  } catch {
+    detail = "";
+  }
+  throw new Error(detail || `${fallback} (${res.status})`);
+}
+
+export async function getS3BackupStatus(): Promise<S3BackupStatus> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/backup/s3`, { headers: { ...auth }, cache: "no-store" });
+  if (!res.ok) await parseBackupError(res, "Falha ao obter status S3");
+  return (await res.json()) as S3BackupStatus;
+}
+
+export async function saveS3BackupConfig(payload: S3BackupConfigPayload): Promise<S3BackupStatus> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/backup/s3`, {
+    method: "PUT",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!res.ok) await parseBackupError(res, "Falha ao salvar configuração S3");
+  return (await res.json()) as S3BackupStatus;
+}
+
+export async function runS3BackupNow(): Promise<NonNullable<S3BackupStatus["lastRun"]>> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/backup/s3/run`, {
+    method: "POST",
+    headers: { ...auth },
+    cache: "no-store"
+  });
+  if (!res.ok) await parseBackupError(res, "Falha ao executar backup S3");
+  const data = (await res.json()) as { lastRun: NonNullable<S3BackupStatus["lastRun"]> };
+  return data.lastRun;
+}
+
+export async function listS3BackupObjects(): Promise<{ items: S3BackupObjectItem[] }> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/backup/s3/objects`, {
+    headers: { ...auth },
+    cache: "no-store"
+  });
+  if (!res.ok) await parseBackupError(res, "Falha ao listar objetos S3");
+  return (await res.json()) as { items: S3BackupObjectItem[] };
+}
+
+export async function restoreS3Backup(options: {
+  objectKey: string;
+  confirm: string;
+  restoreUploads: boolean;
+}): Promise<{
+  ok: boolean;
+  message: string;
+  objectKey: string;
+  databaseRestored: boolean;
+  uploadsRestored: boolean;
+  warnings: string[];
+}> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/backup/s3/restore`, {
+    method: "POST",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+    cache: "no-store"
+  });
+  if (!res.ok) await parseBackupError(res, "Falha ao restaurar do S3");
+  return (await res.json()) as {
+    ok: boolean;
+    message: string;
+    objectKey: string;
+    databaseRestored: boolean;
+    uploadsRestored: boolean;
+    warnings: string[];
+  };
+}
+
 /** Modelo .xlsx para preencher módulos e funcionalidades antes de importar no contrato. */
 export async function fetchContractStructureTemplateBlob(contractId: string): Promise<Blob> {
   const apiBase = await resolveRequestApiBase();

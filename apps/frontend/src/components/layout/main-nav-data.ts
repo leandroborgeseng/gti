@@ -3,6 +3,7 @@ import {
   BookOpen,
   ClipboardList,
   ClipboardCheck,
+  DatabaseBackup,
   FileSpreadsheet,
   FileText,
   Flag,
@@ -78,7 +79,10 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
   {
     id: "administracao",
     label: "Administração",
-    items: [{ href: "/users", label: "Usuários", icon: Users, adminOnly: true }]
+    items: [
+      { href: "/users", label: "Usuários", icon: Users, adminOnly: true },
+      { href: "/backup", label: "Backup e migração", icon: DatabaseBackup, adminOnly: true }
+    ]
   }
 ];
 
