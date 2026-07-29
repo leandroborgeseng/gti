@@ -215,6 +215,11 @@ export class UpdateContractFeatureDto {
   @IsOptional()
   @IsEnum(ContractItemDeliveryStatus)
   deliveryStatus?: ContractItemDeliveryStatus;
+
+  /** Origem da alteração para auditoria (ex.: tela simplificada de funcionalidades). */
+  @IsOptional()
+  @IsString()
+  changeSource?: string;
 }
 
 export class CreateContractServiceDto {

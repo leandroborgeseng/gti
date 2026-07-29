@@ -4,18 +4,29 @@ import type { Route } from "next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type {
   ContractFeatureStatus,
   ContractItemCriticality,
   ContractItemDeliveryStatus,
-  ContractModulesDeliveryOverview
+  ContractModulesDeliveryModule,
+  ContractModulesDeliveryOverview,
+  ModulesDeliveryFeature,
+  ModulesDeliveryTotals
+} from "@/lib/api";
+import {
+  deleteContractFeature,
+  getContractModulesDelivery,
+  getModuleFeaturesDelivery,
+  getModulesDeliveryOverview,
+  searchModulesDeliveryFeatures,
+  updateContractFeature
 } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
-import { itemDeliveryLabelClass, itemDeliverySelectItemClass, itemDeliverySelectTriggerClass } from "@/lib/item-delivery-styles";
-import { deleteContractFeature, getModulesDeliveryOverview, updateContractFeature } from "@/lib/api";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { orderFeaturesByItemCode } from "@/lib/item-code-order";
+import { itemDeliveryLabelClass, itemDeliverySelectItemClass, itemDeliverySelectTriggerClass } from "@/lib/item-delivery-styles";
 import { queryKeys } from "@/lib/query-keys";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,6 +64,9 @@ const criticalityLabels: Record<ContractItemCriticality, string> = {
 };
 
 const criticalityOptions: ContractItemCriticality[] = ["CRITICA", "ALTA", "MEDIA", "BAIXA", "APOIO"];
+
+const FEATURES_PAGE_SIZE = 40;
+const CHANGE_SOURCE = "MODULES_SIMPLIFIED";
 
 function criticalitySelectTriggerClass(criticality: ContractItemCriticality): string {
   const ring = "font-medium focus:outline-none focus:ring-1 focus:ring-offset-0 focus:ring-offset-background disabled:opacity-50";
@@ -95,23 +109,6 @@ function rowKey(contractId: string, moduleId: string, featureId: string): string
 
 function serializeWeight(w: unknown): string {
   return String(w ?? "");
-}
-
-function countItems(modules: ContractModulesDeliveryOverview["modules"]): number {
-  return modules.reduce((s, m) => s + m.features.length, 0);
-}
-
-function countByDelivery(
-  modules: ContractModulesDeliveryOverview["modules"],
-  st: ContractItemDeliveryStatus
-): number {
-  let n = 0;
-  for (const m of modules) {
-    for (const f of m.features) {
-      if (f.deliveryStatus === st) n++;
-    }
-  }
-  return n;
 }
 
 function deliveryCompletionPercent(total: number, delivered: number, partial: number): number {
@@ -163,33 +160,6 @@ function DeliveryMiniChart({ total, delivered, partial, notDelivered }: { total:
   );
 }
 
-/** Chave estável para o painel de um módulo (sanfona por módulo). */
-function modulePanelKey(contractId: string, moduleId: string): string {
-  return `${contractId}::${moduleId}`;
-}
-
-function countByDeliveryInModule(
-  mod: ContractModulesDeliveryOverview["modules"][number],
-  st: ContractItemDeliveryStatus
-): number {
-  let n = 0;
-  for (const f of mod.features) {
-    if (((f.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus) === st) n++;
-  }
-  return n;
-}
-
-/** Todas as chaves de módulo — estado inicial: todos colapsados (cada chave presente em `collapsedModuleKeys`). */
-function buildAllModuleKeysFromRows(rows: ContractModulesDeliveryOverview[]): Set<string> {
-  const s = new Set<string>();
-  for (const c of rows) {
-    for (const m of c.modules) {
-      s.add(modulePanelKey(c.id, m.id));
-    }
-  }
-  return s;
-}
-
 const contractTypeLabel: Record<string, string> = {
   SOFTWARE: "Software",
   INFRA: "Infraestrutura",
@@ -202,9 +172,12 @@ const statusLabel: Record<string, string> = {
   SUSPENDED: "Suspenso"
 };
 
+type UserRole = "ADMIN" | "EDITOR" | "VIEWER";
+
 type Props = {
   initialRows: ContractModulesDeliveryOverview[];
   dataLoadErrors?: string[];
+  userRole?: UserRole;
 };
 
 type EditFeatureDraft = {
@@ -225,41 +198,669 @@ type DeliveryFilters = {
   query: string;
 };
 
-function normalizeFilterText(value: unknown): string {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
+type FeatureMutationContext = {
+  busyRowKey: string | null;
+  canMutate: boolean;
+  openEdit: (contractId: string, moduleId: string, item: ModulesDeliveryFeature) => void;
+  tryDeleteFeature: (contractId: string, moduleId: string, item: ModulesDeliveryFeature) => void;
+  updateDelivery: (vars: {
+    contractId: string;
+    moduleId: string;
+    featureId: string;
+    deliveryStatus: ContractItemDeliveryStatus;
+  }) => void;
+  updateCriticality: (vars: {
+    contractId: string;
+    moduleId: string;
+    featureId: string;
+    criticality: ContractItemCriticality;
+  }) => void;
+};
+
+function totalsFrom(t: ModulesDeliveryTotals | undefined): {
+  total: number;
+  delivered: number;
+  partial: number;
+  notDelivered: number;
+} {
+  return {
+    total: t?.totalFeatures ?? 0,
+    delivered: t?.deliveredCount ?? 0,
+    partial: t?.partialCount ?? 0,
+    notDelivered: t?.notDeliveredCount ?? 0
+  };
 }
 
-function featureMatchesFilters(
-  item: ContractModulesDeliveryOverview["modules"][number]["features"][number],
-  filters: DeliveryFilters
-): boolean {
-  const deliveryStatus = (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus;
+function FeatureRow({
+  contractId,
+  moduleId,
+  item,
+  depth,
+  ctx
+}: {
+  contractId: string;
+  moduleId: string;
+  item: ModulesDeliveryFeature;
+  depth: number;
+  ctx: FeatureMutationContext;
+}): JSX.Element {
+  const ds = (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus;
   const criticality = (item.criticality ?? "MEDIA") as ContractItemCriticality;
-  const query = normalizeFilterText(filters.query);
+  const rowBusy = ctx.busyRowKey === rowKey(contractId, moduleId, item.id);
+  const readOnly = !ctx.canMutate;
 
-  if (filters.deliveryStatus && deliveryStatus !== filters.deliveryStatus) return false;
-  if (filters.criticality && criticality !== filters.criticality) return false;
-  if (!query) return true;
-
-  return normalizeFilterText(`${item.itemCode ?? ""} ${item.name}`).includes(query);
+  return (
+    <li
+      className="flex flex-col gap-3 rounded-md border border-border/40 bg-background/80 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
+      style={
+        depth > 0
+          ? { marginLeft: `${depth * 1.25}rem`, borderLeftWidth: "3px", borderLeftColor: "hsl(var(--border))" }
+          : undefined
+      }
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">
+          {item.itemCode ? <span className="mr-2 font-mono text-xs text-muted-foreground">{item.itemCode}</span> : null}
+          {item.name}
+        </p>
+        <p className="text-[11px] text-muted-foreground">Peso {serializeWeight(item.weight)}</p>
+      </div>
+      <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-[35rem] sm:flex-row sm:items-center sm:justify-end sm:gap-2">
+        <div className="min-w-0 flex-1 sm:min-w-[10.5rem] sm:flex-1 sm:max-w-[12rem]">
+          <Select
+            value={criticality}
+            disabled={rowBusy || readOnly}
+            onValueChange={(v) => {
+              ctx.updateCriticality({
+                contractId,
+                moduleId,
+                featureId: item.id,
+                criticality: v as ContractItemCriticality
+              });
+            }}
+          >
+            <SelectTrigger
+              className={cn("h-9 w-full text-left text-xs", criticalitySelectTriggerClass(criticality))}
+              aria-label={`Criticidade da funcionalidade: ${item.name}`}
+            >
+              <SelectValue placeholder="Criticidade" />
+            </SelectTrigger>
+            <SelectContent>
+              {criticalityOptions.map((opt) => (
+                <SelectItem key={opt} value={opt} className={cn("text-xs", criticalitySelectItemClass(opt))}>
+                  {criticalityLabels[opt]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0 flex-1 sm:min-w-[12rem] sm:flex-1 sm:max-w-[14.5rem]">
+          <Select
+            value={ds}
+            disabled={rowBusy || readOnly}
+            onValueChange={(v) => {
+              ctx.updateDelivery({
+                contractId,
+                moduleId,
+                featureId: item.id,
+                deliveryStatus: v as ContractItemDeliveryStatus
+              });
+            }}
+          >
+            <SelectTrigger
+              className={cn("h-9 w-full text-left text-xs", itemDeliverySelectTriggerClass(ds))}
+              aria-label={`Estado de entrega: ${item.name}`}
+            >
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              {deliveryOptions.map((opt) => (
+                <SelectItem key={opt} value={opt} className={cn("text-xs", itemDeliverySelectItemClass(opt))}>
+                  {deliveryLabels[opt]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {ctx.canMutate ? (
+          <div className="flex shrink-0 items-center justify-end gap-1.5 sm:justify-start">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              disabled={rowBusy}
+              title="Editar"
+              aria-label={`Editar funcionalidade ${item.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                ctx.openEdit(contractId, moduleId, item);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={rowBusy}
+              title="Excluir"
+              aria-label={`Excluir funcionalidade ${item.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                ctx.tryDeleteFeature(contractId, moduleId, item);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </li>
+  );
 }
 
-export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props): JSX.Element {
-  const qc = useQueryClient();
-  /** Contratos expandidos (ausente = colapsado). Por padrão todos fechados — expanda para ver módulos e ações. */
-  const [openContractIds, setOpenContractIds] = useState<Set<string>>(() => new Set());
-  /** Módulos com corpo colapsado (chave ausente = expandido). Por padrão todos fechados. */
-  const [collapsedModuleKeys, setCollapsedModuleKeys] = useState<Set<string>>(() =>
-    buildAllModuleKeysFromRows(initialRows)
+function FeaturesList({
+  contractId,
+  moduleId,
+  features,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  flatDepth,
+  ctx
+}: {
+  contractId: string;
+  moduleId: string;
+  features: ModulesDeliveryFeature[];
+  hasMore: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  flatDepth?: boolean;
+  ctx: FeatureMutationContext;
+}): JSX.Element {
+  if (features.length === 0) {
+    return <p className="text-xs text-muted-foreground">Nenhum item neste módulo.</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      <ul className="space-y-2">
+        {orderFeaturesByItemCode(features, { flatDepth }).map(({ feature: item, depth }) => (
+          <FeatureRow
+            key={item.id}
+            contractId={contractId}
+            moduleId={moduleId}
+            item={item}
+            depth={depth}
+            ctx={ctx}
+          />
+        ))}
+      </ul>
+      {hasMore && onLoadMore ? (
+        <div className="pt-1">
+          <Button type="button" variant="secondary" size="sm" disabled={loadingMore} onClick={() => onLoadMore()}>
+            {loadingMore ? "Carregando…" : "Carregar mais"}
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
+}
+
+function ModuleFeaturesBrowsePanel({
+  contractId,
+  moduleId,
+  enabled,
+  ctx
+}: {
+  contractId: string;
+  moduleId: string;
+  enabled: boolean;
+  ctx: FeatureMutationContext;
+}): JSX.Element | null {
+  const [extraFeatures, setExtraFeatures] = useState<ModulesDeliveryFeature[]>([]);
+  const [nextPage, setNextPage] = useState(2);
+  const [extraHasMore, setExtraHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const { data, isLoading, isError, error, dataUpdatedAt } = useQuery({
+    queryKey: queryKeys.moduleFeaturesDelivery(contractId, moduleId),
+    queryFn: () => getModuleFeaturesDelivery(contractId, moduleId, { page: 1, pageSize: FEATURES_PAGE_SIZE }),
+    enabled
+  });
+
+  useEffect(() => {
+    setExtraFeatures([]);
+    setNextPage(2);
+    setExtraHasMore(false);
+  }, [dataUpdatedAt, contractId, moduleId]);
+
+  const features = useMemo(() => {
+    const first = data?.features ?? [];
+    if (extraFeatures.length === 0) return first;
+    const seen = new Set(first.map((f) => f.id));
+    return [...first, ...extraFeatures.filter((f) => !seen.has(f.id))];
+  }, [data?.features, extraFeatures]);
+
+  const hasMore = extraFeatures.length === 0 ? Boolean(data?.hasMore) : extraHasMore;
+
+  async function loadMore(): Promise<void> {
+    setLoadingMore(true);
+    try {
+      const page = await getModuleFeaturesDelivery(contractId, moduleId, {
+        page: nextPage,
+        pageSize: FEATURES_PAGE_SIZE
+      });
+      setExtraFeatures((prev) => {
+        const seen = new Set(prev.map((f) => f.id));
+        return [...prev, ...page.features.filter((f) => !seen.has(f.id))];
+      });
+      setNextPage((p) => p + 1);
+      setExtraHasMore(page.hasMore);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível carregar mais itens.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  if (!enabled) {
+    return null;
+  }
+
+  if (isLoading) {
+    return <p className="text-xs text-muted-foreground">Carregando funcionalidades…</p>;
+  }
+  if (isError) {
+    return (
+      <p className="text-xs text-destructive" role="alert">
+        {error instanceof Error ? error.message : "Erro ao carregar funcionalidades."}
+      </p>
+    );
+  }
+
+  return (
+    <FeaturesList
+      contractId={contractId}
+      moduleId={moduleId}
+      features={features}
+      hasMore={hasMore}
+      loadingMore={loadingMore}
+      onLoadMore={() => void loadMore()}
+      ctx={ctx}
+    />
+  );
+}
+
+function ModuleFeaturesSearchPanel({
+  contractId,
+  moduleId,
+  initialFeatures,
+  initialHasMore,
+  filters,
+  ctx
+}: {
+  contractId: string;
+  moduleId: string;
+  initialFeatures: ModulesDeliveryFeature[];
+  initialHasMore: boolean;
+  filters: { q?: string; deliveryStatus?: string; criticality?: string };
+  ctx: FeatureMutationContext;
+}): JSX.Element {
+  const [features, setFeatures] = useState(initialFeatures);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => {
+    setFeatures(initialFeatures);
+    setPage(1);
+    setHasMore(initialHasMore);
+  }, [initialFeatures, initialHasMore, contractId, moduleId]);
+
+  async function loadMore(): Promise<void> {
+    setLoadingMore(true);
+    try {
+      const next = page + 1;
+      const data = await getModuleFeaturesDelivery(contractId, moduleId, {
+        page: next,
+        pageSize: FEATURES_PAGE_SIZE,
+        q: filters.q,
+        deliveryStatus: filters.deliveryStatus,
+        criticality: filters.criticality
+      });
+      setFeatures((prev) => {
+        const seen = new Set(prev.map((f) => f.id));
+        return [...prev, ...data.features.filter((f) => !seen.has(f.id))];
+      });
+      setPage(next);
+      setHasMore(data.hasMore);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível carregar mais itens.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  return (
+    <FeaturesList
+      contractId={contractId}
+      moduleId={moduleId}
+      features={features}
+      hasMore={hasMore}
+      loadingMore={loadingMore}
+      onLoadMore={() => void loadMore()}
+      flatDepth
+      ctx={ctx}
+    />
+  );
+}
+
+function ModuleAccordion({
+  contractId,
+  mod,
+  forceOpen,
+  searchFilters,
+  ctx
+}: {
+  contractId: string;
+  mod: ContractModulesDeliveryModule;
+  /** Em modo pesquisa, módulos começam abertos com features da busca. */
+  forceOpen?: boolean;
+  searchFilters?: { q?: string; deliveryStatus?: string; criticality?: string } | null;
+  ctx: FeatureMutationContext;
+}): JSX.Element {
+  const [collapsed, setCollapsed] = useState(!forceOpen);
+
+  useEffect(() => {
+    setCollapsed(!forceOpen);
+  }, [forceOpen, mod.id]);
+
+  const isOpen = !collapsed;
+  const modPanelId = `modulos-mod-${contractId}-${mod.id}`;
+  const t = totalsFrom(mod.totals);
+  const searchPage = mod.featuresPage;
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-lg border border-border/50 bg-muted/20 transition-[box-shadow] duration-200",
+        isOpen && "ring-1 ring-border/60"
+      )}
+    >
+      <button
+        type="button"
+        id={`${modPanelId}-trigger`}
+        className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
+        aria-expanded={isOpen}
+        aria-controls={modPanelId}
+        onClick={() => setCollapsed((v) => !v)}
+      >
+        <ChevronDown
+          className={cn(
+            "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out",
+            isOpen && "rotate-180"
+          )}
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold text-foreground">
+            {mod.name}
+            <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
+              peso {serializeWeight(mod.weight)}
+            </span>
+          </h3>
+          {t.total > 0 ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              <span className="tabular-nums font-medium text-foreground">{t.total}</span> itens ·{" "}
+              <span className={itemDeliveryLabelClass("DELIVERED")}>{t.delivered} entregues</span>
+              {" · "}
+              <span className={itemDeliveryLabelClass("PARTIALLY_DELIVERED")}>{t.partial} parciais</span>
+              {" · "}
+              <span className={itemDeliveryLabelClass("NOT_DELIVERED")}>{t.notDelivered} não entregues</span>
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">Sem funcionalidades neste módulo.</p>
+          )}
+        </div>
+      </button>
+
+      <div
+        id={modPanelId}
+        role="region"
+        aria-labelledby={`${modPanelId}-trigger`}
+        className={cn(
+          "grid min-h-0 transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.33,1,0.68,1)] motion-reduce:transition-none",
+          isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr] pointer-events-none"
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div
+            className="border-t border-border/40 px-3 pb-3 pt-2"
+            {...(!isOpen ? ({ inert: true, "aria-hidden": true } as const) : {})}
+          >
+            {forceOpen && searchPage ? (
+              isOpen ? (
+                <ModuleFeaturesSearchPanel
+                  contractId={contractId}
+                  moduleId={mod.id}
+                  initialFeatures={searchPage.features}
+                  initialHasMore={searchPage.hasMore}
+                  filters={searchFilters ?? {}}
+                  ctx={ctx}
+                />
+              ) : null
+            ) : (
+              <ModuleFeaturesBrowsePanel
+                contractId={contractId}
+                moduleId={mod.id}
+                enabled={isOpen && !forceOpen}
+                ctx={ctx}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContractModulesBrowseBody({
+  contractId,
+  enabled,
+  ctx
+}: {
+  contractId: string;
+  enabled: boolean;
+  ctx: FeatureMutationContext;
+}): JSX.Element {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: queryKeys.contractModulesDelivery(contractId),
+    queryFn: () => getContractModulesDelivery(contractId),
+    enabled
+  });
+
+  if (isLoading) {
+    return <p className="text-sm text-muted-foreground">Carregando módulos…</p>;
+  }
+  if (isError) {
+    return (
+      <p className="text-sm text-destructive" role="alert">
+        {error instanceof Error ? error.message : "Erro ao carregar módulos."}
+      </p>
+    );
+  }
+
+  const modules = data?.modules ?? [];
+  if (modules.length === 0) {
+    return <p className="text-sm text-muted-foreground">Sem módulos neste contrato.</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {modules.map((mod) => (
+        <ModuleAccordion key={mod.id} contractId={contractId} mod={mod} ctx={ctx} />
+      ))}
+    </div>
+  );
+}
+
+function ContractSection({
+  contract,
+  isOpen,
+  onToggle,
+  searchMode,
+  searchFilters,
+  canOpenContract,
+  ctx
+}: {
+  contract: ContractModulesDeliveryOverview;
+  isOpen: boolean;
+  onToggle: () => void;
+  searchMode: boolean;
+  searchFilters: { q?: string; deliveryStatus?: string; criticality?: string } | null;
+  canOpenContract: boolean;
+  ctx: FeatureMutationContext;
+}): JSX.Element {
+  const t = totalsFrom(contract.totals);
+  const prop = contract.featureImplantationProportion;
+  const panelId = `modulos-contrato-${contract.id}`;
+  const modules = contract.modules ?? [];
+
+  return (
+    <section
+      className={cn(
+        "overflow-hidden rounded-xl border bg-card shadow-sm transition-[box-shadow] duration-200",
+        isOpen && "ring-1 ring-border/80"
+      )}
+    >
+      <button
+        type="button"
+        id={`${panelId}-trigger`}
+        className="flex w-full flex-col gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
+        aria-expanded={isOpen}
+        aria-controls={panelId}
+        onClick={onToggle}
+      >
+        <div className="flex w-full min-w-0 items-start gap-3 sm:flex-1">
+          <ChevronDown
+            className={cn(
+              "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out",
+              isOpen && "rotate-180"
+            )}
+            aria-hidden
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-xs text-muted-foreground">{contract.number}</span>
+              <span className="truncate font-medium text-foreground">{contract.name}</span>
+              <Badge variant="secondary" className="text-[10px] font-normal">
+                {contractTypeLabel[contract.contractType] ?? contract.contractType}
+              </Badge>
+              <Badge variant="outline" className="text-[10px] font-normal">
+                {statusLabel[contract.status] ?? contract.status}
+              </Badge>
+            </div>
+            {t.total > 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                <span className="tabular-nums font-medium text-foreground">{t.total}</span> itens ·{" "}
+                <span className={itemDeliveryLabelClass("DELIVERED")}>{t.delivered} entregues</span>
+                {" · "}
+                <span className={itemDeliveryLabelClass("PARTIALLY_DELIVERED")}>{t.partial} parciais</span>
+                {" · "}
+                <span className={itemDeliveryLabelClass("NOT_DELIVERED")}>{t.notDelivered} não entregues</span>
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                Sem módulos ou itens — configure na página do contrato.
+              </p>
+            )}
+            <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                Gestor: <strong className="font-medium text-foreground">{contract.manager?.name ?? "Não informado"}</strong>
+              </span>
+              <span>
+                Fiscal: <strong className="font-medium text-foreground">{contract.fiscal?.name ?? "Não informado"}</strong>
+              </span>
+            </p>
+            {prop?.applicable && prop.proportionalMonthlyValue && prop.ratioImplantedPercent ? (
+              <p className="mt-1 text-xs font-medium text-sky-900 dark:text-sky-200">
+                Proporcional ao valor mensal: {prop.ratioImplantedPercent}% → {formatBrl(prop.proportionalMonthlyValue)}{" "}
+                (contrato {formatBrl(prop.contractMonthlyValue)}/mês)
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex w-full shrink-0 items-center justify-between gap-3 sm:w-auto sm:justify-end">
+          <DeliveryMiniChart
+            total={t.total}
+            delivered={t.delivered}
+            partial={t.partial}
+            notDelivered={t.notDelivered}
+          />
+          {canOpenContract ? (
+            <Link
+              href={`/contracts/${contract.id}` as Route}
+              className="shrink-0 text-xs font-medium text-primary underline-offset-4 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Abrir contrato
+            </Link>
+          ) : null}
+        </div>
+      </button>
+
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={`${panelId}-trigger`}
+        className={cn(
+          "grid min-h-0 transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.33,1,0.68,1)] motion-reduce:transition-none",
+          isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr] pointer-events-none"
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div
+            className="space-y-4 border-t border-border/60 px-4 pb-4 pt-3"
+            {...(!isOpen ? ({ inert: true, "aria-hidden": true } as const) : {})}
+          >
+            {searchMode ? (
+              modules.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum módulo correspondente aos filtros.</p>
+              ) : (
+                modules.map((mod) => (
+                  <ModuleAccordion
+                    key={mod.id}
+                    contractId={contract.id}
+                    mod={mod}
+                    forceOpen
+                    searchFilters={searchFilters}
+                    ctx={ctx}
+                  />
+                ))
+              )
+            ) : isOpen ? (
+              <ContractModulesBrowseBody contractId={contract.id} enabled={isOpen} ctx={ctx} />
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function ModulesDeliveryView({ initialRows, dataLoadErrors = [], userRole }: Props): JSX.Element {
+  const qc = useQueryClient();
+  const canMutate = userRole === "ADMIN" || userRole === "EDITOR";
+  const canOpenContract = userRole === "ADMIN" || userRole === "EDITOR";
+
+  const [openContractIds, setOpenContractIds] = useState<Set<string>>(() => new Set());
   const [editDraft, setEditDraft] = useState<EditFeatureDraft | null>(null);
   const [editHint, setEditHint] = useState<string | null>(null);
   const [filters, setFilters] = useState<DeliveryFilters>({ deliveryStatus: "", criticality: "", query: "" });
-  const moduleKeysSnapshotRef = useRef<Set<string> | null>(null);
+  const debouncedQuery = useDebouncedValue(filters.query, 300);
 
   const { data: rows = initialRows } = useQuery({
     queryKey: queryKeys.modulesDeliveryOverview,
@@ -267,32 +868,42 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     initialData: initialRows
   });
 
-  useEffect(() => {
-    const current = buildAllModuleKeysFromRows(rows);
-    const prev = moduleKeysSnapshotRef.current;
-    moduleKeysSnapshotRef.current = current;
+  const hasFilters = Boolean(filters.deliveryStatus || filters.criticality || debouncedQuery.trim());
+  const searchKey = hasFilters
+    ? JSON.stringify({
+        q: debouncedQuery.trim() || undefined,
+        deliveryStatus: filters.deliveryStatus || undefined,
+        criticality: filters.criticality || undefined
+      })
+    : "";
 
-    if (prev === null) {
-      setCollapsedModuleKeys((c) => {
-        if (c.size > 0) return c;
-        if (current.size === 0) return c;
-        return new Set(current);
-      });
-      return;
-    }
+  const searchFilters = hasFilters
+    ? {
+        q: debouncedQuery.trim() || undefined,
+        deliveryStatus: filters.deliveryStatus || undefined,
+        criticality: filters.criticality || undefined
+      }
+    : null;
 
-    const newKeys: string[] = [];
-    for (const k of current) {
-      if (!prev.has(k)) newKeys.push(k);
-    }
-    if (newKeys.length === 0) return;
+  const searchQuery = useQuery({
+    queryKey: queryKeys.modulesDeliverySearch(searchKey),
+    queryFn: () =>
+      searchModulesDeliveryFeatures({
+        q: searchFilters?.q,
+        deliveryStatus: searchFilters?.deliveryStatus,
+        criticality: searchFilters?.criticality,
+        pageSize: FEATURES_PAGE_SIZE
+      }),
+    enabled: hasFilters
+  });
 
-    setCollapsedModuleKeys((c) => {
-      const next = new Set(c);
-      for (const k of newKeys) next.add(k);
-      return next;
-    });
-  }, [rows]);
+  function invalidateFor(contractId: string, moduleId: string): void {
+    void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliveryOverview });
+    void qc.invalidateQueries({ queryKey: queryKeys.contractModulesDelivery(contractId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.moduleFeaturesDelivery(contractId, moduleId) });
+    void qc.invalidateQueries({ queryKey: ["gestao", "modules-delivery-search"] });
+    void qc.invalidateQueries({ queryKey: queryKeys.contracts });
+  }
 
   const updateDeliveryMut = useMutation({
     mutationFn: async (vars: {
@@ -302,13 +913,12 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       deliveryStatus: ContractItemDeliveryStatus;
     }) => {
       await updateContractFeature(vars.contractId, vars.moduleId, vars.featureId, {
-        deliveryStatus: vars.deliveryStatus
+        deliveryStatus: vars.deliveryStatus,
+        changeSource: CHANGE_SOURCE
       });
+      return vars;
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliveryOverview });
-      void qc.invalidateQueries({ queryKey: queryKeys.contracts });
-    }
+    onSuccess: (vars) => invalidateFor(vars.contractId, vars.moduleId)
   });
 
   const updateCriticalityMut = useMutation({
@@ -319,23 +929,20 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       criticality: ContractItemCriticality;
     }) => {
       await updateContractFeature(vars.contractId, vars.moduleId, vars.featureId, {
-        criticality: vars.criticality
+        criticality: vars.criticality,
+        changeSource: CHANGE_SOURCE
       });
+      return vars;
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliveryOverview });
-      void qc.invalidateQueries({ queryKey: queryKeys.contracts });
-    }
+    onSuccess: (vars) => invalidateFor(vars.contractId, vars.moduleId)
   });
 
   const deleteFeatureMut = useMutation({
     mutationFn: async (vars: { contractId: string; moduleId: string; featureId: string }) => {
       await deleteContractFeature(vars.contractId, vars.moduleId, vars.featureId);
+      return vars;
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliveryOverview });
-      void qc.invalidateQueries({ queryKey: queryKeys.contracts });
-    }
+    onSuccess: (vars) => invalidateFor(vars.contractId, vars.moduleId)
   });
 
   const saveFeatureMut = useMutation({
@@ -354,12 +961,13 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
         name: vars.name,
         criticality: vars.criticality,
         status: vars.status,
-        deliveryStatus: vars.deliveryStatus
+        deliveryStatus: vars.deliveryStatus,
+        changeSource: CHANGE_SOURCE
       });
+      return vars;
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliveryOverview });
-      void qc.invalidateQueries({ queryKey: queryKeys.contracts });
+    onSuccess: (vars) => {
+      invalidateFor(vars.contractId, vars.moduleId);
       setEditHint(null);
       setEditDraft(null);
     }
@@ -379,14 +987,43 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
             updateCriticalityMut.variables.featureId
           )
         : deleteFeatureMut.isPending && deleteFeatureMut.variables
-        ? rowKey(
-            deleteFeatureMut.variables.contractId,
-            deleteFeatureMut.variables.moduleId,
-            deleteFeatureMut.variables.featureId
-          )
-        : saveFeatureMut.isPending && saveFeatureMut.variables
-          ? rowKey(saveFeatureMut.variables.contractId, saveFeatureMut.variables.moduleId, saveFeatureMut.variables.featureId)
-          : null;
+          ? rowKey(
+              deleteFeatureMut.variables.contractId,
+              deleteFeatureMut.variables.moduleId,
+              deleteFeatureMut.variables.featureId
+            )
+          : saveFeatureMut.isPending && saveFeatureMut.variables
+            ? rowKey(
+                saveFeatureMut.variables.contractId,
+                saveFeatureMut.variables.moduleId,
+                saveFeatureMut.variables.featureId
+              )
+            : null;
+
+  const ctx: FeatureMutationContext = {
+    busyRowKey,
+    canMutate,
+    openEdit: (contractId, moduleId, item) => {
+      setEditHint(null);
+      setEditDraft({
+        contractId,
+        moduleId,
+        featureId: item.id,
+        itemCode: item.itemCode ?? "",
+        name: item.name,
+        weightStr: serializeWeight(item.weight),
+        criticality: item.criticality ?? "MEDIA",
+        status: (item.status as ContractFeatureStatus) ?? "NOT_STARTED",
+        deliveryStatus: (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus
+      });
+    },
+    tryDeleteFeature: (contractId, moduleId, item) => {
+      if (!window.confirm(`Remover a funcionalidade «${item.name}»?`)) return;
+      deleteFeatureMut.mutate({ contractId, moduleId, featureId: item.id });
+    },
+    updateDelivery: (vars) => updateDeliveryMut.mutate(vars),
+    updateCriticality: (vars) => updateCriticalityMut.mutate(vars)
+  };
 
   const toggleContract = (id: string): void => {
     setOpenContractIds((prev) => {
@@ -397,62 +1034,16 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     });
   };
 
-  const toggleModule = (contractId: string, moduleId: string): void => {
-    const key = modulePanelKey(contractId, moduleId);
-    setCollapsedModuleKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
   const totalContracts = rows.length;
-  const totalItems = useMemo(() => rows.reduce((s, r) => s + countItems(r.modules), 0), [rows]);
-  const hasFilters = Boolean(filters.deliveryStatus || filters.criticality || filters.query.trim());
-  const visibleRows = useMemo(() => {
-    if (!hasFilters) return rows;
-    return rows
-      .map((contract) => ({
-        ...contract,
-        modules: contract.modules
-          .map((mod) => ({
-            ...mod,
-            features: mod.features.filter((item) => featureMatchesFilters(item, filters))
-          }))
-          .filter((mod) => mod.features.length > 0)
-      }))
-      .filter((contract) => contract.modules.length > 0);
-  }, [filters, hasFilters, rows]);
-  const visibleItems = useMemo(() => visibleRows.reduce((s, r) => s + countItems(r.modules), 0), [visibleRows]);
+  const totalItems = useMemo(
+    () => rows.reduce((s, r) => s + (r.totals?.totalFeatures ?? 0), 0),
+    [rows]
+  );
 
-  function openEdit(
-    contractId: string,
-    mod: ContractModulesDeliveryOverview["modules"][number],
-    item: ContractModulesDeliveryOverview["modules"][number]["features"][number]
-  ): void {
-    setEditHint(null);
-    setEditDraft({
-      contractId,
-      moduleId: mod.id,
-      featureId: item.id,
-      itemCode: item.itemCode ?? "",
-      name: item.name,
-      weightStr: serializeWeight(item.weight),
-      criticality: item.criticality ?? "MEDIA",
-      status: (item.status as ContractFeatureStatus) ?? "NOT_STARTED",
-      deliveryStatus: (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus
-    });
-  }
-
-  function tryDeleteFeature(
-    contractId: string,
-    mod: ContractModulesDeliveryOverview["modules"][number],
-    item: ContractModulesDeliveryOverview["modules"][number]["features"][number]
-  ): void {
-    if (!window.confirm(`Remover a funcionalidade «${item.name}»?`)) return;
-    deleteFeatureMut.mutate({ contractId, moduleId: mod.id, featureId: item.id });
-  }
+  const visibleRows = hasFilters ? (searchQuery.data?.contracts ?? []) : rows;
+  const visibleItems = hasFilters
+    ? (searchQuery.data?.totalFeatures ?? 0)
+    : totalItems;
 
   function submitEdit(): void {
     if (!editDraft) return;
@@ -486,6 +1077,9 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     (deleteFeatureMut.error instanceof Error ? deleteFeatureMut.error.message : null) ??
     (saveFeatureMut.error instanceof Error ? saveFeatureMut.error.message : null);
 
+  const queryPending = filters.query.trim() !== debouncedQuery.trim();
+  const uiHasFilters = Boolean(filters.deliveryStatus || filters.criticality || filters.query.trim());
+
   return (
     <div className="space-y-6">
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
@@ -494,17 +1088,21 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Funcionalidades</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           Por contrato: <strong className="font-medium text-foreground">contratos</strong> e{" "}
-          <strong className="font-medium text-foreground">módulos</strong> em sanfona (fechados por padrão; contagem por estado de entrega no cabeçalho de cada módulo) e respectivas{" "}
+          <strong className="font-medium text-foreground">módulos</strong> em sanfona (fechados por padrão; contagem por
+          estado de entrega no cabeçalho de cada módulo) e respectivas{" "}
           <strong className="font-medium text-foreground">funcionalidades</strong> (itens de entrega). Cada funcionalidade
           registra se a entrega está <strong className="font-medium text-foreground">não feita</strong>,{" "}
-          <strong className="font-medium text-foreground">parcial</strong> ou <strong className="font-medium text-foreground">concluída</strong>,
-          para acompanhar se o contrato está sendo prestado. A criticidade também pode ser ajustada na linha, em escala colorida de{" "}
+          <strong className="font-medium text-foreground">parcial</strong> ou{" "}
+          <strong className="font-medium text-foreground">concluída</strong>, para acompanhar se o contrato está sendo
+          prestado. A criticidade também pode ser ajustada na linha, em escala colorida de{" "}
           <strong className="font-medium text-emerald-700 dark:text-emerald-300">apoio (1)</strong> a{" "}
-          <strong className="font-medium text-rose-700 dark:text-rose-300">crítica (5)</strong>. No indicador proporcional ao valor mensal, cada parcial conta como{" "}
-          <strong className="font-medium text-foreground">0,5</strong> e cada concluída como <strong className="font-medium text-foreground">1</strong>.
+          <strong className="font-medium text-rose-700 dark:text-rose-300">crítica (5)</strong>. No indicador proporcional
+          ao valor mensal, cada parcial conta como <strong className="font-medium text-foreground">0,5</strong> e cada
+          concluída como <strong className="font-medium text-foreground">1</strong>.
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
-          Contratos no tipo Software, Infraestrutura ou Serviço: {totalContracts} listado(s), {totalItems} item(ns) no total.
+          Contratos no tipo Software, Infraestrutura ou Serviço: {totalContracts} listado(s), {totalItems} item(ns) no
+          total.
         </p>
       </div>
 
@@ -561,16 +1159,18 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
           <Button
             type="button"
             variant="secondary"
-            disabled={!hasFilters}
+            disabled={!uiHasFilters}
             onClick={() => setFilters({ deliveryStatus: "", criticality: "", query: "" })}
           >
             Limpar filtros
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          {hasFilters
-            ? `Exibindo ${visibleItems} de ${totalItems} funcionalidade(s), preservando os respectivos módulos.`
-            : "Use os filtros para priorizar itens por entrega, criticidade ou localizar rapidamente pelo código e descrição."}
+          {uiHasFilters
+            ? queryPending || searchQuery.isFetching
+              ? "Pesquisando funcionalidades no servidor…"
+              : `Exibindo ${visibleItems} funcionalidade(s) correspondente(s) aos filtros (pesquisa no servidor).`
+            : "Use os filtros para priorizar itens por entrega, criticidade ou localizar rapidamente pelo código e descrição. Expanda um contrato para carregar os módulos sob demanda."}
         </p>
       </div>
 
@@ -578,322 +1178,50 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
         <p className="rounded-lg border border-dashed bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
           Nenhum contrato destes tipos. Os módulos aplicam-se a contratos Software, Infraestrutura ou Serviço.
         </p>
+      ) : hasFilters && (searchQuery.isLoading || queryPending) ? (
+        <p className="rounded-lg border border-dashed bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
+          Pesquisando…
+        </p>
+      ) : hasFilters && searchQuery.isError ? (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-8 text-center text-sm text-destructive">
+          {searchQuery.error instanceof Error
+            ? searchQuery.error.message
+            : "Não foi possível aplicar a pesquisa."}
+        </p>
       ) : visibleRows.length === 0 ? (
         <p className="rounded-lg border border-dashed bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-          Nenhuma funcionalidade encontrada para os filtros aplicados.
+          {hasFilters
+            ? "Nenhuma funcionalidade encontrada para os filtros aplicados."
+            : "Nenhum contrato para exibir."}
         </p>
       ) : (
         <div className="space-y-2">
           {visibleRows.map((contract) => {
-            const isOpen = openContractIds.has(contract.id);
-            const itemsN = countItems(contract.modules);
-            const nNot = countByDelivery(contract.modules, "NOT_DELIVERED");
-            const nPart = countByDelivery(contract.modules, "PARTIALLY_DELIVERED");
-            const nOk = countByDelivery(contract.modules, "DELIVERED");
-            const prop = contract.featureImplantationProportion;
-            const panelId = `modulos-contrato-${contract.id}`;
+            const isOpen = hasFilters ? true : openContractIds.has(contract.id);
             return (
-              <section
+              <ContractSection
                 key={contract.id}
-                className={cn(
-                  "overflow-hidden rounded-xl border bg-card shadow-sm transition-[box-shadow] duration-200",
-                  isOpen && "ring-1 ring-border/80"
-                )}
-              >
-                <button
-                  type="button"
-                  id={`${panelId}-trigger`}
-                  className="flex w-full flex-col gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
-                  aria-expanded={isOpen}
-                  aria-controls={panelId}
-                  onClick={() => toggleContract(contract.id)}
-                >
-                  <div className="flex w-full min-w-0 items-start gap-3 sm:flex-1">
-                    <ChevronDown
-                      className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out", isOpen && "rotate-180")}
-                      aria-hidden
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs text-muted-foreground">{contract.number}</span>
-                        <span className="truncate font-medium text-foreground">{contract.name}</span>
-                        <Badge variant="secondary" className="text-[10px] font-normal">
-                          {contractTypeLabel[contract.contractType] ?? contract.contractType}
-                        </Badge>
-                        <Badge variant="outline" className="text-[10px] font-normal">
-                          {statusLabel[contract.status] ?? contract.status}
-                        </Badge>
-                      </div>
-                      {itemsN > 0 ? (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          <span className="tabular-nums font-medium text-foreground">{itemsN}</span> itens ·{" "}
-                          <span className={itemDeliveryLabelClass("DELIVERED")}>{nOk} entregues</span>
-                          {" · "}
-                          <span className={itemDeliveryLabelClass("PARTIALLY_DELIVERED")}>{nPart} parciais</span>
-                          {" · "}
-                          <span className={itemDeliveryLabelClass("NOT_DELIVERED")}>{nNot} não entregues</span>
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">Sem módulos ou itens — configure na página do contrato.</p>
-                      )}
-                      <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        <span>
-                          Gestor: <strong className="font-medium text-foreground">{contract.manager?.name ?? "Não informado"}</strong>
-                        </span>
-                        <span>
-                          Fiscal: <strong className="font-medium text-foreground">{contract.fiscal?.name ?? "Não informado"}</strong>
-                        </span>
-                      </p>
-                      {prop?.applicable && prop.proportionalMonthlyValue && prop.ratioImplantedPercent ? (
-                        <p className="mt-1 text-xs font-medium text-sky-900 dark:text-sky-200">
-                          Proporcional ao valor mensal: {prop.ratioImplantedPercent}% → {formatBrl(prop.proportionalMonthlyValue)} (contrato{" "}
-                          {formatBrl(prop.contractMonthlyValue)}/mês)
-                        </p>
-                      ) : prop?.explanation ? (
-                        <p className="mt-1 text-xs text-muted-foreground">{prop.explanation}</p>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="flex w-full shrink-0 items-center justify-between gap-3 sm:w-auto sm:justify-end">
-                    <DeliveryMiniChart total={itemsN} delivered={nOk} partial={nPart} notDelivered={nNot} />
-                    <Link
-                      href={`/contracts/${contract.id}` as Route}
-                      className="shrink-0 text-xs font-medium text-primary underline-offset-4 hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Abrir contrato
-                    </Link>
-                  </div>
-                </button>
-
-                <div
-                  id={panelId}
-                  role="region"
-                  aria-labelledby={`${panelId}-trigger`}
-                  className={cn(
-                    "grid min-h-0 transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.33,1,0.68,1)] motion-reduce:transition-none",
-                    isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr] pointer-events-none"
-                  )}
-                >
-                  <div className="min-h-0 overflow-hidden">
-                    <div className="space-y-4 border-t border-border/60 px-4 pb-4 pt-3" {...(!isOpen ? ({ inert: true, "aria-hidden": true } as const) : {})}>
-                      {contract.modules.length === 0 ? null : (
-                        <>
-                          {contract.modules.map((mod) => {
-                            const modKey = modulePanelKey(contract.id, mod.id);
-                            const modPanelId = `modulos-mod-${contract.id}-${mod.id}`;
-                            const isModOpen = !collapsedModuleKeys.has(modKey);
-                            const mItems = mod.features.length;
-                            const mOk = countByDeliveryInModule(mod, "DELIVERED");
-                            const mPart = countByDeliveryInModule(mod, "PARTIALLY_DELIVERED");
-                            const mNot = countByDeliveryInModule(mod, "NOT_DELIVERED");
-                            return (
-                              <div
-                                key={mod.id}
-                                className={cn(
-                                  "overflow-hidden rounded-lg border border-border/50 bg-muted/20 transition-[box-shadow] duration-200",
-                                  isModOpen && "ring-1 ring-border/60"
-                                )}
-                              >
-                                <button
-                                  type="button"
-                                  id={`${modPanelId}-trigger`}
-                                  className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
-                                  aria-expanded={isModOpen}
-                                  aria-controls={modPanelId}
-                                  onClick={() => toggleModule(contract.id, mod.id)}
-                                >
-                                  <ChevronDown
-                                    className={cn(
-                                      "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out",
-                                      isModOpen && "rotate-180"
-                                    )}
-                                    aria-hidden
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <h3 className="text-sm font-semibold text-foreground">
-                                      {mod.name}
-                                      <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
-                                        peso {serializeWeight(mod.weight)}
-                                      </span>
-                                    </h3>
-                                    {mItems > 0 ? (
-                                      <p className="mt-1 text-xs text-muted-foreground">
-                                        <span className="tabular-nums font-medium text-foreground">{mItems}</span> itens ·{" "}
-                                        <span className={itemDeliveryLabelClass("DELIVERED")}>{mOk} entregues</span>
-                                        {" · "}
-                                        <span className={itemDeliveryLabelClass("PARTIALLY_DELIVERED")}>{mPart} parciais</span>
-                                        {" · "}
-                                        <span className={itemDeliveryLabelClass("NOT_DELIVERED")}>{mNot} não entregues</span>
-                                      </p>
-                                    ) : (
-                                      <p className="mt-1 text-xs text-muted-foreground">Sem funcionalidades neste módulo.</p>
-                                    )}
-                                  </div>
-                                </button>
-
-                                <div
-                                  id={modPanelId}
-                                  role="region"
-                                  aria-labelledby={`${modPanelId}-trigger`}
-                                  className={cn(
-                                    "grid min-h-0 transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.33,1,0.68,1)] motion-reduce:transition-none",
-                                    isModOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr] pointer-events-none"
-                                  )}
-                                >
-                                  <div className="min-h-0 overflow-hidden">
-                                    <div
-                                      className="border-t border-border/40 px-3 pb-3 pt-2"
-                                      {...(!isModOpen ? ({ inert: true, "aria-hidden": true } as const) : {})}
-                                    >
-                                      {mod.features.length === 0 ? (
-                                        <p className="text-xs text-muted-foreground">Nenhum item neste módulo.</p>
-                                      ) : (
-                                        <ul className="space-y-2">
-                                          {orderFeaturesByItemCode(mod.features, { flatDepth: hasFilters }).map(({ feature: item, depth }) => {
-                                            const ds = (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus;
-                                            const criticality = (item.criticality ?? "MEDIA") as ContractItemCriticality;
-                                            const rowBusy = busyRowKey === rowKey(contract.id, mod.id, item.id);
-                                            return (
-                                              <li
-                                                key={item.id}
-                                                className="flex flex-col gap-3 rounded-md border border-border/40 bg-background/80 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
-                                                style={
-                                                  depth > 0
-                                                    ? { marginLeft: `${depth * 1.25}rem`, borderLeftWidth: "3px", borderLeftColor: "hsl(var(--border))" }
-                                                    : undefined
-                                                }
-                                              >
-                                                <div className="min-w-0 flex-1">
-                                                  <p className="text-sm font-medium text-foreground">
-                                                    {item.itemCode ? (
-                                                      <span className="mr-2 font-mono text-xs text-muted-foreground">{item.itemCode}</span>
-                                                    ) : null}
-                                                    {item.name}
-                                                  </p>
-                                                  <p className="text-[11px] text-muted-foreground">
-                                                    Peso {serializeWeight(item.weight)}
-                                                  </p>
-                                                </div>
-                                                <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-[35rem] sm:flex-row sm:items-center sm:justify-end sm:gap-2">
-                                                  <div className="min-w-0 flex-1 sm:min-w-[10.5rem] sm:flex-1 sm:max-w-[12rem]">
-                                                    <Select
-                                                      value={criticality}
-                                                      disabled={rowBusy}
-                                                      onValueChange={(v) => {
-                                                        updateCriticalityMut.mutate({
-                                                          contractId: contract.id,
-                                                          moduleId: mod.id,
-                                                          featureId: item.id,
-                                                          criticality: v as ContractItemCriticality
-                                                        });
-                                                      }}
-                                                    >
-                                                      <SelectTrigger
-                                                        className={cn("h-9 w-full text-left text-xs", criticalitySelectTriggerClass(criticality))}
-                                                        aria-label={`Criticidade da funcionalidade: ${item.name}`}
-                                                      >
-                                                        <SelectValue placeholder="Criticidade" />
-                                                      </SelectTrigger>
-                                                      <SelectContent>
-                                                        {criticalityOptions.map((opt) => (
-                                                          <SelectItem
-                                                            key={opt}
-                                                            value={opt}
-                                                            className={cn("text-xs", criticalitySelectItemClass(opt))}
-                                                          >
-                                                            {criticalityLabels[opt]}
-                                                          </SelectItem>
-                                                        ))}
-                                                      </SelectContent>
-                                                    </Select>
-                                                  </div>
-                                                  <div className="min-w-0 flex-1 sm:min-w-[12rem] sm:flex-1 sm:max-w-[14.5rem]">
-                                                    <Select
-                                                      value={ds}
-                                                      disabled={rowBusy}
-                                                      onValueChange={(v) => {
-                                                        updateDeliveryMut.mutate({
-                                                          contractId: contract.id,
-                                                          moduleId: mod.id,
-                                                          featureId: item.id,
-                                                          deliveryStatus: v as ContractItemDeliveryStatus
-                                                        });
-                                                      }}
-                                                    >
-                                                      <SelectTrigger
-                                                        className={cn("h-9 w-full text-left text-xs", itemDeliverySelectTriggerClass(ds))}
-                                                        aria-label={`Estado de entrega: ${item.name}`}
-                                                      >
-                                                        <SelectValue placeholder="Estado" />
-                                                      </SelectTrigger>
-                                                      <SelectContent>
-                                                        {deliveryOptions.map((opt) => (
-                                                          <SelectItem
-                                                            key={opt}
-                                                            value={opt}
-                                                            className={cn("text-xs", itemDeliverySelectItemClass(opt))}
-                                                          >
-                                                            {deliveryLabels[opt]}
-                                                          </SelectItem>
-                                                        ))}
-                                                      </SelectContent>
-                                                    </Select>
-                                                  </div>
-                                                  <div className="flex shrink-0 items-center justify-end gap-1.5 sm:justify-start">
-                                                    <Button
-                                                      type="button"
-                                                      variant="outline"
-                                                      size="icon"
-                                                      className="h-9 w-9 shrink-0"
-                                                      disabled={rowBusy}
-                                                      title="Editar"
-                                                      aria-label={`Editar funcionalidade ${item.name}`}
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        openEdit(contract.id, mod, item);
-                                                      }}
-                                                    >
-                                                      <Pencil className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                      type="button"
-                                                      variant="outline"
-                                                      size="icon"
-                                                      className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                      disabled={rowBusy}
-                                                      title="Excluir"
-                                                      aria-label={`Excluir funcionalidade ${item.name}`}
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        tryDeleteFeature(contract.id, mod, item);
-                                                      }}
-                                                    >
-                                                      <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                  </div>
-                                                </div>
-                                              </li>
-                                            );
-                                          })}
-                                        </ul>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </section>
+                contract={contract}
+                isOpen={isOpen}
+                onToggle={() => {
+                  if (hasFilters) return;
+                  toggleContract(contract.id);
+                }}
+                searchMode={hasFilters}
+                searchFilters={searchFilters}
+                canOpenContract={canOpenContract}
+                ctx={ctx}
+              />
             );
           })}
         </div>
       )}
+
+      {searchQuery.data?.truncated ? (
+        <p className="text-xs text-amber-800 dark:text-amber-300">
+          A pesquisa retornou muitos resultados e pode estar truncada. Refine os filtros para ver todos os itens.
+        </p>
+      ) : null}
 
       {mutationError ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">

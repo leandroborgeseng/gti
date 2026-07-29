@@ -371,7 +371,15 @@ export async function getGlpiAssignedGroupsCatalog(): Promise<GlpiAssignedGroupO
   return request("/contracts/catalog/glpi-assigned-groups");
 }
 
-/** Linha de visão geral da página «Módulos» (contratos com estrutura modular). */
+/** Totais agregados de entrega (sem listar funcionalidades). */
+export type ModulesDeliveryTotals = {
+  totalFeatures: number;
+  deliveredCount: number;
+  partialCount: number;
+  notDeliveredCount: number;
+};
+
+/** Resumo do contrato na página Funcionalidades (lazy-load). */
 export type ContractModulesDeliveryOverview = {
   id: string;
   number: string;
@@ -381,28 +389,92 @@ export type ContractModulesDeliveryOverview = {
   monthlyValue?: string;
   fiscal?: Pick<Fiscal, "id" | "name" | "email"> | null;
   manager?: Pick<Fiscal, "id" | "name" | "email"> | null;
+  modulesCount?: number;
+  totals: ModulesDeliveryTotals;
   featureImplantationProportion?: FeatureImplantationProportion;
-  modules: Array<{
-    id: string;
-    name: string;
-    criticality: ContractItemCriticality;
-    validatorId?: string | null;
-    validator?: { id: string; email: string; role: string } | null;
-    weight: unknown;
-    features: Array<{
-      id: string;
-      itemCode?: string | null;
-      name: string;
-      weight: unknown;
-      status: string;
-      criticality: ContractItemCriticality;
-      deliveryStatus: ContractItemDeliveryStatus;
-    }>;
-  }>;
+  /** Presente apenas em resultados de pesquisa com filtros. */
+  modules?: ContractModulesDeliveryModule[];
+};
+
+export type ContractModulesDeliveryModule = {
+  id: string;
+  name: string;
+  criticality: ContractItemCriticality;
+  validatorId?: string | null;
+  validator?: { id: string; email: string; role: string } | null;
+  weight: unknown;
+  totals: ModulesDeliveryTotals;
+  featuresPage?: ModulesDeliveryFeaturesPage;
+};
+
+export type ModulesDeliveryFeature = {
+  id: string;
+  itemCode?: string | null;
+  name: string;
+  weight: unknown;
+  status: string;
+  criticality: ContractItemCriticality;
+  deliveryStatus: ContractItemDeliveryStatus;
+};
+
+export type ModulesDeliveryFeaturesPage = {
+  contractId?: string;
+  moduleId?: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+  features: ModulesDeliveryFeature[];
 };
 
 export async function getModulesDeliveryOverview(): Promise<ContractModulesDeliveryOverview[]> {
   return request("/contracts/overview/modules-delivery");
+}
+
+export async function getContractModulesDelivery(
+  contractId: string
+): Promise<{ contractId: string; modules: ContractModulesDeliveryModule[] }> {
+  return request(`/contracts/${contractId}/modules-delivery`);
+}
+
+export async function getModuleFeaturesDelivery(
+  contractId: string,
+  moduleId: string,
+  params?: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    deliveryStatus?: string;
+    criticality?: string;
+  }
+): Promise<ModulesDeliveryFeaturesPage> {
+  const sp = new URLSearchParams();
+  if (params?.page != null) sp.set("page", String(params.page));
+  if (params?.pageSize != null) sp.set("pageSize", String(params.pageSize));
+  if (params?.q) sp.set("q", params.q);
+  if (params?.deliveryStatus) sp.set("deliveryStatus", params.deliveryStatus);
+  if (params?.criticality) sp.set("criticality", params.criticality);
+  const qs = sp.toString();
+  return request(`/contracts/${contractId}/modules/${moduleId}/features-delivery${qs ? `?${qs}` : ""}`);
+}
+
+export async function searchModulesDeliveryFeatures(params: {
+  q?: string;
+  deliveryStatus?: string;
+  criticality?: string;
+  pageSize?: number;
+}): Promise<{
+  contracts: ContractModulesDeliveryOverview[];
+  totalFeatures: number;
+  truncated?: boolean;
+}> {
+  const sp = new URLSearchParams();
+  if (params.q) sp.set("q", params.q);
+  if (params.deliveryStatus) sp.set("deliveryStatus", params.deliveryStatus);
+  if (params.criticality) sp.set("criticality", params.criticality);
+  if (params.pageSize != null) sp.set("pageSize", String(params.pageSize));
+  const qs = sp.toString();
+  return request(`/contracts/overview/modules-delivery/search${qs ? `?${qs}` : ""}`);
 }
 
 export type ContractModuleValidator = { id: string; email: string; role: string };
@@ -765,6 +837,8 @@ export async function updateContractFeature(
     criticality?: ContractItemCriticality;
     status?: ContractFeatureStatus;
     deliveryStatus?: ContractItemDeliveryStatus;
+    /** Origem para auditoria (ex.: MODULES_SIMPLIFIED). */
+    changeSource?: string;
   }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}/features/${featureId}`, {

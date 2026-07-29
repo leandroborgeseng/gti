@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from "@nestjs/common";
 import { ContractsService } from "./contracts.service";
 import {
   CreateContractAmendmentDto,
@@ -50,10 +50,52 @@ export class ContractsController {
     return this.service.createContractItemType(body);
   }
 
-  /** Visão geral de módulos e itens (estado de entrega) para todos os contratos com estrutura modular. */
+  /** Resumo dos contratos com estrutura modular (totais agregados, sem funcionalidades). */
   @Get("overview/modules-delivery")
   modulesDeliveryOverview(): Promise<unknown> {
     return this.service.findModulesDeliveryOverview();
+  }
+
+  /** Pesquisa/filtros server-side sobre funcionalidades de todos os contratos visíveis. */
+  @Get("overview/modules-delivery/search")
+  searchModulesDelivery(
+    @Query("q") q?: string,
+    @Query("deliveryStatus") deliveryStatus?: string,
+    @Query("criticality") criticality?: string,
+    @Query("pageSize") pageSize?: string
+  ): Promise<unknown> {
+    return this.service.searchModulesDeliveryFeatures({
+      q,
+      deliveryStatus,
+      criticality,
+      pageSize: pageSize ? Number(pageSize) : undefined
+    });
+  }
+
+  /** Módulos de um contrato com totais (lazy-load da tela Funcionalidades). */
+  @Get(":id/modules-delivery")
+  contractModulesDelivery(@Param("id") contractId: string): Promise<unknown> {
+    return this.service.findContractModulesDelivery(contractId);
+  }
+
+  /** Funcionalidades de um módulo com paginação. */
+  @Get(":id/modules/:moduleId/features-delivery")
+  moduleFeaturesDelivery(
+    @Param("id") contractId: string,
+    @Param("moduleId") moduleId: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("q") q?: string,
+    @Query("deliveryStatus") deliveryStatus?: string,
+    @Query("criticality") criticality?: string
+  ): Promise<unknown> {
+    return this.service.findModuleFeaturesDelivery(contractId, moduleId, {
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      q,
+      deliveryStatus,
+      criticality
+    });
   }
 
   /** Rotas mais específicas antes de `:id` solto (evita ambiguidade em alguns casos). */

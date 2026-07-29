@@ -137,6 +137,27 @@ type ImplantationModulesInput = Array<{ features: Array<{ deliveryStatus: Contra
  * Indicadores de progresso de entrega: ratio comum aplicado à mensalidade e ao valor de implantação;
  * fase (pré / implantação / mensalidade) conforme datas do período de implantação.
  */
+function buildFeatureImplantationProportionFromCounts(ctx: {
+  monthlyValue: Prisma.Decimal;
+  installationValue?: Prisma.Decimal | null;
+  implementationPeriodStart?: Date | null;
+  implementationPeriodEnd?: Date | null;
+  totalFeatures: number;
+  implantedCount: number;
+  partialCount: number;
+  notDeliveredCount: number;
+  at: Date;
+}): FeatureImplantationProportionDto {
+  const { totalFeatures, implantedCount, partialCount, notDeliveredCount } = ctx;
+  return finishFeatureImplantationProportion({
+    ...ctx,
+    totalFeatures,
+    implantedCount,
+    partialCount,
+    notDeliveredCount
+  });
+}
+
 function buildFeatureImplantationProportion(ctx: {
   monthlyValue: Prisma.Decimal;
   installationValue?: Prisma.Decimal | null;
@@ -161,6 +182,31 @@ function buildFeatureImplantationProportion(ctx: {
       }
     }
   }
+  return finishFeatureImplantationProportion({
+    monthlyValue: ctx.monthlyValue,
+    installationValue: ctx.installationValue,
+    implementationPeriodStart: ctx.implementationPeriodStart,
+    implementationPeriodEnd: ctx.implementationPeriodEnd,
+    totalFeatures,
+    implantedCount,
+    partialCount,
+    notDeliveredCount,
+    at: ctx.at
+  });
+}
+
+function finishFeatureImplantationProportion(ctx: {
+  monthlyValue: Prisma.Decimal;
+  installationValue?: Prisma.Decimal | null;
+  implementationPeriodStart?: Date | null;
+  implementationPeriodEnd?: Date | null;
+  totalFeatures: number;
+  implantedCount: number;
+  partialCount: number;
+  notDeliveredCount: number;
+  at: Date;
+}): FeatureImplantationProportionDto {
+  const { totalFeatures, implantedCount, partialCount, notDeliveredCount } = ctx;
   const monthly = new Prisma.Decimal(ctx.monthlyValue);
   const contractMonthlyValue = monthly.toFixed(2);
   const instDec = ctx.installationValue != null ? new Prisma.Decimal(ctx.installationValue) : null;
@@ -336,8 +382,8 @@ export class ContractsService {
   }
 
   /**
-   * Contratos com estrutura de módulos (Software / Infra / Serviço) e itens com estado de entrega,
-   * para a página global «Módulos».
+   * Resumo dos contratos com estrutura modular (sem carregar funcionalidades).
+   * Totais de entrega vêm de agregação no banco.
    */
   async findModulesDeliveryOverview(): Promise<unknown> {
     const rows = await this.prisma.contract.findMany({
@@ -357,47 +403,369 @@ export class ContractsService {
         implementationPeriodEnd: true,
         fiscal: { select: { id: true, name: true, email: true } },
         manager: { select: { id: true, name: true, email: true } },
-        modules: {
-          select: {
-            id: true,
-            name: true,
-            criticality: true,
-            validatorId: true,
-            validator: { select: { id: true, email: true, role: true } },
-            weight: true,
-            features: {
-              select: {
-                id: true,
-                itemCode: true,
-                name: true,
-                weight: true,
-                status: true,
-                criticality: true,
-                deliveryStatus: true
-              },
-              orderBy: { name: "asc" }
-            }
-          },
-          orderBy: { name: "asc" }
-        }
+        _count: { select: { modules: true } }
       },
       orderBy: { number: "asc" }
     });
+    if (rows.length === 0) return [];
+
+    const contractIds = rows.map((r) => r.id);
+    const modules = await this.prisma.contractModule.findMany({
+      where: { contractId: { in: contractIds } },
+      select: { id: true, contractId: true }
+    });
+    const moduleIds = modules.map((m) => m.id);
+    const moduleToContract = new Map(modules.map((m) => [m.id, m.contractId]));
+
+    const grouped =
+      moduleIds.length === 0
+        ? []
+        : await this.prisma.contractFeature.groupBy({
+            by: ["moduleId", "deliveryStatus"],
+            where: { moduleId: { in: moduleIds } },
+            _count: { _all: true }
+          });
+
+    const countsByContract = new Map<
+      string,
+      { total: number; delivered: number; partial: number; notDelivered: number }
+    >();
+    for (const id of contractIds) {
+      countsByContract.set(id, { total: 0, delivered: 0, partial: 0, notDelivered: 0 });
+    }
+    for (const g of grouped) {
+      const contractId = moduleToContract.get(g.moduleId);
+      if (!contractId) continue;
+      const bucket = countsByContract.get(contractId);
+      if (!bucket) continue;
+      const n = g._count._all;
+      bucket.total += n;
+      if (g.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) bucket.delivered += n;
+      else if (g.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) bucket.partial += n;
+      else bucket.notDelivered += n;
+    }
+
     return rows.map((row) => {
-      const modules = sortModuleListFeatures(row.modules);
+      const c = countsByContract.get(row.id) ?? { total: 0, delivered: 0, partial: 0, notDelivered: 0 };
       return {
-        ...row,
-        modules,
-        featureImplantationProportion: buildFeatureImplantationProportion({
+        id: row.id,
+        number: row.number,
+        name: row.name,
+        contractType: row.contractType,
+        status: row.status,
+        monthlyValue: row.monthlyValue,
+        fiscal: row.fiscal,
+        manager: row.manager,
+        modulesCount: row._count.modules,
+        totals: {
+          totalFeatures: c.total,
+          deliveredCount: c.delivered,
+          partialCount: c.partial,
+          notDeliveredCount: c.notDelivered
+        },
+        featureImplantationProportion: buildFeatureImplantationProportionFromCounts({
           monthlyValue: row.monthlyValue,
           installationValue: row.installationValue ?? null,
           implementationPeriodStart: row.implementationPeriodStart ?? null,
           implementationPeriodEnd: row.implementationPeriodEnd ?? null,
-          modules,
+          totalFeatures: c.total,
+          implantedCount: c.delivered,
+          partialCount: c.partial,
+          notDeliveredCount: c.notDelivered,
           at: new Date()
         })
       };
     });
+  }
+
+  /** Módulos de um contrato com totais por status (sem funcionalidades). */
+  async findContractModulesDelivery(contractId: string): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const modules = await this.prisma.contractModule.findMany({
+      where: { contractId },
+      select: {
+        id: true,
+        name: true,
+        criticality: true,
+        validatorId: true,
+        validator: { select: { id: true, email: true, role: true } },
+        weight: true
+      },
+      orderBy: { name: "asc" }
+    });
+    if (modules.length === 0) return { contractId, modules: [] };
+
+    const moduleIds = modules.map((m) => m.id);
+    const grouped = await this.prisma.contractFeature.groupBy({
+      by: ["moduleId", "deliveryStatus"],
+      where: { moduleId: { in: moduleIds } },
+      _count: { _all: true }
+    });
+    const byModule = new Map<string, { total: number; delivered: number; partial: number; notDelivered: number }>();
+    for (const id of moduleIds) {
+      byModule.set(id, { total: 0, delivered: 0, partial: 0, notDelivered: 0 });
+    }
+    for (const g of grouped) {
+      const bucket = byModule.get(g.moduleId);
+      if (!bucket) continue;
+      const n = g._count._all;
+      bucket.total += n;
+      if (g.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) bucket.delivered += n;
+      else if (g.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) bucket.partial += n;
+      else bucket.notDelivered += n;
+    }
+
+    return {
+      contractId,
+      modules: modules.map((m) => {
+        const t = byModule.get(m.id)!;
+        return {
+          ...m,
+          totals: {
+            totalFeatures: t.total,
+            deliveredCount: t.delivered,
+            partialCount: t.partial,
+            notDeliveredCount: t.notDelivered
+          }
+        };
+      })
+    };
+  }
+
+  /** Funcionalidades de um módulo, com paginação e filtros opcionais. */
+  async findModuleFeaturesDelivery(
+    contractId: string,
+    moduleId: string,
+    query: {
+      page?: number;
+      pageSize?: number;
+      q?: string;
+      deliveryStatus?: string;
+      criticality?: string;
+    }
+  ): Promise<unknown> {
+    await this.ensureModule(contractId, moduleId);
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 40));
+    const where = this.buildFeatureDeliveryWhere(moduleId, query);
+
+    const [total, features] = await Promise.all([
+      this.prisma.contractFeature.count({ where }),
+      this.prisma.contractFeature.findMany({
+        where,
+        select: {
+          id: true,
+          itemCode: true,
+          name: true,
+          weight: true,
+          status: true,
+          criticality: true,
+          deliveryStatus: true
+        },
+        orderBy: [{ itemCode: "asc" }, { name: "asc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      })
+    ]);
+
+    const ordered = sortFeaturesByItemCode(features);
+    return {
+      contractId,
+      moduleId,
+      page,
+      pageSize,
+      total,
+      hasMore: page * pageSize < total,
+      features: ordered
+    };
+  }
+
+  /**
+   * Pesquisa/filtros sobre todas as funcionalidades (não só as já carregadas na UI).
+   * Retorna contratos e módulos compatíveis com os filtros, com a 1.ª página de itens por módulo.
+   */
+  async searchModulesDeliveryFeatures(query: {
+    q?: string;
+    deliveryStatus?: string;
+    criticality?: string;
+    pageSize?: number;
+  }): Promise<unknown> {
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 40));
+    const q = (query.q ?? "").trim();
+    const deliveryStatus = query.deliveryStatus?.trim() || undefined;
+    const criticality = query.criticality?.trim() || undefined;
+    if (!q && !deliveryStatus && !criticality) {
+      return { contracts: [], totalFeatures: 0 };
+    }
+
+    const featureWhere: Prisma.ContractFeatureWhereInput = {
+      module: {
+        contract: {
+          deletedAt: null,
+          contractType: { in: [ContractType.SOFTWARE, ContractType.INFRA, ContractType.SERVICO] }
+        }
+      }
+    };
+    if (deliveryStatus && Object.values(ContractItemDeliveryStatus).includes(deliveryStatus as ContractItemDeliveryStatus)) {
+      featureWhere.deliveryStatus = deliveryStatus as ContractItemDeliveryStatus;
+    }
+    if (criticality && Object.values(ContractItemCriticality).includes(criticality as ContractItemCriticality)) {
+      featureWhere.criticality = criticality as ContractItemCriticality;
+    }
+    if (q) {
+      featureWhere.OR = [
+        { name: { contains: q, mode: "insensitive" } },
+        { itemCode: { contains: q, mode: "insensitive" } }
+      ];
+    }
+
+    const matching = await this.prisma.contractFeature.findMany({
+      where: featureWhere,
+      select: {
+        id: true,
+        itemCode: true,
+        name: true,
+        weight: true,
+        status: true,
+        criticality: true,
+        deliveryStatus: true,
+        moduleId: true,
+        module: {
+          select: {
+            id: true,
+            name: true,
+            weight: true,
+            criticality: true,
+            contractId: true,
+            contract: {
+              select: {
+                id: true,
+                number: true,
+                name: true,
+                contractType: true,
+                status: true,
+                monthlyValue: true,
+                fiscal: { select: { id: true, name: true, email: true } },
+                manager: { select: { id: true, name: true, email: true } }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [{ itemCode: "asc" }, { name: "asc" }],
+      take: 2000
+    });
+
+    type ModBucket = {
+      id: string;
+      name: string;
+      weight: unknown;
+      criticality: ContractItemCriticality;
+      features: typeof matching;
+    };
+    const byContract = new Map<
+      string,
+      {
+        contract: (typeof matching)[number]["module"]["contract"];
+        modules: Map<string, ModBucket>;
+      }
+    >();
+
+    for (const f of matching) {
+      const c = f.module.contract;
+      let entry = byContract.get(c.id);
+      if (!entry) {
+        entry = { contract: c, modules: new Map() };
+        byContract.set(c.id, entry);
+      }
+      let mod = entry.modules.get(f.moduleId);
+      if (!mod) {
+        mod = {
+          id: f.module.id,
+          name: f.module.name,
+          weight: f.module.weight,
+          criticality: f.module.criticality,
+          features: []
+        };
+        entry.modules.set(f.moduleId, mod);
+      }
+      mod.features.push(f);
+    }
+
+    const contracts = [...byContract.values()]
+      .sort((a, b) => a.contract.number.localeCompare(b.contract.number, "pt-BR"))
+      .map(({ contract, modules }) => {
+        const modList = [...modules.values()].map((m) => {
+          const delivered = m.features.filter((f) => f.deliveryStatus === "DELIVERED").length;
+          const partial = m.features.filter((f) => f.deliveryStatus === "PARTIALLY_DELIVERED").length;
+          const notDelivered = m.features.length - delivered - partial;
+          const page = sortFeaturesByItemCode(m.features).slice(0, pageSize);
+          return {
+            id: m.id,
+            name: m.name,
+            weight: m.weight,
+            criticality: m.criticality,
+            totals: {
+              totalFeatures: m.features.length,
+              deliveredCount: delivered,
+              partialCount: partial,
+              notDeliveredCount: notDelivered
+            },
+            featuresPage: {
+              page: 1,
+              pageSize,
+              total: m.features.length,
+              hasMore: m.features.length > pageSize,
+              features: page.map(({ module: _m, moduleId: _mid, ...rest }) => rest)
+            }
+          };
+        });
+        const totalFeatures = modList.reduce((s, m) => s + m.totals.totalFeatures, 0);
+        const deliveredCount = modList.reduce((s, m) => s + m.totals.deliveredCount, 0);
+        const partialCount = modList.reduce((s, m) => s + m.totals.partialCount, 0);
+        const notDeliveredCount = modList.reduce((s, m) => s + m.totals.notDeliveredCount, 0);
+        return {
+          id: contract.id,
+          number: contract.number,
+          name: contract.name,
+          contractType: contract.contractType,
+          status: contract.status,
+          monthlyValue: contract.monthlyValue,
+          fiscal: contract.fiscal,
+          manager: contract.manager,
+          totals: { totalFeatures, deliveredCount, partialCount, notDeliveredCount },
+          modules: modList
+        };
+      });
+
+    return {
+      contracts,
+      totalFeatures: matching.length,
+      truncated: matching.length >= 2000
+    };
+  }
+
+  private buildFeatureDeliveryWhere(
+    moduleId: string,
+    query: { q?: string; deliveryStatus?: string; criticality?: string }
+  ): Prisma.ContractFeatureWhereInput {
+    const where: Prisma.ContractFeatureWhereInput = { moduleId };
+    const q = (query.q ?? "").trim();
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: "insensitive" } },
+        { itemCode: { contains: q, mode: "insensitive" } }
+      ];
+    }
+    const ds = query.deliveryStatus?.trim();
+    if (ds && Object.values(ContractItemDeliveryStatus).includes(ds as ContractItemDeliveryStatus)) {
+      where.deliveryStatus = ds as ContractItemDeliveryStatus;
+    }
+    const cr = query.criticality?.trim();
+    if (cr && Object.values(ContractItemCriticality).includes(cr as ContractItemCriticality)) {
+      where.criticality = cr as ContractItemCriticality;
+    }
+    return where;
   }
 
   async findAll(): Promise<unknown> {
@@ -907,7 +1275,10 @@ export class ContractsService {
       deliveryStatusBefore: prev?.deliveryStatus ?? null,
       deliveryStatusAfter: next.deliveryStatus,
       oldData: prev,
-      newData: next
+      newData: {
+        ...(next as object),
+        changeSource: dto.changeSource?.trim() || "CONTRACT_DETAIL"
+      }
     });
     return this.findOne(contractId);
   }

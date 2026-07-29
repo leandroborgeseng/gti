@@ -38,6 +38,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Alterado
 
+- A tela **Funcionalidades** passa a carregar resumos primeiro e só busca módulos/itens ao expandir cada sanfona (com «Carregar mais» quando houver paginação). Filtros por texto, status de entrega e criticidade pesquisam no servidor. Perfis de leitura (VIEWER) veem a lista sem editar; administradores e editores mantêm as ações e o atalho «Abrir contrato».
 - No formulário de contrato, os campos fixos de mensalidade e implantação foram substituídos pela seção de itens contratuais; a mensalidade equivalente e os valores únicos continuam sincronizados para medições, snapshots e relatórios existentes.
 
 ### Técnico

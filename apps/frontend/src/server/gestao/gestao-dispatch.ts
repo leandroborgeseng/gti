@@ -326,6 +326,17 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 2 && seg[1] === "module-validators" && method === "GET") {
       return jsonOk(await gestaoContracts.findModuleValidators());
     }
+    if (seg.length === 4 && seg[1] === "overview" && seg[2] === "modules-delivery" && seg[3] === "search" && method === "GET") {
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoContracts.searchModulesDeliveryFeatures({
+          q: url.searchParams.get("q") ?? undefined,
+          deliveryStatus: url.searchParams.get("deliveryStatus") ?? undefined,
+          criticality: url.searchParams.get("criticality") ?? undefined,
+          pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined
+        })
+      );
+    }
     if (seg.length === 3 && seg[1] === "overview" && seg[2] === "modules-delivery" && method === "GET") {
       return jsonOk(await gestaoContracts.findModulesDeliveryOverview());
     }
@@ -338,6 +349,21 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 2 && method === "PUT") {
       assertMutation(user, method);
       return jsonOk(await gestaoContracts.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "modules-delivery" && method === "GET") {
+      return jsonOk(await gestaoContracts.findContractModulesDelivery(seg[1]));
+    }
+    if (seg.length === 5 && seg[2] === "modules" && seg[4] === "features-delivery" && method === "GET") {
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoContracts.findModuleFeaturesDelivery(seg[1], seg[3], {
+          page: url.searchParams.get("page") ? Number(url.searchParams.get("page")) : undefined,
+          pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined,
+          q: url.searchParams.get("q") ?? undefined,
+          deliveryStatus: url.searchParams.get("deliveryStatus") ?? undefined,
+          criticality: url.searchParams.get("criticality") ?? undefined
+        })
+      );
     }
     if (seg.length === 3 && seg[2] === "modules" && method === "POST") {
       assertMutation(user, method);
