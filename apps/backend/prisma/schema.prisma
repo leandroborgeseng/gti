@@ -169,6 +169,8 @@ enum ContractPricingItemStatus {
 model User {
   id                  String               @id @default(uuid())
   email               String               @unique
+  /// CPF somente dígitos (11). Opcional em legado; obrigatório em novos cadastros.
+  cpf                 String?              @unique
   firstName           String?
   lastName            String?
   displayName         String?
@@ -176,12 +178,15 @@ model User {
   jobTitle            String?
   department          String?
   phone               String?
+  /// Órgão principal do usuário (cadastro Administração → Órgãos).
+  organizationId      String?              @map("organization_id")
   passwordHash        String
   mustChangePassword  Boolean              @default(false)
   approvalStatus      UserApprovalStatus   @default(APPROVED)
   role                UserRole             @default(EDITOR)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  organization        Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   passwordResetTokens PasswordResetToken[]
   supervisedProjects  Project[]            @relation("ProjectSupervisor")
   validatedContractModules ContractModule[] @relation("ContractModuleValidator")
@@ -190,6 +195,9 @@ model User {
   projectTaskComments ProjectTaskComment[]  @relation("ProjectTaskCommentAuthor")
   assignedProjectTasks ProjectTask[]         @relation("ProjectTaskAssignee")
   responsibleProjectTasks ProjectTaskResponsible[]
+  extraPermissions    UserPermission[]
+
+  @@index([organizationId])
 }
 
 model UserAccessEvent {
@@ -246,14 +254,34 @@ model Fiscal {
 
 model Contract {
   id               String             @id @default(uuid())
+  /// Identificação completa número/ano (ex.: 370/2022). Mantida para compatibilidade e unicidade.
   number           String             @unique
+  /// Número formal sem ano (ex.: 370 ou 0156).
+  formalNumber     String?            @map("formal_number")
+  /// Ano derivado da vigência (preenchido automaticamente).
+  contractYear     Int?               @map("contract_year")
+  /// Código interno imutável SIGTI (ex.: ST-2026-001).
+  internalCode     String?            @unique @map("internal_code")
+  /// Processo administrativo (ex.: 23.911/2022).
+  administrativeProcess String?       @map("administrative_process")
   name             String
   description      String?
-  /// Órgão gestor no âmbito interno (ex.: secretaria responsável pelo contrato).
+  /// Texto legado de órgão gestor (preservado na migração).
   managingUnit     String?
+  /// Órgão gestor vinculado ao cadastro central.
+  organizationId   String?            @map("organization_id")
+  /// Quando true, órgão legado ainda não foi vinculado com segurança.
+  organizationPending Boolean         @default(false) @map("organization_pending")
   companyName      String
   cnpj             String
+  /// Enum legado (mantido sincronizado com o catálogo).
   contractType     ContractType
+  /// Tipo de contrato do cadastro Administração.
+  contractTypeCatalogId String?       @map("contract_type_catalog_id")
+  /// Tipo/modalidade de contratação (pregão, dispensa…).
+  hiringTypeId     String?            @map("hiring_type_id")
+  /// Número e ano do procedimento (ex.: 0156/2022).
+  hiringProcedureNumber String?       @map("hiring_procedure_number")
   lawType          LawType
   startDate        DateTime
   endDate          DateTime
@@ -261,6 +289,13 @@ model Contract {
   monthlyValue     Decimal            @db.Decimal(18, 2)
   /// Valor de implantação (único / projeto), separado da mensalidade.
   installationValue Decimal?          @db.Decimal(18, 2)
+  /// Valor global original (12 meses / vigência na contratação).
+  globalValueOriginal Decimal?        @map("global_value_original") @db.Decimal(18, 2)
+  /// Valor global vigente (após aditivos/reajustes).
+  globalValueCurrent  Decimal?        @map("global_value_current") @db.Decimal(18, 2)
+  /// Valor global informado manualmente (exceção).
+  globalValueManual   Boolean         @default(false) @map("global_value_manual")
+  globalValueJustification String?    @map("global_value_justification") @db.Text
   /// Início do período em que predomina a cobrança/referência da implantação (data civil).
   implementationPeriodStart DateTime?
   /// Fim do período de implantação; após esta data considera-se a fase de mensalidade proporcional.
@@ -273,6 +308,9 @@ model Contract {
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   deletedAt        DateTime?
+  organization     Organization?      @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  contractTypeCatalog ContractTypeCatalog? @relation(fields: [contractTypeCatalogId], references: [id], onDelete: SetNull)
+  hiringType       HiringType?        @relation(fields: [hiringTypeId], references: [id], onDelete: SetNull)
   fiscal           Fiscal             @relation("ContractFiscal", fields: [fiscalId], references: [id])
   manager          Fiscal             @relation("ContractManager", fields: [managerId], references: [id])
   supplier         Supplier?          @relation(fields: [supplierId], references: [id])
@@ -292,6 +330,9 @@ model Contract {
 
   @@index([status, endDate])
   @@index([deletedAt])
+  @@index([organizationId])
+  @@index([formalNumber, contractYear])
+  @@index([internalCode])
 }
 
 model ContractItemChangeLog {
@@ -426,9 +467,14 @@ model MeasurementItem {
   measurementId   String
   type            MeasurementItemType
   referenceId     String
+  /// Item de precificação medido (quando aplicável).
+  pricingItemId   String?             @map("pricing_item_id")
   quantity        Decimal             @db.Decimal(18, 4)
   calculatedValue Decimal             @db.Decimal(18, 2)
   measurement     Measurement         @relation(fields: [measurementId], references: [id], onDelete: Restrict)
+  pricingItem     ContractPricingItem? @relation(fields: [pricingItemId], references: [id], onDelete: SetNull)
+
+  @@index([pricingItemId])
 }
 
 model Glosa {
@@ -740,16 +786,91 @@ model SyncState {
   updatedAt DateTime @updatedAt
 }
 
+/// Órgão (secretaria/unidade) — cadastro central da Administração.
+model Organization {
+  id                 String     @id @default(uuid())
+  name               String
+  acronym            String
+  code               String?
+  active             Boolean    @default(true)
+  nameNormalized     String     @unique @map("name_normalized")
+  acronymNormalized  String     @unique @map("acronym_normalized")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  users              User[]
+  contracts          Contract[]
+
+  @@map("organization")
+}
+
+/// Tipo de contrato (Software, Datacenter…) — substitui lista fixa do enum na UI.
+model ContractTypeCatalog {
+  id                String     @id @default(uuid())
+  name              String
+  acronym           String
+  description       String?
+  active            Boolean    @default(true)
+  /// Valor do enum legado correspondente, quando aplicável.
+  legacyEnum        ContractType? @map("legacy_enum")
+  nameNormalized    String     @unique @map("name_normalized")
+  acronymNormalized String     @unique @map("acronym_normalized")
+  sortOrder         Int        @default(0) @map("sort_order")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  contracts         Contract[]
+  sequenceCounters  ContractInternalCodeSequence[]
+
+  @@map("contract_type_catalog")
+}
+
+/// Modalidade/forma de contratação (pregão, dispensa…).
+model HiringType {
+  id             String     @id @default(uuid())
+  name           String
+  description    String?
+  active         Boolean    @default(true)
+  nameNormalized String     @unique @map("name_normalized")
+  sortOrder      Int        @default(0) @map("sort_order")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  contracts      Contract[]
+
+  @@map("hiring_type")
+}
+
+/// Sequencial anual do código interno por tipo de contrato.
+model ContractInternalCodeSequence {
+  id                    String              @id @default(uuid())
+  contractTypeCatalogId String              @map("contract_type_catalog_id")
+  year                  Int
+  lastSequential        Int                 @default(0) @map("last_sequential")
+  contractTypeCatalog   ContractTypeCatalog @relation(fields: [contractTypeCatalogId], references: [id], onDelete: Cascade)
+
+  @@unique([contractTypeCatalogId, year])
+  @@map("contract_internal_code_sequence")
+}
+
 /// Tipo padronizado de item de precificação (catálogo Administração).
 model ContractItemType {
-  id        String                @id @default(uuid())
-  code      String                @unique
-  label     String
-  active    Boolean               @default(true)
-  sortOrder Int                   @default(0) @map("sort_order")
-  createdAt DateTime              @default(now()) @map("created_at")
-  updatedAt DateTime              @updatedAt @map("updated_at")
-  items     ContractPricingItem[]
+  id                     String                      @id @default(uuid())
+  code                   String                      @unique
+  label                  String
+  description            String?                     @db.Text
+  /// Natureza financeira sugerida para novos itens deste tipo.
+  billingKind            ContractPricingBillingKind? @map("billing_kind")
+  suggestedUnitId        String?                     @map("suggested_unit_id")
+  participatesInGlosa    Boolean                     @default(false) @map("participates_in_glosa")
+  useInMeasurements      Boolean                     @default(true) @map("use_in_measurements")
+  useInBalanceControl    Boolean                     @default(false) @map("use_in_balance_control")
+  useInConsumption       Boolean                     @default(false) @map("use_in_consumption")
+  useInFinancialPlanning Boolean                     @default(false) @map("use_in_financial_planning")
+  infoOnly               Boolean                     @default(false) @map("info_only")
+  active                 Boolean                     @default(true)
+  sortOrder              Int                         @default(0) @map("sort_order")
+  createdAt              DateTime                    @default(now()) @map("created_at")
+  updatedAt              DateTime                    @updatedAt @map("updated_at")
+  suggestedUnit          MeasureUnit?                @relation("ItemTypeSuggestedUnit", fields: [suggestedUnitId], references: [id], onDelete: SetNull)
+  items                  ContractPricingItem[]
 
   @@map("contract_item_type")
 }
@@ -764,8 +885,36 @@ model MeasureUnit {
   createdAt DateTime              @default(now()) @map("created_at")
   updatedAt DateTime              @updatedAt @map("updated_at")
   items     ContractPricingItem[]
+  itemTypes ContractItemType[]    @relation("ItemTypeSuggestedUnit")
 
   @@map("measure_unit")
+}
+
+/// Permissão concedida a um papel (base de acesso).
+model RolePermission {
+  id            String   @id @default(uuid())
+  role          UserRole
+  permissionKey String   @map("permission_key")
+  granted       Boolean  @default(true)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([role, permissionKey])
+  @@index([role])
+  @@map("role_permission")
+}
+
+/// Permissão adicional concedida diretamente a um usuário (soma-se ao papel).
+model UserPermission {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  permissionKey String   @map("permission_key")
+  granted       Boolean  @default(true)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionKey])
+  @@index([userId])
+  @@map("user_permission")
 }
 
 /// Item de precificação dinâmica do contrato (mensalidade, horas, UST, equipamentos…).
@@ -794,6 +943,7 @@ model ContractPricingItem {
   contract           Contract                   @relation(fields: [contractId], references: [id], onDelete: Cascade)
   type               ContractItemType           @relation(fields: [typeId], references: [id])
   unit               MeasureUnit                @relation(fields: [unitId], references: [id])
+  measurementItems   MeasurementItem[]
 
   @@unique([contractId, sequence])
   @@index([contractId, status])

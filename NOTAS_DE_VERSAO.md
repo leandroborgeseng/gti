@@ -6,6 +6,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- Nova tela **Administração** (`/administracao`) unifica usuários, órgãos, permissões, tipos de itens/contrato/contratação e atalho para backup em abas. O menu lateral passa a ter um único item «Administração»; `/users` redireciona para `?tab=usuarios`.
 - Administradores podem **excluir contrato** na tela de detalhe, com confirmação (digitar EXCLUIR ou o número) e justificativa obrigatória. A exclusão só é permitida quando não há medições, aditivos, memória financeira, governança ou funcionalidades já avaliadas; caso contrário, o sistema orienta a usar «Suspenso» ou «Encerrado». A operação fica registrada em auditoria.
 - Cadastro e edição de contratos passam a usar a seção **Itens contratuais**: lista dinâmica de itens precificados (mensalidade, implantação, horas, UST, equipamentos, licenças etc.), com tipo padronizado, descrição livre do contrato, unidade, quantidade, valores, periodicidade quando recorrente e totais consolidados (recorrente, único, sob demanda e global estimado). Após medições ou histórico financeiro, a exclusão definitiva do item é bloqueada — permanece o cancelamento.
 - Criada a rotina de manutenção das notas de versão para registrar mudanças funcionais, melhorias de interface, alterações de permissões e ajustes relevantes para operação.
@@ -40,6 +41,8 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 ### Alterado
 
 - A tela **Funcionalidades** passa a carregar resumos primeiro e só busca módulos/itens ao expandir cada sanfona (com «Carregar mais» quando houver paginação). Filtros por texto, status de entrega e criticidade pesquisam no servidor. Perfis de leitura (VIEWER) veem a lista sem editar; administradores e editores mantêm as ações e o atalho «Abrir contrato».
+- O **formulário de contrato** passa a usar os catálogos da Administração: número formal (somente dígitos) com pré-visualização número/ano, órgão gestor, tipo de contrato, modalidade e procedimento licitatório; o código interno SIGTI é gerado ao salvar. A ficha do contrato exibe código interno, identificação formal, órgão, contratação e valores globais original/vigente quando existirem.
+- O **formulário de usuário** exige nome completo, CPF (com validação), órgão e demais credenciais na criação; a grade de usuários mostra órgão, CPF mascarado e destaca cadastros incompletos (sem CPF ou órgão).
 - No formulário de contrato, os campos fixos de mensalidade e implantação foram substituídos pela seção de itens contratuais; a mensalidade equivalente e os valores únicos continuam sincronizados para medições, snapshots e relatórios existentes.
 
 ### Técnico

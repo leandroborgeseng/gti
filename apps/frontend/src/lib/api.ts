@@ -201,6 +201,21 @@ export type FeatureImplantationProportion = {
 export type Contract = {
   id: string;
   number: string;
+  /** Número formal sem ano (somente dígitos). */
+  formalNumber?: string | null;
+  contractYear?: number | null;
+  /** Código interno SIGTI (ex.: ST-2026-001), gerado na criação. */
+  internalCode?: string | null;
+  administrativeProcess?: string | null;
+  organizationId?: string | null;
+  contractTypeCatalogId?: string | null;
+  hiringTypeId?: string | null;
+  hiringProcedureNumber?: string | null;
+  globalValueOriginal?: string | null;
+  globalValueCurrent?: string | null;
+  organization?: { id: string; name: string; acronym: string; active?: boolean } | null;
+  contractTypeCatalog?: { id: string; name: string; acronym: string; legacyEnum?: string | null } | null;
+  hiringType?: { id: string; name: string } | null;
   name: string;
   description?: string | null;
   /** Secretaria ou unidade gestora (ex.: quadro de sistemas terceirizados). */
@@ -720,6 +735,12 @@ export async function updateContract(
   contractId: string,
   payload: {
     number?: string;
+    formalNumber?: string | null;
+    administrativeProcess?: string | null;
+    organizationId?: string | null;
+    contractTypeCatalogId?: string | null;
+    hiringTypeId?: string | null;
+    hiringProcedureNumber?: string | null;
     status?: "ACTIVE" | "EXPIRED" | "SUSPENDED";
     name?: string;
     description?: string | null;
@@ -749,10 +770,16 @@ export async function updateContract(
 }
 
 export async function createContract(payload: {
-  number: string;
+  number?: string;
+  formalNumber?: string;
+  administrativeProcess?: string | null;
+  organizationId?: string;
+  contractTypeCatalogId?: string;
+  hiringTypeId?: string | null;
+  hiringProcedureNumber?: string | null;
   name: string;
   description?: string;
-  managingUnit?: string;
+  managingUnit?: string | null;
   companyName: string;
   cnpj: string;
   contractType: "SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO";
@@ -1213,6 +1240,8 @@ export async function getMyAssignments(): Promise<MyAssignments> {
 export type UserRecord = {
   id: string;
   email: string;
+  cpfMasked?: string | null;
+  cpfDigits?: string | null;
   firstName?: string | null;
   lastName?: string | null;
   displayName?: string | null;
@@ -1220,6 +1249,8 @@ export type UserRecord = {
   jobTitle?: string | null;
   department?: string | null;
   phone?: string | null;
+  organizationId?: string | null;
+  organization?: { id: string; name: string; acronym: string; active: boolean } | null;
   role: string;
   approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
   mustChangePassword?: boolean;
@@ -1234,6 +1265,11 @@ export async function getUsers(): Promise<UserRecord[]> {
 export async function createUser(payload: {
   email: string;
   password: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  cpf?: string;
+  organizationId?: string;
   role?: "ADMIN" | "EDITOR" | "VIEWER";
 }): Promise<UserRecord> {
   return request("/users", { method: "POST", body: JSON.stringify(payload) });
@@ -1241,7 +1277,16 @@ export async function createUser(payload: {
 
 export async function updateUser(
   id: string,
-  payload: { role?: "ADMIN" | "EDITOR" | "VIEWER"; password?: string; approvalStatus?: "PENDING" | "APPROVED" | "REJECTED" }
+  payload: {
+    fullName?: string;
+    firstName?: string;
+    lastName?: string;
+    cpf?: string | null;
+    organizationId?: string | null;
+    role?: "ADMIN" | "EDITOR" | "VIEWER";
+    password?: string;
+    approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
+  }
 ): Promise<UserRecord> {
   return request(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
@@ -2043,4 +2088,190 @@ export async function createProjectTaskComment(projectId: string, taskId: string
     method: "POST",
     body: JSON.stringify({ body })
   });
+}
+
+// --- Administração (SIGTI) ---
+
+export type OrganizationRecord = {
+  id: string;
+  name: string;
+  acronym: string;
+  code?: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function getOrganizations(): Promise<OrganizationRecord[]> {
+  return request("/organizations");
+}
+
+export async function createOrganization(payload: {
+  name: string;
+  acronym: string;
+  code?: string | null;
+  active?: boolean;
+}): Promise<OrganizationRecord> {
+  return request("/organizations", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateOrganization(
+  id: string,
+  payload: { name?: string; acronym?: string; code?: string | null; active?: boolean }
+): Promise<OrganizationRecord> {
+  return request(`/organizations/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export type PermissionGrant = {
+  permissionKey: string;
+  granted: boolean;
+};
+
+export type RolePermissionsPayload = {
+  role: "ADMIN" | "EDITOR" | "VIEWER";
+  permissions: PermissionGrant[];
+};
+
+export type UserPermissionsPayload = {
+  userId: string;
+  permissions: PermissionGrant[];
+};
+
+export async function getRolePermissions(role: "ADMIN" | "EDITOR" | "VIEWER"): Promise<RolePermissionsPayload> {
+  return request(`/permissions/roles/${role}`);
+}
+
+export async function updateRolePermissions(
+  role: "ADMIN" | "EDITOR" | "VIEWER",
+  permissions: PermissionGrant[]
+): Promise<RolePermissionsPayload> {
+  return request(`/permissions/roles/${role}`, {
+    method: "PUT",
+    body: JSON.stringify({ permissions })
+  });
+}
+
+export async function getUserPermissions(userId: string): Promise<UserPermissionsPayload> {
+  return request(`/permissions/users/${userId}`);
+}
+
+export async function updateUserPermissions(userId: string, permissions: PermissionGrant[]): Promise<UserPermissionsPayload> {
+  return request(`/permissions/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify({ permissions })
+  });
+}
+
+export type AdminContractItemType = {
+  id: string;
+  code: string;
+  label: string;
+  description?: string | null;
+  billingKind?: ContractPricingBillingKind | null;
+  active: boolean;
+  sortOrder: number;
+  participatesInGlosa?: boolean;
+  useInMeasurements?: boolean;
+  useInBalanceControl?: boolean;
+  useInConsumption?: boolean;
+  useInFinancialPlanning?: boolean;
+  infoOnly?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export async function getAdminItemTypes(): Promise<AdminContractItemType[]> {
+  return request("/admin/item-types");
+}
+
+export async function createAdminItemType(payload: {
+  code: string;
+  label: string;
+  description?: string | null;
+  active?: boolean;
+  sortOrder?: number;
+}): Promise<AdminContractItemType> {
+  return request("/admin/item-types", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateAdminItemType(
+  id: string,
+  payload: {
+    code?: string;
+    label?: string;
+    description?: string | null;
+    active?: boolean;
+    sortOrder?: number;
+  }
+): Promise<AdminContractItemType> {
+  return request(`/admin/item-types/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export type ContractTypeCatalogRecord = {
+  id: string;
+  name: string;
+  acronym: string;
+  description?: string | null;
+  active: boolean;
+  legacyEnum?: "SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO" | null;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export async function getContractTypeCatalog(): Promise<ContractTypeCatalogRecord[]> {
+  return request("/contract-type-catalog");
+}
+
+export async function createContractTypeCatalogEntry(payload: {
+  name: string;
+  acronym: string;
+  description?: string | null;
+  active?: boolean;
+  sortOrder?: number;
+}): Promise<ContractTypeCatalogRecord> {
+  return request("/contract-type-catalog", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateContractTypeCatalogEntry(
+  id: string,
+  payload: {
+    name?: string;
+    acronym?: string;
+    description?: string | null;
+    active?: boolean;
+    sortOrder?: number;
+  }
+): Promise<ContractTypeCatalogRecord> {
+  return request(`/contract-type-catalog/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export type HiringTypeRecord = {
+  id: string;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export async function getHiringTypes(): Promise<HiringTypeRecord[]> {
+  return request("/hiring-types");
+}
+
+export async function createHiringType(payload: {
+  name: string;
+  description?: string | null;
+  active?: boolean;
+  sortOrder?: number;
+}): Promise<HiringTypeRecord> {
+  return request("/hiring-types", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateHiringType(
+  id: string,
+  payload: { name?: string; description?: string | null; active?: boolean; sortOrder?: number }
+): Promise<HiringTypeRecord> {
+  return request(`/hiring-types/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }

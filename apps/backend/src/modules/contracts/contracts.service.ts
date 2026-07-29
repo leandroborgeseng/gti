@@ -273,6 +273,33 @@ function assertImplementationPeriodOrder(start: Date | null, end: Date | null): 
   }
 }
 
+async function allocateInternalCode(
+  tx: Prisma.TransactionClient,
+  contractTypeCatalogId: string,
+  year: number
+): Promise<string> {
+  const catalog = await tx.contractTypeCatalog.findUnique({ where: { id: contractTypeCatalogId } });
+  if (!catalog) throw new BadRequestException("Tipo de contrato do catálogo não encontrado.");
+  const existing = await tx.contractInternalCodeSequence.findUnique({
+    where: { contractTypeCatalogId_year: { contractTypeCatalogId, year } }
+  });
+  let nextSeq: number;
+  if (existing) {
+    nextSeq = existing.lastSequential + 1;
+    await tx.contractInternalCodeSequence.update({
+      where: { id: existing.id },
+      data: { lastSequential: nextSeq }
+    });
+  } else {
+    nextSeq = 1;
+    await tx.contractInternalCodeSequence.create({
+      data: { contractTypeCatalogId, year, lastSequential: nextSeq }
+    });
+  }
+  const acronym = catalog.acronym.trim().toUpperCase();
+  return `${acronym}-${year}-${String(nextSeq).padStart(3, "0")}`;
+}
+
 @Injectable()
 export class ContractsService {
   private readonly pricing: ContractPricingHelper;
@@ -289,12 +316,13 @@ export class ContractsService {
         ? null
         : rest.installationValue;
     let totalValue = rest.totalValue ?? monthlyValue * 12;
+    let globalValueOriginal: number | null = null;
+    let globalValueCurrent: number | null = null;
 
     if (pricingItems && pricingItems.length > 0) {
       const { summarizePricingItems } = await import("./contract-pricing.helper");
-      // normalize via replace on temp — compute totals from inputs
       const helperTotals = summarizePricingItems(
-        pricingItems.map((p, idx) => {
+        pricingItems.map((p) => {
           const qty = Number(p.quantity);
           const uv = Number(p.unitValue);
           const totalManual = Boolean(p.totalManual);
@@ -313,44 +341,85 @@ export class ContractsService {
       monthlyValue = helperTotals.monthlyValue;
       installationValue = helperTotals.installationValue;
       totalValue = helperTotals.globalEstimated || monthlyValue * 12;
+      globalValueOriginal = helperTotals.globalEstimated;
+      globalValueCurrent = helperTotals.globalEstimated;
     }
 
     if (!(monthlyValue > 0) && !(pricingItems && pricingItems.length > 0)) {
       throw new BadRequestException("Informe a mensalidade ou ao menos um item contratual.");
     }
     if (!(monthlyValue > 0)) {
-      monthlyValue = 0.01; // schema/histórico esperam Decimal; medições SOFTWARE usam mensalidade
+      monthlyValue = 0.01;
+    }
+
+    const startDate = new Date(rest.startDate);
+    const contractYear = startDate.getFullYear();
+    const formalNumber = rest.formalNumber?.trim() || null;
+    const contractNumber = formalNumber ? `${formalNumber}/${contractYear}` : rest.number?.trim();
+    if (!contractNumber) {
+      throw new BadRequestException("Informe o número do contrato ou o número formal.");
+    }
+
+    let contractType = rest.contractType;
+    if (rest.contractTypeCatalogId) {
+      const catalog = await this.prisma.contractTypeCatalog.findUnique({
+        where: { id: rest.contractTypeCatalogId }
+      });
+      if (!catalog) throw new BadRequestException("Tipo de contrato do catálogo não encontrado.");
+      if (catalog.legacyEnum) contractType = catalog.legacyEnum;
+    }
+    if (!contractType) {
+      throw new BadRequestException("Informe o tipo de contrato ou selecione um tipo do catálogo.");
     }
 
     const managerId = rest.managerId ?? rest.fiscalId;
     const implStart = rest.implementationPeriodStart ? new Date(rest.implementationPeriodStart) : null;
     const implEnd = rest.implementationPeriodEnd ? new Date(rest.implementationPeriodEnd) : null;
     assertImplementationPeriodOrder(implStart, implEnd);
-    const created = await this.prisma.contract.create({
-      data: {
-        number: rest.number,
-        name: rest.name,
-        description: rest.description,
-        managingUnit: rest.managingUnit,
-        companyName: rest.companyName,
-        cnpj: rest.cnpj,
-        contractType: rest.contractType,
-        lawType: rest.lawType ?? LawType.LEI_14133,
-        startDate: new Date(rest.startDate),
-        endDate: new Date(rest.endDate),
-        totalValue: new Prisma.Decimal(totalValue),
-        monthlyValue: new Prisma.Decimal(monthlyValue),
-        installationValue: installationValue === null ? null : new Prisma.Decimal(installationValue),
-        implementationPeriodStart: implStart,
-        implementationPeriodEnd: implEnd,
-        status: rest.status ?? ContractStatus.ACTIVE,
-        slaTarget: rest.slaTarget != null ? new Prisma.Decimal(rest.slaTarget) : null,
-        fiscalId: rest.fiscalId,
-        managerId,
-        supplierId: rest.supplierId ?? null,
-        glpiGroups:
-          glpiGroups != null && glpiGroups.length > 0 ? { create: dedupeGlpiGroupLinks(glpiGroups) } : undefined
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      let internalCode: string | null = null;
+      if (rest.contractTypeCatalogId) {
+        internalCode = await allocateInternalCode(tx, rest.contractTypeCatalogId, contractYear);
       }
+      return tx.contract.create({
+        data: {
+          number: contractNumber,
+          formalNumber,
+          contractYear,
+          internalCode,
+          administrativeProcess: rest.administrativeProcess?.trim() || null,
+          organizationId: rest.organizationId ?? null,
+          contractTypeCatalogId: rest.contractTypeCatalogId ?? null,
+          hiringTypeId: rest.hiringTypeId ?? null,
+          hiringProcedureNumber: rest.hiringProcedureNumber?.trim() || null,
+          name: rest.name,
+          description: rest.description,
+          managingUnit: rest.managingUnit,
+          companyName: rest.companyName,
+          cnpj: rest.cnpj,
+          contractType,
+          lawType: rest.lawType ?? LawType.LEI_14133,
+          startDate,
+          endDate: new Date(rest.endDate),
+          totalValue: new Prisma.Decimal(totalValue),
+          monthlyValue: new Prisma.Decimal(monthlyValue),
+          installationValue: installationValue === null ? null : new Prisma.Decimal(installationValue),
+          globalValueOriginal:
+            globalValueOriginal != null ? new Prisma.Decimal(globalValueOriginal) : new Prisma.Decimal(totalValue),
+          globalValueCurrent:
+            globalValueCurrent != null ? new Prisma.Decimal(globalValueCurrent) : new Prisma.Decimal(totalValue),
+          implementationPeriodStart: implStart,
+          implementationPeriodEnd: implEnd,
+          status: rest.status ?? ContractStatus.ACTIVE,
+          slaTarget: rest.slaTarget != null ? new Prisma.Decimal(rest.slaTarget) : null,
+          fiscalId: rest.fiscalId,
+          managerId,
+          supplierId: rest.supplierId ?? null,
+          glpiGroups:
+            glpiGroups != null && glpiGroups.length > 0 ? { create: dedupeGlpiGroupLinks(glpiGroups) } : undefined
+        }
+      });
     });
     await this.createAudit("Contract", created.id, "CREATE", null, created);
     if (pricingItems && pricingItems.length > 0) {
@@ -923,10 +992,41 @@ export class ContractsService {
     assertImplementationPeriodOrder(nextImplStart, nextImplEnd);
     const { glpiGroups, pricingItems, ...rest } = dto;
     const totalValue = dto.totalValue ?? (dto.monthlyValue != null ? dto.monthlyValue * 12 : undefined);
+
+    let contractType = dto.contractType;
+    if (dto.contractTypeCatalogId) {
+      const catalog = await this.prisma.contractTypeCatalog.findUnique({
+        where: { id: dto.contractTypeCatalogId }
+      });
+      if (!catalog) throw new BadRequestException("Tipo de contrato do catálogo não encontrado.");
+      if (catalog.legacyEnum) contractType = catalog.legacyEnum;
+    }
+
+    const startDate = dto.startDate ? new Date(dto.startDate) : prev.startDate;
+    const contractYear = startDate.getFullYear();
+    let number = dto.number;
+    if (dto.formalNumber !== undefined) {
+      const formal = dto.formalNumber?.trim() || null;
+      number = formal ? `${formal}/${contractYear}` : dto.number;
+    }
+
     const updated = await this.prisma.contract.update({
       where: { id },
       data: {
         ...rest,
+        ...(contractType !== undefined ? { contractType } : {}),
+        ...(number !== undefined ? { number } : {}),
+        ...(dto.formalNumber !== undefined ? { formalNumber: dto.formalNumber?.trim() || null } : {}),
+        ...(dto.startDate ? { contractYear } : {}),
+        ...(dto.administrativeProcess !== undefined
+          ? { administrativeProcess: dto.administrativeProcess?.trim() || null }
+          : {}),
+        ...(dto.organizationId !== undefined ? { organizationId: dto.organizationId } : {}),
+        ...(dto.contractTypeCatalogId !== undefined ? { contractTypeCatalogId: dto.contractTypeCatalogId } : {}),
+        ...(dto.hiringTypeId !== undefined ? { hiringTypeId: dto.hiringTypeId } : {}),
+        ...(dto.hiringProcedureNumber !== undefined
+          ? { hiringProcedureNumber: dto.hiringProcedureNumber?.trim() || null }
+          : {}),
         ...(glpiGroups !== undefined
           ? { glpiGroups: { deleteMany: {}, create: dedupeGlpiGroupLinks(glpiGroups) } }
           : {}),
@@ -1091,6 +1191,48 @@ export class ContractsService {
 
   async createContractItemType(body: { code: string; label: string }) {
     return this.pricing.createType(body);
+  }
+
+  async listItemTypesAdmin() {
+    return this.pricing.listTypesAdmin();
+  }
+
+  async createItemType(body: {
+    code: string;
+    label: string;
+    description?: string;
+    billingKind?: string | null;
+    suggestedUnitId?: string | null;
+    participatesInGlosa?: boolean;
+    useInMeasurements?: boolean;
+    useInBalanceControl?: boolean;
+    useInConsumption?: boolean;
+    useInFinancialPlanning?: boolean;
+    infoOnly?: boolean;
+    active?: boolean;
+    sortOrder?: number;
+  }) {
+    return this.pricing.createTypeAdmin(body as never);
+  }
+
+  async updateItemType(
+    id: string,
+    body: {
+      label?: string;
+      description?: string | null;
+      billingKind?: string | null;
+      suggestedUnitId?: string | null;
+      participatesInGlosa?: boolean;
+      useInMeasurements?: boolean;
+      useInBalanceControl?: boolean;
+      useInConsumption?: boolean;
+      useInFinancialPlanning?: boolean;
+      infoOnly?: boolean;
+      active?: boolean;
+      sortOrder?: number;
+    }
+  ) {
+    return this.pricing.updateTypeAdmin(id, body as never);
   }
 
   async replacePricingItems(contractId: string, items: PricingItemDto[]) {

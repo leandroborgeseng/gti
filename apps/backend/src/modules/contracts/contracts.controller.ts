@@ -1,16 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import { UserRole } from "@prisma/client";
+import { Roles } from "../../auth/roles-required.decorator";
 import { ContractsService } from "./contracts.service";
 import {
   CreateContractAmendmentDto,
   CreateContractDto,
   CreateContractFeatureDto,
   CreateContractFinancialSnapshotDto,
+  CreateContractItemTypeAdminDto,
   CreateContractModuleDto,
   CreateContractServiceDto,
   DeleteContractDto,
   PricingItemDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
+  UpdateContractItemTypeAdminDto,
   UpdateContractModuleDto,
   UpdateContractServiceDto
 } from "./contracts.dto";
@@ -49,6 +53,25 @@ export class ContractsController {
   @Post("catalog/item-types")
   createContractItemType(@Body() body: { code: string; label: string }): Promise<unknown> {
     return this.service.createContractItemType(body);
+  }
+
+  /** Listagem administrativa de tipos de item (inclui inativos e metadados). */
+  @Get("catalog/item-types")
+  @Roles(UserRole.ADMIN)
+  listItemTypesAdmin(): Promise<unknown> {
+    return this.service.listItemTypesAdmin();
+  }
+
+  @Post("catalog/item-types/admin")
+  @Roles(UserRole.ADMIN)
+  createItemTypeAdmin(@Body() body: CreateContractItemTypeAdminDto): Promise<unknown> {
+    return this.service.createItemType(body);
+  }
+
+  @Patch("catalog/item-types/:id")
+  @Roles(UserRole.ADMIN)
+  updateItemTypeAdmin(@Param("id") id: string, @Body() body: UpdateContractItemTypeAdminDto): Promise<unknown> {
+    return this.service.updateItemType(id, body);
   }
 
   /** Resumo dos contratos com estrutura modular (totais agregados, sem funcionalidades). */

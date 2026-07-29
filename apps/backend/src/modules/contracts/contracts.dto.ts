@@ -256,9 +256,34 @@ export class UpdateContractServiceDto {
 }
 
 export class CreateContractDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  number!: string;
+  number?: string;
+
+  @IsOptional()
+  @IsString()
+  formalNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  administrativeProcess?: string;
+
+  @IsOptional()
+  @IsString()
+  organizationId?: string;
+
+  @IsOptional()
+  @IsString()
+  contractTypeCatalogId?: string;
+
+  @IsOptional()
+  @IsString()
+  hiringTypeId?: string;
+
+  @IsOptional()
+  @IsString()
+  hiringProcedureNumber?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -280,8 +305,9 @@ export class CreateContractDto {
   @IsNotEmpty()
   cnpj!: string;
 
+  @IsOptional()
   @IsEnum(ContractType)
-  contractType!: ContractType;
+  contractType?: ContractType;
 
   @IsOptional()
   @IsEnum(LawType)
@@ -352,11 +378,142 @@ export class CreateContractDto {
   pricingItems?: PricingItemDto[];
 }
 
+export class CreateContractItemTypeAdminDto {
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  label!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsEnum(ContractPricingBillingKind)
+  billingKind?: ContractPricingBillingKind;
+
+  @IsOptional()
+  @IsString()
+  suggestedUnitId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  participatesInGlosa?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInMeasurements?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInBalanceControl?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInConsumption?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInFinancialPlanning?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  infoOnly?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class UpdateContractItemTypeAdminDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  label?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsEnum(ContractPricingBillingKind)
+  billingKind?: ContractPricingBillingKind | null;
+
+  @IsOptional()
+  @IsString()
+  suggestedUnitId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  participatesInGlosa?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInMeasurements?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInBalanceControl?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInConsumption?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInFinancialPlanning?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  infoOnly?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+}
+
 export class UpdateContractDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
   number?: string;
+
+  @IsOptional()
+  @IsString()
+  formalNumber?: string | null;
+
+  @IsOptional()
+  @IsString()
+  administrativeProcess?: string | null;
+
+  @IsOptional()
+  @IsString()
+  organizationId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  contractTypeCatalogId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  hiringTypeId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  hiringProcedureNumber?: string | null;
 
   @IsOptional()
   @IsString()

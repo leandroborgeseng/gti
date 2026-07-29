@@ -1,0 +1,217 @@
+"use client";
+
+import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
+import type { HiringTypeRecord } from "@/lib/api";
+import { createHiringType, getHiringTypes, updateHiringType } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DataLoadAlert } from "@/components/ui/data-load-alert";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { DataTable } from "@/components/tables/data-table";
+
+type FormValues = {
+  name: string;
+  description: string;
+  active: boolean;
+};
+
+const columnHelper = createColumnHelper<HiringTypeRecord>();
+
+function HiringTypeForm({
+  initial,
+  onSuccess,
+  onCancel
+}: {
+  initial?: HiringTypeRecord | null;
+  onSuccess: () => void;
+  onCancel: () => void;
+}): JSX.Element {
+  const form = useForm<FormValues>({
+    defaultValues: {
+      name: initial?.name ?? "",
+      description: initial?.description ?? "",
+      active: initial?.active ?? true
+    }
+  });
+
+  const mutation = useMutation({
+    mutationFn: (values: FormValues) => {
+      if (!values.name.trim()) throw new Error("Informe o nome");
+      const payload = {
+        name: values.name.trim(),
+        description: values.description.trim() || null,
+        active: values.active
+      };
+      return initial ? updateHiringType(initial.id, payload) : createHiringType(payload);
+    },
+    onSuccess: () => {
+      toast.success(initial ? "Tipo de contratação atualizado." : "Tipo de contratação criado.");
+      onSuccess();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar")
+  });
+
+  return (
+    <Form {...form}>
+      <form className="space-y-4" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Nome</FormLabel>
+              <FormControl>
+                <Input {...field} placeholder="Ex.: Pregão Eletrônico" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Descrição (opcional)</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="active"
+          render={({ field }) => (
+            <FormItem className="flex items-center gap-2 space-y-0">
+              <FormControl>
+                <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} />
+              </FormControl>
+              <FormLabel className="font-normal">Ativo</FormLabel>
+            </FormItem>
+          )}
+        />
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? "Salvando…" : "Salvar"}
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
+
+export function HiringTypesAdminPanel(): JSX.Element {
+  const qc = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<HiringTypeRecord | null>(null);
+
+  const { data: items = [], error, isLoading } = useQuery({
+    queryKey: queryKeys.hiringTypes,
+    queryFn: getHiringTypes
+  });
+
+  const columns = useMemo<ColumnDef<HiringTypeRecord, any>[]>(
+    () => [
+      columnHelper.accessor("name", {
+        header: "Nome",
+        cell: (info) => <span className="font-medium">{info.getValue()}</span>
+      }),
+      columnHelper.accessor("description", {
+        header: "Descrição",
+        cell: (info) => info.getValue() ?? "—"
+      }),
+      columnHelper.accessor("active", {
+        header: "Status",
+        cell: (info) => (info.getValue() ? "Ativo" : "Inativo")
+      }),
+      columnHelper.display({
+        id: "actions",
+        header: () => <span className="flex w-full justify-end">Ações</span>,
+        cell: (info) => (
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                setEditing(info.row.original);
+                setModalOpen(true);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Editar
+            </Button>
+          </div>
+        )
+      })
+    ],
+    []
+  );
+
+  const loadError = error instanceof Error ? error.message : error ? String(error) : null;
+
+  return (
+    <div className="space-y-4">
+      {loadError ? <DataLoadAlert messages={[loadError]} title="Não foi possível carregar tipos de contratação" /> : null}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          Modalidades de contratação (pregão, dispensa, inexigibilidade…).
+        </p>
+        <Button
+          type="button"
+          className="gap-2"
+          onClick={() => {
+            setEditing(null);
+            setModalOpen(true);
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          Novo tipo
+        </Button>
+      </div>
+      <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Carregando…</p>
+        ) : (
+          <DataTable columns={columns} data={items} searchPlaceholder="Pesquisar nome…" />
+        )}
+      </section>
+      <Modal
+        open={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setEditing(null);
+        }}
+        title={editing ? "Editar tipo de contratação" : "Novo tipo de contratação"}
+      >
+        <HiringTypeForm
+          key={editing?.id ?? "new"}
+          initial={editing}
+          onCancel={() => {
+            setModalOpen(false);
+            setEditing(null);
+          }}
+          onSuccess={() => {
+            setModalOpen(false);
+            setEditing(null);
+            void qc.invalidateQueries({ queryKey: queryKeys.hiringTypes });
+          }}
+        />
+      </Modal>
+    </div>
+  );
+}

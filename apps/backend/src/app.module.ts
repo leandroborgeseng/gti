@@ -18,6 +18,10 @@ import { AttachmentsModule } from "./modules/attachments/attachments.module";
 import { UsersModule } from "./modules/users/users.module";
 import { ExportsModule } from "./modules/exports/exports.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
+import { OrganizationsModule } from "./modules/organizations/organizations.module";
+import { PermissionsModule } from "./modules/permissions/permissions.module";
+import { ContractTypeCatalogModule } from "./modules/contract-type-catalog/contract-type-catalog.module";
+import { HiringTypesModule } from "./modules/hiring-types/hiring-types.module";
 
 @Module({
   imports: [
@@ -34,7 +38,11 @@ import { ProjectsModule } from "./modules/projects/projects.module";
     GoalsModule,
     SuppliersModule,
     FiscaisModule,
-    AttachmentsModule
+    AttachmentsModule,
+    OrganizationsModule,
+    PermissionsModule,
+    ContractTypeCatalogModule,
+    HiringTypesModule
   ],
   providers: [
     PrismaService,

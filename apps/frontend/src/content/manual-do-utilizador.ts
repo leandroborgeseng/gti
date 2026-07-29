@@ -70,11 +70,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "p",
         parts: [
-          "Existem três papéis: administrador, editor e leitor. O administrador gerencia usuários (ver ",
-          { href: "/users", label: "Usuários" },
-          "), pode exportar e restaurar backup completo do sistema (ver ",
-          { href: "/backup", label: "Backup e migração" },
-          ") e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis."
+          "Existem três papéis: administrador, editor e leitor. O administrador acessa a área ",
+          { href: "/administracao", label: "Administração" },
+          " (usuários, órgãos, permissões, catálogos e backup) e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis."
         ]
       },
       {
@@ -345,14 +343,43 @@ export const MANUAL_SECTIONS: ManualSection[] = [
     ]
   },
   {
+    id: "administracao",
+    title: "Administração",
+    blocks: [
+      {
+        kind: "p",
+        parts: [
+          { href: "/administracao", label: "Administração" },
+          " — Área unificada para administradores, com abas para usuários, órgãos, permissões por papel ou usuário, tipos de itens contratuais, tipos de contrato, tipos de contratação e atalho para backup. A rota antiga ",
+          { href: "/administracao?tab=usuarios", label: "/users" },
+          " redireciona para a aba Usuários."
+        ]
+      },
+      {
+        kind: "ul",
+        items: [
+          "Usuários: gestão de contas, papéis, aprovação de cadastros e senha inicial.",
+          "Órgãos: cadastro de secretarias/unidades com nome, sigla, código e status ativo/inativo.",
+          "Permissões: marque ou desmarque permissões granulares por papel (ADMIN, EDITOR, VIEWER) ou por usuário (somam-se ao papel).",
+          "Tipos de itens, contrato e contratação: catálogos usados nos formulários de contrato.",
+          "Backup: botão que abre a tela completa de exportação, restauração e S3 em /backup."
+        ]
+      },
+      {
+        kind: "roles",
+        text: "Menu «Administração» só é mostrado a administradores."
+      }
+    ]
+  },
+  {
     id: "usuários",
     title: "Usuários",
     blocks: [
       {
         kind: "p",
         parts: [
-          { href: "/users", label: "Usuários" },
-          " — Gestão de contas, papéis, aprovação de cadastros e senha inicial. Visível apenas para administradores."
+          { href: "/administracao?tab=usuarios", label: "Usuários" },
+          " — Gestão de contas, papéis, aprovação de cadastros e senha inicial. Disponível na aba Usuários da Administração."
         ]
       },
       {
@@ -366,7 +393,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       },
       {
         kind: "roles",
-        text: "Menu «Usuários» só é mostrado a administradores."
+        text: "Disponível na aba Usuários da Administração (menu «Administração»)."
       }
     ]
   },
@@ -378,7 +405,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/backup", label: "Backup e migração" },
-          " — Permite a administradores exportar e restaurar a base de dados PostgreSQL, preferências guardadas no sistema e, opcionalmente, os anexos em disco. Serve para migrar a aplicação para outro servidor (por exemplo Railway → Coolify)."
+          " — Permite a administradores exportar e restaurar a base de dados PostgreSQL, preferências guardadas no sistema e, opcionalmente, os anexos em disco. Também acessível pela aba Backup em ",
+          { href: "/administracao?tab=backup", label: "Administração" },
+          ". Serve para migrar a aplicação para outro servidor (por exemplo Railway → Coolify)."
         ]
       },
       {
@@ -399,7 +428,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       },
       {
         kind: "roles",
-        text: "Menu «Backup e migração» só é mostrado a administradores."
+        text: "Tela dedicada em /backup; atalho na aba Backup da Administração."
       }
     ]
   },

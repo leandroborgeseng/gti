@@ -27,5 +27,11 @@ export const queryKeys = {
   /** Prefixo para invalidar todas as queries da vista plana de tarefas. */
   projectsAllTasksRoot: ["gestao", "projects", "all-tasks"] as const,
   dashboardSummary: ["gestao", "dashboard-summary"] as const,
-  dashboardAlerts: ["gestao", "dashboard-alerts"] as const
+  dashboardAlerts: ["gestao", "dashboard-alerts"] as const,
+  organizations: ["gestao", "admin", "organizations"] as const,
+  rolePermissions: (role: string) => ["gestao", "admin", "role-permissions", role] as const,
+  userPermissions: (userId: string) => ["gestao", "admin", "user-permissions", userId] as const,
+  adminItemTypes: ["gestao", "admin", "item-types"] as const,
+  contractTypeCatalog: ["gestao", "admin", "contract-types"] as const,
+  hiringTypes: ["gestao", "admin", "hiring-types"] as const
 } as const;

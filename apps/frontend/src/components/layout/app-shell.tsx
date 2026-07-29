@@ -38,6 +38,7 @@ const titles: Record<string, string> = {
   "/notas-versao": "Notas de versão",
   "/perfil": "Meu perfil",
   "/users": "Usuários",
+  "/administracao": "Administração",
   "/backup": "Backup e migração",
   "/exports": "Exportações"
 };

@@ -14,9 +14,13 @@ import {
   gestaoGlosas,
   gestaoGoals,
   gestaoGovernance,
+  gestaoHiringTypes,
   gestaoMeasurements,
   gestaoMonthlyClosureReport,
   gestaoOperationalEvents,
+  gestaoOrganizations,
+  gestaoPermissions,
+  gestaoContractTypeCatalog,
   gestaoProjects,
   gestaoSuppliers,
   gestaoUserAccess,
@@ -319,6 +323,15 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertMutation(user, method);
       return jsonOk(await gestaoContracts.createMeasureUnit((await readJsonBody(req)) as never));
     }
+    if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "item-types" && method === "GET") {
+      assertRoles(user, [UserRole.ADMIN]);
+      return jsonOk(await gestaoContracts.listItemTypesAdmin());
+    }
+    if (seg.length === 4 && seg[1] === "catalog" && seg[2] === "item-types" && method === "PATCH") {
+      assertRoles(user, [UserRole.ADMIN]);
+      assertMutation(user, method);
+      return jsonOk(await gestaoContracts.updateItemType(seg[3], (await readJsonBody(req)) as never));
+    }
     if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "item-types" && method === "POST") {
       assertMutation(user, method);
       return jsonOk(await gestaoContracts.createContractItemType((await readJsonBody(req)) as never));
@@ -538,6 +551,107 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 2 && method === "PATCH") {
       assertMutation(user, method);
       return jsonOk(await gestaoFiscais.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "organizations") {
+    if (seg.length === 1 && method === "GET") {
+      assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
+      const u = new URL(req.url);
+      const active = u.searchParams.get("active");
+      const filter =
+        active === "true" ? { active: true } : active === "false" ? { active: false } : undefined;
+      return jsonOk(await gestaoOrganizations.findAll(filter));
+    }
+    if (seg.length === 1 && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN]);
+      assertMutation(user, method);
+      return jsonOk(await gestaoOrganizations.create((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      assertRoles(user, [UserRole.ADMIN]);
+      assertMutation(user, method);
+      return jsonOk(await gestaoOrganizations.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "DELETE") {
+      assertRoles(user, [UserRole.ADMIN]);
+      assertMutation(user, method);
+      return jsonOk(await gestaoOrganizations.delete(seg[1]));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "permissions") {
+    assertRoles(user, [UserRole.ADMIN]);
+    if (seg.length === 2 && seg[1] === "catalog" && method === "GET") {
+      return jsonOk(gestaoPermissions.listCatalog());
+    }
+    if (seg.length === 3 && seg[1] === "role" && method === "GET") {
+      return jsonOk(await gestaoPermissions.getRolePermissions(gestaoPermissions.parseRoleParam(seg[2])));
+    }
+    if (seg.length === 3 && seg[1] === "role" && method === "PUT") {
+      assertMutation(user, method);
+      const body = (await readJsonBody(req)) as { keys?: string[] };
+      return jsonOk(
+        await gestaoPermissions.setRolePermissions(gestaoPermissions.parseRoleParam(seg[2]), body?.keys ?? [])
+      );
+    }
+    if (seg.length === 3 && seg[1] === "user" && method === "GET") {
+      return jsonOk(await gestaoPermissions.getUserPermissions(seg[2]));
+    }
+    if (seg.length === 3 && seg[1] === "user" && method === "PUT") {
+      assertMutation(user, method);
+      const body = (await readJsonBody(req)) as { keys?: string[] };
+      return jsonOk(await gestaoPermissions.setUserExtraPermissions(seg[2], body?.keys ?? []));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "contract-type-catalog") {
+    assertRoles(user, [UserRole.ADMIN]);
+    if (seg.length === 1 && method === "GET") {
+      const u = new URL(req.url);
+      const active = u.searchParams.get("active");
+      const filter =
+        active === "true" ? { active: true } : active === "false" ? { active: false } : undefined;
+      return jsonOk(await gestaoContractTypeCatalog.findAll(filter));
+    }
+    if (seg.length === 1 && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractTypeCatalog.create((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractTypeCatalog.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "DELETE") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractTypeCatalog.delete(seg[1]));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "hiring-types") {
+    assertRoles(user, [UserRole.ADMIN]);
+    if (seg.length === 1 && method === "GET") {
+      const u = new URL(req.url);
+      const active = u.searchParams.get("active");
+      const filter =
+        active === "true" ? { active: true } : active === "false" ? { active: false } : undefined;
+      return jsonOk(await gestaoHiringTypes.findAll(filter));
+    }
+    if (seg.length === 1 && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoHiringTypes.create((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoHiringTypes.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "DELETE") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoHiringTypes.delete(seg[1]));
     }
     return jsonErr(404, "Não encontrado");
   }

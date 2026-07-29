@@ -1,4 +1,8 @@
 import { prisma } from "@/glpi/config/prisma";
+import { OrganizationsService } from "@gestao/modules/organizations/organizations.service";
+import { PermissionsService } from "@gestao/modules/permissions/permissions.service";
+import { ContractTypeCatalogService } from "@gestao/modules/contract-type-catalog/contract-type-catalog.service";
+import { HiringTypesService } from "@gestao/modules/hiring-types/hiring-types.service";
 import { ContractsService } from "@gestao/modules/contracts/contracts.service";
 import { DashboardService } from "@gestao/modules/dashboard/dashboard.service";
 import { ExportsService } from "@gestao/modules/exports/exports.service";
@@ -36,6 +40,10 @@ export const gestaoExports = new ExportsService(prismaSvc);
 export const gestaoMonthlyClosureReport = new MonthlyContractClosureReportService(prismaSvc);
 export const gestaoOperationalEvents = new OperationalEventsService(prismaSvc);
 export const gestaoProjects = new ProjectsService(prismaSvc, storage);
+export const gestaoOrganizations = new OrganizationsService(prismaSvc);
+export const gestaoPermissions = new PermissionsService(prismaSvc);
+export const gestaoContractTypeCatalog = new ContractTypeCatalogService(prismaSvc);
+export const gestaoHiringTypes = new HiringTypesService(prismaSvc);
 
 let goalsBootstrapped = false;
 

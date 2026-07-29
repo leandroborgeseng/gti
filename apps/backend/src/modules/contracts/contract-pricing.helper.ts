@@ -272,6 +272,111 @@ export class ContractPricingHelper {
     }
   }
 
+  async listTypesAdmin() {
+    return this.prisma.contractItemType.findMany({
+      include: { suggestedUnit: true, _count: { select: { items: true } } },
+      orderBy: [{ sortOrder: "asc" }, { label: "asc" }]
+    });
+  }
+
+  async createTypeAdmin(input: {
+    code: string;
+    label: string;
+    description?: string;
+    billingKind?: ContractPricingBillingKind | null;
+    suggestedUnitId?: string | null;
+    participatesInGlosa?: boolean;
+    useInMeasurements?: boolean;
+    useInBalanceControl?: boolean;
+    useInConsumption?: boolean;
+    useInFinancialPlanning?: boolean;
+    infoOnly?: boolean;
+    active?: boolean;
+    sortOrder?: number;
+  }) {
+    const code = input.code.trim().toUpperCase().replace(/\s+/g, "_");
+    const label = input.label.trim();
+    if (!code || !label) throw new BadRequestException("Informe código e rótulo do tipo.");
+    if (input.suggestedUnitId) {
+      await this.ensureUnit(input.suggestedUnitId);
+    }
+    try {
+      return await this.prisma.contractItemType.create({
+        data: {
+          code,
+          label,
+          description: input.description?.trim() || null,
+          billingKind: input.billingKind ?? null,
+          suggestedUnitId: input.suggestedUnitId ?? null,
+          participatesInGlosa: input.participatesInGlosa ?? false,
+          useInMeasurements: input.useInMeasurements ?? true,
+          useInBalanceControl: input.useInBalanceControl ?? false,
+          useInConsumption: input.useInConsumption ?? false,
+          useInFinancialPlanning: input.useInFinancialPlanning ?? false,
+          infoOnly: input.infoOnly ?? false,
+          active: input.active ?? true,
+          sortOrder: input.sortOrder ?? 500
+        },
+        include: { suggestedUnit: true }
+      });
+    } catch {
+      throw new ConflictException("Já existe um tipo com este código.");
+    }
+  }
+
+  async updateTypeAdmin(
+    id: string,
+    input: {
+      label?: string;
+      description?: string | null;
+      billingKind?: ContractPricingBillingKind | null;
+      suggestedUnitId?: string | null;
+      participatesInGlosa?: boolean;
+      useInMeasurements?: boolean;
+      useInBalanceControl?: boolean;
+      useInConsumption?: boolean;
+      useInFinancialPlanning?: boolean;
+      infoOnly?: boolean;
+      active?: boolean;
+      sortOrder?: number;
+    }
+  ) {
+    const prev = await this.prisma.contractItemType.findUnique({
+      where: { id },
+      include: { _count: { select: { items: true } } }
+    });
+    if (!prev) throw new NotFoundException("Tipo de item não encontrado.");
+    if (input.active === false && prev._count.items > 0) {
+      // soft inactivate — permitido mesmo com vínculos
+    }
+    if (input.suggestedUnitId) {
+      await this.ensureUnit(input.suggestedUnitId);
+    }
+    return this.prisma.contractItemType.update({
+      where: { id },
+      data: {
+        label: input.label?.trim() || undefined,
+        description: input.description === undefined ? undefined : input.description?.trim() || null,
+        billingKind: input.billingKind === undefined ? undefined : input.billingKind,
+        suggestedUnitId: input.suggestedUnitId === undefined ? undefined : input.suggestedUnitId,
+        participatesInGlosa: input.participatesInGlosa ?? undefined,
+        useInMeasurements: input.useInMeasurements ?? undefined,
+        useInBalanceControl: input.useInBalanceControl ?? undefined,
+        useInConsumption: input.useInConsumption ?? undefined,
+        useInFinancialPlanning: input.useInFinancialPlanning ?? undefined,
+        infoOnly: input.infoOnly ?? undefined,
+        active: input.active ?? undefined,
+        sortOrder: input.sortOrder ?? undefined
+      },
+      include: { suggestedUnit: true, _count: { select: { items: true } } }
+    });
+  }
+
+  private async ensureUnit(unitId: string): Promise<void> {
+    const unit = await this.prisma.measureUnit.findUnique({ where: { id: unitId } });
+    if (!unit) throw new BadRequestException("Unidade de medida sugerida não encontrada.");
+  }
+
   async listItems(contractId: string) {
     return this.prisma.contractPricingItem.findMany({
       where: { contractId },
@@ -353,12 +458,23 @@ export class ContractPricingHelper {
         }
       }
 
+      const contractRow = await tx.contract.findUnique({
+        where: { id: contractId },
+        select: { globalValueManual: true, globalValueOriginal: true }
+      });
+      const globalEstimated = dec(Math.max(totals.globalEstimated, totals.monthlyValue, 0));
       await tx.contract.update({
         where: { id: contractId },
         data: {
           monthlyValue: dec(Math.max(totals.monthlyValue, 0)),
           installationValue: totals.installationValue != null ? dec(totals.installationValue) : null,
-          totalValue: dec(Math.max(totals.globalEstimated, totals.monthlyValue, 0))
+          totalValue: globalEstimated,
+          ...(contractRow?.globalValueManual
+            ? {}
+            : {
+                globalValueCurrent: globalEstimated,
+                ...(contractRow?.globalValueOriginal == null ? { globalValueOriginal: globalEstimated } : {})
+              })
         }
       });
     });

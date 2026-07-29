@@ -12,7 +12,7 @@ import { ContractStructureEditor } from "@/components/contracts/contract-structu
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { formatBrl } from "@/lib/format-brl";
-import { getContract } from "@/lib/api";
+import { getContract, getContractTypeCatalog, getHiringTypes, getOrganizations } from "@/lib/api";
 import { safeLoadNullable } from "@/lib/api-load";
 
 const statusLabel: Record<string, string> = {
@@ -45,7 +45,13 @@ function formatSlaTarget(raw: string | null | undefined): string {
 }
 
 export default async function ContractDetailPage({ params }: { params: { id: string } }): Promise<JSX.Element> {
-  const { data: contract, error } = await safeLoadNullable(() => getContract(params.id));
+  const [contractRes, orgsRes, hiringRes, typesRes] = await Promise.all([
+    safeLoadNullable(() => getContract(params.id)),
+    safeLoadNullable(() => getOrganizations()),
+    safeLoadNullable(() => getHiringTypes()),
+    safeLoadNullable(() => getContractTypeCatalog())
+  ]);
+  const { data: contract, error } = contractRes;
   if (error) {
     return (
       <div className="space-y-4">
@@ -71,7 +77,26 @@ export default async function ContractDetailPage({ params }: { params: { id: str
 
   const cnpj = contract.cnpj ?? contract.supplier?.cnpj ?? "—";
   const law = contract.lawType ? lawTypeLabel[contract.lawType] ?? contract.lawType : "—";
-  const tipo = contractTypeLabel[contract.contractType] ?? contract.contractType;
+  const catalogType = contract.contractTypeCatalog
+    ?? typesRes.data?.find((t) => t.id === contract.contractTypeCatalogId);
+  const tipo = catalogType
+    ? catalogType.acronym
+      ? `${catalogType.acronym} — ${catalogType.name}`
+      : catalogType.name
+    : contractTypeLabel[contract.contractType] ?? contract.contractType;
+  const org = contract.organization ?? orgsRes.data?.find((o) => o.id === contract.organizationId);
+  const orgLabel = org
+    ? org.acronym
+      ? `${org.acronym} — ${org.name}`
+      : org.name
+    : contract.managingUnit ?? "—";
+  const hiring = contract.hiringType ?? hiringRes.data?.find((h) => h.id === contract.hiringTypeId);
+  const formalDisplay =
+    contract.formalNumber && contract.contractYear
+      ? `${contract.formalNumber}/${contract.contractYear}`
+      : contract.number;
+  const globalOriginal = contract.globalValueOriginal;
+  const globalCurrent = contract.globalValueCurrent;
 
   return (
     <div className="space-y-4">
@@ -107,9 +132,30 @@ export default async function ContractDetailPage({ params }: { params: { id: str
         {contract.description ? <p className="mt-2 text-sm text-slate-600">{contract.description}</p> : null}
 
         <div className="mt-4 grid gap-3 text-sm text-slate-700 md:grid-cols-2">
-          {contract.managingUnit ? (
-            <p className="md:col-span-2">
-              <strong className="text-slate-900">Órgão gestor:</strong> {contract.managingUnit}
+          {contract.internalCode ? (
+            <p>
+              <strong className="text-slate-900">Código interno SIGTI:</strong> {contract.internalCode}
+            </p>
+          ) : null}
+          <p>
+            <strong className="text-slate-900">Número formal:</strong> {formalDisplay}
+          </p>
+          {contract.administrativeProcess ? (
+            <p>
+              <strong className="text-slate-900">Processo administrativo:</strong> {contract.administrativeProcess}
+            </p>
+          ) : null}
+          <p className="md:col-span-2">
+            <strong className="text-slate-900">Órgão gestor:</strong> {orgLabel}
+          </p>
+          {hiring ? (
+            <p>
+              <strong className="text-slate-900">Modalidade de contratação:</strong> {hiring.name}
+            </p>
+          ) : null}
+          {contract.hiringProcedureNumber ? (
+            <p>
+              <strong className="text-slate-900">Procedimento licitatório:</strong> {contract.hiringProcedureNumber}
             </p>
           ) : null}
           <p>
@@ -162,6 +208,16 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           <p>
             <strong className="text-slate-900">Valor total:</strong> {formatBrl(contract.totalValue)}
           </p>
+          {globalOriginal ? (
+            <p>
+              <strong className="text-slate-900">Valor global original:</strong> {formatBrl(globalOriginal)}
+            </p>
+          ) : null}
+          {globalCurrent ? (
+            <p>
+              <strong className="text-slate-900">Valor global vigente:</strong> {formatBrl(globalCurrent)}
+            </p>
+          ) : null}
           <p>
             <strong className="text-slate-900">Meta de SLA (referência):</strong> {formatSlaTarget(contract.slaTarget ?? undefined)}
           </p>

@@ -3,7 +3,6 @@ import {
   BookOpen,
   ClipboardList,
   ClipboardCheck,
-  DatabaseBackup,
   FileSpreadsheet,
   FileText,
   Flag,
@@ -11,12 +10,12 @@ import {
   ListChecks,
   Megaphone,
   Package,
+  Settings,
   Shield,
   Target,
   Ticket,
   UserCog,
   UserRoundCheck,
-  Users,
   Wallet
 } from "lucide-react";
 
@@ -79,10 +78,7 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
   {
     id: "administracao",
     label: "Administração",
-    items: [
-      { href: "/users", label: "Usuários", icon: Users, adminOnly: true },
-      { href: "/backup", label: "Backup e migração", icon: DatabaseBackup, adminOnly: true }
-    ]
+    items: [{ href: "/administracao", label: "Administração", icon: Settings, adminOnly: true }]
   }
 ];
 

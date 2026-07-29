@@ -4,6 +4,12 @@ export function onlyDigitsCnpj(v: string): string {
   return v.replace(/\D/g, "");
 }
 
+export function onlyDigits(v: string): string {
+  return v.replace(/\D/g, "");
+}
+
+const hiringProcedurePattern = /^\d{1,4}\/\d{4}$/;
+
 export const contractTypeSchema = z.enum(["SOFTWARE", "DATACENTER", "INFRA", "SERVICO"]);
 export const lawTypeFieldSchema = z.union([z.literal(""), z.enum(["LEI_8666", "LEI_14133"])]);
 
@@ -15,7 +21,25 @@ const glpiGroupLinkSchema = z.object({
 /** Campos do contrato + rascunhos dos modais (fiscal / fornecedor rápido). */
 export const contractPageSchema = z
   .object({
-    number: z.string().min(1, "Informe o número do contrato."),
+    /** Número formal sem ano (somente dígitos). Obrigatório na criação. */
+    formalNumber: z
+      .string()
+      .transform(onlyDigits)
+      .refine((d) => d === "" || /^\d+$/.test(d), { message: "Informe apenas dígitos no número formal." }),
+    /** Número completo legado (preenchido na edição quando já existir). */
+    number: z.string().optional().default(""),
+    administrativeProcess: z.string().optional().default(""),
+    organizationId: z.string().min(1, "Selecione o órgão gestor."),
+    contractTypeCatalogId: z.string().min(1, "Selecione o tipo de contrato."),
+    contractType: contractTypeSchema,
+    hiringTypeId: z.string().optional().default(""),
+    hiringProcedureNumber: z
+      .string()
+      .optional()
+      .default("")
+      .refine((v) => !v.trim() || hiringProcedurePattern.test(v.trim()), {
+        message: "Use o formato NNNN/AAAA (ex.: 0156/2022)."
+      }),
     name: z.string().min(1, "Informe o nome."),
     description: z.string(),
     managingUnit: z.string(),
@@ -25,7 +49,6 @@ export const contractPageSchema = z
       .min(1, "Informe o CNPJ.")
       .transform(onlyDigitsCnpj)
       .refine((d) => d.length === 14, { message: "CNPJ deve ter 14 dígitos." }),
-    contractType: contractTypeSchema,
     lawType: lawTypeFieldSchema,
     startDate: z.string().min(1, "Informe o início da vigência."),
     endDate: z.string().min(1, "Informe o fim da vigência."),
@@ -61,6 +84,12 @@ export const contractPageSchema = z
     }
   );
 
+/** Exige número formal na criação (modo edição valida no componente). */
+export const createContractPageSchema = contractPageSchema.refine((d) => d.formalNumber.length >= 1, {
+  message: "Informe o número formal do contrato (somente dígitos).",
+  path: ["formalNumber"]
+});
+
 export type ContractPageFormInput = z.input<typeof contractPageSchema>;
 export type ContractPageParsed = z.output<typeof contractPageSchema>;
 
@@ -80,13 +109,19 @@ export const quickSupplierSchema = z.object({
 });
 
 export const CONTRACT_FORM_DEFAULT_VALUES: ContractPageFormInput = {
+  formalNumber: "",
   number: "",
+  administrativeProcess: "",
+  organizationId: "",
+  contractTypeCatalogId: "",
+  contractType: "SOFTWARE",
+  hiringTypeId: "",
+  hiringProcedureNumber: "",
   name: "",
   description: "",
   managingUnit: "",
   companyName: "",
   cnpj: "",
-  contractType: "SOFTWARE",
   lawType: "",
   startDate: "",
   endDate: "",
@@ -104,3 +139,23 @@ export const CONTRACT_FORM_DEFAULT_VALUES: ContractPageFormInput = {
   quickSupplierCnpj: "",
   glpiGroups: []
 };
+
+/** Pré-visualização do número completo número/ano a partir do formal e da vigência. */
+export function formatFormalNumberPreview(formalNumber: string, startDate: string): string {
+  const digits = onlyDigits(formalNumber);
+  if (!digits) return "—";
+  if (!startDate || startDate.length < 4) return `${digits}/????`;
+  const year = new Date(`${startDate}T12:00:00`).getFullYear();
+  if (!Number.isFinite(year)) return `${digits}/????`;
+  return `${digits}/${year}`;
+}
+
+/** Extrai dígitos do número formal a partir do contrato existente. */
+export function formalNumberFromContract(c: {
+  formalNumber?: string | null;
+  number?: string;
+}): string {
+  if (c.formalNumber?.trim()) return onlyDigits(c.formalNumber);
+  const part = (c.number ?? "").split("/")[0]?.trim();
+  return part ? onlyDigits(part) : "";
+}
