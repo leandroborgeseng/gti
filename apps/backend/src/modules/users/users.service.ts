@@ -172,6 +172,23 @@ export class UsersService {
     if (!prev) {
       throw new NotFoundException("Usuário não encontrado");
     }
+    const removesApprovedAdmin =
+      prev.role === UserRole.ADMIN &&
+      prev.approvalStatus === UserApprovalStatus.APPROVED &&
+      ((dto.role !== undefined && dto.role !== UserRole.ADMIN) ||
+        (dto.approvalStatus !== undefined && dto.approvalStatus !== UserApprovalStatus.APPROVED));
+    if (removesApprovedAdmin) {
+      const otherApprovedAdmins = await this.prisma.user.count({
+        where: {
+          id: { not: id },
+          role: UserRole.ADMIN,
+          approvalStatus: UserApprovalStatus.APPROVED
+        }
+      });
+      if (otherApprovedAdmins === 0) {
+        throw new BadRequestException("Não é possível remover o último administrador aprovado do sistema.");
+      }
+    }
     if (dto.cpf !== undefined) {
       const cpf = normalizeCpfDigits(dto.cpf);
       if (cpf) {

@@ -624,6 +624,11 @@ function ModuleAccordion({
           ) : (
             <p className="mt-1 text-xs text-muted-foreground">Sem funcionalidades neste módulo.</p>
           )}
+          {mod.glosaPricingItem ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Base de glosa: #{mod.glosaPricingItem.sequence} — {mod.glosaPricingItem.description}
+            </p>
+          ) : null}
         </div>
       </button>
 

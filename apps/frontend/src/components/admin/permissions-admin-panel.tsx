@@ -228,6 +228,11 @@ export function PermissionsAdminPanel(): JSX.Element {
       <p className="text-sm text-muted-foreground">
         Permissões por usuário somam-se ao papel base. Marque ou desmarque por módulo ou permissão individual.
       </p>
+      {mode === "role" && role === "ADMIN" ? (
+        <p className="text-sm text-muted-foreground">
+          As permissões para gerir usuários e permissões não podem ser removidas do papel Administrador.
+        </p>
+      ) : null}
 
       <section className="rounded-xl border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

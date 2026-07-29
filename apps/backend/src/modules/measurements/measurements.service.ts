@@ -205,7 +205,7 @@ export class MeasurementsService {
       include: {
         contract: {
           include: {
-            modules: { include: { features: true } },
+            modules: { include: { features: true, glosaPricingItem: { include: { type: true } } } },
             services: true,
             pricingItems: { where: { status: ContractPricingItemStatus.ACTIVE }, include: { type: true } }
           }
@@ -226,11 +226,6 @@ export class MeasurementsService {
      */
     let measured = new Prisma.Decimal(0);
     if (contractType === "SOFTWARE" || contractType === "SERVICO") {
-      const features = measurement.contract.modules.flatMap((m) => m.features);
-      const total = features.length;
-      const validated = features.filter((f) => f.status === "VALIDATED").length;
-      const percentual = total > 0 ? new Prisma.Decimal(validated).div(total) : new Prisma.Decimal(0);
-      const explicitGlosaBases = measurement.contract.pricingItems.filter((item) => item.includeInGlosaBase);
       const monthlyEquivalent = (item: (typeof measurement.contract.pricingItems)[number]) => {
         if (item.billingKind !== ContractPricingBillingKind.RECURRING) return new Prisma.Decimal(0);
         const divisor: Record<ContractPricingPeriodicity, number> = {
@@ -243,15 +238,34 @@ export class MeasurementsService {
         };
         return item.unitValue.div(divisor[item.periodicity ?? ContractPricingPeriodicity.MONTHLY]);
       };
-      const explicitBaseValue = explicitGlosaBases.reduce(
-        (sum, item) => sum.add(monthlyEquivalent(item)),
-        new Prisma.Decimal(0)
-      );
-      const compatibleGlosaBase = measurement.contract.pricingItems.find(
-        (item) => item.type.participatesInGlosa || item.type.code === "MENSALIDADE"
-      );
-      const glosaBase = explicitGlosaBases.length > 0 ? explicitBaseValue : compatibleGlosaBase?.totalValue;
-      measured = (glosaBase?.gt(0) ? glosaBase : measurement.contract.monthlyValue).mul(percentual);
+      const modulesWithLink = measurement.contract.modules.filter((module) => module.glosaPricingItemId);
+
+      if (modulesWithLink.length > 0) {
+        // Ao configurar qualquer vínculo, somente os módulos vinculados entram no cálculo,
+        // evitando que uma base compartilhada seja contabilizada duas vezes.
+        for (const module of modulesWithLink) {
+          const total = module.features.length;
+          const validated = module.features.filter((feature) => feature.status === "VALIDATED").length;
+          const percentual = total > 0 ? new Prisma.Decimal(validated).div(total) : new Prisma.Decimal(0);
+          const baseItem = measurement.contract.pricingItems.find((item) => item.id === module.glosaPricingItemId);
+          if (baseItem) measured = measured.add(monthlyEquivalent(baseItem).mul(percentual));
+        }
+      } else {
+        const features = measurement.contract.modules.flatMap((module) => module.features);
+        const total = features.length;
+        const validated = features.filter((feature) => feature.status === "VALIDATED").length;
+        const percentual = total > 0 ? new Prisma.Decimal(validated).div(total) : new Prisma.Decimal(0);
+        const explicitGlosaBases = measurement.contract.pricingItems.filter((item) => item.includeInGlosaBase);
+        const explicitBaseValue = explicitGlosaBases.reduce(
+          (sum, item) => sum.add(monthlyEquivalent(item)),
+          new Prisma.Decimal(0)
+        );
+        const compatibleGlosaBase = measurement.contract.pricingItems.find(
+          (item) => item.type.participatesInGlosa || item.type.code === "MENSALIDADE"
+        );
+        const glosaBase = explicitGlosaBases.length > 0 ? explicitBaseValue : compatibleGlosaBase?.totalValue;
+        measured = (glosaBase?.gt(0) ? glosaBase : measurement.contract.monthlyValue).mul(percentual);
+      }
     } else if (contractType === "DATACENTER" || contractType === "INFRA") {
       const serviceMap = new Map(measurement.contract.services.map((s) => [s.id, s]));
       for (const item of measurement.items) {

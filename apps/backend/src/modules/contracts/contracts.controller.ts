@@ -58,11 +58,17 @@ export class ContractsController {
   @Roles(UserRole.ADMIN)
   pricingItemsFinancialReport(
     @Query("organizationId") organizationId?: string,
-    @Query("status") status?: string
+    @Query("status") status?: string,
+    @Query("year") year?: string,
+    @Query("month") month?: string
   ): Promise<unknown> {
+    const y = Number(year);
+    const m = Number(month);
     return this.service.listPricingItemsFinancialReport({
       organizationId: organizationId || undefined,
-      status: status === "ACTIVE" || status === "CANCELLED" ? status : undefined
+      status: status === "ACTIVE" || status === "CANCELLED" ? status : undefined,
+      year: Number.isFinite(y) ? y : undefined,
+      month: Number.isFinite(m) ? m : undefined
     });
   }
 

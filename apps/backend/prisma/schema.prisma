@@ -408,17 +408,20 @@ model ContractAmendment {
 }
 
 model ContractModule {
-  id          String                  @id @default(uuid())
-  contractId  String
-  name        String
-  criticality ContractItemCriticality @default(MEDIA) @map("modulo_criticidade")
-  validatorId String?                 @map("fiscal_responsavel_id")
-  weight      Decimal                 @db.Decimal(18, 8)
-  contract    Contract                @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  validator   User?                   @relation("ContractModuleValidator", fields: [validatorId], references: [id], onDelete: SetNull)
-  features    ContractFeature[]
+  id                 String                  @id @default(uuid())
+  contractId         String
+  name               String
+  criticality        ContractItemCriticality @default(MEDIA) @map("modulo_criticidade")
+  validatorId        String?                 @map("fiscal_responsavel_id")
+  glosaPricingItemId String?                 @map("glosa_pricing_item_id")
+  weight             Decimal                 @db.Decimal(18, 8)
+  contract           Contract                @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  validator          User?                   @relation("ContractModuleValidator", fields: [validatorId], references: [id], onDelete: SetNull)
+  glosaPricingItem   ContractPricingItem?    @relation("ContractModuleGlosaPricingItem", fields: [glosaPricingItemId], references: [id], onDelete: SetNull)
+  features           ContractFeature[]
 
   @@index([validatorId])
+  @@index([glosaPricingItemId])
 }
 
 model ContractFeature {
@@ -946,6 +949,7 @@ model ContractPricingItem {
   type               ContractItemType           @relation(fields: [typeId], references: [id])
   unit               MeasureUnit                @relation(fields: [unitId], references: [id])
   measurementItems   MeasurementItem[]
+  glosaBaseModules   ContractModule[]           @relation("ContractModuleGlosaPricingItem")
 
   @@unique([contractId, sequence])
   @@index([contractId, status])

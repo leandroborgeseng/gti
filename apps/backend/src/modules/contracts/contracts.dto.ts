@@ -143,6 +143,10 @@ export class CreateContractModuleDto {
   @IsOptional()
   @IsString()
   validatorId?: string;
+
+  @IsOptional()
+  @IsString()
+  glosaPricingItemId?: string | null;
 }
 
 export class UpdateContractModuleDto {
@@ -164,6 +168,10 @@ export class UpdateContractModuleDto {
   @IsOptional()
   @IsString()
   validatorId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  glosaPricingItemId?: string | null;
 }
 
 export class CreateContractFeatureDto {

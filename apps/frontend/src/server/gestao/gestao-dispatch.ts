@@ -822,10 +822,14 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 2 && seg[1] === "pricing-items" && method === "GET") {
       const u = new URL(req.url);
       const status = u.searchParams.get("status");
+      const year = Number(u.searchParams.get("year"));
+      const month = Number(u.searchParams.get("month"));
       return jsonOk(
         await gestaoPricingItemsFinancialReport.list({
           organizationId: u.searchParams.get("organizationId") || undefined,
-          status: status === "ACTIVE" || status === "CANCELLED" ? status : undefined
+          status: status === "ACTIVE" || status === "CANCELLED" ? status : undefined,
+          year: Number.isFinite(year) ? year : undefined,
+          month: Number.isFinite(month) ? month : undefined
         })
       );
     }

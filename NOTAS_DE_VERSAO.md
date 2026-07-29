@@ -6,6 +6,9 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- A estrutura de contratos de software e serviço permite vincular, em cada módulo, o item contratual que será sua **Base de glosa**. Quando houver vínculos, a medição considera apenas os módulos associados, aplicando a proporção de funcionalidades validadas de cada um sobre a mensalidade equivalente do item escolhido.
+- A Administração protege o acesso administrativo essencial: o papel Administrador mantém as permissões de gerir usuários e permissões, e o sistema impede remover ou reprovar o último administrador aprovado.
+- O relatório financeiro por item contratual passa a permitir filtrar o valor medido por competência (mês/ano da medição), além de órgão e situação do item.
 - Administradores podem regenerar excepcionalmente o código interno de um contrato, informando justificativa obrigatória. O código anterior é preservado no histórico de auditoria e o sistema sempre emite um novo sequencial, sem reutilizar numerações.
 - A aba de permissões da Administração passa a exibir o histórico das alterações feitas na matriz por papel e nas permissões adicionais por usuário, incluindo chaves adicionadas e removidas.
 - A matriz de permissões passa a ser aplicada também durante o uso do sistema: telas e operações da API respeitam as permissões efetivas do papel e as permissões adicionais atribuídas a cada usuário.

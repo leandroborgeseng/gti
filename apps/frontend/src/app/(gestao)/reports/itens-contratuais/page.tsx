@@ -21,12 +21,18 @@ export default async function ItensContratuaisReportPage({
   const organizationId = firstParam(searchParams?.organizationId);
   const statusRaw = firstParam(searchParams?.status);
   const status = statusRaw === "ACTIVE" || statusRaw === "CANCELLED" ? statusRaw : undefined;
+  const yearRaw = Number(firstParam(searchParams?.year));
+  const monthRaw = Number(firstParam(searchParams?.month));
+  const year = Number.isFinite(yearRaw) && yearRaw >= 2000 && yearRaw <= 2100 ? yearRaw : undefined;
+  const month = Number.isFinite(monthRaw) && monthRaw >= 1 && monthRaw <= 12 ? monthRaw : undefined;
   const [report, organizations] = await Promise.all([
-    safeLoad(() => getPricingItemsFinancialReport({ organizationId, status }), []),
+    safeLoad(() => getPricingItemsFinancialReport({ organizationId, status, year, month }), []),
     safeLoad(() => getOrganizations(), [])
   ]);
   const rows = report.data ?? [];
   const errors = collectLoadErrors([report.error, organizations.error]);
+  const now = new Date();
+  const yearOptions = Array.from({ length: 6 }, (_, i) => now.getFullYear() - i);
 
   return (
     <div className="space-y-6">
@@ -70,6 +76,48 @@ export default async function ItensContratuaisReportPage({
               <option value="ACTIVE">Ativo</option>
               <option value="CANCELLED">Cancelado</option>
             </select>
+          </label>
+          <label className="space-y-1 text-xs font-medium text-muted-foreground">
+            Competência (medido)
+            <div className="flex gap-2">
+              <select
+                name="month"
+                defaultValue={month ?? ""}
+                className="block h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm"
+              >
+                <option value="">Mês (todos)</option>
+                {[
+                  "Janeiro",
+                  "Fevereiro",
+                  "Março",
+                  "Abril",
+                  "Maio",
+                  "Junho",
+                  "Julho",
+                  "Agosto",
+                  "Setembro",
+                  "Outubro",
+                  "Novembro",
+                  "Dezembro"
+                ].map((label, index) => (
+                  <option key={label} value={index + 1}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <select
+                name="year"
+                defaultValue={year ?? ""}
+                className="block h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm"
+              >
+                <option value="">Ano (todos)</option>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
           </label>
           <button
             type="submit"

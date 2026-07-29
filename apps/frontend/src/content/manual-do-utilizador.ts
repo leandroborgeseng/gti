@@ -186,7 +186,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Proporção de implantação por funcionalidade: repartição do valor de implantação alinhada às funcionalidades do contrato.",
           "Grupos GLPI: associação de grupos do GLPI ao contrato, para contagem de chamados nos relatórios.",
           "Aditivos: registro de alterações contratuais.",
-          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir. Cada módulo tem uma sanfona para mostrar ou ocultar suas funcionalidades, facilitando a navegação em contratos extensos. Use os filtros por status de entrega, criticidade e texto para localizar itens por Código do Item ou descrição dentro dos respectivos módulos. No topo do módulo aparecem total de itens, entregues, parciais, não entregues e fiscal responsável. O campo Código do Item é obrigatório e deve guardar a numeração do item no Termo de Referência, mantendo o nome/descrição sem o número embutido; se ficar vazio, o campo é destacado e o sistema mostra um aviso antes de salvar. A criticidade de módulos e funcionalidades define automaticamente os pesos proporcionais usados nos reflexos financeiros: Crítica = 5, Alta = 4, Média = 3, Baixa = 2 e Apoio = 1.",
+          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir. Cada módulo tem uma sanfona para mostrar ou ocultar suas funcionalidades, facilitando a navegação em contratos extensos. Use os filtros por status de entrega, criticidade e texto para localizar itens por Código do Item ou descrição dentro dos respectivos módulos. No topo do módulo aparecem total de itens, entregues, parciais, não entregues e fiscal responsável. Em contratos de software e serviço, selecione também a «Base de glosa (item contratual)» para cada módulo quando as mensalidades precisarem ser calculadas separadamente; ao existir pelo menos um vínculo, somente os módulos vinculados entram nesse cálculo, evitando duplicidade. O campo Código do Item é obrigatório e deve guardar a numeração do item no Termo de Referência, mantendo o nome/descrição sem o número embutido; se ficar vazio, o campo é destacado e o sistema mostra um aviso antes de salvar. A criticidade de módulos e funcionalidades define automaticamente os pesos proporcionais usados nos reflexos financeiros: Crítica = 5, Alta = 4, Média = 3, Baixa = 2 e Apoio = 1.",
           "Fiscal responsável pelo módulo: selecione um usuário do sistema para acompanhar e validar a entrega daquele módulo.",
           "Histórico auditável dos itens: registra quem inseriu, excluiu ou alterou módulos, funcionalidades e serviços, incluindo antes e depois de Código do Item, descrição/nome, criticidade, estado e entrega quando esses campos mudam."
         ]
@@ -241,7 +241,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           { href: "/reports/fechamento-mensal", label: "relatório de fechamento mensal" },
           " cruza contratos vigentes com a medição do mês, referência do mês anterior (quando há medição aprovada), e estatísticas de ordens de serviço GLPI (abertas, fechadas e represadas) por contrato. O ",
           { href: "/reports/itens-contratuais", label: "relatório financeiro por item contratual" },
-          " mostra os valores, consumos, saldos e total medido de cada item, com filtros por órgão e situação."
+          " mostra os valores, consumos, saldos e total medido de cada item, com filtros por órgão, situação e competência (mês/ano) do valor medido."
         ]
       }
     ]
@@ -365,7 +365,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         items: [
           "Usuários: gestão de contas, papéis, aprovação de cadastros e senha inicial.",
           "Órgãos: cadastro de secretarias/unidades com nome, sigla, código e status ativo/inativo.",
-          "Permissões: marque ou desmarque permissões granulares por papel (ADMIN, EDITOR, VIEWER) ou por usuário (somam-se ao papel). Abaixo dos controles, consulte o histórico das últimas alterações, com data e permissões adicionadas ou removidas.",
+          "Permissões: marque ou desmarque permissões granulares por papel (ADMIN, EDITOR, VIEWER) ou por usuário (somam-se ao papel). As permissões de gerir usuários e gerir permissões permanecem obrigatoriamente no papel Administrador. Abaixo dos controles, consulte o histórico das últimas alterações, com data e permissões adicionadas ou removidas.",
+          "Usuários: o sistema não permite alterar o papel ou a aprovação de modo a remover o último administrador aprovado.",
           "Tipos de itens, contrato e contratação: catálogos usados nos formulários de contrato.",
           "Conferência precificação: valida os contratos ativos migrados dos campos antigos de mensalidade e implantação para itens contratuais. Use os filtros para localizar pendências, duplicidade de mensalidades, quantidades ou períodos a revisar e divergências de valores; cada linha abre o contrato para correção.",
           "Backup: botão que abre a tela completa de exportação, restauração e S3 em /backup."

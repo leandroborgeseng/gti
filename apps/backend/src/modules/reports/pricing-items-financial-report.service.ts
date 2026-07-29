@@ -5,6 +5,9 @@ import { PrismaService } from "../../prisma/prisma.service";
 export type PricingItemsFinancialReportQuery = {
   organizationId?: string;
   status?: ContractPricingItemStatus;
+  /** Competência da medição (opcional): filtra o total medido. */
+  year?: number;
+  month?: number;
 };
 
 export type PricingItemsFinancialReportRow = {
@@ -43,6 +46,16 @@ export class PricingItemsFinancialReportService {
       ...(query.status ? { status: query.status } : {})
     };
 
+    const competenceFilter =
+      query.year != null &&
+      query.month != null &&
+      Number.isFinite(query.year) &&
+      Number.isFinite(query.month) &&
+      query.month >= 1 &&
+      query.month <= 12
+        ? { referenceYear: Math.floor(query.year), referenceMonth: Math.floor(query.month) }
+        : {};
+
     const items = await this.prisma.contractPricingItem.findMany({
       where,
       include: {
@@ -50,7 +63,12 @@ export class PricingItemsFinancialReportService {
         type: { select: { code: true, label: true } },
         unit: { select: { label: true } },
         measurementItems: {
-          where: { measurement: { deletedAt: null } },
+          where: {
+            measurement: {
+              deletedAt: null,
+              ...competenceFilter
+            }
+          },
           select: { calculatedValue: true }
         }
       },

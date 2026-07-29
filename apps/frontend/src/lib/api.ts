@@ -250,6 +250,8 @@ export type Contract = {
     criticality?: ContractItemCriticality;
     validatorId?: string | null;
     validator?: { id: string; email: string; role: string } | null;
+    glosaPricingItemId?: string | null;
+    glosaPricingItem?: Pick<ContractPricingItem, "id" | "description" | "sequence"> | null;
     weight: string;
     features: Array<{
       id: string;
@@ -421,6 +423,8 @@ export type ContractModulesDeliveryModule = {
   criticality: ContractItemCriticality;
   validatorId?: string | null;
   validator?: { id: string; email: string; role: string } | null;
+  glosaPricingItemId?: string | null;
+  glosaPricingItem?: Pick<ContractPricingItem, "id" | "description" | "sequence"> | null;
   weight: unknown;
   totals: ModulesDeliveryTotals;
   featuresPage?: ModulesDeliveryFeaturesPage;
@@ -720,10 +724,14 @@ export async function getMonthlyContractClosureReport(year: number, month: numbe
 export async function getPricingItemsFinancialReport(params: {
   organizationId?: string;
   status?: ContractPricingItemStatus;
+  year?: number;
+  month?: number;
 } = {}): Promise<PricingItemsFinancialReportRow[]> {
   const query = new URLSearchParams();
   if (params.organizationId) query.set("organizationId", params.organizationId);
   if (params.status) query.set("status", params.status);
+  if (params.year != null) query.set("year", String(params.year));
+  if (params.month != null) query.set("month", String(params.month));
   const suffix = query.toString();
   return request(`/reports/pricing-items${suffix ? `?${suffix}` : ""}`);
 }
@@ -918,7 +926,13 @@ export type ContractFeatureStatus = "NOT_STARTED" | "IN_PROGRESS" | "DELIVERED" 
 
 export async function createContractModule(
   contractId: string,
-  payload: { name: string; weight?: number; criticality?: ContractItemCriticality; validatorId?: string | null }
+  payload: {
+    name: string;
+    weight?: number;
+    criticality?: ContractItemCriticality;
+    validatorId?: string | null;
+    glosaPricingItemId?: string | null;
+  }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules`, { method: "POST", body: JSON.stringify(payload) });
 }
@@ -926,7 +940,13 @@ export async function createContractModule(
 export async function updateContractModule(
   contractId: string,
   moduleId: string,
-  payload: { name?: string; weight?: number; criticality?: ContractItemCriticality; validatorId?: string | null }
+  payload: {
+    name?: string;
+    weight?: number;
+    criticality?: ContractItemCriticality;
+    validatorId?: string | null;
+    glosaPricingItemId?: string | null;
+  }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}`, { method: "PUT", body: JSON.stringify(payload) });
 }

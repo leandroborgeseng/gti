@@ -6,6 +6,7 @@ import {
   ContractItemChangeType,
   ContractItemCriticality,
   ContractItemDeliveryStatus,
+  ContractPricingItemStatus,
   ContractStatus,
   ContractType,
   LawType,
@@ -587,6 +588,8 @@ export class ContractsService {
         criticality: true,
         validatorId: true,
         validator: { select: { id: true, email: true, role: true } },
+        glosaPricingItemId: true,
+        glosaPricingItem: { select: { id: true, sequence: true, description: true } },
         weight: true
       },
       orderBy: { name: "asc" }
@@ -1028,7 +1031,13 @@ export class ContractsService {
     const contract = await this.prisma.contract.findFirst({
       where: { id, deletedAt: null },
       include: {
-        modules: { include: { features: true, validator: { select: { id: true, email: true, role: true } } } },
+        modules: {
+          include: {
+            features: true,
+            validator: { select: { id: true, email: true, role: true } },
+            glosaPricingItem: { include: { type: true } }
+          }
+        },
         services: true,
         fiscal: true,
         manager: true,
@@ -1622,12 +1631,14 @@ export class ContractsService {
     if (dto.validatorId?.trim()) {
       await this.ensureUser(dto.validatorId.trim());
     }
+    const glosaPricingItemId = await this.resolveModuleGlosaPricingItemId(contractId, dto.glosaPricingItemId);
     const created = await this.prisma.contractModule.create({
       data: {
         contractId,
         name: dto.name,
         criticality: dto.criticality ?? ContractItemCriticality.MEDIA,
         validatorId: dto.validatorId?.trim() || null,
+        glosaPricingItemId,
         weight: new Prisma.Decimal(dto.weight ?? 0)
       }
     });
@@ -1651,6 +1662,10 @@ export class ContractsService {
     if (dto.validatorId?.trim()) {
       await this.ensureUser(dto.validatorId.trim());
     }
+    const glosaPricingItemId =
+      dto.glosaPricingItemId === undefined
+        ? undefined
+        : await this.resolveModuleGlosaPricingItemId(contractId, dto.glosaPricingItemId);
     const prev = await this.prisma.contractModule.findUnique({ where: { id: moduleId } });
     const updated = await this.prisma.contractModule.update({
       where: { id: moduleId },
@@ -1658,6 +1673,7 @@ export class ContractsService {
         name: dto.name ?? undefined,
         criticality: dto.criticality ?? undefined,
         validatorId: dto.validatorId === undefined ? undefined : dto.validatorId?.trim() || null,
+        glosaPricingItemId,
         weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : undefined
       }
     });
@@ -1897,6 +1913,22 @@ export class ContractsService {
   private async ensureUser(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!user) throw new NotFoundException("Usuário responsável não encontrado");
+  }
+
+  private async resolveModuleGlosaPricingItemId(contractId: string, pricingItemId: string | null | undefined): Promise<string | null> {
+    const id = pricingItemId?.trim();
+    if (!id) return null;
+    const item = await this.prisma.contractPricingItem.findFirst({
+      where: { id, contractId, status: ContractPricingItemStatus.ACTIVE },
+      include: { type: { select: { code: true, participatesInGlosa: true } } }
+    });
+    if (!item) {
+      throw new BadRequestException("O item de base de glosa deve estar ativo e pertencer a este contrato.");
+    }
+    if (!item.includeInGlosaBase && !item.type.participatesInGlosa && item.type.code !== "MENSALIDADE") {
+      throw new BadRequestException("O item selecionado não está habilitado para compor a base de glosa.");
+    }
+    return item.id;
   }
 
   private async recalculateContractModuleWeights(contractId: string): Promise<void> {

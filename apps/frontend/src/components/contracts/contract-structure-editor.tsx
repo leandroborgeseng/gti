@@ -182,6 +182,11 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 
   const modules = contract.modules ?? [];
   const services = contract.services ?? [];
+  const glosaPricingItems = (contract.pricingItems ?? []).filter(
+    (item) =>
+      item.status === "ACTIVE" &&
+      (item.includeInGlosaBase || item.type?.participatesInGlosa || item.type?.code === "MENSALIDADE")
+  );
   const hasFeatureFilters = Boolean(featureFilters.deliveryStatus || featureFilters.criticality || featureFilters.query.trim());
   const visibleModules = hasFeatureFilters
     ? modules.filter((mod) => mod.features.some((feature) => featureMatchesFilters(feature, featureFilters)))
@@ -424,6 +429,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     onBusy={setBusy}
                     onUpdated={setContract}
                     validators={validators}
+                    glosaPricingItems={glosaPricingItems}
                   />
                 ))}
               </div>
@@ -758,11 +764,13 @@ function ModuleBlock(props: {
   onBusy: (b: boolean) => void;
   onUpdated: (c: Contract) => void;
   validators: Array<{ id: string; email: string; role: string }>;
+  glosaPricingItems: Array<{ id: string; sequence: number; description: string }>;
 }): JSX.Element {
-  const { contractId, module: mod, featureFilters, busy, onError, onBusy, onUpdated, validators } = props;
+  const { contractId, module: mod, featureFilters, busy, onError, onBusy, onUpdated, validators, glosaPricingItems } = props;
   const [name, setName] = useState(mod.name);
   const [criticality, setCriticality] = useState<ContractItemCriticality>(mod.criticality ?? "MEDIA");
   const [validatorId, setValidatorId] = useState(mod.validatorId ?? "");
+  const [glosaPricingItemId, setGlosaPricingItemId] = useState(mod.glosaPricingItemId ?? "");
   const [fCode, setFCode] = useState("");
   const [fCodeError, setFCodeError] = useState(false);
   const [fName, setFName] = useState("");
@@ -772,7 +780,8 @@ function ModuleBlock(props: {
     setName(mod.name);
     setCriticality(mod.criticality ?? "MEDIA");
     setValidatorId(mod.validatorId ?? "");
-  }, [mod.name, mod.criticality, mod.validatorId]);
+    setGlosaPricingItemId(mod.glosaPricingItemId ?? "");
+  }, [mod.name, mod.criticality, mod.validatorId, mod.glosaPricingItemId]);
   const [fCriticality, setFCriticality] = useState<ContractItemCriticality>("MEDIA");
   const [fStatus, setFStatus] = useState<ContractFeatureStatus>("NOT_STARTED");
   const [fDelivery, setFDelivery] = useState<ContractItemDeliveryStatus>("NOT_DELIVERED");
@@ -811,6 +820,14 @@ function ModuleBlock(props: {
           <span className="font-medium text-slate-900">Fiscal responsável: </span>
           <span className="break-all text-slate-600">{validatorLabel}</span>
         </div>
+        {mod.glosaPricingItem ? (
+          <div className="min-w-0">
+            <span className="font-medium text-slate-900">Base de glosa: </span>
+            <span className="break-words text-slate-600">
+              #{mod.glosaPricingItem.sequence} — {mod.glosaPricingItem.description}
+            </span>
+          </div>
+        ) : null}
       </div>
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-[10rem] flex-col text-xs text-slate-600">
@@ -853,6 +870,22 @@ function ModuleBlock(props: {
             ))}
           </select>
         </label>
+        <label className="flex min-w-[16rem] flex-col text-xs text-slate-600">
+          Base de glosa (item contratual)
+          <select
+            className={`mt-0.5 ${formControlClass}`}
+            value={glosaPricingItemId}
+            onChange={(e) => setGlosaPricingItemId(e.target.value)}
+            disabled={busy}
+          >
+            <option value="">Sem vínculo</option>
+            {glosaPricingItems.map((item) => (
+              <option key={item.id} value={item.id}>
+                #{item.sequence} — {item.description}
+              </option>
+            ))}
+          </select>
+        </label>
         <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
           Peso automático: {formatWeightPt(Number(mod.weight))}
         </span>
@@ -865,7 +898,8 @@ function ModuleBlock(props: {
               updateContractModule(contractId, mod.id, {
                 name: name.trim(),
                 criticality,
-                validatorId: validatorId || null
+                validatorId: validatorId || null,
+                glosaPricingItemId: glosaPricingItemId || null
               })
             );
           }}

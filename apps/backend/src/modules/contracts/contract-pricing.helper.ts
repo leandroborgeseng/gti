@@ -456,6 +456,12 @@ export class ContractPricingHelper {
             where: { id: raw.id },
             data: n
           });
+          if (n.status === ContractPricingItemStatus.CANCELLED) {
+            await tx.contractModule.updateMany({
+              where: { contractId, glosaPricingItemId: raw.id },
+              data: { glosaPricingItemId: null }
+            });
+          }
         } else {
           await tx.contractPricingItem.create({
             data: { contractId, ...n }
