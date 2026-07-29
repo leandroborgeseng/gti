@@ -462,6 +462,18 @@ export class UpdateContractDto {
   pricingItems?: PricingItemDto[];
 }
 
+/** Confirmação obrigatória para exclusão definitiva/soft-delete de contrato. */
+export class DeleteContractDto {
+  /** Deve ser a palavra EXCLUIR ou o número do contrato. */
+  @IsString()
+  @IsNotEmpty()
+  confirmation!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  justification!: string;
+}
+
 /** Corpo opcional ao salvar uma memória financeira do contrato (valores atuais antes de alterar). */
 export class CreateContractFinancialSnapshotDto {
   @IsOptional()

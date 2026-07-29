@@ -22,6 +22,7 @@ import {
   CreateContractServiceDto,
   ContractGlpiGroupLinkDto,
   ContractStructureImportRow,
+  DeleteContractDto,
   PricingItemDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
@@ -961,6 +962,121 @@ export class ContractsService {
       );
     }
     return this.findOne(id);
+  }
+
+  /**
+   * Remove o contrato da listagem (soft-delete) quando não há movimentações relevantes.
+   * Exige confirmação textual e justificativa; registra auditoria antes da exclusão.
+   */
+  async delete(id: string, dto: DeleteContractDto): Promise<{ ok: true; id: string }> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        supplier: { select: { id: true, name: true, cnpj: true } },
+        fiscal: { select: { id: true, name: true } },
+        manager: { select: { id: true, name: true } }
+      }
+    });
+    if (!contract) throw new NotFoundException("Contrato não encontrado");
+
+    const justification = (dto.justification ?? "").trim();
+    if (justification.length < 5) {
+      throw new BadRequestException("Informe uma justificativa com pelo menos 5 caracteres.");
+    }
+    const confirmation = (dto.confirmation ?? "").trim();
+    const expectedNumber = contract.number.trim();
+    const okConfirm =
+      confirmation.toUpperCase() === "EXCLUIR" || confirmation === expectedNumber;
+    if (!okConfirm) {
+      throw new BadRequestException(
+        `Para confirmar, digite EXCLUIR ou o número do contrato («${expectedNumber}»).`
+      );
+    }
+
+    const blockers = await this.collectContractDeleteBlockers(id);
+    if (blockers.length > 0) {
+      throw new BadRequestException(
+        `Este contrato não pode ser excluído porque possui registros relacionados: ${blockers.join(
+          ", "
+        )}. Altere a situação para «Suspenso» ou «Encerrado» em vez de excluir.`
+      );
+    }
+
+    const snapshot = {
+      id: contract.id,
+      number: contract.number,
+      name: contract.name,
+      companyName: contract.companyName,
+      cnpj: contract.cnpj,
+      contractType: contract.contractType,
+      status: contract.status,
+      monthlyValue: contract.monthlyValue,
+      totalValue: contract.totalValue,
+      installationValue: contract.installationValue,
+      startDate: contract.startDate,
+      endDate: contract.endDate,
+      supplier: contract.supplier,
+      fiscal: contract.fiscal,
+      manager: contract.manager
+    };
+
+    await this.createAudit("Contract", id, "DELETE", snapshot, {
+      justification,
+      confirmation,
+      deletedAt: new Date().toISOString()
+    });
+
+    await this.prisma.contract.update({
+      where: { id },
+      data: { deletedAt: new Date() }
+    });
+
+    return { ok: true, id };
+  }
+
+  private async collectContractDeleteBlockers(contractId: string): Promise<string[]> {
+    const [
+      measurements,
+      amendments,
+      snapshots,
+      governance,
+      evaluatedFeatures,
+      statusChangeLogs,
+      consumedPricing
+    ] = await Promise.all([
+      this.prisma.measurement.count({ where: { contractId, deletedAt: null } }),
+      this.prisma.contractAmendment.count({ where: { contractId } }),
+      this.prisma.contractFinancialSnapshot.count({ where: { contractId } }),
+      this.prisma.ticketGovernance.count({ where: { contractId } }),
+      this.prisma.contractFeature.count({
+        where: {
+          module: { contractId },
+          OR: [
+            { deliveryStatus: { not: ContractItemDeliveryStatus.NOT_DELIVERED } },
+            { status: { not: ContractFeatureStatus.NOT_STARTED } }
+          ]
+        }
+      }),
+      this.prisma.contractItemChangeLog.count({
+        where: {
+          contractId,
+          action: ContractItemChangeAction.STATUS_CHANGED
+        }
+      }),
+      this.prisma.contractPricingItem.count({
+        where: { contractId, consumedQuantity: { gt: 0 } }
+      })
+    ]);
+
+    const blockers: string[] = [];
+    if (measurements > 0) blockers.push(`medições (${measurements})`);
+    if (amendments > 0) blockers.push(`aditivos (${amendments})`);
+    if (snapshots > 0) blockers.push(`memória financeira (${snapshots})`);
+    if (governance > 0) blockers.push(`chamados de governança (${governance})`);
+    if (evaluatedFeatures > 0) blockers.push(`funcionalidades avaliadas (${evaluatedFeatures})`);
+    if (statusChangeLogs > 0) blockers.push(`histórico de alterações de itens (${statusChangeLogs})`);
+    if (consumedPricing > 0) blockers.push(`itens com consumo registrado (${consumedPricing})`);
+    return blockers;
   }
 
   async listPricingCatalog() {

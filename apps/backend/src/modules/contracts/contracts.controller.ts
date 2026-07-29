@@ -7,6 +7,7 @@ import {
   CreateContractFinancialSnapshotDto,
   CreateContractModuleDto,
   CreateContractServiceDto,
+  DeleteContractDto,
   PricingItemDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
@@ -194,5 +195,10 @@ export class ContractsController {
   @Put(":id")
   update(@Param("id") id: string, @Body() dto: UpdateContractDto): Promise<unknown> {
     return this.service.update(id, dto);
+  }
+
+  @Delete(":id")
+  remove(@Param("id") id: string, @Body() dto: DeleteContractDto): Promise<unknown> {
+    return this.service.delete(id, dto);
   }
 }

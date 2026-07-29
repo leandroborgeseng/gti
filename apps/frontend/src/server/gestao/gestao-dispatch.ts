@@ -350,6 +350,11 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertMutation(user, method);
       return jsonOk(await gestaoContracts.update(seg[1], (await readJsonBody(req)) as never));
     }
+    if (seg.length === 2 && method === "DELETE") {
+      assertRoles(user, [UserRole.ADMIN]);
+      assertMutation(user, method);
+      return jsonOk(await gestaoContracts.delete(seg[1], (await readJsonBody(req)) as never));
+    }
     if (seg.length === 3 && seg[2] === "modules-delivery" && method === "GET") {
       return jsonOk(await gestaoContracts.findContractModulesDelivery(seg[1]));
     }

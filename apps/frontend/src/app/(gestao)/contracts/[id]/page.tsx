@@ -1,5 +1,6 @@
 import type { Route } from "next";
 import Link from "next/link";
+import { ContractDeleteButton } from "@/components/contracts/contract-delete-button";
 import { ContractFinancialSnapshotsPanel } from "@/components/contracts/contract-financial-snapshots-panel";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractGlpiGroupsPanel } from "@/components/contracts/contract-glpi-groups-panel";
@@ -74,22 +75,29 @@ export default async function ContractDetailPage({ params }: { params: { id: str
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <Link
-          href={"/contracts" as Route}
-          className="font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
-        >
-          ← Voltar aos contratos
-        </Link>
-        <span className="text-slate-300" aria-hidden>
-          |
-        </span>
-        <Link
-          href={`/measurements?contractId=${contract.id}` as Route}
-          className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
-        >
-          Medições deste contrato
-        </Link>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href={"/contracts" as Route}
+            className="font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
+          >
+            ← Voltar aos contratos
+          </Link>
+          <span className="text-slate-300" aria-hidden>
+            |
+          </span>
+          <Link
+            href={`/measurements?contractId=${contract.id}` as Route}
+            className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
+          >
+            Medições deste contrato
+          </Link>
+        </div>
+        <ContractDeleteButton
+          contractId={contract.id}
+          contractNumber={contract.number}
+          contractName={contract.name}
+        />
       </div>
 
       <Card className="p-5">

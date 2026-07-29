@@ -706,6 +706,16 @@ export async function createContractAmendment(
   return request(`/contracts/${contractId}/amendments`, { method: "POST", body: JSON.stringify(payload) });
 }
 
+export async function deleteContract(
+  contractId: string,
+  payload: { confirmation: string; justification: string }
+): Promise<{ ok: true; id: string }> {
+  return request(`/contracts/${contractId}`, {
+    method: "DELETE",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function updateContract(
   contractId: string,
   payload: {

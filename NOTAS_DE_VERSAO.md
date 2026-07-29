@@ -6,6 +6,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- Administradores podem **excluir contrato** na tela de detalhe, com confirmação (digitar EXCLUIR ou o número) e justificativa obrigatória. A exclusão só é permitida quando não há medições, aditivos, memória financeira, governança ou funcionalidades já avaliadas; caso contrário, o sistema orienta a usar «Suspenso» ou «Encerrado». A operação fica registrada em auditoria.
 - Cadastro e edição de contratos passam a usar a seção **Itens contratuais**: lista dinâmica de itens precificados (mensalidade, implantação, horas, UST, equipamentos, licenças etc.), com tipo padronizado, descrição livre do contrato, unidade, quantidade, valores, periodicidade quando recorrente e totais consolidados (recorrente, único, sob demanda e global estimado). Após medições ou histórico financeiro, a exclusão definitiva do item é bloqueada — permanece o cancelamento.
 - Criada a rotina de manutenção das notas de versão para registrar mudanças funcionais, melhorias de interface, alterações de permissões e ajustes relevantes para operação.
 - Área administrativa **Backup e migração** (só administradores): exporta e restaura a base PostgreSQL, preferências do sistema e, opcionalmente, anexos, para facilitar a mudança de servidor. Segredos de ambiente não entram no ficheiro; a tela mostra quais variáveis estão definidas no destino.
