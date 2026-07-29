@@ -1,9 +1,8 @@
 "use client";
 
 import { Menu } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
 import { useState } from "react";
+import { AppBrand } from "@/components/brand/app-brand";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { MainNavGroup } from "./main-nav-data";
@@ -23,23 +22,8 @@ export function MobileNav({ groups }: Props): JSX.Element {
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="flex w-[min(100%,20rem)] max-w-none flex-col p-0">
-          <SheetHeader className="border-b border-white/15 bg-brand-blue px-4 py-4 text-left text-white">
-            <Link
-              href="https://www.bluebeaver.com.br"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mb-1 block"
-              onClick={() => setOpen(false)}
-            >
-              <Image
-                src="/brand/bluebeaver-logo.png"
-                alt="BlueBeaver"
-                width={200}
-                height={58}
-                className="h-10 w-auto max-w-full object-contain object-left"
-              />
-            </Link>
-            <p className="text-[10px] font-medium uppercase leading-snug tracking-[0.12em] text-white/90">Gestão de Operações de TI</p>
+          <SheetHeader className="border-b border-border bg-white px-4 py-4 text-left">
+            <AppBrand variant="mobile" onNavigate={() => setOpen(false)} />
             <SheetTitle className="sr-only">Navegação</SheetTitle>
             <SheetDescription className="sr-only">Menu principal da aplicativo</SheetDescription>
           </SheetHeader>

@@ -57,6 +57,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Alterado
 
+- Identidade visual e nomenclatura: substituição de BlueBeaver / «Gestão de Operações de TI» por **SIGTI — Sistema Integrado de Gestão de Tecnologia da Informação**, com a marca institucional da Prefeitura de Franca (login, menu, PWA, e-mails e títulos). Configuração centralizada em um único módulo de marca.
 - `docker-compose.yml`: volume nomeado `gti_uploads` em `/app/apps/frontend/uploads` para persistência de anexos; o script de entrada ajusta dono/grupo antes de iniciar como utilizador `node`.
 - Arranque em Docker/Railway: se existir **`RAILWAY_VOLUME_MOUNT_PATH`** (volume no serviço) e **`UPLOAD_ROOT`** não estiver definida, o entrypoint exporta **`UPLOAD_ROOT`** com esse caminho para a app gravar anexos no disco persistente.
 - A tela de login foi redesenhada com identidade visual da BlueBeaver e textos voltados ao uso do sistema.

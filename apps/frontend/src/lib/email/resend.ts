@@ -1,3 +1,5 @@
+import { BRAND } from "@/lib/brand";
+
 type SendEmailInput = {
   to: string;
   subject: string;
@@ -12,7 +14,7 @@ type ResendErrorPayload = {
 };
 
 function emailFrom(): string {
-  return process.env.RESEND_FROM?.trim() || "GTI <onboarding@resend.dev>";
+  return process.env.RESEND_FROM?.trim() || `${BRAND.emailFromName} <onboarding@resend.dev>`;
 }
 
 function resendApiKey(): string {

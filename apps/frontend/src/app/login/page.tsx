@@ -3,7 +3,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import Image from "next/image";
 import { Suspense } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -12,10 +11,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { loginFormSchema, type LoginFormValues } from "@/modules/auth/login-schema";
+import { AppBrand } from "@/components/brand/app-brand";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { BRAND } from "@/lib/brand";
 
 const registerFormSchema = z
   .object({
@@ -111,14 +112,10 @@ function LoginForm(): JSX.Element {
       >
         <Card className="overflow-hidden border-primary/10 bg-gradient-to-br from-primary/10 via-card to-card p-0">
           <CardHeader className="space-y-6 p-8">
-            <div className="flex items-center gap-3">
-              <Image src="/brand/bluebeaver-logo.png" alt="BlueBeaver" width={176} height={48} priority className="h-auto w-44" />
-            </div>
+            <AppBrand variant="login" linkHome={false} />
             <div className="space-y-3">
-              <CardTitle className="text-2xl">Gestão de Operações de TI</CardTitle>
-              <CardDescription className="text-base leading-relaxed">
-                Acesse contratos, chamados, medições, metas e projetos em um ambiente único de acompanhamento operacional.
-              </CardDescription>
+              <CardTitle className="text-xl leading-snug sm:text-2xl">{BRAND.displayTitle}</CardTitle>
+              <CardDescription className="text-base leading-relaxed">{BRAND.description}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="px-8 pb-8">

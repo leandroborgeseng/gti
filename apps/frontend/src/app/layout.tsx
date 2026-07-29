@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { PropsWithChildren } from "react";
 import { AppProviders } from "@/components/providers/app-providers";
+import { BRAND } from "@/lib/brand";
 
 function metadataBaseUrl(): URL {
   const raw = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001";
@@ -13,7 +14,7 @@ function metadataBaseUrl(): URL {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#1faa00",
+  themeColor: "#1e3a8a",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5
@@ -21,12 +22,12 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: metadataBaseUrl(),
-  applicationName: "Gestão de Operações de TI",
-  title: { default: "Gestão de Operações de TI", template: "%s · Gestão de Operações de TI" },
-  description: "Gestão de operações de TI, contratos, medições, glosas e integração com chamados GLPI.",
+  applicationName: BRAND.shortName,
+  title: { default: BRAND.displayTitle, template: BRAND.titleTemplate },
+  description: BRAND.description,
   appleWebApp: {
     capable: true,
-    title: "Gestão de Operações de TI",
+    title: BRAND.shortName,
     statusBarStyle: "default"
   },
   formatDetection: { telephone: false },

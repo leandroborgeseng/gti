@@ -30,7 +30,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "p",
         parts: [
-          "A plataforma de Gestão de Operações de TI reúne a gestão contratual, medições financeiras, glosas, ligação a chamados GLPI, governança de SLA, metas, projetos e relatórios. O objetivo é dar visibilidade à operação e ao cumprimento contratual em um único painel."
+          "O SIGTI — Sistema Integrado de Gestão de Tecnologia da Informação — reúne a gestão contratual, medições financeiras, glosas, ligação a chamados GLPI, governança de SLA, metas, projetos e relatórios. O objetivo é dar visibilidade à operação e ao cumprimento contratual em um único painel."
         ]
       },
       {

@@ -1,19 +1,20 @@
 import type { MetadataRoute } from "next";
+import { BRAND } from "@/lib/brand";
 
 /**
  * Manifesto Web App (PWA — fase 1: instalação e identidade; service worker depois).
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Gestão de Operações de TI",
-    short_name: "Gestão TI",
-    description: "Gestão de operações de TI, contratos, medições, glosas e acompanhamento de chamados GLPI.",
+    name: BRAND.displayTitle,
+    short_name: BRAND.shortName,
+    description: BRAND.description,
     start_url: "/dashboard",
     scope: "/",
     display: "standalone",
     orientation: "portrait-primary",
     background_color: "#ffffff",
-    theme_color: "#1faa00",
+    theme_color: "#1e3a8a",
     lang: "pt-BR",
     categories: ["business", "productivity"],
     icons: [
