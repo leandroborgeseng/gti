@@ -72,7 +72,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         parts: [
           "Existem três papéis: administrador, editor e leitor. O administrador acessa a área ",
           { href: "/administracao", label: "Administração" },
-          " (usuários, órgãos, permissões, catálogos e backup) e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis."
+          " (usuários, órgãos, permissões, catálogos e backup) e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis. As permissões marcadas na Administração são aplicadas tanto aos menus quanto às operações: permissões adicionais por usuário somam-se às do papel."
         ]
       },
       {
@@ -180,6 +180,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Vigência: datas de início e fim; período de implantação opcional para o painel de proporcionalidade.",
           "Excluir contrato: disponível apenas para administradores, no topo do detalhe. Exige digitar EXCLUIR ou o número do contrato e uma justificativa. Só funciona para cadastros sem medições, aditivos, memória financeira, chamados de governança ou funcionalidades já avaliadas; nos demais casos, altere o status para Suspenso ou Encerrado.",
           "Itens contratuais: na criação e na edição, registre quantos itens forem necessários (mensalidade, implantação, horas de desenvolvimento ou suporte, treinamentos, UST, equipamentos, licenças, locações, infraestrutura, materiais e outros). Cada item tem sequência, tipo padronizado (lista da Administração), descrição contratual livre (texto do edital/TR/proposta), unidade de medida, quantidade, valor unitário e valor total (calculado automaticamente; valor manual exige justificativa se divergir). Itens recorrentes pedem periodicidade e período de incidência; sob demanda registram o teto contratado (consumo controlado depois); valores únicos não exigem periodicidade. Ao final da seção aparecem os totais recorrente, único, sob demanda e global estimado. Com medições ou memória financeira, o item não é excluído — apenas cancelado.",
+          "Valor global: a seção própria mostra a estimativa calculada pelos itens. Em caso excepcional, marque «Ajuste manual excepcional», informe o valor global e justifique a divergência. O detalhe do contrato identifica esse ajuste e preserva o valor global original para conferência.",
           "Snapshots financeiros: histórico de valores acordados ao longo do tempo, para leitura e conferência.",
           "Proporção de implantação por funcionalidade: repartição do valor de implantação alinhada às funcionalidades do contrato.",
           "Grupos GLPI: associação de grupos do GLPI ao contrato, para contagem de chamados nos relatórios.",
@@ -227,6 +228,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "ul",
         items: [
           "Utilize «Nova medição» para abrir o mês seguinte ou a competência ausente.",
+          "Em contratos de datacenter ou infraestrutura, adicione as linhas de consumo escolhendo o serviço, a quantidade e, quando aplicável, o item contratual de precificação. Para itens sob demanda, o sistema não permite medir ou aprovar quantidade acima do saldo disponível.",
           "Na página da medição, calcule e finalize o fluxo conforme o processo interno (revisão, glosa, aprovação).",
           "Os anexos da medição permitem clicar no nome do ficheiro para abrir um modal: PDF e imagens podem ser pré-visualizados; outros tipos mostram apenas a opção de descarregar. Administradores e editores podem eliminar um anexo (com confirmação)."
         ]
@@ -350,7 +352,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/administracao", label: "Administração" },
-          " — Área unificada para administradores, com abas para usuários, órgãos, permissões por papel ou usuário, tipos de itens contratuais, tipos de contrato, tipos de contratação e atalho para backup. A rota antiga ",
+          " — Área unificada para administradores, com abas para usuários, órgãos, permissões por papel ou usuário, tipos de itens contratuais, tipos de contrato, tipos de contratação, conferência de precificação e atalho para backup. A rota antiga ",
           { href: "/administracao?tab=usuarios", label: "/users" },
           " redireciona para a aba Usuários."
         ]
@@ -362,6 +364,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Órgãos: cadastro de secretarias/unidades com nome, sigla, código e status ativo/inativo.",
           "Permissões: marque ou desmarque permissões granulares por papel (ADMIN, EDITOR, VIEWER) ou por usuário (somam-se ao papel).",
           "Tipos de itens, contrato e contratação: catálogos usados nos formulários de contrato.",
+          "Conferência precificação: valida os contratos ativos migrados dos campos antigos de mensalidade e implantação para itens contratuais. Use os filtros para localizar pendências, duplicidade de mensalidades, quantidades ou períodos a revisar e divergências de valores; cada linha abre o contrato para correção.",
           "Backup: botão que abre a tela completa de exportação, restauração e S3 em /backup."
         ]
       },

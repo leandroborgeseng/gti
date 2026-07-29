@@ -16,6 +16,8 @@ export const queryKeys = {
   glpiAssignedGroups: ["gestao", "glpi-assigned-groups"] as const,
   /** Catálogo de tipos padronizados e unidades de medida dos itens de precificação. */
   contractPricingCatalog: ["gestao", "contract-pricing-catalog"] as const,
+  /** Conferência administrativa do backfill dos itens de precificação. */
+  pricingMigrationReview: ["gestao", "admin", "pricing-migration-review"] as const,
   measurements: ["gestao", "measurements"] as const,
   glosas: ["gestao", "glosas"] as const,
   goals: ["gestao", "goals"] as const,

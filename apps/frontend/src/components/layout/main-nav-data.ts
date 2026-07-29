@@ -82,22 +82,50 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
   }
 ];
 
+const NAV_REQUIRED_PERMISSIONS: Record<string, readonly string[]> = {
+  "/dashboard": ["dashboard.view"],
+  "/contracts": ["contracts.view"],
+  "/modulos": ["contracts.features.view"],
+  "/measurements": ["measurements.view"],
+  "/glosas": ["glosas.view"],
+  "/governance/tickets": ["governance.view"],
+  "/goals": ["goals.view"],
+  "/projetos": ["projects.view"],
+  "/suppliers": ["suppliers.view"],
+  "/fiscais": ["fiscais.view"],
+  "/exports": ["exports.run"],
+  "/administracao": [
+    "admin.users.view",
+    "admin.organs.view",
+    "admin.permissions.view",
+    "admin.item_types.view",
+    "admin.contract_types.view",
+    "admin.hiring_types.view",
+    "admin.backup.manage"
+  ]
+};
+
 /**
- * Filtra entradas conforme o papel do usuário.
+ * Filtra entradas conforme o papel e as permissões efetivas do usuário.
  * `role === undefined` = ainda carregando: mostra só entradas não exclusivas de admin.
  */
 export function filterMainNavByRole(
   items: MainNavItem[],
-  role: string | null | undefined
+  role: string | null | undefined,
+  permissionKeys?: readonly string[] | null
 ): MainNavItem[] {
   if (role === undefined) {
     return items.filter((i) => !i.adminOnly);
   }
   return items.filter((item) => {
-    if (item.adminOnly && role !== "ADMIN") {
+    if (item.adminOnly && role !== "ADMIN" && permissionKeys == null) {
       return false;
     }
     if (item.hideForViewer && role === "VIEWER") {
+      return false;
+    }
+    const requiredPermissions = NAV_REQUIRED_PERMISSIONS[item.href];
+    if (permissionKeys && requiredPermissions && !requiredPermissions.some((key) => permissionKeys.includes(key))) {
       return false;
     }
     return true;
@@ -107,12 +135,13 @@ export function filterMainNavByRole(
 /** Grupos com itens visíveis para o papel; remove grupos vazios. */
 export function filterMainNavGroups(
   groups: MainNavGroup[],
-  role: string | null | undefined
+  role: string | null | undefined,
+  permissionKeys?: readonly string[] | null
 ): MainNavGroup[] {
   return groups
     .map((group) => ({
       ...group,
-      items: filterMainNavByRole(group.items, role)
+      items: filterMainNavByRole(group.items, role, permissionKeys)
     }))
     .filter((g) => g.items.length > 0);
 }

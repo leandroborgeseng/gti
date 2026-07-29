@@ -4,7 +4,7 @@ import { BookOpen, LogOut, Megaphone, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PropsWithChildren, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { getAuthMe, trackUserAccessEvent } from "@/lib/api";
+import { getAuthMe, getMyPermissions, trackUserAccessEvent } from "@/lib/api";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
 import { filterMainNavGroups, MAIN_NAV_GROUPS } from "./main-nav-data";
@@ -62,6 +62,7 @@ type AppShellProps = PropsWithChildren<{
 export function AppShell({ children, initialRole }: AppShellProps): JSX.Element {
   const pathname = usePathname();
   const [role, setRole] = useState<string | null | undefined>(initialRole);
+  const [permissionKeys, setPermissionKeys] = useState<string[] | null | undefined>(undefined);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [availableVersion, setAvailableVersion] = useState<string | null>(null);
 
@@ -78,10 +79,17 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
   const expandSidebar = useCallback(() => persistSidebarCollapsed(false), [persistSidebarCollapsed]);
 
   useEffect(() => {
-    if (initialRole !== undefined) return;
-    void getAuthMe()
-      .then((m) => setRole(m.role))
-      .catch(() => setRole(null));
+    if (initialRole === undefined) {
+      void getAuthMe()
+        .then((m) => setRole(m.role))
+        .catch(() => setRole(null));
+    }
+    void getMyPermissions()
+      .then((permissions) => {
+        setRole(permissions.role);
+        setPermissionKeys(permissions.keys);
+      })
+      .catch(() => setPermissionKeys(null));
   }, [initialRole]);
 
   useLayoutEffect(() => {
@@ -137,7 +145,10 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
     window.location.reload();
   }, [availableVersion]);
 
-  const visibleNavGroups = useMemo(() => filterMainNavGroups(MAIN_NAV_GROUPS, role), [role]);
+  const visibleNavGroups = useMemo(
+    () => filterMainNavGroups(MAIN_NAV_GROUPS, role, permissionKeys),
+    [permissionKeys, role]
+  );
 
   const title =
     titles[pathname ?? ""] ||

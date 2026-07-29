@@ -45,6 +45,13 @@ export class ContractsController {
     return this.service.listPricingCatalog();
   }
 
+  /** Conferência administrativa do backfill de itens de precificação dos contratos ativos. */
+  @Get("pricing-migration-review")
+  @Roles(UserRole.ADMIN)
+  pricingMigrationReview(): Promise<unknown> {
+    return this.service.pricingMigrationReview();
+  }
+
   @Post("catalog/measure-units")
   createMeasureUnit(@Body() body: { code: string; label: string }): Promise<unknown> {
     return this.service.createMeasureUnit(body);

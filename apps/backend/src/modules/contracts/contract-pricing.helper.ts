@@ -501,12 +501,23 @@ export class ContractPricingHelper {
   async syncContractTotalsFromItems(contractId: string) {
     const items = await this.listItems(contractId);
     const totals = summarizePricingItems(items);
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { globalValueManual: true, globalValueOriginal: true }
+    });
+    const globalEstimated = dec(Math.max(totals.globalEstimated, totals.monthlyValue, 0));
     await this.prisma.contract.update({
       where: { id: contractId },
       data: {
         monthlyValue: dec(Math.max(totals.monthlyValue, 0)),
         installationValue: totals.installationValue != null ? dec(totals.installationValue) : null,
-        totalValue: dec(Math.max(totals.globalEstimated, totals.monthlyValue, 0))
+        totalValue: globalEstimated,
+        ...(contract?.globalValueManual
+          ? {}
+          : {
+              globalValueCurrent: globalEstimated,
+              ...(contract?.globalValueOriginal == null ? { globalValueOriginal: globalEstimated } : {})
+            })
       }
     });
     return totals;

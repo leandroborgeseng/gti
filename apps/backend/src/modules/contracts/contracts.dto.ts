@@ -325,6 +325,20 @@ export class CreateContractDto {
   totalValue?: number;
 
   @IsOptional()
+  @IsBoolean()
+  globalValueManual?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  globalValueCurrent?: number;
+
+  @IsOptional()
+  @IsString()
+  globalValueJustification?: string;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   monthlyValue?: number;
@@ -558,6 +572,20 @@ export class UpdateContractDto {
   @IsNumber()
   @Min(0)
   totalValue?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  globalValueManual?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  globalValueCurrent?: number;
+
+  @IsOptional()
+  @IsString()
+  globalValueJustification?: string | null;
 
   @IsOptional()
   @IsNumber()

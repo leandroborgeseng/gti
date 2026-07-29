@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ALL_PERMISSION_KEYS, isValidPermissionKey, isValidUserRole, PERMISSION_CATALOG } from "./permission-catalog";
@@ -83,6 +83,17 @@ export class PermissionsService {
     ]);
     const keys = [...new Set([...rolePerms.map((r) => r.permissionKey), ...userPerms.map((r) => r.permissionKey)])].sort();
     return { userId, role: user.role, keys };
+  }
+
+  async hasPermission(userId: string, key: string): Promise<boolean> {
+    const { keys } = await this.resolveEffectivePermissions(userId);
+    return keys.includes(key);
+  }
+
+  async assertHasPermission(userId: string, key: string): Promise<void> {
+    if (!(await this.hasPermission(userId, key))) {
+      throw new ForbiddenException("Sem permissão para esta operação");
+    }
   }
 
   parseRoleParam(role: string): UserRole {

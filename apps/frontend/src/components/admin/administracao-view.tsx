@@ -11,6 +11,7 @@ import { HiringTypesAdminPanel } from "@/components/admin/hiring-types-admin-pan
 import { ItemTypesAdminPanel } from "@/components/admin/item-types-admin-panel";
 import { OrganizationsAdminPanel } from "@/components/admin/organizations-admin-panel";
 import { PermissionsAdminPanel } from "@/components/admin/permissions-admin-panel";
+import { PricingMigrationReviewPanel } from "@/components/admin/pricing-migration-review-panel";
 import { UsersView } from "@/components/users/users-view";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,6 +24,7 @@ export const ADMIN_TABS = [
   { id: "tipos-itens", label: "Tipos de itens" },
   { id: "tipos-contrato", label: "Tipos de contrato" },
   { id: "tipos-contratacao", label: "Tipos de contratação" },
+  { id: "conferencia-precificacao", label: "Conferência precificação" },
   { id: "backup", label: "Backup" }
 ] as const;
 
@@ -100,6 +102,10 @@ export function AdministracaoView({ users, usersLoadErrors = [] }: Props): JSX.E
 
         <TabsContent value="tipos-contratacao" className="mt-4">
           <HiringTypesAdminPanel />
+        </TabsContent>
+
+        <TabsContent value="conferencia-precificacao" className="mt-4">
+          <PricingMigrationReviewPanel />
         </TabsContent>
 
         <TabsContent value="backup" className="mt-4">

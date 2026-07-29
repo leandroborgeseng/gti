@@ -6,9 +6,13 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- A matriz de permissões passa a ser aplicada também durante o uso do sistema: telas e operações da API respeitam as permissões efetivas do papel e as permissões adicionais atribuídas a cada usuário.
+- Nas medições de serviços, cada linha pode ser vinculada a um item contratual de precificação ativo. O cálculo passa a usar o valor unitário desse item e, para itens sob demanda, bloqueia lançamentos e aprovações acima do saldo contratado disponível. A aprovação registra o consumo no item do contrato.
+- Nova aba **Conferência precificação** na Administração, exclusiva para administradores, lista contratos ativos migrados, pendentes ou com inconsistências na conversão de mensalidade/implantação em itens contratuais. Os filtros mostram itens duplicados, períodos ou quantidades a revisar e divergências de valores, com atalho para abrir cada contrato.
 - Nova tela **Administração** (`/administracao`) unifica usuários, órgãos, permissões, tipos de itens/contrato/contratação e atalho para backup em abas. O menu lateral passa a ter um único item «Administração»; `/users` redireciona para `?tab=usuarios`.
 - Administradores podem **excluir contrato** na tela de detalhe, com confirmação (digitar EXCLUIR ou o número) e justificativa obrigatória. A exclusão só é permitida quando não há medições, aditivos, memória financeira, governança ou funcionalidades já avaliadas; caso contrário, o sistema orienta a usar «Suspenso» ou «Encerrado». A operação fica registrada em auditoria.
 - Cadastro e edição de contratos passam a usar a seção **Itens contratuais**: lista dinâmica de itens precificados (mensalidade, implantação, horas, UST, equipamentos, licenças etc.), com tipo padronizado, descrição livre do contrato, unidade, quantidade, valores, periodicidade quando recorrente e totais consolidados (recorrente, único, sob demanda e global estimado). Após medições ou histórico financeiro, a exclusão definitiva do item é bloqueada — permanece o cancelamento.
+- Adicionada a seção **Valor global** no cadastro de contratos: a estimativa é calculada separadamente pelos itens contratuais, com opção de ajuste manual excepcional mediante justificativa obrigatória. A ficha do contrato identifica o ajuste, mostra o motivo e mantém o valor original para conferência.
 - Criada a rotina de manutenção das notas de versão para registrar mudanças funcionais, melhorias de interface, alterações de permissões e ajustes relevantes para operação.
 - Área administrativa **Backup e migração** (só administradores): exporta e restaura a base PostgreSQL, preferências do sistema e, opcionalmente, anexos, para facilitar a mudança de servidor. Segredos de ambiente não entram no ficheiro; a tela mostra quais variáveis estão definidas no destino.
 - Backup automático para **S3** (AWS, MinIO, R2): configuração pela interface, envio diário com retenção diária/semanal/mensal, execução manual, listagem e restauração a partir do bucket. A chave secreta fica criptografada na base.
@@ -40,6 +44,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Alterado
 
+- Para contratos de software e serviço, a base mensal do cálculo e das glosas passa a priorizar o item contratual de mensalidade ativo quando configurado; contratos sem esse item mantêm o valor mensal já cadastrado.
 - A tela **Funcionalidades** passa a carregar resumos primeiro e só busca módulos/itens ao expandir cada sanfona (com «Carregar mais» quando houver paginação). Filtros por texto, status de entrega e criticidade pesquisam no servidor. Perfis de leitura (VIEWER) veem a lista sem editar; administradores e editores mantêm as ações e o atalho «Abrir contrato».
 - O **formulário de contrato** passa a usar os catálogos da Administração: número formal (somente dígitos) com pré-visualização número/ano, órgão gestor, tipo de contrato, modalidade e procedimento licitatório; o código interno SIGTI é gerado ao salvar. A ficha do contrato exibe código interno, identificação formal, órgão, contratação e valores globais original/vigente quando existirem.
 - O **formulário de usuário** exige nome completo, CPF (com validação), órgão e demais credenciais na criação; a grade de usuários mostra órgão, CPF mascarado e destaca cadastros incompletos (sem CPF ou órgão).

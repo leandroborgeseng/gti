@@ -23,6 +23,7 @@ import {
   type Supplier
 } from "@/lib/api";
 import { ContractGlpiGroupsField } from "@/components/contracts/contract-glpi-groups-field";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ContractPricingItemsEditor,
   pricingItemsFromContract,
@@ -32,6 +33,7 @@ import {
   type PricingDraftItem
 } from "@/components/contracts/contract-pricing-items-editor";
 import { queryKeys } from "@/lib/query-keys";
+import { formatBrl } from "@/lib/format-brl";
 import {
   CONTRACT_FORM_DEFAULT_VALUES,
   contractPageSchema,
@@ -84,6 +86,9 @@ function contractToFormDefaults(c: Contract): ContractPageFormInput {
     endDate: c.endDate.slice(0, 10),
     monthlyValue: "",
     installationValue: "",
+    globalValueManual: Boolean(c.globalValueManual),
+    globalValueCurrent: c.globalValueManual ? String(c.globalValueCurrent ?? "") : "",
+    globalValueJustification: c.globalValueManual ? c.globalValueJustification ?? "" : "",
     implementationPeriodStart:
       c.implementationPeriodStart && String(c.implementationPeriodStart).trim().length >= 10
         ? String(c.implementationPeriodStart).slice(0, 10)
@@ -123,6 +128,17 @@ function catalogPayloadFields(data: ContractPageParsed): {
     hiringTypeId: data.hiringTypeId.trim() || null,
     hiringProcedureNumber: hiringProc || null,
     managingUnit: data.organizationId ? null : data.managingUnit.trim() || null
+  };
+}
+
+function globalValuePayload(data: ContractPageParsed) {
+  if (!data.globalValueManual) {
+    return { globalValueManual: false };
+  }
+  return {
+    globalValueManual: true,
+    globalValueCurrent: Number(data.globalValueCurrent.replace(",", ".")),
+    globalValueJustification: data.globalValueJustification.trim()
   };
 }
 
@@ -206,6 +222,14 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const watchFormalNumber = form.watch("formalNumber");
   const watchStartDate = form.watch("startDate");
   const watchOrganizationId = form.watch("organizationId");
+  const watchGlobalValueManual = form.watch("globalValueManual");
+  const watchGlobalValueCurrent = form.watch("globalValueCurrent");
+  const pricingTotals = useMemo(() => summarizePricingDraft(pricingItems), [pricingItems]);
+  const manualGlobalValue = Number(String(watchGlobalValueCurrent ?? "").replace(",", "."));
+  const globalValueDifference =
+    watchGlobalValueManual && Number.isFinite(manualGlobalValue)
+      ? manualGlobalValue - pricingTotals.globalEstimated
+      : null;
   const numberPreview = useMemo(
     () => formatFormalNumberPreview(String(watchFormalNumber ?? ""), String(watchStartDate ?? "")),
     [watchFormalNumber, watchStartDate]
@@ -320,6 +344,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
         endDate: data.endDate,
         monthlyValue: totals.monthlyValue,
         installationValue: totals.installationValue,
+        ...globalValuePayload(data),
         implementationPeriodStart: implS ? implS : null,
         implementationPeriodEnd: implE ? implE : null,
         fiscalId: data.fiscalId,
@@ -440,6 +465,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
       endDate: data.endDate,
       monthlyValue: totals.monthlyValue,
       ...(totals.installationValue != null ? { installationValue: totals.installationValue } : {}),
+      ...globalValuePayload(data),
       ...(implS ? { implementationPeriodStart: implS } : {}),
       ...(implE ? { implementationPeriodEnd: implE } : {}),
       fiscalId: data.fiscalId,
@@ -890,6 +916,82 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
           />
           {initialContract && qContractDetail.isPending && !editContract?.pricingItems ? (
             <p className="sm:col-span-2 text-sm text-muted-foreground">Carregando itens contratuais…</p>
+          ) : null}
+        </FormSection>
+
+        <FormSection
+          title="Valor global"
+          description="O valor global é estimado pelos itens contratuais. Use ajuste manual apenas em situação excepcional e registre a justificativa."
+        >
+          <FormItem>
+            <FormLabel>Estimativa calculada pelos itens</FormLabel>
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">
+              {formatBrl(pricingTotals.globalEstimated)}
+            </div>
+            <FormDescription>
+              Recorrentes: {formatBrl(pricingTotals.recurringPredicted)} · Únicos: {formatBrl(pricingTotals.oneTime)} · Sob demanda:{" "}
+              {formatBrl(pricingTotals.onDemand)}
+            </FormDescription>
+          </FormItem>
+          <FormField
+            control={form.control}
+            name="globalValueManual"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start gap-3 space-y-0 rounded-md border p-3 sm:col-span-2">
+                <FormControl>
+                  <Checkbox checked={field.value} onCheckedChange={(value) => field.onChange(value === true)} />
+                </FormControl>
+                <div className="space-y-1 leading-none">
+                  <FormLabel>Ajuste manual excepcional</FormLabel>
+                  <FormDescription>
+                    Preserva a estimativa dos itens e exige informar o motivo do valor global informado.
+                  </FormDescription>
+                </div>
+              </FormItem>
+            )}
+          />
+          {watchGlobalValueManual ? (
+            <>
+              <FormField
+                control={form.control}
+                name="globalValueCurrent"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Valor global ajustado</FormLabel>
+                    <FormControl>
+                      <Input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0,00" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormItem>
+                <FormLabel>Diferença em relação aos itens</FormLabel>
+                <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">
+                  {globalValueDifference == null
+                    ? "Informe o valor ajustado."
+                    : `${globalValueDifference >= 0 ? "+" : "−"} ${formatBrl(Math.abs(globalValueDifference))}`}
+                </div>
+              </FormItem>
+              <FormField
+                control={form.control}
+                name="globalValueJustification"
+                render={({ field }) => (
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>Justificativa do ajuste</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={3}
+                        placeholder="Explique por que o valor global difere da estimativa dos itens."
+                        className="min-h-[88px] resize-y"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
           ) : null}
         </FormSection>
 

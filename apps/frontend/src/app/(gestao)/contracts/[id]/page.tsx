@@ -97,6 +97,10 @@ export default async function ContractDetailPage({ params }: { params: { id: str
       : contract.number;
   const globalOriginal = contract.globalValueOriginal;
   const globalCurrent = contract.globalValueCurrent;
+  const globalAdjustmentDifference =
+    contract.globalValueManual && contract.pricingTotals && globalCurrent != null
+      ? Number(globalCurrent) - contract.pricingTotals.globalEstimated
+      : null;
 
   return (
     <div className="space-y-4">
@@ -216,6 +220,27 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           {globalCurrent ? (
             <p>
               <strong className="text-slate-900">Valor global vigente:</strong> {formatBrl(globalCurrent)}
+              {contract.globalValueManual ? (
+                <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                  ajuste manual
+                </span>
+              ) : null}
+            </p>
+          ) : null}
+          {contract.globalValueManual ? (
+            <p className="md:col-span-2">
+              <strong className="text-slate-900">Justificativa do ajuste manual:</strong>{" "}
+              {contract.globalValueJustification ?? "—"}
+              {globalAdjustmentDifference != null && Number.isFinite(globalAdjustmentDifference) ? (
+                <> · Diferença para os itens: {formatBrl(globalAdjustmentDifference)}</>
+              ) : null}
+            </p>
+          ) : null}
+          {contract.pricingTotals ? (
+            <p className="md:col-span-2">
+              <strong className="text-slate-900">Resumo dos itens:</strong> Mensalidade equivalente{" "}
+              {formatBrl(contract.pricingTotals.monthlyValue)} · Recorrentes {formatBrl(contract.pricingTotals.recurringPredicted)} ·
+              Únicos {formatBrl(contract.pricingTotals.oneTime)} · Sob demanda {formatBrl(contract.pricingTotals.onDemand)}
             </p>
           ) : null}
           <p>

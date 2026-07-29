@@ -309,7 +309,14 @@ export class ContractsService {
   }
 
   async create(dto: CreateContractDto): Promise<unknown> {
-    const { glpiGroups, pricingItems, ...rest } = dto;
+    const {
+      glpiGroups,
+      pricingItems,
+      globalValueManual = false,
+      globalValueCurrent: requestedGlobalValueCurrent,
+      globalValueJustification: requestedGlobalValueJustification,
+      ...rest
+    } = dto;
     let monthlyValue = rest.monthlyValue ?? 0;
     let installationValue =
       rest.installationValue === undefined || rest.installationValue === null
@@ -343,6 +350,17 @@ export class ContractsService {
       totalValue = helperTotals.globalEstimated || monthlyValue * 12;
       globalValueOriginal = helperTotals.globalEstimated;
       globalValueCurrent = helperTotals.globalEstimated;
+    }
+
+    const globalValueJustification = (requestedGlobalValueJustification ?? "").trim();
+    if (globalValueManual) {
+      if (!globalValueJustification) {
+        throw new BadRequestException("Informe a justificativa para o ajuste manual do valor global.");
+      }
+      if (requestedGlobalValueCurrent == null || requestedGlobalValueCurrent < 0) {
+        throw new BadRequestException("Informe um valor global manual válido.");
+      }
+      globalValueCurrent = requestedGlobalValueCurrent;
     }
 
     if (!(monthlyValue > 0) && !(pricingItems && pricingItems.length > 0)) {
@@ -409,6 +427,8 @@ export class ContractsService {
             globalValueOriginal != null ? new Prisma.Decimal(globalValueOriginal) : new Prisma.Decimal(totalValue),
           globalValueCurrent:
             globalValueCurrent != null ? new Prisma.Decimal(globalValueCurrent) : new Prisma.Decimal(totalValue),
+          globalValueManual,
+          globalValueJustification: globalValueManual ? globalValueJustification : null,
           implementationPeriodStart: implStart,
           implementationPeriodEnd: implEnd,
           status: rest.status ?? ContractStatus.ACTIVE,
@@ -852,6 +872,150 @@ export class ContractsService {
     });
   }
 
+  /**
+   * Confere o backfill dos campos financeiros legados para os itens de precificação.
+   * Mantém os valores numéricos para a interface poder destacar divergências sem
+   * depender da serialização Decimal do Prisma.
+   */
+  async pricingMigrationReview(): Promise<{
+    summary: { migrated: number; pending: number; inconsistent: number; totalActive: number };
+    contracts: Array<{
+      id: string;
+      name: string;
+      number: string;
+      status: ContractStatus;
+      monthlyValue: number;
+      installationValue: number | null;
+      totalValue: number;
+      pricingItemsCount: number;
+      mensalidadeCount: number;
+      implantacaoCount: number;
+      flags: string[];
+      migratedItems: Array<{
+        id: string;
+        description: string;
+        typeCode: string;
+        quantity: number;
+        unitValue: number;
+        totalValue: number;
+      }>;
+    }>;
+  }> {
+    const contracts = await this.prisma.contract.findMany({
+      where: { deletedAt: null, status: ContractStatus.ACTIVE },
+      select: {
+        id: true,
+        name: true,
+        number: true,
+        status: true,
+        monthlyValue: true,
+        installationValue: true,
+        totalValue: true,
+        pricingItems: {
+          select: {
+            id: true,
+            description: true,
+            quantity: true,
+            unitValue: true,
+            totalValue: true,
+            billingKind: true,
+            periodicity: true,
+            periodStart: true,
+            periodEnd: true,
+            status: true,
+            type: { select: { code: true } }
+          },
+          orderBy: { sequence: "asc" }
+        }
+      },
+      orderBy: { number: "asc" }
+    });
+
+    const nearlyEqual = (left: number, right: number) => Math.abs(left - right) < 0.01;
+    const rows = contracts.map((contract) => {
+      const activeItems = contract.pricingItems.filter((item) => item.status === "ACTIVE");
+      const migratedItems = contract.pricingItems.filter((item) => {
+        const description = item.description.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+        return (
+          description.includes("migrad") ||
+          description.includes("mensalidade do contrato") ||
+          description.includes("implantacao do contrato")
+        );
+      });
+      const mensalidadeItems = activeItems.filter((item) => item.type.code === "MENSALIDADE");
+      const implantacaoItems = activeItems.filter((item) => item.type.code === "IMPLANTACAO");
+      const monthlyValue = Number(contract.monthlyValue);
+      const installationValue = contract.installationValue == null ? null : Number(contract.installationValue);
+      const flags: string[] = [];
+
+      if (migratedItems.length > 0) flags.push("MIGRATED");
+      if (activeItems.length === 0) {
+        flags.push("PENDING");
+      } else {
+        if (monthlyValue > 0 && mensalidadeItems.length === 0) flags.push("PENDING");
+        if ((installationValue ?? 0) > 0 && implantacaoItems.length === 0) flags.push("PENDING");
+      }
+      if (mensalidadeItems.length > 1) flags.push("MULTIPLE_MENSALIDADE");
+
+      const needsQuantityReview = activeItems.some((item) => Number(item.quantity) <= 0);
+      if (needsQuantityReview) flags.push("QTY_UNDEFINED");
+      const needsPeriodReview = activeItems.some(
+        (item) =>
+          item.billingKind === "RECURRING" &&
+          (item.periodicity == null || item.periodStart == null || item.periodEnd == null)
+      );
+      if (needsPeriodReview) flags.push("PERIOD_UNDEFINED");
+
+      const monthlyItemsValue = mensalidadeItems.reduce((sum, item) => {
+        if (item.periodicity === "BIMONTHLY") return sum + Number(item.unitValue) / 2;
+        if (item.periodicity === "QUARTERLY") return sum + Number(item.unitValue) / 3;
+        if (item.periodicity === "SEMIANNUAL") return sum + Number(item.unitValue) / 6;
+        if (item.periodicity === "ANNUAL") return sum + Number(item.unitValue) / 12;
+        return sum + Number(item.unitValue);
+      }, 0);
+      const installationItemsValue = implantacaoItems.reduce((sum, item) => sum + Number(item.totalValue), 0);
+      const monthlyDiverges = monthlyValue > 0 && mensalidadeItems.length > 0 && !nearlyEqual(monthlyValue, monthlyItemsValue);
+      const installationDiverges =
+        (installationValue ?? 0) > 0 &&
+        implantacaoItems.length > 0 &&
+        !nearlyEqual(installationValue ?? 0, installationItemsValue);
+      if (monthlyDiverges || installationDiverges) flags.push("VALUE_DIVERGENCE");
+
+      return {
+        id: contract.id,
+        name: contract.name,
+        number: contract.number,
+        status: contract.status,
+        monthlyValue,
+        installationValue,
+        totalValue: Number(contract.totalValue),
+        pricingItemsCount: activeItems.length,
+        mensalidadeCount: mensalidadeItems.length,
+        implantacaoCount: implantacaoItems.length,
+        flags,
+        migratedItems: migratedItems.map((item) => ({
+          id: item.id,
+          description: item.description,
+          typeCode: item.type.code,
+          quantity: Number(item.quantity),
+          unitValue: Number(item.unitValue),
+          totalValue: Number(item.totalValue)
+        }))
+      };
+    });
+    const inconsistentFlags = new Set(["MULTIPLE_MENSALIDADE", "QTY_UNDEFINED", "PERIOD_UNDEFINED", "VALUE_DIVERGENCE"]);
+
+    return {
+      summary: {
+        migrated: rows.filter((row) => row.flags.includes("MIGRATED")).length,
+        pending: rows.filter((row) => row.flags.includes("PENDING")).length,
+        inconsistent: rows.filter((row) => row.flags.some((flag) => inconsistentFlags.has(flag))).length,
+        totalActive: rows.length
+      },
+      contracts: rows
+    };
+  }
+
   async findOne(id: string): Promise<unknown> {
     const contract = await this.prisma.contract.findFirst({
       where: { id, deletedAt: null },
@@ -990,8 +1154,28 @@ export class ContractsService {
           : new Date(dto.implementationPeriodEnd)
         : prev.implementationPeriodEnd;
     assertImplementationPeriodOrder(nextImplStart, nextImplEnd);
-    const { glpiGroups, pricingItems, ...rest } = dto;
+    const {
+      glpiGroups,
+      pricingItems,
+      globalValueManual,
+      globalValueCurrent,
+      globalValueJustification,
+      ...rest
+    } = dto;
     const totalValue = dto.totalValue ?? (dto.monthlyValue != null ? dto.monthlyValue * 12 : undefined);
+
+    if (globalValueManual === undefined && (globalValueCurrent !== undefined || globalValueJustification !== undefined)) {
+      throw new BadRequestException("Informe a opção de ajuste manual para alterar o valor global.");
+    }
+    if (globalValueManual === true) {
+      const justification = (globalValueJustification ?? "").trim();
+      if (!justification) {
+        throw new BadRequestException("Informe a justificativa para o ajuste manual do valor global.");
+      }
+      if (globalValueCurrent == null || globalValueCurrent < 0) {
+        throw new BadRequestException("Informe um valor global manual válido.");
+      }
+    }
 
     let contractType = dto.contractType;
     if (dto.contractTypeCatalogId) {
@@ -1041,6 +1225,18 @@ export class ContractsService {
             : dto.installationValue === null
               ? null
               : new Prisma.Decimal(dto.installationValue),
+        ...(globalValueManual === true
+          ? {
+              globalValueManual: true,
+              globalValueCurrent: new Prisma.Decimal(globalValueCurrent!),
+              globalValueJustification: globalValueJustification!.trim()
+            }
+          : globalValueManual === false
+            ? {
+                globalValueManual: false,
+                globalValueJustification: null
+              }
+            : {}),
         implementationPeriodStart:
           dto.implementationPeriodStart === undefined
             ? undefined
@@ -1060,6 +1256,8 @@ export class ContractsService {
       await this.pricing.replaceItems(id, pricingItems as PricingItemInput[], (action, oldData, newData) =>
         this.createAudit("ContractPricingItem", id, action, oldData, newData)
       );
+    } else if (globalValueManual === false) {
+      await this.pricing.syncContractTotalsFromItems(id);
     }
     return this.findOne(id);
   }

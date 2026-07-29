@@ -55,6 +55,9 @@ export const contractPageSchema = z
     /** Mantidos para compatibilidade; valores derivados dos itens contratuais no envio. */
     monthlyValue: z.string().optional().default(""),
     installationValue: z.string().optional().default(""),
+    globalValueManual: z.boolean().default(false),
+    globalValueCurrent: z.string().optional().default(""),
+    globalValueJustification: z.string().optional().default(""),
     implementationPeriodStart: z.string().optional().default(""),
     implementationPeriodEnd: z.string().optional().default(""),
     fiscalId: z.string().min(1, "Selecione ou cadastre o fiscal."),
@@ -82,7 +85,22 @@ export const contractPageSchema = z
       message: "O fim do período de implantação não pode ser anterior ao início.",
       path: ["implementationPeriodEnd"]
     }
-  );
+  )
+  .refine(
+    (d) => {
+      if (!d.globalValueManual) return true;
+      const value = Number(d.globalValueCurrent.replace(",", "."));
+      return Number.isFinite(value) && value >= 0;
+    },
+    {
+      message: "Informe um valor global manual válido.",
+      path: ["globalValueCurrent"]
+    }
+  )
+  .refine((d) => !d.globalValueManual || d.globalValueJustification.trim().length > 0, {
+    message: "Informe a justificativa do ajuste manual.",
+    path: ["globalValueJustification"]
+  });
 
 /** Exige número formal na criação (modo edição valida no componente). */
 export const createContractPageSchema = contractPageSchema.refine((d) => d.formalNumber.length >= 1, {
@@ -127,6 +145,9 @@ export const CONTRACT_FORM_DEFAULT_VALUES: ContractPageFormInput = {
   endDate: "",
   monthlyValue: "",
   installationValue: "",
+  globalValueManual: false,
+  globalValueCurrent: "",
+  globalValueJustification: "",
   implementationPeriodStart: "",
   implementationPeriodEnd: "",
   fiscalId: "",

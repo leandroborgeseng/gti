@@ -213,6 +213,8 @@ export type Contract = {
   hiringProcedureNumber?: string | null;
   globalValueOriginal?: string | null;
   globalValueCurrent?: string | null;
+  globalValueManual?: boolean;
+  globalValueJustification?: string | null;
   organization?: { id: string; name: string; acronym: string; active?: boolean } | null;
   contractTypeCatalog?: { id: string; name: string; acronym: string; legacyEnum?: string | null } | null;
   hiringType?: { id: string; name: string } | null;
@@ -326,7 +328,7 @@ export type ContractPricingItem = {
   periodEnd?: string | null;
   status: ContractPricingItemStatus;
   consumedQuantity?: string;
-  type?: ContractItemTypeCatalog;
+  type?: ContractItemTypeCatalog & { participatesInGlosa?: boolean };
   unit?: MeasureUnitCatalog;
 };
 
@@ -523,8 +525,9 @@ export type Measurement = {
     name: string;
     contractType?: string;
     services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
+    pricingItems?: ContractPricingItem[];
   };
-  items?: Array<{ id: string; type: string; referenceId: string; quantity: string; calculatedValue: string }>;
+  items?: Array<{ id: string; type: string; referenceId: string; pricingItemId?: string | null; quantity: string; calculatedValue: string }>;
   glosas?: Array<{ id: string; type: string; value: string; justification: string; createdBy: string; createdAt: string }>;
   attachments?: Array<AttachmentRecord>;
 };
@@ -752,6 +755,9 @@ export async function updateContract(
     startDate?: string;
     endDate?: string;
     totalValue?: number;
+    globalValueManual?: boolean;
+    globalValueCurrent?: number;
+    globalValueJustification?: string | null;
     monthlyValue?: number;
     installationValue?: number | null;
     implementationPeriodStart?: string | null;
@@ -787,6 +793,9 @@ export async function createContract(payload: {
   startDate: string;
   endDate: string;
   totalValue?: number;
+  globalValueManual?: boolean;
+  globalValueCurrent?: number;
+  globalValueJustification?: string;
   monthlyValue?: number;
   installationValue?: number | null;
   implementationPeriodStart?: string;
@@ -804,6 +813,40 @@ export async function createContract(payload: {
 
 export async function getContractPricingCatalog(): Promise<ContractPricingCatalog> {
   return request("/contracts/catalog/pricing");
+}
+
+export type PricingMigrationReviewItem = {
+  id: string;
+  description: string;
+  typeCode: string;
+  quantity: number;
+  unitValue: number;
+  totalValue: number;
+};
+
+export type PricingMigrationReviewContract = {
+  id: string;
+  name: string;
+  number: string;
+  status: string;
+  monthlyValue: number;
+  installationValue: number | null;
+  totalValue: number;
+  pricingItemsCount: number;
+  mensalidadeCount: number;
+  implantacaoCount: number;
+  flags: string[];
+  migratedItems: PricingMigrationReviewItem[];
+};
+
+export type PricingMigrationReview = {
+  summary: { migrated: number; pending: number; inconsistent: number; totalActive: number };
+  contracts: PricingMigrationReviewContract[];
+};
+
+/** Conferência administrativa da migração dos valores legados para os itens contratuais. */
+export async function getPricingMigrationReview(): Promise<PricingMigrationReview> {
+  return request("/contracts/pricing-migration-review");
 }
 
 export async function createMeasureUnit(payload: { code: string; label: string }): Promise<MeasureUnitCatalog> {
@@ -987,7 +1030,7 @@ export async function createMeasurement(payload: {
 
 export async function addMeasurementServiceLines(
   measurementId: string,
-  items: Array<{ type: "SERVICE"; referenceId: string; quantity: number }>
+  items: Array<{ type: "SERVICE"; referenceId: string; quantity: number; pricingItemId?: string }>
 ): Promise<Measurement> {
   return request(`/measurements/${measurementId}/items`, { method: "POST", body: JSON.stringify({ items }) });
 }
@@ -1102,6 +1145,15 @@ export type AuthMe = {
 
 export async function getAuthMe(): Promise<AuthMe> {
   return request("/auth/me");
+}
+
+export type MyPermissions = {
+  keys: string[];
+  role: string;
+};
+
+export async function getMyPermissions(): Promise<MyPermissions> {
+  return request("/permissions/me");
 }
 
 export async function updateMyProfile(payload: {
@@ -2181,7 +2233,7 @@ export type AdminContractItemType = {
 };
 
 export async function getAdminItemTypes(): Promise<AdminContractItemType[]> {
-  return request("/admin/item-types");
+  return request("/contracts/catalog/item-types");
 }
 
 export async function createAdminItemType(payload: {
@@ -2191,7 +2243,7 @@ export async function createAdminItemType(payload: {
   active?: boolean;
   sortOrder?: number;
 }): Promise<AdminContractItemType> {
-  return request("/admin/item-types", { method: "POST", body: JSON.stringify(payload) });
+  return request("/contracts/catalog/item-types", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function updateAdminItemType(
@@ -2204,7 +2256,7 @@ export async function updateAdminItemType(
     sortOrder?: number;
   }
 ): Promise<AdminContractItemType> {
-  return request(`/admin/item-types/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+  return request(`/contracts/catalog/item-types/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
 export type ContractTypeCatalogRecord = {
