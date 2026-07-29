@@ -23,6 +23,7 @@ export type PricingItemInput = {
   periodStart?: string | null;
   periodEnd?: string | null;
   status?: ContractPricingItemStatus | keyof typeof ContractPricingItemStatus;
+  includeInGlosaBase?: boolean;
 };
 
 export type PricingTotals = {
@@ -63,6 +64,7 @@ function serializePricingAudit(item: {
   periodStart: Date | null;
   periodEnd: Date | null;
   status: ContractPricingItemStatus;
+  includeInGlosaBase: boolean;
   type?: { code: string; label: string } | null;
   unit?: { code: string; label: string } | null;
 }) {
@@ -86,7 +88,8 @@ function serializePricingAudit(item: {
     periodicity: item.periodicity,
     periodStart: item.periodStart,
     periodEnd: item.periodEnd,
-    status: item.status
+    status: item.status,
+    includeInGlosaBase: item.includeInGlosaBase
   };
 }
 
@@ -162,6 +165,7 @@ function normalizeItem(input: PricingItemInput, sequence: number): {
   periodStart: Date | null;
   periodEnd: Date | null;
   status: ContractPricingItemStatus;
+  includeInGlosaBase: boolean;
 } {
   const description = input.description?.trim() ?? "";
   if (!description) throw new BadRequestException("Informe a descrição contratual do item.");
@@ -225,7 +229,8 @@ function normalizeItem(input: PricingItemInput, sequence: number): {
     periodicity,
     periodStart: input.periodStart ? new Date(input.periodStart) : null,
     periodEnd: input.periodEnd ? new Date(input.periodEnd) : null,
-    status
+    status,
+    includeInGlosaBase: Boolean(input.includeInGlosaBase)
   };
 }
 

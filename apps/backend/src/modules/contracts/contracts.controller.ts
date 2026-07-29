@@ -12,6 +12,7 @@ import {
   CreateContractServiceDto,
   DeleteContractDto,
   PricingItemDto,
+  RegenerateInternalCodeDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
   UpdateContractItemTypeAdminDto,
@@ -50,6 +51,19 @@ export class ContractsController {
   @Roles(UserRole.ADMIN)
   pricingMigrationReview(): Promise<unknown> {
     return this.service.pricingMigrationReview();
+  }
+
+  /** Relatório financeiro por item contratual, exclusivo para administração. */
+  @Get("pricing-items-report")
+  @Roles(UserRole.ADMIN)
+  pricingItemsFinancialReport(
+    @Query("organizationId") organizationId?: string,
+    @Query("status") status?: string
+  ): Promise<unknown> {
+    return this.service.listPricingItemsFinancialReport({
+      organizationId: organizationId || undefined,
+      status: status === "ACTIVE" || status === "CANCELLED" ? status : undefined
+    });
   }
 
   @Post("catalog/measure-units")
@@ -215,6 +229,15 @@ export class ContractsController {
     @Body() body: { items: PricingItemDto[] }
   ): Promise<unknown> {
     return this.service.replacePricingItems(contractId, body?.items ?? []);
+  }
+
+  @Post(":id/regenerate-internal-code")
+  @Roles(UserRole.ADMIN)
+  regenerateInternalCode(
+    @Param("id") id: string,
+    @Body() dto: RegenerateInternalCodeDto
+  ): Promise<unknown> {
+    return this.service.regenerateInternalCode(id, dto.justification);
   }
 
   @Get(":id")

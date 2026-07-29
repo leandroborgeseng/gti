@@ -1,6 +1,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { ContractDeleteButton } from "@/components/contracts/contract-delete-button";
+import { ContractInternalCodeRegenerateButton } from "@/components/contracts/contract-internal-code-regenerate-button";
 import { ContractFinancialSnapshotsPanel } from "@/components/contracts/contract-financial-snapshots-panel";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractGlpiGroupsPanel } from "@/components/contracts/contract-glpi-groups-panel";
@@ -122,11 +123,14 @@ export default async function ContractDetailPage({ params }: { params: { id: str
             Medições deste contrato
           </Link>
         </div>
-        <ContractDeleteButton
-          contractId={contract.id}
-          contractNumber={contract.number}
-          contractName={contract.name}
-        />
+        <div className="flex flex-wrap gap-2">
+          <ContractInternalCodeRegenerateButton contractId={contract.id} internalCode={contract.internalCode} />
+          <ContractDeleteButton
+            contractId={contract.id}
+            contractNumber={contract.number}
+            contractName={contract.name}
+          />
+        </div>
       </div>
 
       <Card className="p-5">

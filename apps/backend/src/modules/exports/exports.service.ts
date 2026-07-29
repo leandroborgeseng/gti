@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { PricingItemsFinancialReportService } from "../reports/pricing-items-financial-report.service";
 
 function csvCell(value: string): string {
   const v = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -215,6 +216,55 @@ export class ExportsService {
         csvCell(r.createdBy),
         csvCell(r.createdAt.toISOString())
       ].join(",")
+    );
+    return [header, ...lines].join("\n");
+  }
+
+  async pricingItemsCsv(): Promise<string> {
+    const rows = await new PricingItemsFinancialReportService(this.prisma).list();
+    const header = [
+      "contrato_numero",
+      "contrato_nome",
+      "codigo_interno",
+      "orgao",
+      "fornecedor",
+      "item_sequencia",
+      "tipo_codigo",
+      "tipo",
+      "descricao",
+      "cobranca",
+      "unidade",
+      "quantidade",
+      "consumido",
+      "saldo_disponivel",
+      "valor_unitario",
+      "valor_total",
+      "status",
+      "valor_medido"
+    ].join(",");
+    const lines = rows.map((row) =>
+      [
+        row.contractNumber,
+        row.contractName,
+        row.internalCode ?? "",
+        row.organizationName ?? "",
+        row.supplierName,
+        String(row.sequence),
+        row.typeCode,
+        row.typeLabel,
+        row.description,
+        row.billingKind,
+        row.unitLabel,
+        row.quantity,
+        row.consumedQuantity,
+        row.availableBalance,
+        row.unitValue,
+        row.totalValue,
+        row.status,
+        row.measuredValueSum
+      ]
+        .map(csvCell)
+        .join(",")
     );
     return [header, ...lines].join("\n");
   }

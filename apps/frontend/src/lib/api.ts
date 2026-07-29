@@ -327,6 +327,7 @@ export type ContractPricingItem = {
   periodStart?: string | null;
   periodEnd?: string | null;
   status: ContractPricingItemStatus;
+  includeInGlosaBase: boolean;
   consumedQuantity?: string;
   type?: ContractItemTypeCatalog & { participatesInGlosa?: boolean };
   unit?: MeasureUnitCatalog;
@@ -357,6 +358,7 @@ export type ContractPricingItemInput = {
   periodStart?: string | null;
   periodEnd?: string | null;
   status?: ContractPricingItemStatus;
+  includeInGlosaBase?: boolean;
 };
 
 export type ContractItemChangeLog = {
@@ -686,10 +688,44 @@ export type MonthlyContractClosureRow = {
   glpiOsOpenBacklog: number;
 };
 
+export type PricingItemsFinancialReportRow = {
+  contractId: string;
+  contractNumber: string;
+  contractName: string;
+  internalCode: string | null;
+  organizationName: string | null;
+  supplierName: string;
+  itemId: string;
+  sequence: number;
+  typeCode: string;
+  typeLabel: string;
+  description: string;
+  billingKind: ContractPricingBillingKind;
+  unitLabel: string;
+  quantity: string;
+  consumedQuantity: string;
+  availableBalance: string;
+  unitValue: string;
+  totalValue: string;
+  status: ContractPricingItemStatus;
+  measuredValueSum: string;
+};
+
 export async function getMonthlyContractClosureReport(year: number, month: number): Promise<MonthlyContractClosureRow[]> {
   const y = encodeURIComponent(String(year));
   const m = encodeURIComponent(String(month));
   return request(`/reports/monthly-contract-closure?year=${y}&month=${m}`);
+}
+
+export async function getPricingItemsFinancialReport(params: {
+  organizationId?: string;
+  status?: ContractPricingItemStatus;
+} = {}): Promise<PricingItemsFinancialReportRow[]> {
+  const query = new URLSearchParams();
+  if (params.organizationId) query.set("organizationId", params.organizationId);
+  if (params.status) query.set("status", params.status);
+  const suffix = query.toString();
+  return request(`/reports/pricing-items${suffix ? `?${suffix}` : ""}`);
 }
 
 export async function getContracts(): Promise<Contract[]> {
@@ -731,6 +767,14 @@ export async function deleteContract(
   return request(`/contracts/${contractId}`, {
     method: "DELETE",
     body: JSON.stringify(payload)
+  });
+}
+
+/** Emite excepcionalmente um novo código interno, registrando o anterior e a justificativa em auditoria. */
+export async function regenerateContractInternalCode(contractId: string, justification: string): Promise<Contract> {
+  return request(`/contracts/${contractId}/regenerate-internal-code`, {
+    method: "POST",
+    body: JSON.stringify({ justification })
   });
 }
 
@@ -2189,29 +2233,60 @@ export type UserPermissionsPayload = {
   permissions: PermissionGrant[];
 };
 
+type PermissionKeysResponse = { role?: "ADMIN" | "EDITOR" | "VIEWER"; userId?: string; keys: string[] };
+
+function permissionKeysToGrants(keys: string[]): PermissionGrant[] {
+  return keys.map((permissionKey) => ({ permissionKey, granted: true }));
+}
+
 export async function getRolePermissions(role: "ADMIN" | "EDITOR" | "VIEWER"): Promise<RolePermissionsPayload> {
-  return request(`/permissions/roles/${role}`);
+  const response = await request<PermissionKeysResponse>(`/permissions/role/${role}`);
+  return { role, permissions: permissionKeysToGrants(response.keys) };
 }
 
 export async function updateRolePermissions(
   role: "ADMIN" | "EDITOR" | "VIEWER",
   permissions: PermissionGrant[]
 ): Promise<RolePermissionsPayload> {
-  return request(`/permissions/roles/${role}`, {
+  const response = await request<PermissionKeysResponse>(`/permissions/role/${role}`, {
     method: "PUT",
-    body: JSON.stringify({ permissions })
+    body: JSON.stringify({ keys: permissions.filter((permission) => permission.granted).map((permission) => permission.permissionKey) })
   });
+  return { role, permissions: permissionKeysToGrants(response.keys) };
 }
 
 export async function getUserPermissions(userId: string): Promise<UserPermissionsPayload> {
-  return request(`/permissions/users/${userId}`);
+  const response = await request<PermissionKeysResponse>(`/permissions/user/${userId}`);
+  return { userId, permissions: permissionKeysToGrants(response.keys) };
 }
 
 export async function updateUserPermissions(userId: string, permissions: PermissionGrant[]): Promise<UserPermissionsPayload> {
-  return request(`/permissions/users/${userId}`, {
+  const response = await request<PermissionKeysResponse>(`/permissions/user/${userId}`, {
     method: "PUT",
-    body: JSON.stringify({ permissions })
+    body: JSON.stringify({ keys: permissions.filter((permission) => permission.granted).map((permission) => permission.permissionKey) })
   });
+  return { userId, permissions: permissionKeysToGrants(response.keys) };
+}
+
+export type PermissionHistoryEntry = {
+  id: string;
+  entity: "RolePermission" | "UserPermission";
+  entityId: string;
+  action: string;
+  userId: string;
+  timestamp: string;
+  oldData?: { keys?: string[] } | null;
+  newData?: { keys?: string[] } | null;
+};
+
+export async function getRolePermissionHistory(
+  role: "ADMIN" | "EDITOR" | "VIEWER"
+): Promise<PermissionHistoryEntry[]> {
+  return request(`/permissions/role/${role}/history`);
+}
+
+export async function getUserPermissionHistory(userId: string): Promise<PermissionHistoryEntry[]> {
+  return request(`/permissions/user/${userId}/history`);
 }
 
 export type AdminContractItemType = {

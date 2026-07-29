@@ -62,6 +62,11 @@ export function ContractPricingItemsPanel({ contract }: Props): JSX.Element {
                     {item.status === "CANCELLED" ? (
                       <p className="mt-1 text-xs font-medium text-amber-800">Cancelado</p>
                     ) : null}
+                    {item.includeInGlosaBase ? (
+                      <p className="mt-1 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800">
+                        Base de glosa
+                      </p>
+                    ) : null}
                     {item.totalManual && item.totalJustification ? (
                       <p className="mt-1 text-xs text-slate-500">Justificativa: {item.totalJustification}</p>
                     ) : null}

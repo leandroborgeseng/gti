@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
+import { Prisma, UserRole } from "@prisma/client";
+import { getAuditActorId } from "../../common/audit-actor";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ALL_PERMISSION_KEYS, isValidPermissionKey, isValidUserRole, PERMISSION_CATALOG } from "./permission-catalog";
 
@@ -27,12 +28,26 @@ export class PermissionsService {
       }
     }
     await this.prisma.$transaction(async (tx) => {
+      const oldRows = await tx.rolePermission.findMany({
+        where: { role, granted: true },
+        select: { permissionKey: true }
+      });
       await tx.rolePermission.deleteMany({ where: { role } });
       if (unique.length > 0) {
         await tx.rolePermission.createMany({
           data: unique.map((permissionKey) => ({ role, permissionKey, granted: true }))
         });
       }
+      await tx.auditLog.create({
+        data: {
+          entity: "RolePermission",
+          entityId: role,
+          action: "REPLACE",
+          userId: getAuditActorId(),
+          oldData: { keys: oldRows.map((row) => row.permissionKey).sort() } as Prisma.InputJsonValue,
+          newData: { keys: unique.sort() } as Prisma.InputJsonValue
+        }
+      });
     });
     return this.getRolePermissions(role);
   }
@@ -55,14 +70,45 @@ export class PermissionsService {
       }
     }
     await this.prisma.$transaction(async (tx) => {
+      const oldRows = await tx.userPermission.findMany({
+        where: { userId, granted: true },
+        select: { permissionKey: true }
+      });
       await tx.userPermission.deleteMany({ where: { userId } });
       if (unique.length > 0) {
         await tx.userPermission.createMany({
           data: unique.map((permissionKey) => ({ userId, permissionKey, granted: true }))
         });
       }
+      await tx.auditLog.create({
+        data: {
+          entity: "UserPermission",
+          entityId: userId,
+          action: "REPLACE",
+          userId: getAuditActorId(),
+          oldData: { keys: oldRows.map((row) => row.permissionKey).sort() } as Prisma.InputJsonValue,
+          newData: { keys: unique.sort() } as Prisma.InputJsonValue
+        }
+      });
     });
     return this.getUserPermissions(userId);
+  }
+
+  async listRolePermissionHistory(role: UserRole) {
+    return this.prisma.auditLog.findMany({
+      where: { entity: "RolePermission", entityId: role },
+      orderBy: { timestamp: "desc" },
+      take: 50
+    });
+  }
+
+  async listUserPermissionHistory(userId: string) {
+    await this.ensureUser(userId);
+    return this.prisma.auditLog.findMany({
+      where: { entity: "UserPermission", entityId: userId },
+      orderBy: { timestamp: "desc" },
+      take: 50
+    });
   }
 
   async resolveEffectivePermissions(userId: string): Promise<{ userId: string; role: UserRole; keys: string[] }> {

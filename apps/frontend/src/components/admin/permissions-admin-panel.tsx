@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Save } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import type { PermissionGrant, UserRecord } from "@/lib/api";
+import type { PermissionGrant, PermissionHistoryEntry, UserRecord } from "@/lib/api";
 import {
+  getRolePermissionHistory,
   getRolePermissions,
+  getUserPermissionHistory,
   getUserPermissions,
   getUsers,
   updateRolePermissions,
@@ -43,6 +45,26 @@ function mapToGrants(map: Record<string, boolean>): PermissionGrant[] {
     permissionKey,
     granted: map[permissionKey] ?? false
   }));
+}
+
+function permissionHistorySummary(entry: PermissionHistoryEntry): string {
+  const oldKeys = new Set(entry.oldData?.keys ?? []);
+  const newKeys = new Set(entry.newData?.keys ?? []);
+  const added = [...newKeys].filter((key) => !oldKeys.has(key));
+  const removed = [...oldKeys].filter((key) => !newKeys.has(key));
+  const describe = (keys: string[]) => keys.slice(0, 3).join(", ") + (keys.length > 3 ? ` e mais ${keys.length - 3}` : "");
+  if (added.length === 0 && removed.length === 0) return "Nenhuma alteração nas chaves.";
+  return [
+    added.length > 0 ? `Adicionadas: ${describe(added)}` : null,
+    removed.length > 0 ? `Removidas: ${describe(removed)}` : null
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function formatHistoryTimestamp(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
 export function PermissionsAdminPanel(): JSX.Element {
@@ -85,6 +107,11 @@ export function PermissionsAdminPanel(): JSX.Element {
   });
 
   const activeQuery = mode === "role" ? roleQuery : userQuery;
+  const historyQuery = useQuery({
+    queryKey: ["gestao", "admin", "permission-history", mode, mode === "role" ? role : userId],
+    queryFn: () => (mode === "role" ? getRolePermissionHistory(role) : getUserPermissionHistory(userId)),
+    enabled: mode === "role" || Boolean(userId)
+  });
 
   useEffect(() => {
     if (!activeQuery.data) return;
@@ -109,6 +136,7 @@ export function PermissionsAdminPanel(): JSX.Element {
       } else {
         void qc.invalidateQueries({ queryKey: queryKeys.userPermissions(userId) });
       }
+      void qc.invalidateQueries({ queryKey: ["gestao", "admin", "permission-history"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar permissões")
   });
@@ -200,6 +228,39 @@ export function PermissionsAdminPanel(): JSX.Element {
       <p className="text-sm text-muted-foreground">
         Permissões por usuário somam-se ao papel base. Marque ou desmarque por módulo ou permissão individual.
       </p>
+
+      <section className="rounded-xl border bg-card p-4 shadow-sm">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h3 className="font-medium text-foreground">Histórico da matriz</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Últimas alterações em {mode === "role" ? `permissões do papel ${role}` : "permissões adicionais do usuário"}.
+            </p>
+          </div>
+          <span className="text-xs text-muted-foreground">{historyQuery.data?.length ?? 0} registros</span>
+        </div>
+        {historyQuery.isLoading ? (
+          <p className="mt-3 text-sm text-muted-foreground">Carregando histórico…</p>
+        ) : historyQuery.error ? (
+          <p className="mt-3 text-sm text-destructive">Não foi possível carregar o histórico.</p>
+        ) : historyQuery.data?.length ? (
+          <ul className="mt-3 space-y-2">
+            {historyQuery.data.map((entry) => (
+              <li key={entry.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                    {entry.action === "REPLACE" ? "Matriz substituída" : entry.action}
+                  </span>
+                  <span className="text-xs text-slate-500">{formatHistoryTimestamp(entry.timestamp)}</span>
+                </div>
+                <p className="mt-2 text-xs text-slate-600">{permissionHistorySummary(entry)}</p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">Nenhuma alteração auditada ainda.</p>
+        )}
+      </section>
 
       {activeQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando permissões…</p>

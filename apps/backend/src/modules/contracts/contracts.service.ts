@@ -30,6 +30,10 @@ import {
   UpdateContractServiceDto
 } from "./contracts.dto";
 import { ContractPricingHelper, type PricingItemInput } from "./contract-pricing.helper";
+import {
+  PricingItemsFinancialReportService,
+  type PricingItemsFinancialReportQuery
+} from "../reports/pricing-items-financial-report.service";
 
 function moduleGroupKey(name: string): string {
   return name.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
@@ -306,6 +310,10 @@ export class ContractsService {
 
   constructor(private readonly prisma: PrismaService) {
     this.pricing = new ContractPricingHelper(prisma);
+  }
+
+  async listPricingItemsFinancialReport(query?: PricingItemsFinancialReportQuery) {
+    return new PricingItemsFinancialReportService(this.prisma).list(query);
   }
 
   async create(dto: CreateContractDto): Promise<unknown> {
@@ -1259,6 +1267,52 @@ export class ContractsService {
     } else if (globalValueManual === false) {
       await this.pricing.syncContractTotalsFromItems(id);
     }
+    return this.findOne(id);
+  }
+
+  /**
+   * Gera excepcionalmente outro código interno, preservando o anterior no log de auditoria.
+   * O sequencial nunca é reaproveitado, mesmo que o código anterior tenha sido incorreto.
+   */
+  async regenerateInternalCode(id: string, justification: string): Promise<unknown> {
+    const normalizedJustification = justification?.trim() ?? "";
+    if (normalizedJustification.length < 10) {
+      throw new BadRequestException("Informe uma justificativa com pelo menos 10 caracteres.");
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const contract = await tx.contract.findFirst({
+        where: { id, deletedAt: null },
+        select: { id: true, internalCode: true, contractTypeCatalogId: true, startDate: true }
+      });
+      if (!contract) throw new NotFoundException("Contrato não encontrado");
+      if (!contract.contractTypeCatalogId) {
+        throw new BadRequestException("O contrato não possui tipo de contrato do catálogo para gerar o código interno.");
+      }
+      if (!contract.startDate || Number.isNaN(contract.startDate.getTime())) {
+        throw new BadRequestException("O contrato não possui uma data de início válida para gerar o código interno.");
+      }
+
+      const internalCode = await allocateInternalCode(
+        tx,
+        contract.contractTypeCatalogId,
+        contract.startDate.getFullYear()
+      );
+      const updatedContract = await tx.contract.update({ where: { id }, data: { internalCode } });
+      await tx.auditLog.create({
+        data: {
+          entity: "Contract",
+          entityId: id,
+          action: "REGENERATE_INTERNAL_CODE",
+          userId: getAuditActorId(),
+          oldData: { internalCode: contract.internalCode } as Prisma.InputJsonValue,
+          newData: {
+            internalCode: updatedContract.internalCode,
+            justification: normalizedJustification
+          } as Prisma.InputJsonValue
+        }
+      });
+    });
     return this.findOne(id);
   }
 

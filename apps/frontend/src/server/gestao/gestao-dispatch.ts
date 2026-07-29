@@ -17,6 +17,7 @@ import {
   gestaoHiringTypes,
   gestaoMeasurements,
   gestaoMonthlyClosureReport,
+  gestaoPricingItemsFinancialReport,
   gestaoOperationalEvents,
   gestaoOrganizations,
   gestaoPermissions,
@@ -178,6 +179,7 @@ const LEGACY_ROLE_PERMISSION_KEYS: Record<UserRole, readonly string[]> = {
 
 const ADMIN_ONLY_PERMISSION_KEYS = [
   "contracts.delete",
+  "contracts.internal_code.regenerate",
   "contracts.financial.view",
   "admin.users.view",
   "admin.users.manage",
@@ -518,6 +520,12 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 1 && method === "POST") {
       return jsonOk(await gestaoContracts.create((await readJsonBody(req)) as never));
     }
+    if (seg.length === 3 && seg[2] === "regenerate-internal-code" && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN]);
+      assertPermission(user, "contracts.internal_code.regenerate");
+      const body = (await readJsonBody(req)) as { justification?: string };
+      return jsonOk(await gestaoContracts.regenerateInternalCode(seg[1], body?.justification ?? ""));
+    }
     if (seg.length === 2 && method === "GET") return jsonOk(await gestaoContracts.findOne(seg[1]));
     if (seg.length === 2 && (method === "PUT" || method === "PATCH")) {
       assertPermission(user, "contracts.edit");
@@ -730,12 +738,18 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
         await gestaoPermissions.setRolePermissions(gestaoPermissions.parseRoleParam(seg[2]), body?.keys ?? [])
       );
     }
+    if (seg.length === 4 && seg[1] === "role" && seg[3] === "history" && method === "GET") {
+      return jsonOk(await gestaoPermissions.listRolePermissionHistory(gestaoPermissions.parseRoleParam(seg[2])));
+    }
     if (seg.length === 3 && seg[1] === "user" && method === "GET") {
       return jsonOk(await gestaoPermissions.getUserPermissions(seg[2]));
     }
     if (seg.length === 3 && seg[1] === "user" && method === "PUT") {
       const body = (await readJsonBody(req)) as { keys?: string[] };
       return jsonOk(await gestaoPermissions.setUserExtraPermissions(seg[2], body?.keys ?? []));
+    }
+    if (seg.length === 4 && seg[1] === "user" && seg[3] === "history" && method === "GET") {
+      return jsonOk(await gestaoPermissions.listUserPermissionHistory(seg[2]));
     }
     return jsonErr(404, "Não encontrado");
   }
@@ -805,6 +819,16 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       }
       return jsonOk(await gestaoMonthlyClosureReport.build(Math.floor(y), Math.floor(m)));
     }
+    if (seg.length === 2 && seg[1] === "pricing-items" && method === "GET") {
+      const u = new URL(req.url);
+      const status = u.searchParams.get("status");
+      return jsonOk(
+        await gestaoPricingItemsFinancialReport.list({
+          organizationId: u.searchParams.get("organizationId") || undefined,
+          status: status === "ACTIVE" || status === "CANCELLED" ? status : undefined
+        })
+      );
+    }
     return jsonErr(404, "Não encontrado");
   }
 
@@ -821,6 +845,7 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg[1] === "measurements.csv" && method === "GET") return csv(await gestaoExports.measurementsCsv(), "medicoes.csv");
     if (seg[1] === "contract-amendments.csv" && method === "GET") return csv(await gestaoExports.contractAmendmentsCsv(), "aditivos-contratos.csv");
     if (seg[1] === "glosas.csv" && method === "GET") return csv(await gestaoExports.glosasCsv(), "glosas.csv");
+    if (seg[1] === "pricing-items.csv" && method === "GET") return csv(await gestaoExports.pricingItemsCsv(), "itens-contratuais.csv");
     return jsonErr(404, "Não encontrado");
   }
 

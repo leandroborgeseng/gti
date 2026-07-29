@@ -6,6 +6,8 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- Administradores podem regenerar excepcionalmente o código interno de um contrato, informando justificativa obrigatória. O código anterior é preservado no histórico de auditoria e o sistema sempre emite um novo sequencial, sem reutilizar numerações.
+- A aba de permissões da Administração passa a exibir o histórico das alterações feitas na matriz por papel e nas permissões adicionais por usuário, incluindo chaves adicionadas e removidas.
 - A matriz de permissões passa a ser aplicada também durante o uso do sistema: telas e operações da API respeitam as permissões efetivas do papel e as permissões adicionais atribuídas a cada usuário.
 - Nas medições de serviços, cada linha pode ser vinculada a um item contratual de precificação ativo. O cálculo passa a usar o valor unitário desse item e, para itens sob demanda, bloqueia lançamentos e aprovações acima do saldo contratado disponível. A aprovação registra o consumo no item do contrato.
 - Nova aba **Conferência precificação** na Administração, exclusiva para administradores, lista contratos ativos migrados, pendentes ou com inconsistências na conversão de mensalidade/implantação em itens contratuais. Os filtros mostram itens duplicados, períodos ou quantidades a revisar e divergências de valores, com atalho para abrir cada contrato.
@@ -20,6 +22,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Adicionado cadastro público pela tela de login, com aprovação ou recusa de novos usuários pela administração.
 - Adicionado o Resumo Operacional para acompanhar chamados abertos/fechados, tarefas concluídas e alterações em contratos por dia, semana ou mês.
 - Adicionado histórico auditável de itens contratuais, registrando inserção, exclusão e mudança de status com usuário e data.
+- Adicionado o relatório financeiro por item contratual, com filtros por órgão e situação, mostrando valores, consumo, saldo disponível e total medido; o resultado também pode ser baixado em CSV.
 - Adicionados botões na área autenticada para abrir o manual do sistema e as notas de versão.
 - Adicionado aviso de nova versão para orientar usuários a atualizar o PWA quando um novo deploy estiver disponível.
 - Adicionado campo próprio “Código do Item” nas funcionalidades contratuais, separado do nome/descrição do item do Termo de Referência.
@@ -44,7 +47,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Alterado
 
-- Para contratos de software e serviço, a base mensal do cálculo e das glosas passa a priorizar o item contratual de mensalidade ativo quando configurado; contratos sem esse item mantêm o valor mensal já cadastrado.
+- Para contratos de software e serviço, itens recorrentes podem ser marcados como **Base de glosa**. A medição de funcionalidades usa a soma mensal equivalente dos itens marcados; cadastros sem marcação mantêm a compatibilidade com a primeira mensalidade ativa ou com o valor mensal já cadastrado.
 - A tela **Funcionalidades** passa a carregar resumos primeiro e só busca módulos/itens ao expandir cada sanfona (com «Carregar mais» quando houver paginação). Filtros por texto, status de entrega e criticidade pesquisam no servidor. Perfis de leitura (VIEWER) veem a lista sem editar; administradores e editores mantêm as ações e o atalho «Abrir contrato».
 - O **formulário de contrato** passa a usar os catálogos da Administração: número formal (somente dígitos) com pré-visualização número/ano, órgão gestor, tipo de contrato, modalidade e procedimento licitatório; o código interno SIGTI é gerado ao salvar. A ficha do contrato exibe código interno, identificação formal, órgão, contratação e valores globais original/vigente quando existirem.
 - O **formulário de usuário** exige nome completo, CPF (com validação), órgão e demais credenciais na criação; a grade de usuários mostra órgão, CPF mascarado e destaca cadastros incompletos (sem CPF ou órgão).
@@ -52,6 +55,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Técnico
 
+- Nova migração concede a permissão `contracts.internal_code.regenerate` aos administradores já existentes, sem alterar as demais matrizes de permissão.
 - Documentação e scripts para **migração Railway → Coolify** (`docs/migracao-railway-coolify.md`, `docker-compose.coolify.yml`, `scripts/db-export.sh`, `scripts/db-import.sh`, `.env.coolify.example`). Dumps de base e anexos **não** devem ser versionados no Git.
 - Fluxo **dump no Git → restore Coolify**: workflow **Export DB migration dump**, ficheiro `migration/gti-railway.dump`, variáveis `GTI_EXPORT_MIGRATION_DUMP` (Railway) e `GTI_IMPORT_MIGRATION_DUMP` (Coolify, one-shot). Remover dump do repo após migração.
 - Backup in-app (ADMIN): APIs `/api/admin/backup` (export `pg_dump` + tar.gz, import `pg_restore`); limite de upload configurável com `BACKUP_MAX_MB` (predefinição 512).

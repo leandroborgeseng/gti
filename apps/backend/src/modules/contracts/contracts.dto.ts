@@ -36,6 +36,7 @@ import {
   IsOptional,
   IsString,
   Min,
+  MinLength,
   ValidateIf,
   ValidateNested
 } from "class-validator";
@@ -106,6 +107,10 @@ export class PricingItemDto {
   @IsOptional()
   @IsEnum(ContractPricingItemStatus)
   status?: ContractPricingItemStatus;
+
+  @IsOptional()
+  @IsBoolean()
+  includeInGlosaBase?: boolean;
 }
 
 /** Grupo de trabalho GLPI (ID na instância; nome opcional para exibição). */
@@ -656,6 +661,14 @@ export class DeleteContractDto {
 
   @IsString()
   @IsNotEmpty()
+  justification!: string;
+}
+
+/** Justificativa obrigatória para emitir um novo código interno sem reutilizar o sequencial anterior. */
+export class RegenerateInternalCodeDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(10)
   justification!: string;
 }
 

@@ -1,6 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { getAuditActorId } from "../../common/audit-actor";
-import { ContractPricingBillingKind, ContractPricingItemStatus, MeasurementItemType, MeasurementStatus, Prisma } from "@prisma/client";
+import {
+  ContractPricingBillingKind,
+  ContractPricingItemStatus,
+  ContractPricingPeriodicity,
+  MeasurementItemType,
+  MeasurementStatus,
+  Prisma
+} from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { StorageService } from "../../storage/storage.service";
 import { CreateMeasurementDto } from "./measurements.dto";
@@ -223,10 +230,28 @@ export class MeasurementsService {
       const total = features.length;
       const validated = features.filter((f) => f.status === "VALIDATED").length;
       const percentual = total > 0 ? new Prisma.Decimal(validated).div(total) : new Prisma.Decimal(0);
-      const glosaBase = measurement.contract.pricingItems.find(
+      const explicitGlosaBases = measurement.contract.pricingItems.filter((item) => item.includeInGlosaBase);
+      const monthlyEquivalent = (item: (typeof measurement.contract.pricingItems)[number]) => {
+        if (item.billingKind !== ContractPricingBillingKind.RECURRING) return new Prisma.Decimal(0);
+        const divisor: Record<ContractPricingPeriodicity, number> = {
+          [ContractPricingPeriodicity.MONTHLY]: 1,
+          [ContractPricingPeriodicity.BIMONTHLY]: 2,
+          [ContractPricingPeriodicity.QUARTERLY]: 3,
+          [ContractPricingPeriodicity.SEMIANNUAL]: 6,
+          [ContractPricingPeriodicity.ANNUAL]: 12,
+          [ContractPricingPeriodicity.CUSTOM]: 1
+        };
+        return item.unitValue.div(divisor[item.periodicity ?? ContractPricingPeriodicity.MONTHLY]);
+      };
+      const explicitBaseValue = explicitGlosaBases.reduce(
+        (sum, item) => sum.add(monthlyEquivalent(item)),
+        new Prisma.Decimal(0)
+      );
+      const compatibleGlosaBase = measurement.contract.pricingItems.find(
         (item) => item.type.participatesInGlosa || item.type.code === "MENSALIDADE"
       );
-      measured = (glosaBase?.totalValue ?? measurement.contract.monthlyValue).mul(percentual);
+      const glosaBase = explicitGlosaBases.length > 0 ? explicitBaseValue : compatibleGlosaBase?.totalValue;
+      measured = (glosaBase?.gt(0) ? glosaBase : measurement.contract.monthlyValue).mul(percentual);
     } else if (contractType === "DATACENTER" || contractType === "INFRA") {
       const serviceMap = new Map(measurement.contract.services.map((s) => [s.id, s]));
       for (const item of measurement.items) {

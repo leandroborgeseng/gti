@@ -178,8 +178,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "ul",
         items: [
           "Vigência: datas de início e fim; período de implantação opcional para o painel de proporcionalidade.",
+          "Código interno: administradores com a permissão específica podem usar «Regenerar código interno» no topo do detalhe apenas em situações excepcionais. É obrigatório justificar a emissão; o código anterior permanece no histórico e o novo código recebe outro sequencial.",
           "Excluir contrato: disponível apenas para administradores, no topo do detalhe. Exige digitar EXCLUIR ou o número do contrato e uma justificativa. Só funciona para cadastros sem medições, aditivos, memória financeira, chamados de governança ou funcionalidades já avaliadas; nos demais casos, altere o status para Suspenso ou Encerrado.",
-          "Itens contratuais: na criação e na edição, registre quantos itens forem necessários (mensalidade, implantação, horas de desenvolvimento ou suporte, treinamentos, UST, equipamentos, licenças, locações, infraestrutura, materiais e outros). Cada item tem sequência, tipo padronizado (lista da Administração), descrição contratual livre (texto do edital/TR/proposta), unidade de medida, quantidade, valor unitário e valor total (calculado automaticamente; valor manual exige justificativa se divergir). Itens recorrentes pedem periodicidade e período de incidência; sob demanda registram o teto contratado (consumo controlado depois); valores únicos não exigem periodicidade. Ao final da seção aparecem os totais recorrente, único, sob demanda e global estimado. Com medições ou memória financeira, o item não é excluído — apenas cancelado.",
+          "Itens contratuais: na criação e na edição, registre quantos itens forem necessários (mensalidade, implantação, horas de desenvolvimento ou suporte, treinamentos, UST, equipamentos, licenças, locações, infraestrutura, materiais e outros). Cada item tem sequência, tipo padronizado (lista da Administração), descrição contratual livre (texto do edital/TR/proposta), unidade de medida, quantidade, valor unitário e valor total (calculado automaticamente; valor manual exige justificativa se divergir). Itens recorrentes pedem periodicidade e período de incidência; marque «Base de glosa» nas mensalidades que devem compor a referência das medições de funcionalidades. Sob demanda registram o teto contratado (consumo controlado depois); valores únicos não exigem periodicidade. Ao final da seção aparecem os totais recorrente, único, sob demanda e global estimado. Com medições ou memória financeira, o item não é excluído — apenas cancelado.",
           "Valor global: a seção própria mostra a estimativa calculada pelos itens. Em caso excepcional, marque «Ajuste manual excepcional», informe o valor global e justifique a divergência. O detalhe do contrato identifica esse ajuste e preserva o valor global original para conferência.",
           "Snapshots financeiros: histórico de valores acordados ao longo do tempo, para leitura e conferência.",
           "Proporção de implantação por funcionalidade: repartição do valor de implantação alinhada às funcionalidades do contrato.",
@@ -238,7 +239,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         parts: [
           "O ",
           { href: "/reports/fechamento-mensal", label: "relatório de fechamento mensal" },
-          " cruza contratos vigentes com a medição do mês, referência do mês anterior (quando há medição aprovada), e estatísticas de ordens de serviço GLPI (abertas, fechadas e represadas) por contrato."
+          " cruza contratos vigentes com a medição do mês, referência do mês anterior (quando há medição aprovada), e estatísticas de ordens de serviço GLPI (abertas, fechadas e represadas) por contrato. O ",
+          { href: "/reports/itens-contratuais", label: "relatório financeiro por item contratual" },
+          " mostra os valores, consumos, saldos e total medido de cada item, com filtros por órgão e situação."
         ]
       }
     ]
@@ -362,7 +365,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         items: [
           "Usuários: gestão de contas, papéis, aprovação de cadastros e senha inicial.",
           "Órgãos: cadastro de secretarias/unidades com nome, sigla, código e status ativo/inativo.",
-          "Permissões: marque ou desmarque permissões granulares por papel (ADMIN, EDITOR, VIEWER) ou por usuário (somam-se ao papel).",
+          "Permissões: marque ou desmarque permissões granulares por papel (ADMIN, EDITOR, VIEWER) ou por usuário (somam-se ao papel). Abaixo dos controles, consulte o histórico das últimas alterações, com data e permissões adicionadas ou removidas.",
           "Tipos de itens, contrato e contratação: catálogos usados nos formulários de contrato.",
           "Conferência precificação: valida os contratos ativos migrados dos campos antigos de mensalidade e implantação para itens contratuais. Use os filtros para localizar pendências, duplicidade de mensalidades, quantidades ou períodos a revisar e divergências de valores; cada linha abre o contrato para correção.",
           "Backup: botão que abre a tela completa de exportação, restauração e S3 em /backup."

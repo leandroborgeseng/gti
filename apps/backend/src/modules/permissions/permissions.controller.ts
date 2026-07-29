@@ -30,6 +30,12 @@ export class PermissionsController {
     return this.service.setRolePermissions(this.service.parseRoleParam(role), body.keys ?? []);
   }
 
+  @Get("role/:role/history")
+  @Roles(UserRole.ADMIN)
+  listRolePermissionHistory(@Param("role") role: string): Promise<unknown> {
+    return this.service.listRolePermissionHistory(this.service.parseRoleParam(role));
+  }
+
   @Get("user/:userId")
   @Roles(UserRole.ADMIN)
   getUserPermissions(@Param("userId") userId: string): Promise<unknown> {
@@ -40,6 +46,12 @@ export class PermissionsController {
   @Roles(UserRole.ADMIN)
   setUserExtraPermissions(@Param("userId") userId: string, @Body() body: SetPermissionsBodyDto): Promise<unknown> {
     return this.service.setUserExtraPermissions(userId, body.keys ?? []);
+  }
+
+  @Get("user/:userId/history")
+  @Roles(UserRole.ADMIN)
+  listUserPermissionHistory(@Param("userId") userId: string): Promise<unknown> {
+    return this.service.listUserPermissionHistory(userId);
   }
 
   @Get("me")

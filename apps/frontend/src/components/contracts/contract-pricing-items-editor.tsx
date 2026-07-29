@@ -39,6 +39,7 @@ export type PricingDraftItem = {
   periodStart: string;
   periodEnd: string;
   status: ContractPricingItemStatus;
+  includeInGlosaBase: boolean;
   consumedQuantity?: string;
 };
 
@@ -102,6 +103,7 @@ export function pricingItemsFromContract(items: ContractPricingItem[] | undefine
     periodStart: it.periodStart ? String(it.periodStart).slice(0, 10) : "",
     periodEnd: it.periodEnd ? String(it.periodEnd).slice(0, 10) : "",
     status: it.status,
+    includeInGlosaBase: Boolean(it.includeInGlosaBase),
     consumedQuantity: it.consumedQuantity
   }));
 }
@@ -126,6 +128,7 @@ export function emptyPricingItem(sequence: number, defaults?: Partial<PricingDra
     periodStart: "",
     periodEnd: "",
     status: "ACTIVE",
+    includeInGlosaBase: false,
     ...restDefaults
   };
 }
@@ -204,7 +207,8 @@ export function toPricingItemInputs(items: PricingDraftItem[]): ContractPricingI
       periodicity: item.billingKind === "RECURRING" ? item.periodicity || "MONTHLY" : null,
       periodStart: item.periodStart.trim() || null,
       periodEnd: item.periodEnd.trim() || null,
-      status: item.status
+      status: item.status,
+      includeInGlosaBase: item.includeInGlosaBase
     };
   });
 }
@@ -281,6 +285,7 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
         }
         if (patch.billingKind === "ONE_TIME" || patch.billingKind === "ON_DEMAND") {
           next.periodicity = "";
+          next.includeInGlosaBase = false;
         }
         if (patch.billingKind === "RECURRING" && !next.periodicity) {
           next.periodicity = "MONTHLY";
@@ -370,6 +375,8 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
             const expected = Number.isFinite(qty) && Number.isFinite(uv) ? Math.round(qty * uv * 100) / 100 : NaN;
             const total = item.totalManual ? parseMoney(item.totalValue) : expected;
             const cancelled = item.status === "CANCELLED";
+            const isMensalidade = types.find((type) => type.id === item.typeId)?.code === "MENSALIDADE";
+            const canBeGlosaBase = item.billingKind === "RECURRING" || isMensalidade;
             return (
               <li
                 key={item.key}
@@ -587,6 +594,17 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
                           : "Valor único: sem periodicidade (ex.: implantação, equipamento, treinamento fechado)."}
                       </p>
                     )}
+                    {canBeGlosaBase ? (
+                      <label className="flex items-end gap-2 pb-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={item.includeInGlosaBase}
+                          onChange={(e) => updateItem(item.key, { includeInGlosaBase: e.target.checked })}
+                        />
+                        <span className="text-slate-700">Base de glosa</span>
+                      </label>
+                    ) : null}
                     {(item.billingKind === "RECURRING" || item.billingKind === "ON_DEMAND") && (
                       <>
                         <label className="block text-sm">

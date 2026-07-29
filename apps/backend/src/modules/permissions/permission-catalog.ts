@@ -25,6 +25,7 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
       { key: "contracts.view", label: "Visualizar contratos" },
       { key: "contracts.create", label: "Criar contratos" },
       { key: "contracts.edit", label: "Editar contratos" },
+      { key: "contracts.internal_code.regenerate", label: "Regenerar código interno" },
       { key: "contracts.delete", label: "Excluir contratos" },
       { key: "contracts.financial.view", label: "Visualizar dados financeiros" },
       { key: "contracts.features.view", label: "Visualizar funcionalidades" },

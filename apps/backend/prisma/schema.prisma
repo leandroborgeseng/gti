@@ -936,6 +936,8 @@ model ContractPricingItem {
   periodStart        DateTime?                  @map("period_start")
   periodEnd          DateTime?                  @map("period_end")
   status             ContractPricingItemStatus  @default(ACTIVE)
+  /// Se true, este item entra na base de glosa de funcionalidades (mensalidade).
+  includeInGlosaBase Boolean                    @default(false) @map("include_in_glosa_base")
   /// Quantidade já consumida/medida (itens sob demanda).
   consumedQuantity   Decimal                    @default(0) @map("consumed_quantity") @db.Decimal(18, 4)
   createdAt          DateTime                   @default(now()) @map("created_at")
