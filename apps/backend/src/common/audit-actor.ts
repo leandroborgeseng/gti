@@ -1,7 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 /** Contexto do pedido HTTP autenticado (preenchido pelo interceptor após o JWT). */
-export type RequestActor = { userId: string; email?: string; role: string };
+export type RequestActor = {
+  userId: string;
+  email?: string;
+  role: string;
+  organizationId?: string | null;
+};
 
 export const requestActorStore = new AsyncLocalStorage<RequestActor>();
 

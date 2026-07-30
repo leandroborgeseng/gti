@@ -30,9 +30,9 @@ function measurementItemsSnapshotKey(measurement: {
   status: string;
   totalMeasuredValue: string;
   totalApprovedValue: string;
-  items?: Array<{ id: string; quantity: string; calculatedValue: string }>;
+  items?: Array<{ id: string; pricingItemId?: string | null; quantity: string; calculatedValue: string }>;
 }): string {
-  const lines = (measurement.items ?? []).map((i) => `${i.id}:${i.quantity}:${i.calculatedValue}`).join("|");
+  const lines = (measurement.items ?? []).map((i) => `${i.id}:${i.pricingItemId ?? ""}:${i.quantity}:${i.calculatedValue}`).join("|");
   return [
     measurement.id,
     measurement.updatedAt ?? "",
@@ -45,7 +45,7 @@ function measurementItemsSnapshotKey(measurement: {
 
 function calcRuleDescription(contractType: string | undefined): string {
   if (contractType === "DATACENTER" || contractType === "INFRA") {
-    return "O cálculo soma as linhas da medição (serviços contratados): quantidade × valor unitário de cada serviço.";
+    return "O cálculo soma as linhas da medição: quantidade × valor unitário do item contratual selecionado ou, quando não houver item, do serviço.";
   }
   if (contractType === "SOFTWARE" || contractType === "SERVICO") {
     return "O cálculo usa o valor mensal do contrato multiplicado pela proporção de funcionalidades em estado «Validada» sobre o total de funcionalidades.";
@@ -119,6 +119,7 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
             measurementId={measurement.id}
             services={measurement.contract?.services ?? []}
             usedServiceIds={usedServiceIds}
+            pricingItems={measurement.contract?.pricingItems ?? []}
           />
         </Card>
       ) : null}

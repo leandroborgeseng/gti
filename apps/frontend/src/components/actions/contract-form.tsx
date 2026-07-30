@@ -9,19 +9,38 @@ import {
   createContract,
   createFiscal,
   createSupplier,
+  getContract,
+  getContractTypeCatalog,
   getFiscais,
   getGlpiAssignedGroupsCatalog,
+  getHiringTypes,
+  getOrganizations,
   getSuppliers,
   updateContract,
   type Contract,
+  type ContractTypeCatalogRecord,
   type Fiscal,
   type Supplier
 } from "@/lib/api";
 import { ContractGlpiGroupsField } from "@/components/contracts/contract-glpi-groups-field";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  ContractPricingItemsEditor,
+  pricingItemsFromContract,
+  summarizePricingDraft,
+  toPricingItemInputs,
+  validatePricingDraft,
+  type PricingDraftItem
+} from "@/components/contracts/contract-pricing-items-editor";
 import { queryKeys } from "@/lib/query-keys";
+import { formatBrl } from "@/lib/format-brl";
 import {
   CONTRACT_FORM_DEFAULT_VALUES,
   contractPageSchema,
+  createContractPageSchema,
+  formatFormalNumberPreview,
+  formalNumberFromContract,
+  onlyDigits,
   onlyDigitsCnpj,
   quickFiscalSchema,
   quickSupplierSchema,
@@ -44,30 +63,32 @@ type Props = {
 };
 
 function contractToFormDefaults(c: Contract): ContractPageFormInput {
-  const mv = Number(String(c.monthlyValue).replace(",", "."));
-  const monthlyValueStr = Number.isFinite(mv) ? String(mv).replace(".", ",") : String(c.monthlyValue);
-  const iv =
-    c.installationValue != null && String(c.installationValue).trim() !== ""
-      ? Number(String(c.installationValue).replace(",", "."))
-      : NaN;
-  const installationValueStr = Number.isFinite(iv) ? String(iv).replace(".", ",") : "";
   const cnpjDigits = onlyDigitsCnpj(c.cnpj ?? c.supplier?.cnpj ?? "");
   const lt = (c.lawType ?? "") as ContractPageFormInput["lawType"];
   const ct = c.contractType as ContractPageFormInput["contractType"];
   return {
     ...CONTRACT_FORM_DEFAULT_VALUES,
+    formalNumber: formalNumberFromContract(c),
     number: c.number,
+    administrativeProcess: c.administrativeProcess ?? "",
+    organizationId: c.organizationId ?? "",
+    contractTypeCatalogId: c.contractTypeCatalogId ?? "",
+    contractType: ct,
+    hiringTypeId: c.hiringTypeId ?? "",
+    hiringProcedureNumber: c.hiringProcedureNumber ?? "",
     name: c.name,
     description: c.description ?? "",
     managingUnit: c.managingUnit ?? "",
     companyName: c.companyName,
     cnpj: cnpjDigits,
-    contractType: ct,
     lawType: lt === "LEI_8666" || lt === "LEI_14133" ? lt : "",
     startDate: c.startDate.slice(0, 10),
     endDate: c.endDate.slice(0, 10),
-    monthlyValue: monthlyValueStr,
-    installationValue: installationValueStr,
+    monthlyValue: "",
+    installationValue: "",
+    globalValueManual: Boolean(c.globalValueManual),
+    globalValueCurrent: c.globalValueManual ? String(c.globalValueCurrent ?? "") : "",
+    globalValueJustification: c.globalValueManual ? c.globalValueJustification ?? "" : "",
     implementationPeriodStart:
       c.implementationPeriodStart && String(c.implementationPeriodStart).trim().length >= 10
         ? String(c.implementationPeriodStart).slice(0, 10)
@@ -83,6 +104,41 @@ function contractToFormDefaults(c: Contract): ContractPageFormInput {
       glpiGroupId: g.glpiGroupId,
       glpiGroupName: g.glpiGroupName ?? undefined
     }))
+  };
+}
+
+function catalogPayloadFields(data: ContractPageParsed): {
+  formalNumber?: string;
+  administrativeProcess?: string | null;
+  organizationId: string;
+  contractTypeCatalogId: string;
+  contractType: ContractPageParsed["contractType"];
+  hiringTypeId?: string | null;
+  hiringProcedureNumber?: string | null;
+  managingUnit?: string | null;
+} {
+  const adminProcess = data.administrativeProcess.trim();
+  const hiringProc = data.hiringProcedureNumber.trim();
+  return {
+    ...(data.formalNumber ? { formalNumber: data.formalNumber } : {}),
+    administrativeProcess: adminProcess || null,
+    organizationId: data.organizationId,
+    contractTypeCatalogId: data.contractTypeCatalogId,
+    contractType: data.contractType,
+    hiringTypeId: data.hiringTypeId.trim() || null,
+    hiringProcedureNumber: hiringProc || null,
+    managingUnit: data.organizationId ? null : data.managingUnit.trim() || null
+  };
+}
+
+function globalValuePayload(data: ContractPageParsed) {
+  if (!data.globalValueManual) {
+    return { globalValueManual: false };
+  }
+  return {
+    globalValueManual: true,
+    globalValueCurrent: Number(data.globalValueCurrent.replace(",", ".")),
+    globalValueJustification: data.globalValueJustification.trim()
   };
 }
 
@@ -103,12 +159,49 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const qFiscais = useQuery({ queryKey: queryKeys.fiscais, queryFn: getFiscais });
   const qSuppliers = useQuery({ queryKey: queryKeys.suppliers, queryFn: getSuppliers });
   const qGlpiGroups = useQuery({ queryKey: queryKeys.glpiAssignedGroups, queryFn: getGlpiAssignedGroupsCatalog });
+  const qOrganizations = useQuery({ queryKey: queryKeys.organizations, queryFn: getOrganizations });
+  const qContractTypes = useQuery({ queryKey: queryKeys.contractTypeCatalog, queryFn: getContractTypeCatalog });
+  const qHiringTypes = useQuery({ queryKey: queryKeys.hiringTypes, queryFn: getHiringTypes });
+  const qContractDetail = useQuery({
+    queryKey: [...queryKeys.contracts, "detail", initialContract?.id ?? ""] as const,
+    queryFn: () => getContract(initialContract!.id),
+    enabled: Boolean(initialContract?.id),
+    initialData: initialContract?.pricingItems ? initialContract : undefined
+  });
+  const editContract = qContractDetail.data ?? initialContract;
   const fiscais = qFiscais.data ?? [];
   const suppliers = qSuppliers.data ?? [];
-  const listsLoading = qFiscais.isPending || qSuppliers.isPending;
+  const activeOrganizations = useMemo(
+    () => (qOrganizations.data ?? []).filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    [qOrganizations.data]
+  );
+  const activeContractTypes = useMemo(
+    () =>
+      (qContractTypes.data ?? [])
+        .filter((t) => t.active)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR")),
+    [qContractTypes.data]
+  );
+  const activeHiringTypes = useMemo(
+    () =>
+      (qHiringTypes.data ?? [])
+        .filter((t) => t.active)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR")),
+    [qHiringTypes.data]
+  );
+  const catalogsLoading =
+    qOrganizations.isPending || qContractTypes.isPending || qHiringTypes.isPending;
+  const catalogsError =
+    qOrganizations.error || qContractTypes.error || qHiringTypes.error
+      ? [qOrganizations.error, qContractTypes.error, qHiringTypes.error]
+          .filter(Boolean)
+          .map((e) => (e instanceof Error ? e.message : String(e)))
+          .join(" · ")
+      : null;
+  const listsLoading = qFiscais.isPending || qSuppliers.isPending || catalogsLoading;
   const listsError =
-    qFiscais.error || qSuppliers.error
-      ? [qFiscais.error, qSuppliers.error]
+    qFiscais.error || qSuppliers.error || catalogsError
+      ? [qFiscais.error, qSuppliers.error, catalogsError]
           .filter(Boolean)
           .map((e) => (e instanceof Error ? e.message : String(e)))
           .join(" · ")
@@ -118,19 +211,53 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
   const [newFiscalErr, setNewFiscalErr] = useState<string | null>(null);
   const [newSupplierErr, setNewSupplierErr] = useState<string | null>(null);
+  const [pricingItems, setPricingItems] = useState<PricingDraftItem[]>([]);
+  const [pricingError, setPricingError] = useState<string | null>(null);
 
   const form = useForm<ContractPageFormInput>({
     resolver: zodResolver(contractPageSchema),
     defaultValues: CONTRACT_FORM_DEFAULT_VALUES
   });
 
+  const watchFormalNumber = form.watch("formalNumber");
+  const watchStartDate = form.watch("startDate");
+  const watchOrganizationId = form.watch("organizationId");
+  const watchGlobalValueManual = form.watch("globalValueManual");
+  const watchGlobalValueCurrent = form.watch("globalValueCurrent");
+  const pricingTotals = useMemo(() => summarizePricingDraft(pricingItems), [pricingItems]);
+  const manualGlobalValue = Number(String(watchGlobalValueCurrent ?? "").replace(",", "."));
+  const globalValueDifference =
+    watchGlobalValueManual && Number.isFinite(manualGlobalValue)
+      ? manualGlobalValue - pricingTotals.globalEstimated
+      : null;
+  const numberPreview = useMemo(
+    () => formatFormalNumberPreview(String(watchFormalNumber ?? ""), String(watchStartDate ?? "")),
+    [watchFormalNumber, watchStartDate]
+  );
+
+  const onContractTypeCatalogChange = useCallback(
+    (catalogId: string, catalog?: ContractTypeCatalogRecord) => {
+      form.setValue("contractTypeCatalogId", catalogId, { shouldValidate: true });
+      const legacy = catalog?.legacyEnum;
+      if (legacy === "SOFTWARE" || legacy === "DATACENTER" || legacy === "INFRA" || legacy === "SERVICO") {
+        form.setValue("contractType", legacy, { shouldValidate: true });
+      }
+    },
+    [form]
+  );
+
   useEffect(() => {
-    if (initialContract) {
-      form.reset(contractToFormDefaults(initialContract));
+    if (editContract) {
+      form.reset(contractToFormDefaults(editContract));
+      if (editContract.pricingItems) {
+        setPricingItems(pricingItemsFromContract(editContract.pricingItems));
+      }
     } else {
       form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+      setPricingItems([]);
     }
-  }, [initialContract?.id, form, initialContract]);
+    setPricingError(null);
+  }, [editContract?.id, editContract?.updatedAt, form, editContract]);
 
   const createFiscalMut = useMutation({
     mutationFn: async (vars: { name: string; email: string; phone: string; role: FiscalModalRole }) => {
@@ -183,6 +310,8 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
       toast.success("Contrato cadastrado.");
       void qc.invalidateQueries({ queryKey: queryKeys.contracts });
       form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+      setPricingItems([]);
+      setPricingError(null);
       onSuccess?.();
     },
     onError: (e: unknown) => {
@@ -191,31 +320,38 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   });
 
   const updateContractMut = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: ContractPageParsed }) => {
-      const mv = Number(String(data.monthlyValue).replace(",", "."));
-      const instStr = (data.installationValue ?? "").trim();
-      const installationValue = instStr === "" ? null : Number(instStr.replace(",", "."));
+    mutationFn: async ({
+      id,
+      data,
+      items
+    }: {
+      id: string;
+      data: ContractPageParsed;
+      items: PricingDraftItem[];
+    }) => {
+      const totals = summarizePricingDraft(items);
       const implS = (data.implementationPeriodStart ?? "").trim();
       const implE = (data.implementationPeriodEnd ?? "").trim();
       return updateContract(id, {
-        number: data.number.trim(),
+        ...(data.number.trim() ? { number: data.number.trim() } : {}),
+        ...catalogPayloadFields(data),
         name: data.name.trim(),
         description: data.description.trim() || null,
-        managingUnit: data.managingUnit.trim() || null,
         companyName: data.companyName.trim(),
         cnpj: data.cnpj,
-        contractType: data.contractType,
         lawType: data.lawType || undefined,
         startDate: data.startDate,
         endDate: data.endDate,
-        monthlyValue: mv,
-        installationValue,
+        monthlyValue: totals.monthlyValue,
+        installationValue: totals.installationValue,
+        ...globalValuePayload(data),
         implementationPeriodStart: implS ? implS : null,
         implementationPeriodEnd: implE ? implE : null,
         fiscalId: data.fiscalId,
         managerId: data.managerId.trim() || undefined,
         supplierId: data.supplierId.trim() || null,
-        glpiGroups: data.glpiGroups
+        glpiGroups: data.glpiGroups,
+        pricingItems: toPricingItemInputs(items)
       });
     },
     onSuccess: () => {
@@ -295,35 +431,48 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   }
 
   function onValidSubmit(raw: ContractPageFormInput): void {
-    const data = contractPageSchema.parse(raw);
-    if (initialContract) {
-      updateContractMut.mutate({ id: initialContract.id, data });
+    const schema = initialContract ? contractPageSchema : createContractPageSchema;
+    const parsed = schema.safeParse(raw);
+    if (!parsed.success) {
+      const first = parsed.error.flatten().fieldErrors;
+      const msg = Object.values(first).flat()[0];
+      toast.error(typeof msg === "string" ? msg : "Verifique os campos do formulário.");
       return;
     }
-    const mv = Number(String(data.monthlyValue).replace(",", "."));
-    const instStr = (data.installationValue ?? "").trim();
-    const installationValue = instStr === "" ? null : Number(instStr.replace(",", "."));
+    const data = parsed.data;
+    const pricingMsg = validatePricingDraft(pricingItems);
+    setPricingError(pricingMsg);
+    if (pricingMsg) {
+      toast.error(pricingMsg);
+      return;
+    }
+    const totals = summarizePricingDraft(pricingItems);
+    const itemsPayload = toPricingItemInputs(pricingItems);
+    if (initialContract) {
+      updateContractMut.mutate({ id: initialContract.id, data, items: pricingItems });
+      return;
+    }
     const implS = (data.implementationPeriodStart ?? "").trim();
     const implE = (data.implementationPeriodEnd ?? "").trim();
     createContractMut.mutate({
-      number: data.number.trim(),
+      ...catalogPayloadFields(data),
       name: data.name.trim(),
       description: data.description.trim() || undefined,
-      managingUnit: data.managingUnit.trim() || undefined,
       companyName: data.companyName.trim(),
       cnpj: data.cnpj,
-      contractType: data.contractType,
       lawType: data.lawType || undefined,
       startDate: data.startDate,
       endDate: data.endDate,
-      monthlyValue: mv,
-      ...(installationValue !== null ? { installationValue } : {}),
+      monthlyValue: totals.monthlyValue,
+      ...(totals.installationValue != null ? { installationValue: totals.installationValue } : {}),
+      ...globalValuePayload(data),
       ...(implS ? { implementationPeriodStart: implS } : {}),
       ...(implE ? { implementationPeriodEnd: implE } : {}),
       fiscalId: data.fiscalId,
       managerId: data.managerId.trim() || undefined,
       supplierId: data.supplierId.trim() || undefined,
-      glpiGroups: data.glpiGroups.length > 0 ? data.glpiGroups : undefined
+      glpiGroups: data.glpiGroups.length > 0 ? data.glpiGroups : undefined,
+      pricingItems: itemsPayload
     });
   }
 
@@ -343,15 +492,163 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
         {listsLoading ? <p className="text-sm text-muted-foreground">Carregando fiscais e fornecedores…</p> : null}
         {listsError ? <p className="text-sm text-destructive">{listsError}</p> : null}
 
-        <FormSection title="Identificação do contrato" description="Número e nome como aparecem na gestão interna.">
+        <FormSection
+          title="Identificação do contrato"
+          description="Número formal, órgão gestor e tipo conforme cadastros da Administração. O código interno SIGTI é gerado automaticamente ao salvar."
+        >
           <FormField
             control={form.control}
-            name="number"
+            name="formalNumber"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Número do contrato</FormLabel>
+                <FormLabel>Número formal {initialContract ? "(opcional na edição)" : ""}</FormLabel>
                 <FormControl>
-                  <Input placeholder="Ex.: 001/2026" autoComplete="off" {...field} />
+                  <Input
+                    placeholder="Somente dígitos (ex.: 370)"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    {...field}
+                    value={field.value ?? ""}
+                    onChange={(e) => field.onChange(onlyDigits(e.target.value))}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormItem>
+            <FormLabel>Número completo (pré-visualização)</FormLabel>
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">{numberPreview}</div>
+            <FormDescription>
+              Formato número/ano — o ano vem do início da vigência.{" "}
+              {editContract?.internalCode ? (
+                <>Código interno atual: <strong>{editContract.internalCode}</strong>.</>
+              ) : (
+                <>O código interno (ex.: ST-2026-001) será gerado ao salvar.</>
+              )}
+            </FormDescription>
+          </FormItem>
+          <FormField
+            control={form.control}
+            name="administrativeProcess"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Processo administrativo (opcional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="Ex.: 23.911/2022" autoComplete="off" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="organizationId"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Órgão gestor</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || undefined} disabled={catalogsLoading}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder={catalogsLoading ? "Carregando…" : "Selecione o órgão"} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {activeOrganizations.map((org) => (
+                      <SelectItem key={org.id} value={org.id}>
+                        {org.acronym ? `${org.acronym} — ${org.name}` : org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {!watchOrganizationId ? (
+            <FormField
+              control={form.control}
+              name="managingUnit"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                  <FormLabel>Órgão gestor (texto legado)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Ex.: SEC. ADM. E RH" autoComplete="organization" {...field} />
+                  </FormControl>
+                  <FormDescription>Use apenas se o órgão ainda não estiver no cadastro central.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
+          <FormField
+            control={form.control}
+            name="contractTypeCatalogId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Tipo de contrato</FormLabel>
+                <Select
+                  onValueChange={(id) => {
+                    const catalog = activeContractTypes.find((t) => t.id === id);
+                    onContractTypeCatalogChange(id, catalog);
+                  }}
+                  value={field.value || undefined}
+                  disabled={catalogsLoading}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder={catalogsLoading ? "Carregando…" : "Selecione o tipo"} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {activeContractTypes.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.acronym ? `${t.acronym} — ${t.name}` : t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="hiringTypeId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Modalidade de contratação (opcional)</FormLabel>
+                <Select
+                  onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
+                  value={field.value ? field.value : "__none__"}
+                  disabled={catalogsLoading}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="— Nenhuma —" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Nenhuma —</SelectItem>
+                    {activeHiringTypes.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="hiringProcedureNumber"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Nº do procedimento licitatório (opcional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="NNNN/AAAA (ex.: 0156/2022)" autoComplete="off" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -362,33 +659,10 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             name="name"
             render={({ field }) => (
               <FormItem className="sm:col-span-2">
-                <FormLabel>Nome</FormLabel>
+                <FormLabel>Nome / objeto resumido</FormLabel>
                 <FormControl>
                   <Input placeholder="Denominação do contrato" {...field} />
                 </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="contractType"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Tipo</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="SOFTWARE">Software</SelectItem>
-                    <SelectItem value="DATACENTER">Datacenter</SelectItem>
-                    <SelectItem value="INFRA">Infraestrutura</SelectItem>
-                    <SelectItem value="SERVICO">Serviço</SelectItem>
-                  </SelectContent>
-                </Select>
                 <FormMessage />
               </FormItem>
             )}
@@ -415,22 +689,6 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                   </SelectContent>
                 </Select>
                 <FormDescription>Se vazio, o servidor usa a regra por padrão (14133).</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="managingUnit"
-            render={({ field }) => (
-              <FormItem className="sm:col-span-2">
-                <FormLabel>Órgão gestor</FormLabel>
-                <FormControl>
-                  <Input placeholder="Ex.: SEC. ADM. E RH" autoComplete="organization" {...field} />
-                </FormControl>
-                <FormDescription>
-                  Ex.: secretaria ou unidade responsável pelo acompanhamento do contrato (quadro de sistemas terceirizados).
-                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -582,8 +840,8 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
         </FormSection>
 
         <FormSection
-          title="Vigência e valores"
-          description="Mensalidade e implantação são rubricas distintas. Defina o período de implantação (opcional) para o sistema indicar a fase: durante esse período a referência proporcional é a implantação; depois, a mensalidade."
+          title="Vigência"
+          description="Período de vigência do contrato. O período de implantação (opcional) orienta o painel de proporcionalidade entre implantação e mensalidade."
         >
           <FormField
             control={form.control}
@@ -613,34 +871,6 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
           />
           <FormField
             control={form.control}
-            name="monthlyValue"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Mensalidade (R$)</FormLabel>
-                <FormControl>
-                  <Input type="text" inputMode="decimal" placeholder="0,00" {...field} />
-                </FormControl>
-                <FormDescription>Valor recorrente mensal do contrato.</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="installationValue"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Implantação (R$)</FormLabel>
-                <FormControl>
-                  <Input type="text" inputMode="decimal" placeholder="Opcional" {...field} />
-                </FormControl>
-                <FormDescription>Valor único de implantação ou projeto, separado da mensalidade.</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
             name="implementationPeriodStart"
             render={({ field }) => (
               <FormItem>
@@ -648,7 +878,10 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                 <FormControl>
                   <Input type="date" {...field} value={field.value ?? ""} />
                 </FormControl>
-                <FormDescription>Opcional. Com início e fim definidos, o painel de proporcionalidade destaca implantação ou mensalidade conforme a data de hoje.</FormDescription>
+                <FormDescription>
+                  Opcional. Com início e fim definidos, o painel de proporcionalidade destaca implantação ou mensalidade
+                  conforme a data de hoje.
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -666,6 +899,100 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
               </FormItem>
             )}
           />
+        </FormSection>
+
+        <FormSection
+          title="Itens contratuais"
+          description="Registre mensalidade, implantação, horas, UST, equipamentos, licenças e demais itens precificados. A descrição livre e o tipo padronizado são complementares — não se substituem. O valor total é calculado automaticamente (quantidade × unitário), salvo indicação manual justificada."
+        >
+          <ContractPricingItemsEditor
+            value={pricingItems}
+            onChange={(next) => {
+              setPricingItems(next);
+              if (pricingError) setPricingError(validatePricingDraft(next));
+            }}
+            lockHardDelete={Boolean(editContract?.pricingLocked)}
+            error={pricingError}
+          />
+          {initialContract && qContractDetail.isPending && !editContract?.pricingItems ? (
+            <p className="sm:col-span-2 text-sm text-muted-foreground">Carregando itens contratuais…</p>
+          ) : null}
+        </FormSection>
+
+        <FormSection
+          title="Valor global"
+          description="O valor global é estimado pelos itens contratuais. Use ajuste manual apenas em situação excepcional e registre a justificativa."
+        >
+          <FormItem>
+            <FormLabel>Estimativa calculada pelos itens</FormLabel>
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">
+              {formatBrl(pricingTotals.globalEstimated)}
+            </div>
+            <FormDescription>
+              Recorrentes: {formatBrl(pricingTotals.recurringPredicted)} · Únicos: {formatBrl(pricingTotals.oneTime)} · Sob demanda:{" "}
+              {formatBrl(pricingTotals.onDemand)}
+            </FormDescription>
+          </FormItem>
+          <FormField
+            control={form.control}
+            name="globalValueManual"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start gap-3 space-y-0 rounded-md border p-3 sm:col-span-2">
+                <FormControl>
+                  <Checkbox checked={field.value} onCheckedChange={(value) => field.onChange(value === true)} />
+                </FormControl>
+                <div className="space-y-1 leading-none">
+                  <FormLabel>Ajuste manual excepcional</FormLabel>
+                  <FormDescription>
+                    Preserva a estimativa dos itens e exige informar o motivo do valor global informado.
+                  </FormDescription>
+                </div>
+              </FormItem>
+            )}
+          />
+          {watchGlobalValueManual ? (
+            <>
+              <FormField
+                control={form.control}
+                name="globalValueCurrent"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Valor global ajustado</FormLabel>
+                    <FormControl>
+                      <Input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0,00" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormItem>
+                <FormLabel>Diferença em relação aos itens</FormLabel>
+                <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">
+                  {globalValueDifference == null
+                    ? "Informe o valor ajustado."
+                    : `${globalValueDifference >= 0 ? "+" : "−"} ${formatBrl(Math.abs(globalValueDifference))}`}
+                </div>
+              </FormItem>
+              <FormField
+                control={form.control}
+                name="globalValueJustification"
+                render={({ field }) => (
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>Justificativa do ajuste</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={3}
+                        placeholder="Explique por que o valor global difere da estimativa dos itens."
+                        className="min-h-[88px] resize-y"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          ) : null}
         </FormSection>
 
         <FormSection title="Descrição" description="Opcional — objeto ou observações.">

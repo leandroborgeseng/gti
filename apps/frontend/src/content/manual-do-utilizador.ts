@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-07-29";
+export const MANUAL_LAST_UPDATED = "2026-07-30";
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -30,7 +30,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "p",
         parts: [
-          "A plataforma de Gestão de Operações de TI reúne a gestão contratual, medições financeiras, glosas, ligação a chamados GLPI, governança de SLA, metas, projetos e relatórios. O objetivo é dar visibilidade à operação e ao cumprimento contratual em um único painel."
+          "O SIGTI — Sistema Integrado de Gestão de Tecnologia da Informação — reúne a gestão contratual, medições financeiras, glosas, ligação a chamados GLPI, governança de SLA, metas, projetos e relatórios. O objetivo é dar visibilidade à operação e ao cumprimento contratual em um único painel."
         ]
       },
       {
@@ -70,11 +70,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "p",
         parts: [
-          "Existem três papéis: administrador, editor e leitor. O administrador gerencia usuários (ver ",
-          { href: "/users", label: "Usuários" },
-          "), pode exportar e restaurar backup completo do sistema (ver ",
-          { href: "/backup", label: "Backup e migração" },
-          ") e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis."
+          "Existem três papéis: administrador, editor e leitor. O administrador acessa a área ",
+          { href: "/administracao", label: "Administração" },
+          " (usuários, órgãos, permissões, catálogos e backup) e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis. Quando editor ou leitor estiver vinculado a um órgão, as listas e os detalhes de contratos, medições e glosas mostram somente registros desse órgão; administradores mantêm a visão global. As permissões marcadas na Administração são aplicadas tanto aos menus quanto às operações: permissões adicionais por usuário somam-se às do papel."
         ]
       },
       {
@@ -179,12 +177,18 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "ul",
         items: [
-          "Valores e vigência: mensalidade, implantação, valor total e período de implantação quando configurados.",
+          "Lista: a pesquisa também localiza o código interno SIGTI, a identificação formal, o processo administrativo, o nome e o fornecedor.",
+          "Vigência: datas de início e fim; período de implantação opcional para o painel de proporcionalidade.",
+          "Número formal: a identificação é formada pelo número e pelo ano da data de início (por exemplo, 0156/2026). O mesmo número formal não pode ser cadastrado mais de uma vez no mesmo ano.",
+          "Código interno: administradores com a permissão específica podem usar «Regenerar código interno» no topo do detalhe apenas em situações excepcionais. É obrigatório justificar a emissão; o código anterior permanece no histórico e o novo código recebe outro sequencial.",
+          "Excluir contrato: disponível apenas para administradores, no topo do detalhe. Exige digitar EXCLUIR ou o número do contrato e uma justificativa. Só funciona para cadastros sem medições, aditivos, memória financeira, chamados de governança ou funcionalidades já avaliadas; nos demais casos, altere o status para Suspenso ou Encerrado.",
+          "Itens contratuais: na criação e na edição, registre quantos itens forem necessários (mensalidade, implantação, horas de desenvolvimento ou suporte, treinamentos, UST, equipamentos, licenças, locações, infraestrutura, materiais e outros). Cada item tem sequência, tipo padronizado (lista da Administração), descrição contratual livre (texto do edital/TR/proposta), unidade de medida, quantidade, valor unitário e valor total (calculado automaticamente; valor manual exige justificativa se divergir). Itens recorrentes pedem periodicidade e período de incidência; marque «Base de glosa» nas mensalidades que devem compor a referência das medições de funcionalidades. Sob demanda registram o teto contratado (consumo controlado depois); valores únicos não exigem periodicidade. Ao final da seção aparecem os totais recorrente, único, sob demanda e global estimado. Com medições ou memória financeira, o item não é excluído — apenas cancelado.",
+          "Valor global: a seção própria mostra a estimativa calculada pelos itens. Em caso excepcional, marque «Ajuste manual excepcional», informe o valor global e justifique a divergência. O detalhe do contrato identifica esse ajuste e preserva o valor global original para conferência.",
           "Snapshots financeiros: histórico de valores acordados ao longo do tempo, para leitura e conferência.",
           "Proporção de implantação por funcionalidade: repartição do valor de implantação alinhada às funcionalidades do contrato.",
           "Grupos GLPI: associação de grupos do GLPI ao contrato, para contagem de chamados nos relatórios.",
           "Aditivos: registro de alterações contratuais.",
-          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir. Cada módulo tem uma sanfona para mostrar ou ocultar suas funcionalidades, facilitando a navegação em contratos extensos. Use os filtros por status de entrega, criticidade e texto para localizar itens por Código do Item ou descrição dentro dos respectivos módulos. No topo do módulo aparecem total de itens, entregues, parciais, não entregues e fiscal responsável. O campo Código do Item é obrigatório e deve guardar a numeração do item no Termo de Referência, mantendo o nome/descrição sem o número embutido; se ficar vazio, o campo é destacado e o sistema mostra um aviso antes de salvar. A criticidade de módulos e funcionalidades define automaticamente os pesos proporcionais usados nos reflexos financeiros: Crítica = 5, Alta = 4, Média = 3, Baixa = 2 e Apoio = 1.",
+          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir. Cada módulo tem uma sanfona para mostrar ou ocultar suas funcionalidades, facilitando a navegação em contratos extensos. Use os filtros por status de entrega, criticidade e texto para localizar itens por Código do Item ou descrição dentro dos respectivos módulos. No topo do módulo aparecem total de itens, entregues, parciais, não entregues e fiscal responsável. Em contratos de software e serviço, selecione também a «Base de glosa (item contratual)» para cada módulo quando as mensalidades precisarem ser calculadas separadamente; ao existir pelo menos um vínculo, somente os módulos vinculados entram nesse cálculo, evitando duplicidade. O campo Código do Item é obrigatório e deve guardar a numeração do item no Termo de Referência, mantendo o nome/descrição sem o número embutido; se ficar vazio, o campo é destacado e o sistema mostra um aviso antes de salvar. A criticidade de módulos e funcionalidades define automaticamente os pesos proporcionais usados nos reflexos financeiros: Crítica = 5, Alta = 4, Média = 3, Baixa = 2 e Apoio = 1.",
           "Fiscal responsável pelo módulo: selecione um usuário do sistema para acompanhar e validar a entrega daquele módulo.",
           "Histórico auditável dos itens: registra quem inseriu, excluiu ou alterou módulos, funcionalidades e serviços, incluindo antes e depois de Código do Item, descrição/nome, criticidade, estado e entrega quando esses campos mudam."
         ]
@@ -207,7 +211,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/modulos", label: "Funcionalidades" },
-          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. Cada funcionalidade deve ter Código do Item separado do nome, para guardar a numeração do Termo de Referência; se o código obrigatório não for preenchido, o campo fica vermelho e o sistema mostra um aviso antes de salvar. A criticidade aparece em um seletor colorido na linha do item, do nível 1 (Apoio, verde) ao nível 5 (Crítica, vermelho), e recalcula automaticamente os pesos de todas as funcionalidades do módulo sempre que um item é incluído, excluído ou alterado. Cada contrato e cada módulo têm sanfona (fechados por padrão); no cabeçalho do contrato aparecem o mini gráfico de requisitos cumpridos, o gestor e o fiscal do contrato, e no cabeçalho do módulo você vê contagens de entregues / parciais / não entregues. Dentro do módulo, use os seletores de criticidade e estado de entrega, o botão de editar (lápis) ou excluir (lixeira)."
+          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. A lista começa só com resumos: expandir o contrato carrega os módulos; expandir o módulo carrega a primeira página de itens (use «Carregar mais» se houver continuidade). Os filtros por texto, status de entrega e criticidade pesquisam no servidor e mostram os contratos correspondentes já abertos. Cada funcionalidade deve ter Código do Item separado do nome, para guardar a numeração do Termo de Referência; se o código obrigatório não for preenchido, o campo fica vermelho e o sistema mostra um aviso antes de salvar. A criticidade aparece em um seletor colorido na linha do item, do nível 1 (Apoio, verde) ao nível 5 (Crítica, vermelho), e recalcula automaticamente os pesos de todas as funcionalidades do módulo sempre que um item é incluído, excluído ou alterado. No cabeçalho do contrato aparecem o mini gráfico de requisitos cumpridos, o gestor e o fiscal; no cabeçalho do módulo, as contagens de entregues / parciais / não entregues. Os seletores de entrega e criticidade só aparecem para quem possui a permissão específica de cada ação; editar a estrutura exige permissão de edição de contratos e «Abrir contrato» exige permissão de visualização. Quem não tiver essas permissões apenas consulta."
         ]
       }
     ]
@@ -227,6 +231,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "ul",
         items: [
           "Utilize «Nova medição» para abrir o mês seguinte ou a competência ausente.",
+          "Em contratos de datacenter ou infraestrutura, adicione as linhas de consumo escolhendo o serviço, a quantidade e, quando aplicável, o item contratual de precificação. Para itens sob demanda, o sistema não permite medir ou aprovar quantidade acima do saldo disponível.",
           "Na página da medição, calcule e finalize o fluxo conforme o processo interno (revisão, glosa, aprovação).",
           "Os anexos da medição permitem clicar no nome do ficheiro para abrir um modal: PDF e imagens podem ser pré-visualizados; outros tipos mostram apenas a opção de descarregar. Administradores e editores podem eliminar um anexo (com confirmação)."
         ]
@@ -236,7 +241,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         parts: [
           "O ",
           { href: "/reports/fechamento-mensal", label: "relatório de fechamento mensal" },
-          " cruza contratos vigentes com a medição do mês, referência do mês anterior (quando há medição aprovada), e estatísticas de ordens de serviço GLPI (abertas, fechadas e represadas) por contrato."
+          " cruza contratos vigentes com a medição do mês, referência do mês anterior (quando há medição aprovada), e estatísticas de ordens de serviço GLPI (abertas, fechadas e represadas) por contrato. O ",
+          { href: "/reports/itens-contratuais", label: "relatório financeiro por item contratual" },
+          " mostra os valores, consumos, saldos e total medido de cada item, com filtros por órgão, situação e competência (mês/ano) do valor medido."
         ]
       }
     ]
@@ -343,14 +350,45 @@ export const MANUAL_SECTIONS: ManualSection[] = [
     ]
   },
   {
+    id: "administracao",
+    title: "Administração",
+    blocks: [
+      {
+        kind: "p",
+        parts: [
+          { href: "/administracao", label: "Administração" },
+          " — Área unificada para administradores, com abas para usuários, órgãos, permissões por papel ou usuário, tipos de itens contratuais, tipos de contrato, tipos de contratação, conferência de precificação e atalho para backup. A rota antiga ",
+          { href: "/administracao?tab=usuarios", label: "/users" },
+          " redireciona para a aba Usuários."
+        ]
+      },
+      {
+        kind: "ul",
+        items: [
+          "Usuários: gestão de contas, papéis, aprovação de cadastros e senha inicial.",
+          "Órgãos: cadastro de secretarias/unidades com nome, sigla, código e status ativo/inativo.",
+          "Permissões: marque ou desmarque permissões granulares por papel (ADMIN, EDITOR, VIEWER) ou por usuário (somam-se ao papel). As permissões de gerir usuários e gerir permissões permanecem obrigatoriamente no papel Administrador. Abaixo dos controles, consulte o histórico das últimas alterações, com data e permissões adicionadas ou removidas.",
+          "Usuários: o sistema não permite alterar o papel ou a aprovação de modo a remover o último administrador aprovado.",
+          "Tipos de itens, contrato e contratação: catálogos usados nos formulários de contrato.",
+          "Conferência precificação: valida os contratos ativos migrados dos campos antigos de mensalidade e implantação para itens contratuais. Use os filtros para localizar pendências, duplicidade de mensalidades, quantidades ou períodos a revisar e divergências de valores; cada linha abre o contrato para correção.",
+          "Backup: botão que abre a tela completa de exportação, restauração e S3 em /backup."
+        ]
+      },
+      {
+        kind: "roles",
+        text: "Menu «Administração» só é mostrado a administradores."
+      }
+    ]
+  },
+  {
     id: "usuários",
     title: "Usuários",
     blocks: [
       {
         kind: "p",
         parts: [
-          { href: "/users", label: "Usuários" },
-          " — Gestão de contas, papéis, aprovação de cadastros e senha inicial. Visível apenas para administradores."
+          { href: "/administracao?tab=usuarios", label: "Usuários" },
+          " — Gestão de contas, papéis, aprovação de cadastros e senha inicial. Disponível na aba Usuários da Administração."
         ]
       },
       {
@@ -364,7 +402,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       },
       {
         kind: "roles",
-        text: "Menu «Usuários» só é mostrado a administradores."
+        text: "Disponível na aba Usuários da Administração (menu «Administração»)."
       }
     ]
   },
@@ -376,7 +414,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/backup", label: "Backup e migração" },
-          " — Permite a administradores exportar e restaurar a base de dados PostgreSQL, preferências guardadas no sistema e, opcionalmente, os anexos em disco. Serve para migrar a aplicação para outro servidor (por exemplo Railway → Coolify)."
+          " — Permite a administradores exportar e restaurar a base de dados PostgreSQL, preferências guardadas no sistema e, opcionalmente, os anexos em disco. Também acessível pela aba Backup em ",
+          { href: "/administracao?tab=backup", label: "Administração" },
+          ". Serve para migrar a aplicação para outro servidor (por exemplo Railway → Coolify)."
         ]
       },
       {
@@ -397,7 +437,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       },
       {
         kind: "roles",
-        text: "Menu «Backup e migração» só é mostrado a administradores."
+        text: "Tela dedicada em /backup; atalho na aba Backup da Administração."
       }
     ]
   },

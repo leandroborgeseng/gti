@@ -1,4 +1,4 @@
-# Mapa de módulos (Gestão de Operações de TI)
+# Mapa de módulos (SIGTI)
 
 | Área | Localização | Notas |
 |------|-------------|--------|

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { getAuditActorId, getAuditActorLabel } from "../../common/audit-actor";
+import { getAuditActorId, getAuditActorLabel, requestActorStore } from "../../common/audit-actor";
 import { MeasurementStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { StorageService } from "../../storage/storage.service";
@@ -50,6 +50,7 @@ export class GlosasService {
 
   async findAll(): Promise<unknown> {
     return this.prisma.glosa.findMany({
+      where: this.organizationScope(),
       include: { measurement: { include: { contract: true } }, attachments: true },
       orderBy: { createdAt: "desc" }
     });
@@ -57,7 +58,7 @@ export class GlosasService {
 
   async findOne(id: string): Promise<unknown> {
     const glosa = await this.prisma.glosa.findFirst({
-      where: { id },
+      where: { id, ...this.organizationScope() },
       include: { measurement: { include: { contract: true } }, attachments: true }
     });
     if (!glosa) throw new NotFoundException("Glosa não encontrada");
@@ -112,5 +113,19 @@ export class GlosasService {
         newData: newData ? (newData as Prisma.InputJsonValue) : undefined
       }
     });
+  }
+
+  private organizationScope(): Prisma.GlosaWhereInput {
+    const actor = requestActorStore.getStore();
+    if (actor?.role !== "ADMIN" && actor?.organizationId) {
+      return {
+        measurement: {
+          is: {
+            contract: { is: { organizationId: actor.organizationId } }
+          }
+        }
+      };
+    }
+    return {};
   }
 }

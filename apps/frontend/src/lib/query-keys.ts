@@ -5,11 +5,19 @@ export const queryKeys = {
   suppliers: ["gestao", "suppliers"] as const,
   fiscais: ["gestao", "fiscais"] as const,
   contracts: ["gestao", "contracts"] as const,
-  /** Visão geral de módulos e estado de entrega dos itens (`GET /contracts/overview/modules-delivery`). */
+  /** Resumo dos contratos na tela Funcionalidades. */
   modulesDeliveryOverview: ["gestao", "modules-delivery-overview"] as const,
+  contractModulesDelivery: (contractId: string) => ["gestao", "contract-modules-delivery", contractId] as const,
+  moduleFeaturesDelivery: (contractId: string, moduleId: string) =>
+    ["gestao", "module-features-delivery", contractId, moduleId] as const,
+  modulesDeliverySearch: (key: string) => ["gestao", "modules-delivery-search", key] as const,
   contractModuleValidators: ["gestao", "contract-module-validators"] as const,
   /** Grupos GLPI distintos nos tickets em cache (catálogo para vínculo ao contrato). */
   glpiAssignedGroups: ["gestao", "glpi-assigned-groups"] as const,
+  /** Catálogo de tipos padronizados e unidades de medida dos itens de precificação. */
+  contractPricingCatalog: ["gestao", "contract-pricing-catalog"] as const,
+  /** Conferência administrativa do backfill dos itens de precificação. */
+  pricingMigrationReview: ["gestao", "admin", "pricing-migration-review"] as const,
   measurements: ["gestao", "measurements"] as const,
   glosas: ["gestao", "glosas"] as const,
   goals: ["gestao", "goals"] as const,
@@ -21,5 +29,11 @@ export const queryKeys = {
   /** Prefixo para invalidar todas as queries da vista plana de tarefas. */
   projectsAllTasksRoot: ["gestao", "projects", "all-tasks"] as const,
   dashboardSummary: ["gestao", "dashboard-summary"] as const,
-  dashboardAlerts: ["gestao", "dashboard-alerts"] as const
+  dashboardAlerts: ["gestao", "dashboard-alerts"] as const,
+  organizations: ["gestao", "admin", "organizations"] as const,
+  rolePermissions: (role: string) => ["gestao", "admin", "role-permissions", role] as const,
+  userPermissions: (userId: string) => ["gestao", "admin", "user-permissions", userId] as const,
+  adminItemTypes: ["gestao", "admin", "item-types"] as const,
+  contractTypeCatalog: ["gestao", "admin", "contract-types"] as const,
+  hiringTypes: ["gestao", "admin", "hiring-types"] as const
 } as const;

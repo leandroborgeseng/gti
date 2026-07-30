@@ -1,6 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { getAuditActorId } from "../../common/audit-actor";
-import { MeasurementItemType, MeasurementStatus, Prisma } from "@prisma/client";
+import { getAuditActorId, requestActorStore } from "../../common/audit-actor";
+import {
+  ContractPricingBillingKind,
+  ContractPricingItemStatus,
+  ContractPricingPeriodicity,
+  MeasurementItemType,
+  MeasurementStatus,
+  Prisma
+} from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { StorageService } from "../../storage/storage.service";
 import { CreateMeasurementDto } from "./measurements.dto";
@@ -23,23 +30,32 @@ export class MeasurementsService {
     });
     if (duplicate) throw new BadRequestException("Já existe medição para este mês/ano");
 
-    const measurement = await this.prisma.measurement.create({
-      data: {
-        contractId: dto.contractId,
-        referenceMonth: dto.referenceMonth,
-        referenceYear: dto.referenceYear,
-        items: dto.items?.length
-          ? {
-              create: dto.items.map((item) => ({
-                type: item.type,
-                referenceId: item.referenceId,
-                quantity: new Prisma.Decimal(item.quantity),
-                calculatedValue: new Prisma.Decimal(0)
-              }))
-            }
-          : undefined
-      },
-      include: { items: true }
+    const measurement = await this.prisma.$transaction(async (tx) => {
+      const contract = await tx.contract.findFirst({ where: { id: dto.contractId, deletedAt: null }, select: { id: true } });
+      if (!contract) throw new NotFoundException("Contrato não encontrado");
+
+      const pricingItems = await this.resolvePricingItems(tx, dto.contractId, dto.items ?? []);
+      return tx.measurement.create({
+        data: {
+          contractId: dto.contractId,
+          referenceMonth: dto.referenceMonth,
+          referenceYear: dto.referenceYear,
+          items: dto.items?.length
+            ? {
+                create: dto.items.map((item) => ({
+                  type: item.type,
+                  referenceId: item.referenceId,
+                  pricingItemId: item.pricingItemId,
+                  quantity: new Prisma.Decimal(item.quantity),
+                  calculatedValue: item.pricingItemId
+                    ? new Prisma.Decimal(item.quantity).mul(pricingItems.get(item.pricingItemId)!.unitValue)
+                    : new Prisma.Decimal(0)
+                }))
+              }
+            : undefined
+        },
+        include: { items: true }
+      });
     });
     await this.audit("Measurement", measurement.id, "CREATE", null, measurement);
     return measurement;
@@ -47,7 +63,7 @@ export class MeasurementsService {
 
   async findAll(): Promise<unknown> {
     return this.prisma.measurement.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...this.organizationScope() },
       include: { contract: true },
       orderBy: { createdAt: "desc" }
     });
@@ -55,9 +71,18 @@ export class MeasurementsService {
 
   async findOne(id: string): Promise<unknown> {
     const m = await this.prisma.measurement.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...this.organizationScope() },
       include: {
-        contract: { include: { services: true } },
+        contract: {
+          include: {
+            services: true,
+            pricingItems: {
+              where: { status: ContractPricingItemStatus.ACTIVE },
+              include: { type: true, unit: true },
+              orderBy: { sequence: "asc" }
+            }
+          }
+        },
         items: true,
         glosas: true,
         attachments: true
@@ -68,7 +93,10 @@ export class MeasurementsService {
   }
 
   /** Linhas de consumo (serviços) para contratos tipo datacenter ou infra; só com medição «Aberta». */
-  async addItems(measurementId: string, items: { type: MeasurementItemType; referenceId: string; quantity: number }[]): Promise<unknown> {
+  async addItems(
+    measurementId: string,
+    items: { type: MeasurementItemType; referenceId: string; quantity: number; pricingItemId?: string }[]
+  ): Promise<unknown> {
     const m = await this.prisma.measurement.findFirst({
       where: { id: measurementId, deletedAt: null },
       include: {
@@ -98,14 +126,20 @@ export class MeasurementsService {
       }
       existingRefs.add(row.referenceId);
     }
-    await this.prisma.measurementItem.createMany({
-      data: items.map((row) => ({
-        measurementId,
-        type: MeasurementItemType.SERVICE,
-        referenceId: row.referenceId,
-        quantity: new Prisma.Decimal(row.quantity),
-        calculatedValue: new Prisma.Decimal(0)
-      }))
+    await this.prisma.$transaction(async (tx) => {
+      const pricingItems = await this.resolvePricingItems(tx, m.contractId, items);
+      await tx.measurementItem.createMany({
+        data: items.map((row) => ({
+          measurementId,
+          type: MeasurementItemType.SERVICE,
+          referenceId: row.referenceId,
+          pricingItemId: row.pricingItemId,
+          quantity: new Prisma.Decimal(row.quantity),
+          calculatedValue: row.pricingItemId
+            ? new Prisma.Decimal(row.quantity).mul(pricingItems.get(row.pricingItemId)!.unitValue)
+            : new Prisma.Decimal(0)
+        }))
+      });
     });
     return this.findOne(measurementId);
   }
@@ -149,12 +183,18 @@ export class MeasurementsService {
     if (!item) {
       throw new NotFoundException("Linha não encontrada nesta medição");
     }
-    await this.prisma.measurementItem.update({
-      where: { id: itemId },
-      data: {
-        quantity: new Prisma.Decimal(quantity),
-        calculatedValue: new Prisma.Decimal(0)
+    await this.prisma.$transaction(async (tx) => {
+      let calculatedValue = new Prisma.Decimal(0);
+      if (item.pricingItemId) {
+        const pricingItems = await this.resolvePricingItems(tx, m.contractId, [
+          { quantity, pricingItemId: item.pricingItemId }
+        ]);
+        calculatedValue = new Prisma.Decimal(quantity).mul(pricingItems.get(item.pricingItemId)!.unitValue);
       }
+      await tx.measurementItem.update({
+        where: { id: itemId },
+        data: { quantity: new Prisma.Decimal(quantity), calculatedValue }
+      });
     });
     return this.findOne(measurementId);
   }
@@ -163,8 +203,14 @@ export class MeasurementsService {
     const measurement = await this.prisma.measurement.findFirst({
       where: { id, deletedAt: null },
       include: {
-        contract: { include: { modules: { include: { features: true } }, services: true } },
-        items: true,
+        contract: {
+          include: {
+            modules: { include: { features: true, glosaPricingItem: { include: { type: true } } } },
+            services: true,
+            pricingItems: { where: { status: ContractPricingItemStatus.ACTIVE }, include: { type: true } }
+          }
+        },
+        items: { include: { pricingItem: true } },
         glosas: true
       }
     });
@@ -180,18 +226,54 @@ export class MeasurementsService {
      */
     let measured = new Prisma.Decimal(0);
     if (contractType === "SOFTWARE" || contractType === "SERVICO") {
-      const features = measurement.contract.modules.flatMap((m) => m.features);
-      const total = features.length;
-      const validated = features.filter((f) => f.status === "VALIDATED").length;
-      const percentual = total > 0 ? new Prisma.Decimal(validated).div(total) : new Prisma.Decimal(0);
-      measured = measurement.contract.monthlyValue.mul(percentual);
+      const monthlyEquivalent = (item: (typeof measurement.contract.pricingItems)[number]) => {
+        if (item.billingKind !== ContractPricingBillingKind.RECURRING) return new Prisma.Decimal(0);
+        const divisor: Record<ContractPricingPeriodicity, number> = {
+          [ContractPricingPeriodicity.MONTHLY]: 1,
+          [ContractPricingPeriodicity.BIMONTHLY]: 2,
+          [ContractPricingPeriodicity.QUARTERLY]: 3,
+          [ContractPricingPeriodicity.SEMIANNUAL]: 6,
+          [ContractPricingPeriodicity.ANNUAL]: 12,
+          [ContractPricingPeriodicity.CUSTOM]: 1
+        };
+        return item.unitValue.div(divisor[item.periodicity ?? ContractPricingPeriodicity.MONTHLY]);
+      };
+      const modulesWithLink = measurement.contract.modules.filter((module) => module.glosaPricingItemId);
+
+      if (modulesWithLink.length > 0) {
+        // Ao configurar qualquer vínculo, somente os módulos vinculados entram no cálculo,
+        // evitando que uma base compartilhada seja contabilizada duas vezes.
+        for (const module of modulesWithLink) {
+          const total = module.features.length;
+          const validated = module.features.filter((feature) => feature.status === "VALIDATED").length;
+          const percentual = total > 0 ? new Prisma.Decimal(validated).div(total) : new Prisma.Decimal(0);
+          const baseItem = measurement.contract.pricingItems.find((item) => item.id === module.glosaPricingItemId);
+          if (baseItem) measured = measured.add(monthlyEquivalent(baseItem).mul(percentual));
+        }
+      } else {
+        const features = measurement.contract.modules.flatMap((module) => module.features);
+        const total = features.length;
+        const validated = features.filter((feature) => feature.status === "VALIDATED").length;
+        const percentual = total > 0 ? new Prisma.Decimal(validated).div(total) : new Prisma.Decimal(0);
+        const explicitGlosaBases = measurement.contract.pricingItems.filter((item) => item.includeInGlosaBase);
+        const explicitBaseValue = explicitGlosaBases.reduce(
+          (sum, item) => sum.add(monthlyEquivalent(item)),
+          new Prisma.Decimal(0)
+        );
+        const compatibleGlosaBase = measurement.contract.pricingItems.find(
+          (item) => item.type.participatesInGlosa || item.type.code === "MENSALIDADE"
+        );
+        const glosaBase = explicitGlosaBases.length > 0 ? explicitBaseValue : compatibleGlosaBase?.totalValue;
+        measured = (glosaBase?.gt(0) ? glosaBase : measurement.contract.monthlyValue).mul(percentual);
+      }
     } else if (contractType === "DATACENTER" || contractType === "INFRA") {
       const serviceMap = new Map(measurement.contract.services.map((s) => [s.id, s]));
       for (const item of measurement.items) {
         if (item.type !== MeasurementItemType.SERVICE) continue;
         const service = serviceMap.get(item.referenceId);
-        if (!service) continue;
-        const calc = item.quantity.mul(service.unitValue);
+        const unitValue = item.pricingItem?.unitValue ?? service?.unitValue;
+        if (!unitValue) continue;
+        const calc = item.quantity.mul(unitValue);
         measured = measured.add(calc);
         await this.prisma.measurementItem.update({
           where: { id: item.id },
@@ -220,7 +302,10 @@ export class MeasurementsService {
   }
 
   async approve(id: string): Promise<unknown> {
-    const measurement = await this.prisma.measurement.findFirst({ where: { id, deletedAt: null } });
+    const measurement = await this.prisma.measurement.findFirst({
+      where: { id, deletedAt: null },
+      include: { items: { where: { pricingItemId: { not: null } } } }
+    });
     if (!measurement) throw new NotFoundException("Medição não encontrada");
     if (measurement.status === MeasurementStatus.OPEN) {
       throw new BadRequestException("Calcule a medição antes de aprovar");
@@ -231,9 +316,39 @@ export class MeasurementsService {
     if (measurement.totalMeasuredValue.lte(0)) {
       throw new BadRequestException("Não é possível aprovar medição sem cálculo");
     }
-    const updated = await this.prisma.measurement.update({
-      where: { id },
-      data: { status: MeasurementStatus.APPROVED }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const consumptionByPricingItem = new Map<string, Prisma.Decimal>();
+      for (const item of measurement.items) {
+        if (!item.pricingItemId) continue;
+        const previous = consumptionByPricingItem.get(item.pricingItemId) ?? new Prisma.Decimal(0);
+        consumptionByPricingItem.set(item.pricingItemId, previous.add(item.quantity));
+      }
+      for (const [pricingItemId, quantity] of consumptionByPricingItem) {
+        const pricingItem = await tx.contractPricingItem.findFirst({
+          where: { id: pricingItemId, contractId: measurement.contractId },
+          select: { billingKind: true, quantity: true, consumedQuantity: true }
+        });
+        if (!pricingItem) throw new BadRequestException("Um item de precificação da medição não pertence ao contrato.");
+        if (pricingItem.billingKind !== ContractPricingBillingKind.ON_DEMAND) continue;
+
+        const available = pricingItem.quantity.sub(pricingItem.consumedQuantity);
+        if (quantity.gt(available)) {
+          throw new BadRequestException("A aprovação excede o saldo disponível do item contratual sob demanda.");
+        }
+        const consumed = await tx.contractPricingItem.updateMany({
+          where: {
+            id: pricingItemId,
+            contractId: measurement.contractId,
+            status: ContractPricingItemStatus.ACTIVE,
+            consumedQuantity: { lte: pricingItem.quantity.sub(quantity) }
+          },
+          data: { consumedQuantity: { increment: quantity } }
+        });
+        if (consumed.count !== 1) {
+          throw new BadRequestException("O saldo do item contratual foi alterado; revise a medição antes de aprovar.");
+        }
+      }
+      return tx.measurement.update({ where: { id }, data: { status: MeasurementStatus.APPROVED } });
     });
     await this.audit("Measurement", id, "APPROVE", measurement, updated);
     return updated;
@@ -285,5 +400,60 @@ export class MeasurementsService {
         newData: newData ? (newData as Prisma.InputJsonValue) : undefined
       }
     });
+  }
+
+  /**
+   * Restringe consultas ao órgão do usuário, sem bloquear contas legadas
+   * que ainda não tenham órgão definido.
+   */
+  private organizationScope(): Prisma.MeasurementWhereInput {
+    const actor = requestActorStore.getStore();
+    if (actor?.role !== "ADMIN" && actor?.organizationId) {
+      return { contract: { is: { organizationId: actor.organizationId } } };
+    }
+    return {};
+  }
+
+  /**
+   * Confere que os itens informados estão ativos e pertencem ao contrato.
+   * Para itens sob demanda, a quantidade lançada não pode ultrapassar o saldo já contratado.
+   */
+  private async resolvePricingItems(
+    tx: Prisma.TransactionClient,
+    contractId: string,
+    rows: Array<{ pricingItemId?: string; quantity: number }>
+  ): Promise<Map<string, { billingKind: ContractPricingBillingKind; quantity: Prisma.Decimal; consumedQuantity: Prisma.Decimal; unitValue: Prisma.Decimal }>> {
+    const pricingItemIds = [...new Set(rows.map((row) => row.pricingItemId).filter((id): id is string => Boolean(id)))];
+    if (!pricingItemIds.length) return new Map();
+
+    const pricingItems = await tx.contractPricingItem.findMany({
+      where: { id: { in: pricingItemIds }, contractId },
+      select: { id: true, status: true, billingKind: true, quantity: true, consumedQuantity: true, unitValue: true }
+    });
+    if (pricingItems.length !== pricingItemIds.length) {
+      throw new BadRequestException("Item de precificação inválido ou não pertence ao contrato da medição.");
+    }
+
+    const byId = new Map(pricingItems.map((item) => [item.id, item]));
+    const requestedById = new Map<string, Prisma.Decimal>();
+    for (const row of rows) {
+      if (!row.pricingItemId) continue;
+      const pricingItem = byId.get(row.pricingItemId)!;
+      if (pricingItem.status !== ContractPricingItemStatus.ACTIVE) {
+        throw new BadRequestException("Só é possível medir itens de precificação ativos.");
+      }
+      const requested = requestedById.get(row.pricingItemId) ?? new Prisma.Decimal(0);
+      requestedById.set(row.pricingItemId, requested.add(new Prisma.Decimal(row.quantity)));
+    }
+    for (const [pricingItemId, requested] of requestedById) {
+      const pricingItem = byId.get(pricingItemId)!;
+      if (
+        pricingItem.billingKind === ContractPricingBillingKind.ON_DEMAND &&
+        requested.gt(pricingItem.quantity.sub(pricingItem.consumedQuantity))
+      ) {
+        throw new BadRequestException("A quantidade medida excede o saldo disponível do item contratual sob demanda.");
+      }
+    }
+    return byId;
   }
 }

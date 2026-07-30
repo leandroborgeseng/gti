@@ -1,4 +1,8 @@
 import { prisma } from "@/glpi/config/prisma";
+import { OrganizationsService } from "@gestao/modules/organizations/organizations.service";
+import { PermissionsService } from "@gestao/modules/permissions/permissions.service";
+import { ContractTypeCatalogService } from "@gestao/modules/contract-type-catalog/contract-type-catalog.service";
+import { HiringTypesService } from "@gestao/modules/hiring-types/hiring-types.service";
 import { ContractsService } from "@gestao/modules/contracts/contracts.service";
 import { DashboardService } from "@gestao/modules/dashboard/dashboard.service";
 import { ExportsService } from "@gestao/modules/exports/exports.service";
@@ -8,6 +12,7 @@ import { GoalsService } from "@gestao/modules/goals/goals.service";
 import { GovernanceTicketsService } from "@gestao/modules/governance-tickets/governance-tickets.service";
 import { MeasurementsService } from "@gestao/modules/measurements/measurements.service";
 import { MonthlyContractClosureReportService } from "@gestao/modules/reports/monthly-contract-closure.service";
+import { PricingItemsFinancialReportService } from "@gestao/modules/reports/pricing-items-financial-report.service";
 import { OperationalEventsService } from "@gestao/modules/operational-events/operational-events.service";
 import { ProjectsService } from "@gestao/modules/projects/projects.service";
 import { SuppliersService } from "@gestao/modules/suppliers/suppliers.service";
@@ -34,8 +39,13 @@ export const gestaoUserAccess = new UserAccessService(prismaSvc);
 export const gestaoUserAssignments = new UserAssignmentsService(prismaSvc);
 export const gestaoExports = new ExportsService(prismaSvc);
 export const gestaoMonthlyClosureReport = new MonthlyContractClosureReportService(prismaSvc);
+export const gestaoPricingItemsFinancialReport = new PricingItemsFinancialReportService(prismaSvc);
 export const gestaoOperationalEvents = new OperationalEventsService(prismaSvc);
 export const gestaoProjects = new ProjectsService(prismaSvc, storage);
+export const gestaoOrganizations = new OrganizationsService(prismaSvc);
+export const gestaoPermissions = new PermissionsService(prismaSvc);
+export const gestaoContractTypeCatalog = new ContractTypeCatalogService(prismaSvc);
+export const gestaoHiringTypes = new HiringTypesService(prismaSvc);
 
 let goalsBootstrapped = false;
 

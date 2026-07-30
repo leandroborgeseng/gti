@@ -14,9 +14,14 @@ import {
   gestaoGlosas,
   gestaoGoals,
   gestaoGovernance,
+  gestaoHiringTypes,
   gestaoMeasurements,
   gestaoMonthlyClosureReport,
+  gestaoPricingItemsFinancialReport,
   gestaoOperationalEvents,
+  gestaoOrganizations,
+  gestaoPermissions,
+  gestaoContractTypeCatalog,
   gestaoProjects,
   gestaoSuppliers,
   gestaoUserAccess,
@@ -36,7 +41,10 @@ type JwtUser = {
   department: string | null;
   phone: string | null;
   role: UserRole;
+  organizationId: string | null;
   mustChangePassword: boolean;
+  effectivePermissionKeys: Set<string>;
+  usingLegacyPermissionFallback: boolean;
 };
 
 async function readJsonBody(req: Request): Promise<unknown> {
@@ -86,6 +94,7 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
         department: true,
         phone: true,
         role: true,
+        organizationId: true,
         mustChangePassword: true
       }
     });
@@ -101,7 +110,10 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
       department: user.department,
       phone: user.phone,
       role: user.role as UserRole,
-      mustChangePassword: user.mustChangePassword
+      organizationId: user.organizationId,
+      mustChangePassword: user.mustChangePassword,
+      effectivePermissionKeys: new Set(),
+      usingLegacyPermissionFallback: false
     };
   } catch {
     return null;
@@ -125,6 +137,147 @@ function assertMutation(user: JwtUser, method: string): void {
   if (user.role !== UserRole.ADMIN && user.role !== UserRole.EDITOR) {
     throw new HttpException("Sem permissão para esta operação", 403);
   }
+}
+
+const LEGACY_ROLE_PERMISSION_KEYS: Record<UserRole, readonly string[]> = {
+  [UserRole.VIEWER]: [
+    "dashboard.view",
+    "contracts.view",
+    "contracts.features.view",
+    "measurements.view",
+    "glosas.view",
+    "governance.view",
+    "goals.view",
+    "projects.view",
+    "suppliers.view",
+    "fiscais.view",
+    "reports.view",
+    "manual.view"
+  ],
+  [UserRole.EDITOR]: [
+    "dashboard.view",
+    "contracts.view",
+    "contracts.features.view",
+    "measurements.view",
+    "glosas.view",
+    "governance.view",
+    "goals.view",
+    "projects.view",
+    "suppliers.view",
+    "fiscais.view",
+    "reports.view",
+    "manual.view",
+    "contracts.create",
+    "contracts.edit",
+    "contracts.features.edit_delivery",
+    "contracts.features.edit_criticality",
+    "measurements.create",
+    "measurements.edit",
+    "glosas.create",
+    "exports.run",
+    "projects.edit"
+  ],
+  [UserRole.ADMIN]: []
+};
+
+const ADMIN_ONLY_PERMISSION_KEYS = [
+  "contracts.delete",
+  "contracts.internal_code.regenerate",
+  "contracts.financial.view",
+  "admin.users.view",
+  "admin.users.manage",
+  "admin.organs.view",
+  "admin.organs.manage",
+  "admin.permissions.view",
+  "admin.permissions.manage",
+  "admin.item_types.view",
+  "admin.item_types.manage",
+  "admin.contract_types.view",
+  "admin.contract_types.manage",
+  "admin.hiring_types.view",
+  "admin.hiring_types.manage",
+  "admin.backup.manage"
+] as const;
+
+function legacyPermissionKeys(role: UserRole): Set<string> {
+  if (role === UserRole.ADMIN) {
+    return new Set([...LEGACY_ROLE_PERMISSION_KEYS[UserRole.EDITOR], ...ADMIN_ONLY_PERMISSION_KEYS]);
+  }
+  return new Set(LEGACY_ROLE_PERMISSION_KEYS[role]);
+}
+
+function effectiveKeys(user: JwtUser): Set<string> {
+  return user.usingLegacyPermissionFallback ? legacyPermissionKeys(user.role) : user.effectivePermissionKeys;
+}
+
+function assertPermission(user: JwtUser, key: string): void {
+  if (!effectiveKeys(user).has(key)) {
+    throw new HttpException("Sem permissão para esta operação", 403);
+  }
+}
+
+/** Aceita qualquer uma das chaves (útil para catálogos lidos por formulários operacionais). */
+function assertAnyPermission(user: JwtUser, keys: string[]): void {
+  const effective = effectiveKeys(user);
+  if (!keys.some((key) => effective.has(key))) {
+    throw new HttpException("Sem permissão para esta operação", 403);
+  }
+}
+
+function assertFeatureEditPermissions(user: JwtUser, body: Record<string, unknown>): void {
+  let checkedSpecificPermission = false;
+  if ("deliveryStatus" in body) {
+    assertPermission(user, "contracts.features.edit_delivery");
+    checkedSpecificPermission = true;
+  }
+  if ("criticality" in body) {
+    assertPermission(user, "contracts.features.edit_criticality");
+    checkedSpecificPermission = true;
+  }
+  if (!checkedSpecificPermission) {
+    assertPermission(user, "contracts.edit");
+  }
+}
+
+function requiredPermissionForRoute(method: string, seg: string[]): string | null {
+  const root = seg[0];
+  const isRead = method === "GET" || method === "HEAD";
+
+  if (root === "dashboard") return isRead ? "dashboard.view" : null;
+  if (root === "exports") return "exports.run";
+  // Leituras de catálogo tratadas em assertCatalogRead (contratos também precisam listar).
+  if (root === "organizations") return isRead ? null : "admin.organs.manage";
+  if (root === "users") return isRead ? "admin.users.view" : "admin.users.manage";
+  if (root === "permissions") {
+    if (seg[1] === "me") return null;
+    return isRead ? "admin.permissions.view" : "admin.permissions.manage";
+  }
+  if (root === "contract-type-catalog") return isRead ? null : "admin.contract_types.manage";
+  if (root === "hiring-types") return isRead ? null : "admin.hiring_types.manage";
+
+  if (root === "contracts") {
+    if (seg[1] === "catalog" && seg[2] === "item-types") {
+      return isRead ? null : "admin.item_types.manage";
+    }
+    if (seg.includes("features-delivery") || seg.includes("modules-delivery")) return "contracts.features.view";
+    if (seg.includes("features") && (method === "PUT" || method === "PATCH")) return null;
+    if (method === "GET") return "contracts.view";
+    if (method === "POST" && seg.length === 1) return "contracts.create";
+    if (method === "DELETE" && seg.length === 2) return "contracts.delete";
+    return "contracts.edit";
+  }
+  if (root === "measurements") {
+    if (isRead) return "measurements.view";
+    return method === "POST" && seg.length === 1 ? "measurements.create" : "measurements.edit";
+  }
+  if (root === "glosas") return isRead ? "glosas.view" : "glosas.create";
+  if (root === "projects") return isRead ? "projects.view" : "projects.edit";
+  if (root === "goals") return isRead ? "goals.view" : null;
+  if (root === "governance") return isRead ? "governance.view" : null;
+  if (root === "suppliers") return isRead ? "suppliers.view" : null;
+  if (root === "fiscais") return isRead ? "fiscais.view" : null;
+  if (root === "reports") return isRead ? "reports.view" : null;
+  return null;
 }
 
 function jsonOk(data: unknown, init?: ResponseInit): NextResponse {
@@ -194,8 +347,16 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
 
   const user = await requireUser(req);
   if (!user) return jsonErr(401, "Não autenticado");
+  const effectivePermissions = await gestaoPermissions.resolveEffectivePermissions(user.sub);
+  user.effectivePermissionKeys = new Set(effectivePermissions.keys);
+  user.usingLegacyPermissionFallback = effectivePermissions.keys.length === 0;
 
-  const actor = { userId: user.sub, email: user.email, role: user.role };
+  const actor = {
+    userId: user.sub,
+    email: user.email,
+    role: user.role,
+    organizationId: user.organizationId
+  };
 
   requestActorStore.enterWith(actor);
   try {
@@ -214,6 +375,21 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
 
 async function routeWithUser(req: Request, method: string, seg: string[], user: JwtUser): Promise<Response> {
   const root = seg[0];
+  const requiredPermission = requiredPermissionForRoute(method, seg);
+  if (requiredPermission) assertPermission(user, requiredPermission);
+
+  // Catálogos administrativos também alimentam formulários operacionais (contrato/usuário).
+  if (method === "GET" || method === "HEAD") {
+    if (root === "organizations") {
+      assertAnyPermission(user, ["admin.organs.view", "contracts.view", "admin.users.view"]);
+    } else if (root === "contract-type-catalog") {
+      assertAnyPermission(user, ["admin.contract_types.view", "contracts.view", "contracts.create", "contracts.edit"]);
+    } else if (root === "hiring-types") {
+      assertAnyPermission(user, ["admin.hiring_types.view", "contracts.view", "contracts.create", "contracts.edit"]);
+    } else if (root === "contracts" && seg[1] === "catalog" && seg[2] === "item-types") {
+      assertAnyPermission(user, ["admin.item_types.view", "contracts.view", "contracts.create", "contracts.edit"]);
+    }
+  }
 
   if (root === "profile") {
     if (seg.length === 1 && method === "GET") {
@@ -312,65 +488,113 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "glpi-assigned-groups" && method === "GET") {
       return jsonOk(await loadContractGlpiGroupCatalog());
     }
+    if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "pricing" && method === "GET") {
+      return jsonOk(await gestaoContracts.listPricingCatalog());
+    }
+    if (seg.length === 2 && seg[1] === "pricing-migration-review" && method === "GET") {
+      assertRoles(user, [UserRole.ADMIN]);
+      return jsonOk(await gestaoContracts.pricingMigrationReview());
+    }
+    if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "measure-units" && method === "POST") {
+      return jsonOk(await gestaoContracts.createMeasureUnit((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "item-types" && method === "GET") {
+      return jsonOk(await gestaoContracts.listItemTypesAdmin());
+    }
+    if (seg.length === 4 && seg[1] === "catalog" && seg[2] === "item-types" && method === "PATCH") {
+      return jsonOk(await gestaoContracts.updateItemType(seg[3], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "item-types" && method === "POST") {
+      return jsonOk(await gestaoContracts.createContractItemType((await readJsonBody(req)) as never));
+    }
     if (seg.length === 2 && seg[1] === "module-validators" && method === "GET") {
       return jsonOk(await gestaoContracts.findModuleValidators());
+    }
+    if (seg.length === 4 && seg[1] === "overview" && seg[2] === "modules-delivery" && seg[3] === "search" && method === "GET") {
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoContracts.searchModulesDeliveryFeatures({
+          q: url.searchParams.get("q") ?? undefined,
+          deliveryStatus: url.searchParams.get("deliveryStatus") ?? undefined,
+          criticality: url.searchParams.get("criticality") ?? undefined,
+          pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined
+        })
+      );
     }
     if (seg.length === 3 && seg[1] === "overview" && seg[2] === "modules-delivery" && method === "GET") {
       return jsonOk(await gestaoContracts.findModulesDeliveryOverview());
     }
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoContracts.findAll());
     if (seg.length === 1 && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.create((await readJsonBody(req)) as never));
     }
+    if (seg.length === 3 && seg[2] === "regenerate-internal-code" && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN]);
+      assertPermission(user, "contracts.internal_code.regenerate");
+      const body = (await readJsonBody(req)) as { justification?: string };
+      return jsonOk(await gestaoContracts.regenerateInternalCode(seg[1], body?.justification ?? ""));
+    }
     if (seg.length === 2 && method === "GET") return jsonOk(await gestaoContracts.findOne(seg[1]));
-    if (seg.length === 2 && method === "PUT") {
-      assertMutation(user, method);
+    if (seg.length === 2 && (method === "PUT" || method === "PATCH")) {
+      assertPermission(user, "contracts.edit");
       return jsonOk(await gestaoContracts.update(seg[1], (await readJsonBody(req)) as never));
     }
+    if (seg.length === 2 && method === "DELETE") {
+      return jsonOk(await gestaoContracts.delete(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "modules-delivery" && method === "GET") {
+      return jsonOk(await gestaoContracts.findContractModulesDelivery(seg[1]));
+    }
+    if (seg.length === 5 && seg[2] === "modules" && seg[4] === "features-delivery" && method === "GET") {
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoContracts.findModuleFeaturesDelivery(seg[1], seg[3], {
+          page: url.searchParams.get("page") ? Number(url.searchParams.get("page")) : undefined,
+          pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined,
+          q: url.searchParams.get("q") ?? undefined,
+          deliveryStatus: url.searchParams.get("deliveryStatus") ?? undefined,
+          criticality: url.searchParams.get("criticality") ?? undefined
+        })
+      );
+    }
     if (seg.length === 3 && seg[2] === "modules" && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.createModule(seg[1], (await readJsonBody(req)) as never));
     }
     if (seg.length === 4 && seg[2] === "modules" && method === "PUT") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.updateModule(seg[1], seg[3], (await readJsonBody(req)) as never));
     }
     if (seg.length === 4 && seg[2] === "modules" && method === "DELETE") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.deleteModule(seg[1], seg[3]));
     }
     if (seg.length === 5 && seg[2] === "modules" && seg[4] === "features" && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.createFeature(seg[1], seg[3], (await readJsonBody(req)) as never));
     }
-    if (seg.length === 6 && seg[2] === "modules" && seg[4] === "features" && method === "PUT") {
-      assertMutation(user, method);
-      return jsonOk(await gestaoContracts.updateFeature(seg[1], seg[3], seg[5], (await readJsonBody(req)) as never));
+    if (seg.length === 6 && seg[2] === "modules" && seg[4] === "features" && (method === "PUT" || method === "PATCH")) {
+      const body = (await readJsonBody(req)) as Record<string, unknown>;
+      assertFeatureEditPermissions(user, body);
+      return jsonOk(await gestaoContracts.updateFeature(seg[1], seg[3], seg[5], body as never));
     }
     if (seg.length === 6 && seg[2] === "modules" && seg[4] === "features" && method === "DELETE") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.deleteFeature(seg[1], seg[3], seg[5]));
     }
     if (seg.length === 3 && seg[2] === "services" && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.createService(seg[1], (await readJsonBody(req)) as never));
     }
     if (seg.length === 5 && seg[2] === "services" && method === "PUT") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.updateService(seg[1], seg[3], (await readJsonBody(req)) as never));
     }
     if (seg.length === 5 && seg[2] === "services" && method === "DELETE") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.deleteService(seg[1], seg[3]));
     }
     if (seg.length === 3 && seg[2] === "amendments" && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.createAmendment(seg[1], (await readJsonBody(req)) as never));
     }
     if (seg.length === 3 && seg[2] === "financial-snapshots" && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoContracts.createFinancialSnapshot(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "pricing-items" && method === "PUT") {
+      const body = (await readJsonBody(req)) as { items?: unknown };
+      return jsonOk(await gestaoContracts.replacePricingItems(seg[1], (body?.items ?? []) as never));
     }
     if (seg.length === 3 && seg[2] === "structure-template.xlsx" && method === "GET") {
       const { prisma } = await import("@/glpi/config/prisma");
@@ -385,7 +609,6 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       return xlsxAttachment(buf, fn);
     }
     if (seg.length === 3 && seg[2] === "structure-import" && method === "POST") {
-      assertMutation(user, method);
       const form = await req.formData();
       const file = form.get("file");
       const replace = String(form.get("replace") ?? "").toLowerCase() === "true";
@@ -407,33 +630,26 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
   if (root === "measurements") {
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoMeasurements.findAll());
     if (seg.length === 1 && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoMeasurements.create((await readJsonBody(req)) as never));
     }
     if (seg.length === 3 && seg[2] === "items" && method === "POST") {
-      assertMutation(user, method);
       const body = (await readJsonBody(req)) as { items?: unknown };
       return jsonOk(await gestaoMeasurements.addItems(seg[1], (body?.items ?? []) as never));
     }
-    if (seg.length === 5 && seg[2] === "items" && method === "DELETE") {
-      assertMutation(user, method);
+    if (seg.length === 4 && seg[2] === "items" && method === "DELETE") {
       return jsonOk(await gestaoMeasurements.removeItem(seg[1], seg[3]));
     }
-    if (seg.length === 5 && seg[2] === "items" && method === "PATCH") {
-      assertMutation(user, method);
+    if (seg.length === 4 && seg[2] === "items" && method === "PATCH") {
       const body = (await readJsonBody(req)) as { quantity?: unknown };
       return jsonOk(await gestaoMeasurements.patchItem(seg[1], seg[3], body?.quantity as never));
     }
     if (seg.length === 3 && seg[2] === "calculate" && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoMeasurements.calculate(seg[1]));
     }
     if (seg.length === 3 && seg[2] === "approve" && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoMeasurements.approve(seg[1]));
     }
     if (seg.length === 3 && seg[2] === "attachments" && method === "POST") {
-      assertMutation(user, method);
       const form = await req.formData();
       const file = form.get("file");
       if (!(file instanceof File)) return jsonErr(400, "Arquivo ausente");
@@ -441,7 +657,6 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       return jsonOk(await gestaoMeasurements.addAttachmentUpload(seg[1], await multerLikeFromFile(file)));
     }
     if (seg.length === 4 && seg[2] === "attachments" && method === "DELETE") {
-      assertMutation(user, method);
       return jsonOk(await gestaoMeasurements.removeAttachment(seg[1], seg[3]));
     }
     if (seg.length === 2 && method === "GET") return jsonOk(await gestaoMeasurements.findOne(seg[1]));
@@ -451,12 +666,10 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
   if (root === "glosas") {
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoGlosas.findAll());
     if (seg.length === 1 && method === "POST") {
-      assertMutation(user, method);
       return jsonOk(await gestaoGlosas.create((await readJsonBody(req)) as never));
     }
     if (seg.length === 2 && method === "GET") return jsonOk(await gestaoGlosas.findOne(seg[1]));
     if (seg.length === 3 && seg[2] === "attachments" && method === "POST") {
-      assertMutation(user, method);
       const form = await req.formData();
       const file = form.get("file");
       if (!(file instanceof File)) return jsonErr(400, "Arquivo ausente");
@@ -464,7 +677,6 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       return jsonOk(await gestaoGlosas.addAttachmentUpload(seg[1], await multerLikeFromFile(file)));
     }
     if (seg.length === 4 && seg[2] === "attachments" && method === "DELETE") {
-      assertMutation(user, method);
       return jsonOk(await gestaoGlosas.removeAttachment(seg[1], seg[3]));
     }
     return jsonErr(404, "Não encontrado");
@@ -495,11 +707,104 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     return jsonErr(404, "Não encontrado");
   }
 
+  if (root === "organizations") {
+    if (seg.length === 1 && method === "GET") {
+      const u = new URL(req.url);
+      const active = u.searchParams.get("active");
+      const filter =
+        active === "true" ? { active: true } : active === "false" ? { active: false } : undefined;
+      return jsonOk(await gestaoOrganizations.findAll(filter));
+    }
+    if (seg.length === 1 && method === "POST") {
+      return jsonOk(await gestaoOrganizations.create((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      return jsonOk(await gestaoOrganizations.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "DELETE") {
+      return jsonOk(await gestaoOrganizations.delete(seg[1]));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "permissions") {
+    if (seg.length === 2 && seg[1] === "me" && method === "GET") {
+      const keys = user.usingLegacyPermissionFallback
+        ? [...legacyPermissionKeys(user.role)]
+        : [...user.effectivePermissionKeys];
+      return jsonOk({ role: user.role, keys: keys.sort() });
+    }
+    if (seg.length === 2 && seg[1] === "catalog" && method === "GET") {
+      return jsonOk(gestaoPermissions.listCatalog());
+    }
+    if (seg.length === 3 && seg[1] === "role" && method === "GET") {
+      return jsonOk(await gestaoPermissions.getRolePermissions(gestaoPermissions.parseRoleParam(seg[2])));
+    }
+    if (seg.length === 3 && seg[1] === "role" && method === "PUT") {
+      const body = (await readJsonBody(req)) as { keys?: string[] };
+      return jsonOk(
+        await gestaoPermissions.setRolePermissions(gestaoPermissions.parseRoleParam(seg[2]), body?.keys ?? [])
+      );
+    }
+    if (seg.length === 4 && seg[1] === "role" && seg[3] === "history" && method === "GET") {
+      return jsonOk(await gestaoPermissions.listRolePermissionHistory(gestaoPermissions.parseRoleParam(seg[2])));
+    }
+    if (seg.length === 3 && seg[1] === "user" && method === "GET") {
+      return jsonOk(await gestaoPermissions.getUserPermissions(seg[2]));
+    }
+    if (seg.length === 3 && seg[1] === "user" && method === "PUT") {
+      const body = (await readJsonBody(req)) as { keys?: string[] };
+      return jsonOk(await gestaoPermissions.setUserExtraPermissions(seg[2], body?.keys ?? []));
+    }
+    if (seg.length === 4 && seg[1] === "user" && seg[3] === "history" && method === "GET") {
+      return jsonOk(await gestaoPermissions.listUserPermissionHistory(seg[2]));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "contract-type-catalog") {
+    if (seg.length === 1 && method === "GET") {
+      const u = new URL(req.url);
+      const active = u.searchParams.get("active");
+      const filter =
+        active === "true" ? { active: true } : active === "false" ? { active: false } : undefined;
+      return jsonOk(await gestaoContractTypeCatalog.findAll(filter));
+    }
+    if (seg.length === 1 && method === "POST") {
+      return jsonOk(await gestaoContractTypeCatalog.create((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      return jsonOk(await gestaoContractTypeCatalog.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "DELETE") {
+      return jsonOk(await gestaoContractTypeCatalog.delete(seg[1]));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "hiring-types") {
+    if (seg.length === 1 && method === "GET") {
+      const u = new URL(req.url);
+      const active = u.searchParams.get("active");
+      const filter =
+        active === "true" ? { active: true } : active === "false" ? { active: false } : undefined;
+      return jsonOk(await gestaoHiringTypes.findAll(filter));
+    }
+    if (seg.length === 1 && method === "POST") {
+      return jsonOk(await gestaoHiringTypes.create((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      return jsonOk(await gestaoHiringTypes.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "DELETE") {
+      return jsonOk(await gestaoHiringTypes.delete(seg[1]));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
   if (root === "users") {
-    assertRoles(user, [UserRole.ADMIN]);
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoUsers.findAll());
     if (seg.length === 1 && method === "POST") {
-      assertMutation(user, method);
       const created = await gestaoUsers.create((await readJsonBody(req)) as never);
       sendWelcomePasswordEmail(created).catch((e) => {
         console.error("[users] falha ao enviar e-mail de boas-vindas", e);
@@ -507,7 +812,6 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       return jsonOk(created);
     }
     if (seg.length === 2 && method === "PATCH") {
-      assertMutation(user, method);
       return jsonOk(await gestaoUsers.update(seg[1], (await readJsonBody(req)) as never));
     }
     return jsonErr(404, "Não encontrado");
@@ -523,11 +827,24 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       }
       return jsonOk(await gestaoMonthlyClosureReport.build(Math.floor(y), Math.floor(m)));
     }
+    if (seg.length === 2 && seg[1] === "pricing-items" && method === "GET") {
+      const u = new URL(req.url);
+      const status = u.searchParams.get("status");
+      const year = Number(u.searchParams.get("year"));
+      const month = Number(u.searchParams.get("month"));
+      return jsonOk(
+        await gestaoPricingItemsFinancialReport.list({
+          organizationId: u.searchParams.get("organizationId") || undefined,
+          status: status === "ACTIVE" || status === "CANCELLED" ? status : undefined,
+          year: Number.isFinite(year) ? year : undefined,
+          month: Number.isFinite(month) ? month : undefined
+        })
+      );
+    }
     return jsonErr(404, "Não encontrado");
   }
 
   if (root === "exports") {
-    assertRoles(user, [UserRole.ADMIN, UserRole.EDITOR]);
     const csv = (body: string, name: string) =>
       new NextResponse(`\ufeff${body}`, {
         status: 200,
@@ -540,6 +857,7 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg[1] === "measurements.csv" && method === "GET") return csv(await gestaoExports.measurementsCsv(), "medicoes.csv");
     if (seg[1] === "contract-amendments.csv" && method === "GET") return csv(await gestaoExports.contractAmendmentsCsv(), "aditivos-contratos.csv");
     if (seg[1] === "glosas.csv" && method === "GET") return csv(await gestaoExports.glosasCsv(), "glosas.csv");
+    if (seg[1] === "pricing-items.csv" && method === "GET") return csv(await gestaoExports.pricingItemsCsv(), "itens-contratuais.csv");
     return jsonErr(404, "Não encontrado");
   }
 

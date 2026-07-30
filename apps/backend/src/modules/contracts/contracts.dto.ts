@@ -2,6 +2,9 @@ import {
   ContractFeatureStatus,
   ContractItemDeliveryStatus,
   ContractItemCriticality,
+  ContractPricingBillingKind,
+  ContractPricingItemStatus,
+  ContractPricingPeriodicity,
   ContractStatus,
   ContractType,
   LawType
@@ -22,7 +25,93 @@ export type ContractStructureImportRow = {
   sourceRow: number;
 };
 import { Type } from "class-transformer";
-import { IsArray, IsDateString, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateIf, ValidateNested } from "class-validator";
+import {
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+  ValidateIf,
+  ValidateNested
+} from "class-validator";
+
+/** Item de precificação dinâmica do contrato. */
+export class PricingItemDto {
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  sequence?: number;
+
+  @IsString()
+  @IsNotEmpty()
+  typeId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  description!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  unitId!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  quantity!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  unitValue!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  totalValue?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  totalManual?: boolean;
+
+  @IsOptional()
+  @IsString()
+  totalJustification?: string | null;
+
+  @IsEnum(ContractPricingBillingKind)
+  billingKind!: ContractPricingBillingKind;
+
+  @IsOptional()
+  @IsEnum(ContractPricingPeriodicity)
+  periodicity?: ContractPricingPeriodicity | null;
+
+  @IsOptional()
+  @IsDateString()
+  periodStart?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  periodEnd?: string | null;
+
+  @IsOptional()
+  @IsEnum(ContractPricingItemStatus)
+  status?: ContractPricingItemStatus;
+
+  @IsOptional()
+  @IsBoolean()
+  includeInGlosaBase?: boolean;
+}
 
 /** Grupo de trabalho GLPI (ID na instância; nome opcional para exibição). */
 export class ContractGlpiGroupLinkDto {
@@ -54,6 +143,10 @@ export class CreateContractModuleDto {
   @IsOptional()
   @IsString()
   validatorId?: string;
+
+  @IsOptional()
+  @IsString()
+  glosaPricingItemId?: string | null;
 }
 
 export class UpdateContractModuleDto {
@@ -75,6 +168,10 @@ export class UpdateContractModuleDto {
   @IsOptional()
   @IsString()
   validatorId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  glosaPricingItemId?: string | null;
 }
 
 export class CreateContractFeatureDto {
@@ -131,6 +228,11 @@ export class UpdateContractFeatureDto {
   @IsOptional()
   @IsEnum(ContractItemDeliveryStatus)
   deliveryStatus?: ContractItemDeliveryStatus;
+
+  /** Origem da alteração para auditoria (ex.: tela simplificada de funcionalidades). */
+  @IsOptional()
+  @IsString()
+  changeSource?: string;
 }
 
 export class CreateContractServiceDto {
@@ -167,9 +269,34 @@ export class UpdateContractServiceDto {
 }
 
 export class CreateContractDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  number!: string;
+  number?: string;
+
+  @IsOptional()
+  @IsString()
+  formalNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  administrativeProcess?: string;
+
+  @IsOptional()
+  @IsString()
+  organizationId?: string;
+
+  @IsOptional()
+  @IsString()
+  contractTypeCatalogId?: string;
+
+  @IsOptional()
+  @IsString()
+  hiringTypeId?: string;
+
+  @IsOptional()
+  @IsString()
+  hiringProcedureNumber?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -191,8 +318,9 @@ export class CreateContractDto {
   @IsNotEmpty()
   cnpj!: string;
 
+  @IsOptional()
   @IsEnum(ContractType)
-  contractType!: ContractType;
+  contractType?: ContractType;
 
   @IsOptional()
   @IsEnum(LawType)
@@ -209,9 +337,24 @@ export class CreateContractDto {
   @Min(0)
   totalValue?: number;
 
+  @IsOptional()
+  @IsBoolean()
+  globalValueManual?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
-  monthlyValue!: number;
+  globalValueCurrent?: number;
+
+  @IsOptional()
+  @IsString()
+  globalValueJustification?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthlyValue?: number;
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null && v !== undefined)
@@ -253,6 +396,120 @@ export class CreateContractDto {
   @ValidateNested({ each: true })
   @Type(() => ContractGlpiGroupLinkDto)
   glpiGroups?: ContractGlpiGroupLinkDto[];
+
+  /** Itens de precificação dinâmica (substitui valores fixos quando informado). */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PricingItemDto)
+  pricingItems?: PricingItemDto[];
+}
+
+export class CreateContractItemTypeAdminDto {
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  label!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsEnum(ContractPricingBillingKind)
+  billingKind?: ContractPricingBillingKind;
+
+  @IsOptional()
+  @IsString()
+  suggestedUnitId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  participatesInGlosa?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInMeasurements?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInBalanceControl?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInConsumption?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInFinancialPlanning?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  infoOnly?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class UpdateContractItemTypeAdminDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  label?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsEnum(ContractPricingBillingKind)
+  billingKind?: ContractPricingBillingKind | null;
+
+  @IsOptional()
+  @IsString()
+  suggestedUnitId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  participatesInGlosa?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInMeasurements?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInBalanceControl?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInConsumption?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  useInFinancialPlanning?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  infoOnly?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
 }
 
 export class UpdateContractDto {
@@ -260,6 +517,30 @@ export class UpdateContractDto {
   @IsString()
   @IsNotEmpty()
   number?: string;
+
+  @IsOptional()
+  @IsString()
+  formalNumber?: string | null;
+
+  @IsOptional()
+  @IsString()
+  administrativeProcess?: string | null;
+
+  @IsOptional()
+  @IsString()
+  organizationId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  contractTypeCatalogId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  hiringTypeId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  hiringProcedureNumber?: string | null;
 
   @IsOptional()
   @IsString()
@@ -304,6 +585,20 @@ export class UpdateContractDto {
   @IsNumber()
   @Min(0)
   totalValue?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  globalValueManual?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  globalValueCurrent?: number;
+
+  @IsOptional()
+  @IsString()
+  globalValueJustification?: string | null;
 
   @IsOptional()
   @IsNumber()
@@ -356,6 +651,33 @@ export class UpdateContractDto {
   @ValidateNested({ each: true })
   @Type(() => ContractGlpiGroupLinkDto)
   glpiGroups?: ContractGlpiGroupLinkDto[];
+
+  /** Substitui integralmente os itens de precificação quando informado. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PricingItemDto)
+  pricingItems?: PricingItemDto[];
+}
+
+/** Confirmação obrigatória para exclusão definitiva/soft-delete de contrato. */
+export class DeleteContractDto {
+  /** Deve ser a palavra EXCLUIR ou o número do contrato. */
+  @IsString()
+  @IsNotEmpty()
+  confirmation!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  justification!: string;
+}
+
+/** Justificativa obrigatória para emitir um novo código interno sem reutilizar o sequencial anterior. */
+export class RegenerateInternalCodeDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(10)
+  justification!: string;
 }
 
 /** Corpo opcional ao salvar uma memória financeira do contrato (valores atuais antes de alterar). */

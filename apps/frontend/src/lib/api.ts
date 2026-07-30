@@ -201,6 +201,23 @@ export type FeatureImplantationProportion = {
 export type Contract = {
   id: string;
   number: string;
+  /** Número formal sem ano (somente dígitos). */
+  formalNumber?: string | null;
+  contractYear?: number | null;
+  /** Código interno SIGTI (ex.: ST-2026-001), gerado na criação. */
+  internalCode?: string | null;
+  administrativeProcess?: string | null;
+  organizationId?: string | null;
+  contractTypeCatalogId?: string | null;
+  hiringTypeId?: string | null;
+  hiringProcedureNumber?: string | null;
+  globalValueOriginal?: string | null;
+  globalValueCurrent?: string | null;
+  globalValueManual?: boolean;
+  globalValueJustification?: string | null;
+  organization?: { id: string; name: string; acronym: string; active?: boolean } | null;
+  contractTypeCatalog?: { id: string; name: string; acronym: string; legacyEnum?: string | null } | null;
+  hiringType?: { id: string; name: string } | null;
   name: string;
   description?: string | null;
   /** Secretaria ou unidade gestora (ex.: quadro de sistemas terceirizados). */
@@ -233,6 +250,8 @@ export type Contract = {
     criticality?: ContractItemCriticality;
     validatorId?: string | null;
     validator?: { id: string; email: string; role: string } | null;
+    glosaPricingItemId?: string | null;
+    glosaPricingItem?: Pick<ContractPricingItem, "id" | "description" | "sequence"> | null;
     weight: string;
     features: Array<{
       id: string;
@@ -254,6 +273,94 @@ export type Contract = {
   financialSnapshots?: ContractFinancialSnapshot[];
   /** Histórico auditável de inserção, exclusão e mudança de status dos itens contratuais. */
   itemChangeLogs?: ContractItemChangeLog[];
+  /** Itens de precificação dinâmica (mensalidade, horas, UST, etc.). */
+  pricingItems?: ContractPricingItem[];
+  /** Totais consolidados dos itens ativos. */
+  pricingTotals?: ContractPricingTotals;
+  /** Quando true, exclusão definitiva de itens é bloqueada (há medições/aditivos/snapshots). */
+  pricingLocked?: boolean;
+};
+
+export type ContractPricingBillingKind = "RECURRING" | "ONE_TIME" | "ON_DEMAND";
+export type ContractPricingPeriodicity =
+  | "MONTHLY"
+  | "BIMONTHLY"
+  | "QUARTERLY"
+  | "SEMIANNUAL"
+  | "ANNUAL"
+  | "CUSTOM";
+export type ContractPricingItemStatus = "ACTIVE" | "CANCELLED";
+
+export type ContractItemTypeCatalog = {
+  id: string;
+  code: string;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type MeasureUnitCatalog = {
+  id: string;
+  code: string;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type ContractPricingCatalog = {
+  types: ContractItemTypeCatalog[];
+  units: MeasureUnitCatalog[];
+};
+
+export type ContractPricingItem = {
+  id: string;
+  contractId: string;
+  sequence: number;
+  typeId: string;
+  description: string;
+  unitId: string;
+  quantity: string;
+  unitValue: string;
+  totalValue: string;
+  totalManual: boolean;
+  totalJustification?: string | null;
+  billingKind: ContractPricingBillingKind;
+  periodicity?: ContractPricingPeriodicity | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  status: ContractPricingItemStatus;
+  includeInGlosaBase: boolean;
+  consumedQuantity?: string;
+  type?: ContractItemTypeCatalog & { participatesInGlosa?: boolean };
+  unit?: MeasureUnitCatalog;
+};
+
+export type ContractPricingTotals = {
+  recurringPredicted: number;
+  oneTime: number;
+  onDemand: number;
+  globalEstimated: number;
+  monthlyValue: number;
+  installationValue: number | null;
+};
+
+export type ContractPricingItemInput = {
+  id?: string;
+  sequence?: number;
+  typeId: string;
+  description: string;
+  unitId: string;
+  quantity: number;
+  unitValue: number;
+  totalValue?: number;
+  totalManual?: boolean;
+  totalJustification?: string | null;
+  billingKind: ContractPricingBillingKind;
+  periodicity?: ContractPricingPeriodicity | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  status?: ContractPricingItemStatus;
+  includeInGlosaBase?: boolean;
 };
 
 export type ContractItemChangeLog = {
@@ -285,7 +392,15 @@ export async function getGlpiAssignedGroupsCatalog(): Promise<GlpiAssignedGroupO
   return request("/contracts/catalog/glpi-assigned-groups");
 }
 
-/** Linha de visão geral da página «Módulos» (contratos com estrutura modular). */
+/** Totais agregados de entrega (sem listar funcionalidades). */
+export type ModulesDeliveryTotals = {
+  totalFeatures: number;
+  deliveredCount: number;
+  partialCount: number;
+  notDeliveredCount: number;
+};
+
+/** Resumo do contrato na página Funcionalidades (lazy-load). */
 export type ContractModulesDeliveryOverview = {
   id: string;
   number: string;
@@ -295,28 +410,94 @@ export type ContractModulesDeliveryOverview = {
   monthlyValue?: string;
   fiscal?: Pick<Fiscal, "id" | "name" | "email"> | null;
   manager?: Pick<Fiscal, "id" | "name" | "email"> | null;
+  modulesCount?: number;
+  totals: ModulesDeliveryTotals;
   featureImplantationProportion?: FeatureImplantationProportion;
-  modules: Array<{
-    id: string;
-    name: string;
-    criticality: ContractItemCriticality;
-    validatorId?: string | null;
-    validator?: { id: string; email: string; role: string } | null;
-    weight: unknown;
-    features: Array<{
-      id: string;
-      itemCode?: string | null;
-      name: string;
-      weight: unknown;
-      status: string;
-      criticality: ContractItemCriticality;
-      deliveryStatus: ContractItemDeliveryStatus;
-    }>;
-  }>;
+  /** Presente apenas em resultados de pesquisa com filtros. */
+  modules?: ContractModulesDeliveryModule[];
+};
+
+export type ContractModulesDeliveryModule = {
+  id: string;
+  name: string;
+  criticality: ContractItemCriticality;
+  validatorId?: string | null;
+  validator?: { id: string; email: string; role: string } | null;
+  glosaPricingItemId?: string | null;
+  glosaPricingItem?: Pick<ContractPricingItem, "id" | "description" | "sequence"> | null;
+  weight: unknown;
+  totals: ModulesDeliveryTotals;
+  featuresPage?: ModulesDeliveryFeaturesPage;
+};
+
+export type ModulesDeliveryFeature = {
+  id: string;
+  itemCode?: string | null;
+  name: string;
+  weight: unknown;
+  status: string;
+  criticality: ContractItemCriticality;
+  deliveryStatus: ContractItemDeliveryStatus;
+};
+
+export type ModulesDeliveryFeaturesPage = {
+  contractId?: string;
+  moduleId?: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+  features: ModulesDeliveryFeature[];
 };
 
 export async function getModulesDeliveryOverview(): Promise<ContractModulesDeliveryOverview[]> {
   return request("/contracts/overview/modules-delivery");
+}
+
+export async function getContractModulesDelivery(
+  contractId: string
+): Promise<{ contractId: string; modules: ContractModulesDeliveryModule[] }> {
+  return request(`/contracts/${contractId}/modules-delivery`);
+}
+
+export async function getModuleFeaturesDelivery(
+  contractId: string,
+  moduleId: string,
+  params?: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    deliveryStatus?: string;
+    criticality?: string;
+  }
+): Promise<ModulesDeliveryFeaturesPage> {
+  const sp = new URLSearchParams();
+  if (params?.page != null) sp.set("page", String(params.page));
+  if (params?.pageSize != null) sp.set("pageSize", String(params.pageSize));
+  if (params?.q) sp.set("q", params.q);
+  if (params?.deliveryStatus) sp.set("deliveryStatus", params.deliveryStatus);
+  if (params?.criticality) sp.set("criticality", params.criticality);
+  const qs = sp.toString();
+  return request(`/contracts/${contractId}/modules/${moduleId}/features-delivery${qs ? `?${qs}` : ""}`);
+}
+
+export async function searchModulesDeliveryFeatures(params: {
+  q?: string;
+  deliveryStatus?: string;
+  criticality?: string;
+  pageSize?: number;
+}): Promise<{
+  contracts: ContractModulesDeliveryOverview[];
+  totalFeatures: number;
+  truncated?: boolean;
+}> {
+  const sp = new URLSearchParams();
+  if (params.q) sp.set("q", params.q);
+  if (params.deliveryStatus) sp.set("deliveryStatus", params.deliveryStatus);
+  if (params.criticality) sp.set("criticality", params.criticality);
+  if (params.pageSize != null) sp.set("pageSize", String(params.pageSize));
+  const qs = sp.toString();
+  return request(`/contracts/overview/modules-delivery/search${qs ? `?${qs}` : ""}`);
 }
 
 export type ContractModuleValidator = { id: string; email: string; role: string };
@@ -350,8 +531,9 @@ export type Measurement = {
     name: string;
     contractType?: string;
     services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
+    pricingItems?: ContractPricingItem[];
   };
-  items?: Array<{ id: string; type: string; referenceId: string; quantity: string; calculatedValue: string }>;
+  items?: Array<{ id: string; type: string; referenceId: string; pricingItemId?: string | null; quantity: string; calculatedValue: string }>;
   glosas?: Array<{ id: string; type: string; value: string; justification: string; createdBy: string; createdAt: string }>;
   attachments?: Array<AttachmentRecord>;
 };
@@ -510,10 +692,48 @@ export type MonthlyContractClosureRow = {
   glpiOsOpenBacklog: number;
 };
 
+export type PricingItemsFinancialReportRow = {
+  contractId: string;
+  contractNumber: string;
+  contractName: string;
+  internalCode: string | null;
+  organizationName: string | null;
+  supplierName: string;
+  itemId: string;
+  sequence: number;
+  typeCode: string;
+  typeLabel: string;
+  description: string;
+  billingKind: ContractPricingBillingKind;
+  unitLabel: string;
+  quantity: string;
+  consumedQuantity: string;
+  availableBalance: string;
+  unitValue: string;
+  totalValue: string;
+  status: ContractPricingItemStatus;
+  measuredValueSum: string;
+};
+
 export async function getMonthlyContractClosureReport(year: number, month: number): Promise<MonthlyContractClosureRow[]> {
   const y = encodeURIComponent(String(year));
   const m = encodeURIComponent(String(month));
   return request(`/reports/monthly-contract-closure?year=${y}&month=${m}`);
+}
+
+export async function getPricingItemsFinancialReport(params: {
+  organizationId?: string;
+  status?: ContractPricingItemStatus;
+  year?: number;
+  month?: number;
+} = {}): Promise<PricingItemsFinancialReportRow[]> {
+  const query = new URLSearchParams();
+  if (params.organizationId) query.set("organizationId", params.organizationId);
+  if (params.status) query.set("status", params.status);
+  if (params.year != null) query.set("year", String(params.year));
+  if (params.month != null) query.set("month", String(params.month));
+  const suffix = query.toString();
+  return request(`/reports/pricing-items${suffix ? `?${suffix}` : ""}`);
 }
 
 export async function getContracts(): Promise<Contract[]> {
@@ -548,10 +768,34 @@ export async function createContractAmendment(
   return request(`/contracts/${contractId}/amendments`, { method: "POST", body: JSON.stringify(payload) });
 }
 
+export async function deleteContract(
+  contractId: string,
+  payload: { confirmation: string; justification: string }
+): Promise<{ ok: true; id: string }> {
+  return request(`/contracts/${contractId}`, {
+    method: "DELETE",
+    body: JSON.stringify(payload)
+  });
+}
+
+/** Emite excepcionalmente um novo código interno, registrando o anterior e a justificativa em auditoria. */
+export async function regenerateContractInternalCode(contractId: string, justification: string): Promise<Contract> {
+  return request(`/contracts/${contractId}/regenerate-internal-code`, {
+    method: "POST",
+    body: JSON.stringify({ justification })
+  });
+}
+
 export async function updateContract(
   contractId: string,
   payload: {
     number?: string;
+    formalNumber?: string | null;
+    administrativeProcess?: string | null;
+    organizationId?: string | null;
+    contractTypeCatalogId?: string | null;
+    hiringTypeId?: string | null;
+    hiringProcedureNumber?: string | null;
     status?: "ACTIVE" | "EXPIRED" | "SUSPENDED";
     name?: string;
     description?: string | null;
@@ -563,6 +807,9 @@ export async function updateContract(
     startDate?: string;
     endDate?: string;
     totalValue?: number;
+    globalValueManual?: boolean;
+    globalValueCurrent?: number;
+    globalValueJustification?: string | null;
     monthlyValue?: number;
     installationValue?: number | null;
     implementationPeriodStart?: string | null;
@@ -573,16 +820,24 @@ export async function updateContract(
     supplierId?: string | null;
     /** Se enviado (incluindo lista vazia), substitui todos os vínculos a grupos GLPI. */
     glpiGroups?: Array<{ glpiGroupId: number; glpiGroupName?: string }>;
+    /** Substitui integralmente os itens de precificação quando informado. */
+    pricingItems?: ContractPricingItemInput[];
   }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}`, { method: "PUT", body: JSON.stringify(payload) });
 }
 
 export async function createContract(payload: {
-  number: string;
+  number?: string;
+  formalNumber?: string;
+  administrativeProcess?: string | null;
+  organizationId?: string;
+  contractTypeCatalogId?: string;
+  hiringTypeId?: string | null;
+  hiringProcedureNumber?: string | null;
   name: string;
   description?: string;
-  managingUnit?: string;
+  managingUnit?: string | null;
   companyName: string;
   cnpj: string;
   contractType: "SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO";
@@ -590,7 +845,10 @@ export async function createContract(payload: {
   startDate: string;
   endDate: string;
   totalValue?: number;
-  monthlyValue: number;
+  globalValueManual?: boolean;
+  globalValueCurrent?: number;
+  globalValueJustification?: string;
+  monthlyValue?: number;
   installationValue?: number | null;
   implementationPeriodStart?: string;
   implementationPeriodEnd?: string;
@@ -600,15 +858,81 @@ export async function createContract(payload: {
   managerId?: string;
   supplierId?: string;
   glpiGroups?: Array<{ glpiGroupId: number; glpiGroupName?: string }>;
+  pricingItems?: ContractPricingItemInput[];
 }): Promise<Contract> {
   return request("/contracts", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function getContractPricingCatalog(): Promise<ContractPricingCatalog> {
+  return request("/contracts/catalog/pricing");
+}
+
+export type PricingMigrationReviewItem = {
+  id: string;
+  description: string;
+  typeCode: string;
+  quantity: number;
+  unitValue: number;
+  totalValue: number;
+};
+
+export type PricingMigrationReviewContract = {
+  id: string;
+  name: string;
+  number: string;
+  status: string;
+  monthlyValue: number;
+  installationValue: number | null;
+  totalValue: number;
+  pricingItemsCount: number;
+  mensalidadeCount: number;
+  implantacaoCount: number;
+  flags: string[];
+  migratedItems: PricingMigrationReviewItem[];
+};
+
+export type PricingMigrationReview = {
+  summary: { migrated: number; pending: number; inconsistent: number; totalActive: number };
+  contracts: PricingMigrationReviewContract[];
+};
+
+/** Conferência administrativa da migração dos valores legados para os itens contratuais. */
+export async function getPricingMigrationReview(): Promise<PricingMigrationReview> {
+  return request("/contracts/pricing-migration-review");
+}
+
+export async function createMeasureUnit(payload: { code: string; label: string }): Promise<MeasureUnitCatalog> {
+  return request("/contracts/catalog/measure-units", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function createContractItemType(payload: {
+  code: string;
+  label: string;
+}): Promise<ContractItemTypeCatalog> {
+  return request("/contracts/catalog/item-types", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function replaceContractPricingItems(
+  contractId: string,
+  items: ContractPricingItemInput[]
+): Promise<{ items: ContractPricingItem[]; totals: ContractPricingTotals }> {
+  return request(`/contracts/${contractId}/pricing-items`, {
+    method: "PUT",
+    body: JSON.stringify({ items })
+  });
 }
 
 export type ContractFeatureStatus = "NOT_STARTED" | "IN_PROGRESS" | "DELIVERED" | "VALIDATED";
 
 export async function createContractModule(
   contractId: string,
-  payload: { name: string; weight?: number; criticality?: ContractItemCriticality; validatorId?: string | null }
+  payload: {
+    name: string;
+    weight?: number;
+    criticality?: ContractItemCriticality;
+    validatorId?: string | null;
+    glosaPricingItemId?: string | null;
+  }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules`, { method: "POST", body: JSON.stringify(payload) });
 }
@@ -616,7 +940,13 @@ export async function createContractModule(
 export async function updateContractModule(
   contractId: string,
   moduleId: string,
-  payload: { name?: string; weight?: number; criticality?: ContractItemCriticality; validatorId?: string | null }
+  payload: {
+    name?: string;
+    weight?: number;
+    criticality?: ContractItemCriticality;
+    validatorId?: string | null;
+    glosaPricingItemId?: string | null;
+  }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}`, { method: "PUT", body: JSON.stringify(payload) });
 }
@@ -651,6 +981,8 @@ export async function updateContractFeature(
     criticality?: ContractItemCriticality;
     status?: ContractFeatureStatus;
     deliveryStatus?: ContractItemDeliveryStatus;
+    /** Origem para auditoria (ex.: MODULES_SIMPLIFIED). */
+    changeSource?: string;
   }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}/features/${featureId}`, {
@@ -762,7 +1094,7 @@ export async function createMeasurement(payload: {
 
 export async function addMeasurementServiceLines(
   measurementId: string,
-  items: Array<{ type: "SERVICE"; referenceId: string; quantity: number }>
+  items: Array<{ type: "SERVICE"; referenceId: string; quantity: number; pricingItemId?: string }>
 ): Promise<Measurement> {
   return request(`/measurements/${measurementId}/items`, { method: "POST", body: JSON.stringify({ items }) });
 }
@@ -877,6 +1209,15 @@ export type AuthMe = {
 
 export async function getAuthMe(): Promise<AuthMe> {
   return request("/auth/me");
+}
+
+export type MyPermissions = {
+  keys: string[];
+  role: string;
+};
+
+export async function getMyPermissions(): Promise<MyPermissions> {
+  return request("/permissions/me");
 }
 
 export async function updateMyProfile(payload: {
@@ -1015,6 +1356,8 @@ export async function getMyAssignments(): Promise<MyAssignments> {
 export type UserRecord = {
   id: string;
   email: string;
+  cpfMasked?: string | null;
+  cpfDigits?: string | null;
   firstName?: string | null;
   lastName?: string | null;
   displayName?: string | null;
@@ -1022,6 +1365,8 @@ export type UserRecord = {
   jobTitle?: string | null;
   department?: string | null;
   phone?: string | null;
+  organizationId?: string | null;
+  organization?: { id: string; name: string; acronym: string; active: boolean } | null;
   role: string;
   approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
   mustChangePassword?: boolean;
@@ -1036,6 +1381,11 @@ export async function getUsers(): Promise<UserRecord[]> {
 export async function createUser(payload: {
   email: string;
   password: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  cpf?: string;
+  organizationId?: string;
   role?: "ADMIN" | "EDITOR" | "VIEWER";
 }): Promise<UserRecord> {
   return request("/users", { method: "POST", body: JSON.stringify(payload) });
@@ -1043,7 +1393,16 @@ export async function createUser(payload: {
 
 export async function updateUser(
   id: string,
-  payload: { role?: "ADMIN" | "EDITOR" | "VIEWER"; password?: string; approvalStatus?: "PENDING" | "APPROVED" | "REJECTED" }
+  payload: {
+    fullName?: string;
+    firstName?: string;
+    lastName?: string;
+    cpf?: string | null;
+    organizationId?: string | null;
+    role?: "ADMIN" | "EDITOR" | "VIEWER";
+    password?: string;
+    approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
+  }
 ): Promise<UserRecord> {
   return request(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
@@ -1845,4 +2204,221 @@ export async function createProjectTaskComment(projectId: string, taskId: string
     method: "POST",
     body: JSON.stringify({ body })
   });
+}
+
+// --- Administração (SIGTI) ---
+
+export type OrganizationRecord = {
+  id: string;
+  name: string;
+  acronym: string;
+  code?: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function getOrganizations(): Promise<OrganizationRecord[]> {
+  return request("/organizations");
+}
+
+export async function createOrganization(payload: {
+  name: string;
+  acronym: string;
+  code?: string | null;
+  active?: boolean;
+}): Promise<OrganizationRecord> {
+  return request("/organizations", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateOrganization(
+  id: string,
+  payload: { name?: string; acronym?: string; code?: string | null; active?: boolean }
+): Promise<OrganizationRecord> {
+  return request(`/organizations/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export type PermissionGrant = {
+  permissionKey: string;
+  granted: boolean;
+};
+
+export type RolePermissionsPayload = {
+  role: "ADMIN" | "EDITOR" | "VIEWER";
+  permissions: PermissionGrant[];
+};
+
+export type UserPermissionsPayload = {
+  userId: string;
+  permissions: PermissionGrant[];
+};
+
+type PermissionKeysResponse = { role?: "ADMIN" | "EDITOR" | "VIEWER"; userId?: string; keys: string[] };
+
+function permissionKeysToGrants(keys: string[]): PermissionGrant[] {
+  return keys.map((permissionKey) => ({ permissionKey, granted: true }));
+}
+
+export async function getRolePermissions(role: "ADMIN" | "EDITOR" | "VIEWER"): Promise<RolePermissionsPayload> {
+  const response = await request<PermissionKeysResponse>(`/permissions/role/${role}`);
+  return { role, permissions: permissionKeysToGrants(response.keys) };
+}
+
+export async function updateRolePermissions(
+  role: "ADMIN" | "EDITOR" | "VIEWER",
+  permissions: PermissionGrant[]
+): Promise<RolePermissionsPayload> {
+  const response = await request<PermissionKeysResponse>(`/permissions/role/${role}`, {
+    method: "PUT",
+    body: JSON.stringify({ keys: permissions.filter((permission) => permission.granted).map((permission) => permission.permissionKey) })
+  });
+  return { role, permissions: permissionKeysToGrants(response.keys) };
+}
+
+export async function getUserPermissions(userId: string): Promise<UserPermissionsPayload> {
+  const response = await request<PermissionKeysResponse>(`/permissions/user/${userId}`);
+  return { userId, permissions: permissionKeysToGrants(response.keys) };
+}
+
+export async function updateUserPermissions(userId: string, permissions: PermissionGrant[]): Promise<UserPermissionsPayload> {
+  const response = await request<PermissionKeysResponse>(`/permissions/user/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify({ keys: permissions.filter((permission) => permission.granted).map((permission) => permission.permissionKey) })
+  });
+  return { userId, permissions: permissionKeysToGrants(response.keys) };
+}
+
+export type PermissionHistoryEntry = {
+  id: string;
+  entity: "RolePermission" | "UserPermission";
+  entityId: string;
+  action: string;
+  userId: string;
+  timestamp: string;
+  oldData?: { keys?: string[] } | null;
+  newData?: { keys?: string[] } | null;
+};
+
+export async function getRolePermissionHistory(
+  role: "ADMIN" | "EDITOR" | "VIEWER"
+): Promise<PermissionHistoryEntry[]> {
+  return request(`/permissions/role/${role}/history`);
+}
+
+export async function getUserPermissionHistory(userId: string): Promise<PermissionHistoryEntry[]> {
+  return request(`/permissions/user/${userId}/history`);
+}
+
+export type AdminContractItemType = {
+  id: string;
+  code: string;
+  label: string;
+  description?: string | null;
+  billingKind?: ContractPricingBillingKind | null;
+  active: boolean;
+  sortOrder: number;
+  participatesInGlosa?: boolean;
+  useInMeasurements?: boolean;
+  useInBalanceControl?: boolean;
+  useInConsumption?: boolean;
+  useInFinancialPlanning?: boolean;
+  infoOnly?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export async function getAdminItemTypes(): Promise<AdminContractItemType[]> {
+  return request("/contracts/catalog/item-types");
+}
+
+export async function createAdminItemType(payload: {
+  code: string;
+  label: string;
+  description?: string | null;
+  active?: boolean;
+  sortOrder?: number;
+}): Promise<AdminContractItemType> {
+  return request("/contracts/catalog/item-types", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateAdminItemType(
+  id: string,
+  payload: {
+    code?: string;
+    label?: string;
+    description?: string | null;
+    active?: boolean;
+    sortOrder?: number;
+  }
+): Promise<AdminContractItemType> {
+  return request(`/contracts/catalog/item-types/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export type ContractTypeCatalogRecord = {
+  id: string;
+  name: string;
+  acronym: string;
+  description?: string | null;
+  active: boolean;
+  legacyEnum?: "SOFTWARE" | "DATACENTER" | "INFRA" | "SERVICO" | null;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export async function getContractTypeCatalog(): Promise<ContractTypeCatalogRecord[]> {
+  return request("/contract-type-catalog");
+}
+
+export async function createContractTypeCatalogEntry(payload: {
+  name: string;
+  acronym: string;
+  description?: string | null;
+  active?: boolean;
+  sortOrder?: number;
+}): Promise<ContractTypeCatalogRecord> {
+  return request("/contract-type-catalog", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateContractTypeCatalogEntry(
+  id: string,
+  payload: {
+    name?: string;
+    acronym?: string;
+    description?: string | null;
+    active?: boolean;
+    sortOrder?: number;
+  }
+): Promise<ContractTypeCatalogRecord> {
+  return request(`/contract-type-catalog/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export type HiringTypeRecord = {
+  id: string;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export async function getHiringTypes(): Promise<HiringTypeRecord[]> {
+  return request("/hiring-types");
+}
+
+export async function createHiringType(payload: {
+  name: string;
+  description?: string | null;
+  active?: boolean;
+  sortOrder?: number;
+}): Promise<HiringTypeRecord> {
+  return request("/hiring-types", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateHiringType(
+  id: string,
+  payload: { name?: string; description?: string | null; active?: boolean; sortOrder?: number }
+): Promise<HiringTypeRecord> {
+  return request(`/hiring-types/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }

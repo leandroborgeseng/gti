@@ -42,4 +42,13 @@ export class ExportsController {
     const body = await this.service.glosasCsv();
     return `\ufeff${body}`;
   }
+
+  @Get("pricing-items.csv")
+  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", 'attachment; filename="itens-contratuais.csv"')
+  async pricingItemsCsv(): Promise<string> {
+    const body = await this.service.pricingItemsCsv();
+    return `\ufeff${body}`;
+  }
 }

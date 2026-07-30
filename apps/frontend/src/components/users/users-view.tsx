@@ -8,9 +8,14 @@ import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { UserRecord } from "@/lib/api";
-import { getUsers, updateUser } from "@/lib/api";
+import { getOrganizations, getUsers, updateUser } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import { editUserFormSchema, type EditUserFormValues } from "@/modules/users/user-schemas";
+import {
+  editUserFormSchema,
+  formatCpfDisplay,
+  onlyDigitsCpf,
+  type EditUserFormValues
+} from "@/modules/users/user-schemas";
 import { UserForm } from "@/components/actions/user-form";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
@@ -31,7 +36,21 @@ const columnHelper = createColumnHelper<UserRecord>();
 type Props = {
   users: UserRecord[];
   dataLoadErrors?: string[];
+  /** Oculta título e descrição quando embutido na Administração. */
+  embedded?: boolean;
 };
+
+function userDisplayName(user: UserRecord): string {
+  return (
+    [user.firstName, user.lastName].map((part) => part?.trim()).filter(Boolean).join(" ") ||
+    user.displayName?.trim() ||
+    ""
+  );
+}
+
+function userIsIncomplete(user: UserRecord): boolean {
+  return ((!user.cpfDigits && !user.cpfMasked) || !user.organizationId);
+}
 
 function EditUserPanel({
   user,
@@ -41,6 +60,11 @@ function EditUserPanel({
   onClose: () => void;
 }): JSX.Element {
   const qc = useQueryClient();
+  const qOrganizations = useQuery({ queryKey: queryKeys.organizations, queryFn: getOrganizations });
+  const activeOrganizations = useMemo(
+    () => (qOrganizations.data ?? []).filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    [qOrganizations.data]
+  );
   const roleDefault: EditUserFormValues["role"] =
     user.role === "ADMIN" || user.role === "EDITOR" || user.role === "VIEWER" ? user.role : "EDITOR";
   const approvalDefault: EditUserFormValues["approvalStatus"] =
@@ -49,6 +73,9 @@ function EditUserPanel({
   const form = useForm<EditUserFormValues>({
     resolver: zodResolver(editUserFormSchema),
     defaultValues: {
+      fullName: userDisplayName(user),
+      cpf: user.cpfDigits ?? "",
+      organizationId: user.organizationId ?? "",
       role: roleDefault,
       approvalStatus: approvalDefault,
       password: ""
@@ -58,6 +85,9 @@ function EditUserPanel({
   const mutation = useMutation({
     mutationFn: (values: EditUserFormValues) =>
       updateUser(user.id, {
+        fullName: values.fullName.trim(),
+        cpf: values.cpf ? values.cpf : null,
+        organizationId: values.organizationId,
         role: values.role,
         approvalStatus: values.approvalStatus,
         ...(values.password !== "" ? { password: values.password.trim() } : {})
@@ -75,6 +105,62 @@ function EditUserPanel({
   return (
     <Form {...form}>
       <form className="space-y-4" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <FormField
+          control={form.control}
+          name="fullName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Nome completo</FormLabel>
+              <FormControl>
+                <Input autoComplete="name" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="cpf"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>CPF</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder="000.000.000-00"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={formatCpfDisplay(field.value ?? "")}
+                  onChange={(e) => field.onChange(onlyDigitsCpf(e.target.value))}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="organizationId"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Órgão</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value || undefined} disabled={qOrganizations.isPending}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder={qOrganizations.isPending ? "Carregando…" : "Selecione o órgão"} />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {activeOrganizations.map((org) => (
+                    <SelectItem key={org.id} value={org.id}>
+                      {org.acronym ? `${org.acronym} — ${org.name}` : org.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <FormField
           control={form.control}
           name="role"
@@ -145,7 +231,7 @@ function EditUserPanel({
   );
 }
 
-export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): JSX.Element {
+export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded = false }: Props): JSX.Element {
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<UserRecord | null>(null);
@@ -172,15 +258,12 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): 
 
   const columns = useMemo<ColumnDef<UserRecord, any>[]>(
     () => [
-      columnHelper.accessor("email", {
-        header: "E-mail",
-        cell: (info) => <span className="font-medium text-foreground">{info.getValue()}</span>
-      }),
-      columnHelper.accessor((row) => [row.firstName, row.lastName].map((part) => part?.trim()).filter(Boolean).join(" ") || row.displayName || "", {
+      columnHelper.accessor((row) => userDisplayName(row), {
         id: "displayName",
         header: "Nome",
         cell: (info) => {
           const user = info.row.original;
+          const incomplete = userIsIncomplete(user);
           return (
             <span className="inline-flex items-center gap-2">
               <span
@@ -189,9 +272,36 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): 
                 aria-hidden
               />
               <span>{info.getValue() || "Não informado"}</span>
+              {incomplete ? (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800" title="Cadastro incompleto (CPF ou órgão ausente)">
+                  Incompleto
+                </span>
+              ) : null}
             </span>
           );
         }
+      }),
+      columnHelper.accessor("email", {
+        header: "E-mail",
+        cell: (info) => <span className="font-medium text-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.accessor((row) => row.organization?.acronym ?? row.organization?.name ?? "—", {
+        id: "organization",
+        header: "Órgão",
+        cell: (info) => {
+          const user = info.row.original;
+          const label = user.organization
+            ? user.organization.acronym
+              ? `${user.organization.acronym} — ${user.organization.name}`
+              : user.organization.name
+            : "—";
+          return <span className="text-muted-foreground">{label}</span>;
+        }
+      }),
+      columnHelper.accessor((row) => row.cpfMasked ?? "—", {
+        id: "cpfMasked",
+        header: "CPF",
+        cell: (info) => <span className="whitespace-nowrap text-muted-foreground">{info.getValue()}</span>
       }),
       columnHelper.accessor("role", {
         header: "Papel",
@@ -286,26 +396,42 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [] }: Props): 
   return (
     <div className="space-y-6">
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Usuários</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Gestão de contas, papéis, aprovação de novos cadastros e troca obrigatória de senha no primeiro acesso.
-          </p>
+      {!embedded ? (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Usuários</h1>
+            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+              Gestão de contas, papéis, aprovação de novos cadastros e troca obrigatória de senha no primeiro acesso.
+            </p>
+            {pendingCount > 0 ? (
+              <p className="mt-2 text-sm font-medium text-amber-700">
+                {pendingCount} cadastro{pendingCount === 1 ? "" : "s"} aguardando aprovação.
+              </p>
+            ) : null}
+          </div>
+          <Button type="button" className="shrink-0 gap-2" onClick={() => setCreateOpen(true)}>
+            <UserPlus className="h-4 w-4" />
+            Novo usuário
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {pendingCount > 0 ? (
-            <p className="mt-2 text-sm font-medium text-amber-700">
+            <p className="text-sm font-medium text-amber-700">
               {pendingCount} cadastro{pendingCount === 1 ? "" : "s"} aguardando aprovação.
             </p>
-          ) : null}
+          ) : (
+            <p className="text-sm text-muted-foreground">Gestão de contas, papéis e aprovação de cadastros.</p>
+          )}
+          <Button type="button" className="shrink-0 gap-2" onClick={() => setCreateOpen(true)}>
+            <UserPlus className="h-4 w-4" />
+            Novo usuário
+          </Button>
         </div>
-        <Button type="button" className="shrink-0 gap-2" onClick={() => setCreateOpen(true)}>
-          <UserPlus className="h-4 w-4" />
-          Novo usuário
-        </Button>
-      </div>
+      )}
 
       <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
-        <DataTable columns={columns} data={users} searchPlaceholder="Pesquisar por e-mail, papel…" />
+        <DataTable columns={columns} data={users} searchPlaceholder="Pesquisar por nome, e-mail, órgão…" />
       </section>
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Novo usuário" description="Contas criadas pela administração já ficam aprovadas. No primeiro acesso, o usuário será obrigado a trocar a senha inicial.">

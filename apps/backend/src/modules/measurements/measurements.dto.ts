@@ -13,6 +13,11 @@ export class MeasurementItemDto {
   @IsNumber()
   @Min(0)
   quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  pricingItemId?: string;
 }
 
 export class CreateMeasurementDto {

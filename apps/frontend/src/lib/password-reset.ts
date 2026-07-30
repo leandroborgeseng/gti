@@ -3,6 +3,7 @@ import * as bcrypt from "bcrypt";
 import { prisma } from "@/glpi/config/prisma";
 import { publicSiteUrl } from "@/lib/site-url";
 import { sendEmail } from "@/lib/email/resend";
+import { BRAND } from "@/lib/brand";
 
 const RESET_TOKEN_BYTES = 32;
 const RESET_TOKEN_TTL_MINUTES = 60;
@@ -32,11 +33,13 @@ async function createPasswordResetToken(userId: string): Promise<{ token: string
 
 async function sendPasswordResetEmail(input: { email: string; token: string; isWelcome?: boolean }): Promise<void> {
   const url = resetUrl(input.token);
-  const subject = input.isWelcome ? "A sua conta no GTI foi criada" : "Redefinição de senha do GTI";
-  const title = input.isWelcome ? "Bem-vindo ao GTI" : "Redefina a sua senha";
+  const subject = input.isWelcome
+    ? `A sua conta no ${BRAND.emailProductName} foi criada`
+    : `Redefinição de senha do ${BRAND.emailProductName}`;
+  const title = input.isWelcome ? `Bem-vindo ao ${BRAND.emailProductName}` : "Redefina a sua senha";
   const intro = input.isWelcome
-    ? "A sua conta no sistema GTI foi criada. Use o botão abaixo para definir a sua senha de acesso."
-    : "Recebemos uma solicitação para redefinir a senha da sua conta no sistema GTI.";
+    ? `A sua conta no sistema ${BRAND.emailProductName} foi criada. Use o botão abaixo para definir a sua senha de acesso.`
+    : `Recebemos uma solicitação para redefinir a senha da sua conta no sistema ${BRAND.emailProductName}.`;
   const text = `${intro}\n\nAcesse: ${url}\n\nEste link expira em ${RESET_TOKEN_TTL_MINUTES} minutos.`;
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">

@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { getAuditActorId, getAuditActorLabel } from "../../common/audit-actor";
+import { getAuditActorId, getAuditActorLabel, requestActorStore } from "../../common/audit-actor";
 import {
   ContractFeatureStatus,
   ContractItemChangeAction,
   ContractItemChangeType,
   ContractItemCriticality,
   ContractItemDeliveryStatus,
+  ContractPricingItemStatus,
   ContractStatus,
   ContractType,
   LawType,
@@ -22,11 +23,18 @@ import {
   CreateContractServiceDto,
   ContractGlpiGroupLinkDto,
   ContractStructureImportRow,
+  DeleteContractDto,
+  PricingItemDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
   UpdateContractModuleDto,
   UpdateContractServiceDto
 } from "./contracts.dto";
+import { ContractPricingHelper, type PricingItemInput } from "./contract-pricing.helper";
+import {
+  PricingItemsFinancialReportService,
+  type PricingItemsFinancialReportQuery
+} from "../reports/pricing-items-financial-report.service";
 
 function moduleGroupKey(name: string): string {
   return name.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
@@ -135,6 +143,27 @@ type ImplantationModulesInput = Array<{ features: Array<{ deliveryStatus: Contra
  * Indicadores de progresso de entrega: ratio comum aplicado à mensalidade e ao valor de implantação;
  * fase (pré / implantação / mensalidade) conforme datas do período de implantação.
  */
+function buildFeatureImplantationProportionFromCounts(ctx: {
+  monthlyValue: Prisma.Decimal;
+  installationValue?: Prisma.Decimal | null;
+  implementationPeriodStart?: Date | null;
+  implementationPeriodEnd?: Date | null;
+  totalFeatures: number;
+  implantedCount: number;
+  partialCount: number;
+  notDeliveredCount: number;
+  at: Date;
+}): FeatureImplantationProportionDto {
+  const { totalFeatures, implantedCount, partialCount, notDeliveredCount } = ctx;
+  return finishFeatureImplantationProportion({
+    ...ctx,
+    totalFeatures,
+    implantedCount,
+    partialCount,
+    notDeliveredCount
+  });
+}
+
 function buildFeatureImplantationProportion(ctx: {
   monthlyValue: Prisma.Decimal;
   installationValue?: Prisma.Decimal | null;
@@ -159,6 +188,31 @@ function buildFeatureImplantationProportion(ctx: {
       }
     }
   }
+  return finishFeatureImplantationProportion({
+    monthlyValue: ctx.monthlyValue,
+    installationValue: ctx.installationValue,
+    implementationPeriodStart: ctx.implementationPeriodStart,
+    implementationPeriodEnd: ctx.implementationPeriodEnd,
+    totalFeatures,
+    implantedCount,
+    partialCount,
+    notDeliveredCount,
+    at: ctx.at
+  });
+}
+
+function finishFeatureImplantationProportion(ctx: {
+  monthlyValue: Prisma.Decimal;
+  installationValue?: Prisma.Decimal | null;
+  implementationPeriodStart?: Date | null;
+  implementationPeriodEnd?: Date | null;
+  totalFeatures: number;
+  implantedCount: number;
+  partialCount: number;
+  notDeliveredCount: number;
+  at: Date;
+}): FeatureImplantationProportionDto {
+  const { totalFeatures, implantedCount, partialCount, notDeliveredCount } = ctx;
   const monthly = new Prisma.Decimal(ctx.monthlyValue);
   const contractMonthlyValue = monthly.toFixed(2);
   const instDec = ctx.installationValue != null ? new Prisma.Decimal(ctx.installationValue) : null;
@@ -224,47 +278,185 @@ function assertImplementationPeriodOrder(start: Date | null, end: Date | null): 
   }
 }
 
+async function allocateInternalCode(
+  tx: Prisma.TransactionClient,
+  contractTypeCatalogId: string,
+  year: number
+): Promise<string> {
+  const catalog = await tx.contractTypeCatalog.findUnique({ where: { id: contractTypeCatalogId } });
+  if (!catalog) throw new BadRequestException("Tipo de contrato do catálogo não encontrado.");
+  const existing = await tx.contractInternalCodeSequence.findUnique({
+    where: { contractTypeCatalogId_year: { contractTypeCatalogId, year } }
+  });
+  let nextSeq: number;
+  if (existing) {
+    nextSeq = existing.lastSequential + 1;
+    await tx.contractInternalCodeSequence.update({
+      where: { id: existing.id },
+      data: { lastSequential: nextSeq }
+    });
+  } else {
+    nextSeq = 1;
+    await tx.contractInternalCodeSequence.create({
+      data: { contractTypeCatalogId, year, lastSequential: nextSeq }
+    });
+  }
+  const acronym = catalog.acronym.trim().toUpperCase();
+  return `${acronym}-${year}-${String(nextSeq).padStart(3, "0")}`;
+}
+
 @Injectable()
 export class ContractsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly pricing: ContractPricingHelper;
+
+  constructor(private readonly prisma: PrismaService) {
+    this.pricing = new ContractPricingHelper(prisma);
+  }
+
+  async listPricingItemsFinancialReport(query?: PricingItemsFinancialReportQuery) {
+    return new PricingItemsFinancialReportService(this.prisma).list(query);
+  }
 
   async create(dto: CreateContractDto): Promise<unknown> {
-    const { glpiGroups, ...rest } = dto;
-    const totalValue = rest.totalValue ?? rest.monthlyValue * 12;
+    const {
+      glpiGroups,
+      pricingItems,
+      globalValueManual = false,
+      globalValueCurrent: requestedGlobalValueCurrent,
+      globalValueJustification: requestedGlobalValueJustification,
+      ...rest
+    } = dto;
+    let monthlyValue = rest.monthlyValue ?? 0;
+    let installationValue =
+      rest.installationValue === undefined || rest.installationValue === null
+        ? null
+        : rest.installationValue;
+    let totalValue = rest.totalValue ?? monthlyValue * 12;
+    let globalValueOriginal: number | null = null;
+    let globalValueCurrent: number | null = null;
+
+    if (pricingItems && pricingItems.length > 0) {
+      const { summarizePricingItems } = await import("./contract-pricing.helper");
+      const helperTotals = summarizePricingItems(
+        pricingItems.map((p) => {
+          const qty = Number(p.quantity);
+          const uv = Number(p.unitValue);
+          const totalManual = Boolean(p.totalManual);
+          const expected = Math.round(qty * uv * 100) / 100;
+          const total = totalManual && p.totalValue != null ? Number(p.totalValue) : expected;
+          return {
+            quantity: qty,
+            unitValue: uv,
+            totalValue: total,
+            billingKind: p.billingKind as never,
+            periodicity: (p.periodicity ?? null) as never,
+            status: (p.status ?? "ACTIVE") as never
+          };
+        })
+      );
+      monthlyValue = helperTotals.monthlyValue;
+      installationValue = helperTotals.installationValue;
+      totalValue = helperTotals.globalEstimated || monthlyValue * 12;
+      globalValueOriginal = helperTotals.globalEstimated;
+      globalValueCurrent = helperTotals.globalEstimated;
+    }
+
+    const globalValueJustification = (requestedGlobalValueJustification ?? "").trim();
+    if (globalValueManual) {
+      if (!globalValueJustification) {
+        throw new BadRequestException("Informe a justificativa para o ajuste manual do valor global.");
+      }
+      if (requestedGlobalValueCurrent == null || requestedGlobalValueCurrent < 0) {
+        throw new BadRequestException("Informe um valor global manual válido.");
+      }
+      globalValueCurrent = requestedGlobalValueCurrent;
+    }
+
+    if (!(monthlyValue > 0) && !(pricingItems && pricingItems.length > 0)) {
+      throw new BadRequestException("Informe a mensalidade ou ao menos um item contratual.");
+    }
+    if (!(monthlyValue > 0)) {
+      monthlyValue = 0.01;
+    }
+
+    const startDate = new Date(rest.startDate);
+    const contractYear = startDate.getFullYear();
+    const formalNumber = rest.formalNumber?.trim() || null;
+    const contractNumber = formalNumber ? `${formalNumber}/${contractYear}` : rest.number?.trim();
+    if (!contractNumber) {
+      throw new BadRequestException("Informe o número do contrato ou o número formal.");
+    }
+    await this.assertFormalNumberAvailable(formalNumber, contractYear);
+
+    let contractType = rest.contractType;
+    if (rest.contractTypeCatalogId) {
+      const catalog = await this.prisma.contractTypeCatalog.findUnique({
+        where: { id: rest.contractTypeCatalogId }
+      });
+      if (!catalog) throw new BadRequestException("Tipo de contrato do catálogo não encontrado.");
+      if (catalog.legacyEnum) contractType = catalog.legacyEnum;
+    }
+    if (!contractType) {
+      throw new BadRequestException("Informe o tipo de contrato ou selecione um tipo do catálogo.");
+    }
+
     const managerId = rest.managerId ?? rest.fiscalId;
     const implStart = rest.implementationPeriodStart ? new Date(rest.implementationPeriodStart) : null;
     const implEnd = rest.implementationPeriodEnd ? new Date(rest.implementationPeriodEnd) : null;
     assertImplementationPeriodOrder(implStart, implEnd);
-    const created = await this.prisma.contract.create({
-      data: {
-        number: rest.number,
-        name: rest.name,
-        description: rest.description,
-        managingUnit: rest.managingUnit,
-        companyName: rest.companyName,
-        cnpj: rest.cnpj,
-        contractType: rest.contractType,
-        lawType: rest.lawType ?? LawType.LEI_14133,
-        startDate: new Date(rest.startDate),
-        endDate: new Date(rest.endDate),
-        totalValue: new Prisma.Decimal(totalValue),
-        monthlyValue: new Prisma.Decimal(rest.monthlyValue),
-        installationValue:
-          rest.installationValue === undefined || rest.installationValue === null
-            ? null
-            : new Prisma.Decimal(rest.installationValue),
-        implementationPeriodStart: implStart,
-        implementationPeriodEnd: implEnd,
-        status: rest.status ?? ContractStatus.ACTIVE,
-        slaTarget: rest.slaTarget != null ? new Prisma.Decimal(rest.slaTarget) : null,
-        fiscalId: rest.fiscalId,
-        managerId,
-        supplierId: rest.supplierId ?? null,
-        glpiGroups:
-          glpiGroups != null && glpiGroups.length > 0 ? { create: dedupeGlpiGroupLinks(glpiGroups) } : undefined
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      let internalCode: string | null = null;
+      if (rest.contractTypeCatalogId) {
+        internalCode = await allocateInternalCode(tx, rest.contractTypeCatalogId, contractYear);
       }
+      return tx.contract.create({
+        data: {
+          number: contractNumber,
+          formalNumber,
+          contractYear,
+          internalCode,
+          administrativeProcess: rest.administrativeProcess?.trim() || null,
+          organizationId: rest.organizationId ?? null,
+          contractTypeCatalogId: rest.contractTypeCatalogId ?? null,
+          hiringTypeId: rest.hiringTypeId ?? null,
+          hiringProcedureNumber: rest.hiringProcedureNumber?.trim() || null,
+          name: rest.name,
+          description: rest.description,
+          managingUnit: rest.managingUnit,
+          companyName: rest.companyName,
+          cnpj: rest.cnpj,
+          contractType,
+          lawType: rest.lawType ?? LawType.LEI_14133,
+          startDate,
+          endDate: new Date(rest.endDate),
+          totalValue: new Prisma.Decimal(totalValue),
+          monthlyValue: new Prisma.Decimal(monthlyValue),
+          installationValue: installationValue === null ? null : new Prisma.Decimal(installationValue),
+          globalValueOriginal:
+            globalValueOriginal != null ? new Prisma.Decimal(globalValueOriginal) : new Prisma.Decimal(totalValue),
+          globalValueCurrent:
+            globalValueCurrent != null ? new Prisma.Decimal(globalValueCurrent) : new Prisma.Decimal(totalValue),
+          globalValueManual,
+          globalValueJustification: globalValueManual ? globalValueJustification : null,
+          implementationPeriodStart: implStart,
+          implementationPeriodEnd: implEnd,
+          status: rest.status ?? ContractStatus.ACTIVE,
+          slaTarget: rest.slaTarget != null ? new Prisma.Decimal(rest.slaTarget) : null,
+          fiscalId: rest.fiscalId,
+          managerId,
+          supplierId: rest.supplierId ?? null,
+          glpiGroups:
+            glpiGroups != null && glpiGroups.length > 0 ? { create: dedupeGlpiGroupLinks(glpiGroups) } : undefined
+        }
+      });
     });
     await this.createAudit("Contract", created.id, "CREATE", null, created);
+    if (pricingItems && pricingItems.length > 0) {
+      await this.pricing.replaceItems(created.id, pricingItems as PricingItemInput[], (action, oldData, newData) =>
+        this.createAudit("ContractPricingItem", created.id, action, oldData, newData)
+      );
+    }
     return this.findOne(created.id);
   }
 
@@ -290,8 +482,8 @@ export class ContractsService {
   }
 
   /**
-   * Contratos com estrutura de módulos (Software / Infra / Serviço) e itens com estado de entrega,
-   * para a página global «Módulos».
+   * Resumo dos contratos com estrutura modular (sem carregar funcionalidades).
+   * Totais de entrega vêm de agregação no banco.
    */
   async findModulesDeliveryOverview(): Promise<unknown> {
     const rows = await this.prisma.contract.findMany({
@@ -311,52 +503,376 @@ export class ContractsService {
         implementationPeriodEnd: true,
         fiscal: { select: { id: true, name: true, email: true } },
         manager: { select: { id: true, name: true, email: true } },
-        modules: {
-          select: {
-            id: true,
-            name: true,
-            criticality: true,
-            validatorId: true,
-            validator: { select: { id: true, email: true, role: true } },
-            weight: true,
-            features: {
-              select: {
-                id: true,
-                itemCode: true,
-                name: true,
-                weight: true,
-                status: true,
-                criticality: true,
-                deliveryStatus: true
-              },
-              orderBy: { name: "asc" }
-            }
-          },
-          orderBy: { name: "asc" }
-        }
+        _count: { select: { modules: true } }
       },
       orderBy: { number: "asc" }
     });
+    if (rows.length === 0) return [];
+
+    const contractIds = rows.map((r) => r.id);
+    const modules = await this.prisma.contractModule.findMany({
+      where: { contractId: { in: contractIds } },
+      select: { id: true, contractId: true }
+    });
+    const moduleIds = modules.map((m) => m.id);
+    const moduleToContract = new Map(modules.map((m) => [m.id, m.contractId]));
+
+    const grouped =
+      moduleIds.length === 0
+        ? []
+        : await this.prisma.contractFeature.groupBy({
+            by: ["moduleId", "deliveryStatus"],
+            where: { moduleId: { in: moduleIds } },
+            _count: { _all: true }
+          });
+
+    const countsByContract = new Map<
+      string,
+      { total: number; delivered: number; partial: number; notDelivered: number }
+    >();
+    for (const id of contractIds) {
+      countsByContract.set(id, { total: 0, delivered: 0, partial: 0, notDelivered: 0 });
+    }
+    for (const g of grouped) {
+      const contractId = moduleToContract.get(g.moduleId);
+      if (!contractId) continue;
+      const bucket = countsByContract.get(contractId);
+      if (!bucket) continue;
+      const n = g._count._all;
+      bucket.total += n;
+      if (g.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) bucket.delivered += n;
+      else if (g.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) bucket.partial += n;
+      else bucket.notDelivered += n;
+    }
+
     return rows.map((row) => {
-      const modules = sortModuleListFeatures(row.modules);
+      const c = countsByContract.get(row.id) ?? { total: 0, delivered: 0, partial: 0, notDelivered: 0 };
       return {
-        ...row,
-        modules,
-        featureImplantationProportion: buildFeatureImplantationProportion({
+        id: row.id,
+        number: row.number,
+        name: row.name,
+        contractType: row.contractType,
+        status: row.status,
+        monthlyValue: row.monthlyValue,
+        fiscal: row.fiscal,
+        manager: row.manager,
+        modulesCount: row._count.modules,
+        totals: {
+          totalFeatures: c.total,
+          deliveredCount: c.delivered,
+          partialCount: c.partial,
+          notDeliveredCount: c.notDelivered
+        },
+        featureImplantationProportion: buildFeatureImplantationProportionFromCounts({
           monthlyValue: row.monthlyValue,
           installationValue: row.installationValue ?? null,
           implementationPeriodStart: row.implementationPeriodStart ?? null,
           implementationPeriodEnd: row.implementationPeriodEnd ?? null,
-          modules,
+          totalFeatures: c.total,
+          implantedCount: c.delivered,
+          partialCount: c.partial,
+          notDeliveredCount: c.notDelivered,
           at: new Date()
         })
       };
     });
   }
 
+  /** Módulos de um contrato com totais por status (sem funcionalidades). */
+  async findContractModulesDelivery(contractId: string): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const modules = await this.prisma.contractModule.findMany({
+      where: { contractId },
+      select: {
+        id: true,
+        name: true,
+        criticality: true,
+        validatorId: true,
+        validator: { select: { id: true, email: true, role: true } },
+        glosaPricingItemId: true,
+        glosaPricingItem: { select: { id: true, sequence: true, description: true } },
+        weight: true
+      },
+      orderBy: { name: "asc" }
+    });
+    if (modules.length === 0) return { contractId, modules: [] };
+
+    const moduleIds = modules.map((m) => m.id);
+    const grouped = await this.prisma.contractFeature.groupBy({
+      by: ["moduleId", "deliveryStatus"],
+      where: { moduleId: { in: moduleIds } },
+      _count: { _all: true }
+    });
+    const byModule = new Map<string, { total: number; delivered: number; partial: number; notDelivered: number }>();
+    for (const id of moduleIds) {
+      byModule.set(id, { total: 0, delivered: 0, partial: 0, notDelivered: 0 });
+    }
+    for (const g of grouped) {
+      const bucket = byModule.get(g.moduleId);
+      if (!bucket) continue;
+      const n = g._count._all;
+      bucket.total += n;
+      if (g.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) bucket.delivered += n;
+      else if (g.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) bucket.partial += n;
+      else bucket.notDelivered += n;
+    }
+
+    return {
+      contractId,
+      modules: modules.map((m) => {
+        const t = byModule.get(m.id)!;
+        return {
+          ...m,
+          totals: {
+            totalFeatures: t.total,
+            deliveredCount: t.delivered,
+            partialCount: t.partial,
+            notDeliveredCount: t.notDelivered
+          }
+        };
+      })
+    };
+  }
+
+  /** Funcionalidades de um módulo, com paginação e filtros opcionais. */
+  async findModuleFeaturesDelivery(
+    contractId: string,
+    moduleId: string,
+    query: {
+      page?: number;
+      pageSize?: number;
+      q?: string;
+      deliveryStatus?: string;
+      criticality?: string;
+    }
+  ): Promise<unknown> {
+    await this.ensureModule(contractId, moduleId);
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 40));
+    const where = this.buildFeatureDeliveryWhere(moduleId, query);
+
+    const [total, features] = await Promise.all([
+      this.prisma.contractFeature.count({ where }),
+      this.prisma.contractFeature.findMany({
+        where,
+        select: {
+          id: true,
+          itemCode: true,
+          name: true,
+          weight: true,
+          status: true,
+          criticality: true,
+          deliveryStatus: true
+        },
+        orderBy: [{ itemCode: "asc" }, { name: "asc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      })
+    ]);
+
+    const ordered = sortFeaturesByItemCode(features);
+    return {
+      contractId,
+      moduleId,
+      page,
+      pageSize,
+      total,
+      hasMore: page * pageSize < total,
+      features: ordered
+    };
+  }
+
+  /**
+   * Pesquisa/filtros sobre todas as funcionalidades (não só as já carregadas na UI).
+   * Retorna contratos e módulos compatíveis com os filtros, com a 1.ª página de itens por módulo.
+   */
+  async searchModulesDeliveryFeatures(query: {
+    q?: string;
+    deliveryStatus?: string;
+    criticality?: string;
+    pageSize?: number;
+  }): Promise<unknown> {
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 40));
+    const q = (query.q ?? "").trim();
+    const deliveryStatus = query.deliveryStatus?.trim() || undefined;
+    const criticality = query.criticality?.trim() || undefined;
+    if (!q && !deliveryStatus && !criticality) {
+      return { contracts: [], totalFeatures: 0 };
+    }
+
+    const featureWhere: Prisma.ContractFeatureWhereInput = {
+      module: {
+        contract: {
+          deletedAt: null,
+          contractType: { in: [ContractType.SOFTWARE, ContractType.INFRA, ContractType.SERVICO] }
+        }
+      }
+    };
+    if (deliveryStatus && Object.values(ContractItemDeliveryStatus).includes(deliveryStatus as ContractItemDeliveryStatus)) {
+      featureWhere.deliveryStatus = deliveryStatus as ContractItemDeliveryStatus;
+    }
+    if (criticality && Object.values(ContractItemCriticality).includes(criticality as ContractItemCriticality)) {
+      featureWhere.criticality = criticality as ContractItemCriticality;
+    }
+    if (q) {
+      featureWhere.OR = [
+        { name: { contains: q, mode: "insensitive" } },
+        { itemCode: { contains: q, mode: "insensitive" } }
+      ];
+    }
+
+    const matching = await this.prisma.contractFeature.findMany({
+      where: featureWhere,
+      select: {
+        id: true,
+        itemCode: true,
+        name: true,
+        weight: true,
+        status: true,
+        criticality: true,
+        deliveryStatus: true,
+        moduleId: true,
+        module: {
+          select: {
+            id: true,
+            name: true,
+            weight: true,
+            criticality: true,
+            contractId: true,
+            contract: {
+              select: {
+                id: true,
+                number: true,
+                name: true,
+                contractType: true,
+                status: true,
+                monthlyValue: true,
+                fiscal: { select: { id: true, name: true, email: true } },
+                manager: { select: { id: true, name: true, email: true } }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [{ itemCode: "asc" }, { name: "asc" }],
+      take: 2000
+    });
+
+    type ModBucket = {
+      id: string;
+      name: string;
+      weight: unknown;
+      criticality: ContractItemCriticality;
+      features: typeof matching;
+    };
+    const byContract = new Map<
+      string,
+      {
+        contract: (typeof matching)[number]["module"]["contract"];
+        modules: Map<string, ModBucket>;
+      }
+    >();
+
+    for (const f of matching) {
+      const c = f.module.contract;
+      let entry = byContract.get(c.id);
+      if (!entry) {
+        entry = { contract: c, modules: new Map() };
+        byContract.set(c.id, entry);
+      }
+      let mod = entry.modules.get(f.moduleId);
+      if (!mod) {
+        mod = {
+          id: f.module.id,
+          name: f.module.name,
+          weight: f.module.weight,
+          criticality: f.module.criticality,
+          features: []
+        };
+        entry.modules.set(f.moduleId, mod);
+      }
+      mod.features.push(f);
+    }
+
+    const contracts = [...byContract.values()]
+      .sort((a, b) => a.contract.number.localeCompare(b.contract.number, "pt-BR"))
+      .map(({ contract, modules }) => {
+        const modList = [...modules.values()].map((m) => {
+          const delivered = m.features.filter((f) => f.deliveryStatus === "DELIVERED").length;
+          const partial = m.features.filter((f) => f.deliveryStatus === "PARTIALLY_DELIVERED").length;
+          const notDelivered = m.features.length - delivered - partial;
+          const page = sortFeaturesByItemCode(m.features).slice(0, pageSize);
+          return {
+            id: m.id,
+            name: m.name,
+            weight: m.weight,
+            criticality: m.criticality,
+            totals: {
+              totalFeatures: m.features.length,
+              deliveredCount: delivered,
+              partialCount: partial,
+              notDeliveredCount: notDelivered
+            },
+            featuresPage: {
+              page: 1,
+              pageSize,
+              total: m.features.length,
+              hasMore: m.features.length > pageSize,
+              features: page.map(({ module: _m, moduleId: _mid, ...rest }) => rest)
+            }
+          };
+        });
+        const totalFeatures = modList.reduce((s, m) => s + m.totals.totalFeatures, 0);
+        const deliveredCount = modList.reduce((s, m) => s + m.totals.deliveredCount, 0);
+        const partialCount = modList.reduce((s, m) => s + m.totals.partialCount, 0);
+        const notDeliveredCount = modList.reduce((s, m) => s + m.totals.notDeliveredCount, 0);
+        return {
+          id: contract.id,
+          number: contract.number,
+          name: contract.name,
+          contractType: contract.contractType,
+          status: contract.status,
+          monthlyValue: contract.monthlyValue,
+          fiscal: contract.fiscal,
+          manager: contract.manager,
+          totals: { totalFeatures, deliveredCount, partialCount, notDeliveredCount },
+          modules: modList
+        };
+      });
+
+    return {
+      contracts,
+      totalFeatures: matching.length,
+      truncated: matching.length >= 2000
+    };
+  }
+
+  private buildFeatureDeliveryWhere(
+    moduleId: string,
+    query: { q?: string; deliveryStatus?: string; criticality?: string }
+  ): Prisma.ContractFeatureWhereInput {
+    const where: Prisma.ContractFeatureWhereInput = { moduleId };
+    const q = (query.q ?? "").trim();
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: "insensitive" } },
+        { itemCode: { contains: q, mode: "insensitive" } }
+      ];
+    }
+    const ds = query.deliveryStatus?.trim();
+    if (ds && Object.values(ContractItemDeliveryStatus).includes(ds as ContractItemDeliveryStatus)) {
+      where.deliveryStatus = ds as ContractItemDeliveryStatus;
+    }
+    const cr = query.criticality?.trim();
+    if (cr && Object.values(ContractItemCriticality).includes(cr as ContractItemCriticality)) {
+      where.criticality = cr as ContractItemCriticality;
+    }
+    return where;
+  }
+
   async findAll(): Promise<unknown> {
     return this.prisma.contract.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...this.organizationScope() },
       include: {
         fiscal: true,
         manager: true,
@@ -368,11 +884,161 @@ export class ContractsService {
     });
   }
 
+  /**
+   * Confere o backfill dos campos financeiros legados para os itens de precificação.
+   * Mantém os valores numéricos para a interface poder destacar divergências sem
+   * depender da serialização Decimal do Prisma.
+   */
+  async pricingMigrationReview(): Promise<{
+    summary: { migrated: number; pending: number; inconsistent: number; totalActive: number };
+    contracts: Array<{
+      id: string;
+      name: string;
+      number: string;
+      status: ContractStatus;
+      monthlyValue: number;
+      installationValue: number | null;
+      totalValue: number;
+      pricingItemsCount: number;
+      mensalidadeCount: number;
+      implantacaoCount: number;
+      flags: string[];
+      migratedItems: Array<{
+        id: string;
+        description: string;
+        typeCode: string;
+        quantity: number;
+        unitValue: number;
+        totalValue: number;
+      }>;
+    }>;
+  }> {
+    const contracts = await this.prisma.contract.findMany({
+      where: { deletedAt: null, status: ContractStatus.ACTIVE },
+      select: {
+        id: true,
+        name: true,
+        number: true,
+        status: true,
+        monthlyValue: true,
+        installationValue: true,
+        totalValue: true,
+        pricingItems: {
+          select: {
+            id: true,
+            description: true,
+            quantity: true,
+            unitValue: true,
+            totalValue: true,
+            billingKind: true,
+            periodicity: true,
+            periodStart: true,
+            periodEnd: true,
+            status: true,
+            type: { select: { code: true } }
+          },
+          orderBy: { sequence: "asc" }
+        }
+      },
+      orderBy: { number: "asc" }
+    });
+
+    const nearlyEqual = (left: number, right: number) => Math.abs(left - right) < 0.01;
+    const rows = contracts.map((contract) => {
+      const activeItems = contract.pricingItems.filter((item) => item.status === "ACTIVE");
+      const migratedItems = contract.pricingItems.filter((item) => {
+        const description = item.description.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+        return (
+          description.includes("migrad") ||
+          description.includes("mensalidade do contrato") ||
+          description.includes("implantacao do contrato")
+        );
+      });
+      const mensalidadeItems = activeItems.filter((item) => item.type.code === "MENSALIDADE");
+      const implantacaoItems = activeItems.filter((item) => item.type.code === "IMPLANTACAO");
+      const monthlyValue = Number(contract.monthlyValue);
+      const installationValue = contract.installationValue == null ? null : Number(contract.installationValue);
+      const flags: string[] = [];
+
+      if (migratedItems.length > 0) flags.push("MIGRATED");
+      if (activeItems.length === 0) {
+        flags.push("PENDING");
+      } else {
+        if (monthlyValue > 0 && mensalidadeItems.length === 0) flags.push("PENDING");
+        if ((installationValue ?? 0) > 0 && implantacaoItems.length === 0) flags.push("PENDING");
+      }
+      if (mensalidadeItems.length > 1) flags.push("MULTIPLE_MENSALIDADE");
+
+      const needsQuantityReview = activeItems.some((item) => Number(item.quantity) <= 0);
+      if (needsQuantityReview) flags.push("QTY_UNDEFINED");
+      const needsPeriodReview = activeItems.some(
+        (item) =>
+          item.billingKind === "RECURRING" &&
+          (item.periodicity == null || item.periodStart == null || item.periodEnd == null)
+      );
+      if (needsPeriodReview) flags.push("PERIOD_UNDEFINED");
+
+      const monthlyItemsValue = mensalidadeItems.reduce((sum, item) => {
+        if (item.periodicity === "BIMONTHLY") return sum + Number(item.unitValue) / 2;
+        if (item.periodicity === "QUARTERLY") return sum + Number(item.unitValue) / 3;
+        if (item.periodicity === "SEMIANNUAL") return sum + Number(item.unitValue) / 6;
+        if (item.periodicity === "ANNUAL") return sum + Number(item.unitValue) / 12;
+        return sum + Number(item.unitValue);
+      }, 0);
+      const installationItemsValue = implantacaoItems.reduce((sum, item) => sum + Number(item.totalValue), 0);
+      const monthlyDiverges = monthlyValue > 0 && mensalidadeItems.length > 0 && !nearlyEqual(monthlyValue, monthlyItemsValue);
+      const installationDiverges =
+        (installationValue ?? 0) > 0 &&
+        implantacaoItems.length > 0 &&
+        !nearlyEqual(installationValue ?? 0, installationItemsValue);
+      if (monthlyDiverges || installationDiverges) flags.push("VALUE_DIVERGENCE");
+
+      return {
+        id: contract.id,
+        name: contract.name,
+        number: contract.number,
+        status: contract.status,
+        monthlyValue,
+        installationValue,
+        totalValue: Number(contract.totalValue),
+        pricingItemsCount: activeItems.length,
+        mensalidadeCount: mensalidadeItems.length,
+        implantacaoCount: implantacaoItems.length,
+        flags,
+        migratedItems: migratedItems.map((item) => ({
+          id: item.id,
+          description: item.description,
+          typeCode: item.type.code,
+          quantity: Number(item.quantity),
+          unitValue: Number(item.unitValue),
+          totalValue: Number(item.totalValue)
+        }))
+      };
+    });
+    const inconsistentFlags = new Set(["MULTIPLE_MENSALIDADE", "QTY_UNDEFINED", "PERIOD_UNDEFINED", "VALUE_DIVERGENCE"]);
+
+    return {
+      summary: {
+        migrated: rows.filter((row) => row.flags.includes("MIGRATED")).length,
+        pending: rows.filter((row) => row.flags.includes("PENDING")).length,
+        inconsistent: rows.filter((row) => row.flags.some((flag) => inconsistentFlags.has(flag))).length,
+        totalActive: rows.length
+      },
+      contracts: rows
+    };
+  }
+
   async findOne(id: string): Promise<unknown> {
     const contract = await this.prisma.contract.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...this.organizationScope() },
       include: {
-        modules: { include: { features: true, validator: { select: { id: true, email: true, role: true } } } },
+        modules: {
+          include: {
+            features: true,
+            validator: { select: { id: true, email: true, role: true } },
+            glosaPricingItem: { include: { type: true } }
+          }
+        },
         services: true,
         fiscal: true,
         manager: true,
@@ -380,14 +1046,23 @@ export class ContractsService {
         glpiGroups: { orderBy: { glpiGroupName: "asc" } },
         amendments: { orderBy: { createdAt: "desc" } },
         financialSnapshots: { orderBy: { recordedAt: "desc" }, take: 50 },
-        itemChangeLogs: { orderBy: { changedAt: "desc" }, take: 100 }
+        itemChangeLogs: { orderBy: { changedAt: "desc" }, take: 100 },
+        pricingItems: {
+          include: { type: true, unit: true },
+          orderBy: { sequence: "asc" }
+        }
       }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");
     const modules = sortModuleListFeatures(contract.modules);
+    const { summarizePricingItems } = await import("./contract-pricing.helper");
+    const pricingTotals = summarizePricingItems(contract.pricingItems);
+    const pricingLocked = await this.pricing.contractHasMovements(id);
     return {
       ...contract,
       modules,
+      pricingTotals,
+      pricingLocked,
       featureImplantationProportion: buildFeatureImplantationProportion({
         monthlyValue: contract.monthlyValue,
         installationValue: contract.installationValue,
@@ -497,12 +1172,61 @@ export class ContractsService {
           : new Date(dto.implementationPeriodEnd)
         : prev.implementationPeriodEnd;
     assertImplementationPeriodOrder(nextImplStart, nextImplEnd);
-    const { glpiGroups, ...rest } = dto;
+    const {
+      glpiGroups,
+      pricingItems,
+      globalValueManual,
+      globalValueCurrent,
+      globalValueJustification,
+      ...rest
+    } = dto;
     const totalValue = dto.totalValue ?? (dto.monthlyValue != null ? dto.monthlyValue * 12 : undefined);
+
+    if (globalValueManual === undefined && (globalValueCurrent !== undefined || globalValueJustification !== undefined)) {
+      throw new BadRequestException("Informe a opção de ajuste manual para alterar o valor global.");
+    }
+    if (globalValueManual === true) {
+      const justification = (globalValueJustification ?? "").trim();
+      if (!justification) {
+        throw new BadRequestException("Informe a justificativa para o ajuste manual do valor global.");
+      }
+      if (globalValueCurrent == null || globalValueCurrent < 0) {
+        throw new BadRequestException("Informe um valor global manual válido.");
+      }
+    }
+
+    let contractType = dto.contractType;
+    if (dto.contractTypeCatalogId) {
+      const catalog = await this.prisma.contractTypeCatalog.findUnique({
+        where: { id: dto.contractTypeCatalogId }
+      });
+      if (!catalog) throw new BadRequestException("Tipo de contrato do catálogo não encontrado.");
+      if (catalog.legacyEnum) contractType = catalog.legacyEnum;
+    }
+
+    const startDate = dto.startDate ? new Date(dto.startDate) : prev.startDate;
+    const contractYear = startDate.getFullYear();
+    const formalNumber = dto.formalNumber !== undefined ? dto.formalNumber?.trim() || null : prev.formalNumber;
+    const number = formalNumber ? `${formalNumber}/${contractYear}` : dto.number;
+    await this.assertFormalNumberAvailable(formalNumber, contractYear, id);
+
     const updated = await this.prisma.contract.update({
       where: { id },
       data: {
         ...rest,
+        ...(contractType !== undefined ? { contractType } : {}),
+        ...(number !== undefined ? { number } : {}),
+        ...(dto.formalNumber !== undefined ? { formalNumber } : {}),
+        ...(dto.startDate ? { contractYear } : {}),
+        ...(dto.administrativeProcess !== undefined
+          ? { administrativeProcess: dto.administrativeProcess?.trim() || null }
+          : {}),
+        ...(dto.organizationId !== undefined ? { organizationId: dto.organizationId } : {}),
+        ...(dto.contractTypeCatalogId !== undefined ? { contractTypeCatalogId: dto.contractTypeCatalogId } : {}),
+        ...(dto.hiringTypeId !== undefined ? { hiringTypeId: dto.hiringTypeId } : {}),
+        ...(dto.hiringProcedureNumber !== undefined
+          ? { hiringProcedureNumber: dto.hiringProcedureNumber?.trim() || null }
+          : {}),
         ...(glpiGroups !== undefined
           ? { glpiGroups: { deleteMany: {}, create: dedupeGlpiGroupLinks(glpiGroups) } }
           : {}),
@@ -517,6 +1241,18 @@ export class ContractsService {
             : dto.installationValue === null
               ? null
               : new Prisma.Decimal(dto.installationValue),
+        ...(globalValueManual === true
+          ? {
+              globalValueManual: true,
+              globalValueCurrent: new Prisma.Decimal(globalValueCurrent!),
+              globalValueJustification: globalValueJustification!.trim()
+            }
+          : globalValueManual === false
+            ? {
+                globalValueManual: false,
+                globalValueJustification: null
+              }
+            : {}),
         implementationPeriodStart:
           dto.implementationPeriodStart === undefined
             ? undefined
@@ -532,7 +1268,238 @@ export class ContractsService {
       }
     });
     await this.createAudit("Contract", id, "UPDATE", prev, updated);
+    if (pricingItems !== undefined) {
+      await this.pricing.replaceItems(id, pricingItems as PricingItemInput[], (action, oldData, newData) =>
+        this.createAudit("ContractPricingItem", id, action, oldData, newData)
+      );
+    } else if (globalValueManual === false) {
+      await this.pricing.syncContractTotalsFromItems(id);
+    }
     return this.findOne(id);
+  }
+
+  /**
+   * Gera excepcionalmente outro código interno, preservando o anterior no log de auditoria.
+   * O sequencial nunca é reaproveitado, mesmo que o código anterior tenha sido incorreto.
+   */
+  async regenerateInternalCode(id: string, justification: string): Promise<unknown> {
+    const normalizedJustification = justification?.trim() ?? "";
+    if (normalizedJustification.length < 10) {
+      throw new BadRequestException("Informe uma justificativa com pelo menos 10 caracteres.");
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const contract = await tx.contract.findFirst({
+        where: { id, deletedAt: null },
+        select: { id: true, internalCode: true, contractTypeCatalogId: true, startDate: true }
+      });
+      if (!contract) throw new NotFoundException("Contrato não encontrado");
+      if (!contract.contractTypeCatalogId) {
+        throw new BadRequestException("O contrato não possui tipo de contrato do catálogo para gerar o código interno.");
+      }
+      if (!contract.startDate || Number.isNaN(contract.startDate.getTime())) {
+        throw new BadRequestException("O contrato não possui uma data de início válida para gerar o código interno.");
+      }
+
+      const internalCode = await allocateInternalCode(
+        tx,
+        contract.contractTypeCatalogId,
+        contract.startDate.getFullYear()
+      );
+      const updatedContract = await tx.contract.update({ where: { id }, data: { internalCode } });
+      await tx.auditLog.create({
+        data: {
+          entity: "Contract",
+          entityId: id,
+          action: "REGENERATE_INTERNAL_CODE",
+          userId: getAuditActorId(),
+          oldData: { internalCode: contract.internalCode } as Prisma.InputJsonValue,
+          newData: {
+            internalCode: updatedContract.internalCode,
+            justification: normalizedJustification
+          } as Prisma.InputJsonValue
+        }
+      });
+    });
+    return this.findOne(id);
+  }
+
+  /**
+   * Remove o contrato da listagem (soft-delete) quando não há movimentações relevantes.
+   * Exige confirmação textual e justificativa; registra auditoria antes da exclusão.
+   */
+  async delete(id: string, dto: DeleteContractDto): Promise<{ ok: true; id: string }> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        supplier: { select: { id: true, name: true, cnpj: true } },
+        fiscal: { select: { id: true, name: true } },
+        manager: { select: { id: true, name: true } }
+      }
+    });
+    if (!contract) throw new NotFoundException("Contrato não encontrado");
+
+    const justification = (dto.justification ?? "").trim();
+    if (justification.length < 5) {
+      throw new BadRequestException("Informe uma justificativa com pelo menos 5 caracteres.");
+    }
+    const confirmation = (dto.confirmation ?? "").trim();
+    const expectedNumber = contract.number.trim();
+    const okConfirm =
+      confirmation.toUpperCase() === "EXCLUIR" || confirmation === expectedNumber;
+    if (!okConfirm) {
+      throw new BadRequestException(
+        `Para confirmar, digite EXCLUIR ou o número do contrato («${expectedNumber}»).`
+      );
+    }
+
+    const blockers = await this.collectContractDeleteBlockers(id);
+    if (blockers.length > 0) {
+      throw new BadRequestException(
+        `Este contrato não pode ser excluído porque possui registros relacionados: ${blockers.join(
+          ", "
+        )}. Altere a situação para «Suspenso» ou «Encerrado» em vez de excluir.`
+      );
+    }
+
+    const snapshot = {
+      id: contract.id,
+      number: contract.number,
+      name: contract.name,
+      companyName: contract.companyName,
+      cnpj: contract.cnpj,
+      contractType: contract.contractType,
+      status: contract.status,
+      monthlyValue: contract.monthlyValue,
+      totalValue: contract.totalValue,
+      installationValue: contract.installationValue,
+      startDate: contract.startDate,
+      endDate: contract.endDate,
+      supplier: contract.supplier,
+      fiscal: contract.fiscal,
+      manager: contract.manager
+    };
+
+    await this.createAudit("Contract", id, "DELETE", snapshot, {
+      justification,
+      confirmation,
+      deletedAt: new Date().toISOString()
+    });
+
+    await this.prisma.contract.update({
+      where: { id },
+      data: { deletedAt: new Date() }
+    });
+
+    return { ok: true, id };
+  }
+
+  private async collectContractDeleteBlockers(contractId: string): Promise<string[]> {
+    const [
+      measurements,
+      amendments,
+      snapshots,
+      governance,
+      evaluatedFeatures,
+      statusChangeLogs,
+      consumedPricing
+    ] = await Promise.all([
+      this.prisma.measurement.count({ where: { contractId, deletedAt: null } }),
+      this.prisma.contractAmendment.count({ where: { contractId } }),
+      this.prisma.contractFinancialSnapshot.count({ where: { contractId } }),
+      this.prisma.ticketGovernance.count({ where: { contractId } }),
+      this.prisma.contractFeature.count({
+        where: {
+          module: { contractId },
+          OR: [
+            { deliveryStatus: { not: ContractItemDeliveryStatus.NOT_DELIVERED } },
+            { status: { not: ContractFeatureStatus.NOT_STARTED } }
+          ]
+        }
+      }),
+      this.prisma.contractItemChangeLog.count({
+        where: {
+          contractId,
+          action: ContractItemChangeAction.STATUS_CHANGED
+        }
+      }),
+      this.prisma.contractPricingItem.count({
+        where: { contractId, consumedQuantity: { gt: 0 } }
+      })
+    ]);
+
+    const blockers: string[] = [];
+    if (measurements > 0) blockers.push(`medições (${measurements})`);
+    if (amendments > 0) blockers.push(`aditivos (${amendments})`);
+    if (snapshots > 0) blockers.push(`memória financeira (${snapshots})`);
+    if (governance > 0) blockers.push(`chamados de governança (${governance})`);
+    if (evaluatedFeatures > 0) blockers.push(`funcionalidades avaliadas (${evaluatedFeatures})`);
+    if (statusChangeLogs > 0) blockers.push(`histórico de alterações de itens (${statusChangeLogs})`);
+    if (consumedPricing > 0) blockers.push(`itens com consumo registrado (${consumedPricing})`);
+    return blockers;
+  }
+
+  async listPricingCatalog() {
+    // Inclui inativos para não quebrar edição de itens já vinculados a tipos/unidades desativados.
+    const [types, units] = await Promise.all([this.pricing.listTypes(true), this.pricing.listUnits(true)]);
+    return { types, units };
+  }
+
+  async createMeasureUnit(body: { code: string; label: string }) {
+    return this.pricing.createUnit(body);
+  }
+
+  async createContractItemType(body: { code: string; label: string }) {
+    return this.pricing.createType(body);
+  }
+
+  async listItemTypesAdmin() {
+    return this.pricing.listTypesAdmin();
+  }
+
+  async createItemType(body: {
+    code: string;
+    label: string;
+    description?: string;
+    billingKind?: string | null;
+    suggestedUnitId?: string | null;
+    participatesInGlosa?: boolean;
+    useInMeasurements?: boolean;
+    useInBalanceControl?: boolean;
+    useInConsumption?: boolean;
+    useInFinancialPlanning?: boolean;
+    infoOnly?: boolean;
+    active?: boolean;
+    sortOrder?: number;
+  }) {
+    return this.pricing.createTypeAdmin(body as never);
+  }
+
+  async updateItemType(
+    id: string,
+    body: {
+      label?: string;
+      description?: string | null;
+      billingKind?: string | null;
+      suggestedUnitId?: string | null;
+      participatesInGlosa?: boolean;
+      useInMeasurements?: boolean;
+      useInBalanceControl?: boolean;
+      useInConsumption?: boolean;
+      useInFinancialPlanning?: boolean;
+      infoOnly?: boolean;
+      active?: boolean;
+      sortOrder?: number;
+    }
+  ) {
+    return this.pricing.updateTypeAdmin(id, body as never);
+  }
+
+  async replacePricingItems(contractId: string, items: PricingItemDto[]) {
+    await this.pricing.ensureContract(contractId);
+    return this.pricing.replaceItems(contractId, items as PricingItemInput[], (action, oldData, newData) =>
+      this.createAudit("ContractPricingItem", contractId, action, oldData, newData)
+    );
   }
 
   /**
@@ -663,12 +1630,14 @@ export class ContractsService {
     if (dto.validatorId?.trim()) {
       await this.ensureUser(dto.validatorId.trim());
     }
+    const glosaPricingItemId = await this.resolveModuleGlosaPricingItemId(contractId, dto.glosaPricingItemId);
     const created = await this.prisma.contractModule.create({
       data: {
         contractId,
         name: dto.name,
         criticality: dto.criticality ?? ContractItemCriticality.MEDIA,
         validatorId: dto.validatorId?.trim() || null,
+        glosaPricingItemId,
         weight: new Prisma.Decimal(dto.weight ?? 0)
       }
     });
@@ -692,6 +1661,10 @@ export class ContractsService {
     if (dto.validatorId?.trim()) {
       await this.ensureUser(dto.validatorId.trim());
     }
+    const glosaPricingItemId =
+      dto.glosaPricingItemId === undefined
+        ? undefined
+        : await this.resolveModuleGlosaPricingItemId(contractId, dto.glosaPricingItemId);
     const prev = await this.prisma.contractModule.findUnique({ where: { id: moduleId } });
     const updated = await this.prisma.contractModule.update({
       where: { id: moduleId },
@@ -699,6 +1672,7 @@ export class ContractsService {
         name: dto.name ?? undefined,
         criticality: dto.criticality ?? undefined,
         validatorId: dto.validatorId === undefined ? undefined : dto.validatorId?.trim() || null,
+        glosaPricingItemId,
         weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : undefined
       }
     });
@@ -826,7 +1800,10 @@ export class ContractsService {
       deliveryStatusBefore: prev?.deliveryStatus ?? null,
       deliveryStatusAfter: next.deliveryStatus,
       oldData: prev,
-      newData: next
+      newData: {
+        ...(next as object),
+        changeSource: dto.changeSource?.trim() || "CONTRACT_DETAIL"
+      }
     });
     return this.findOne(contractId);
   }
@@ -932,9 +1909,57 @@ export class ContractsService {
     if (!c) throw new NotFoundException("Contrato não encontrado");
   }
 
+  /**
+   * Restringe consultas ao órgão do usuário, sem bloquear contas legadas
+   * que ainda não tenham órgão definido.
+   */
+  private organizationScope(): Prisma.ContractWhereInput {
+    const actor = requestActorStore.getStore();
+    if (actor?.role !== "ADMIN" && actor?.organizationId) {
+      return { organizationId: actor.organizationId };
+    }
+    return {};
+  }
+
+  private async assertFormalNumberAvailable(
+    formalNumber: string | null,
+    contractYear: number,
+    excludeId?: string
+  ): Promise<void> {
+    if (!formalNumber) return;
+    const duplicate = await this.prisma.contract.findFirst({
+      where: {
+        formalNumber,
+        contractYear,
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {})
+      },
+      select: { id: true }
+    });
+    if (duplicate) {
+      throw new BadRequestException(`Já existe contrato com o número formal ${formalNumber}/${contractYear}.`);
+    }
+  }
+
   private async ensureUser(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!user) throw new NotFoundException("Usuário responsável não encontrado");
+  }
+
+  private async resolveModuleGlosaPricingItemId(contractId: string, pricingItemId: string | null | undefined): Promise<string | null> {
+    const id = pricingItemId?.trim();
+    if (!id) return null;
+    const item = await this.prisma.contractPricingItem.findFirst({
+      where: { id, contractId, status: ContractPricingItemStatus.ACTIVE },
+      include: { type: { select: { code: true, participatesInGlosa: true } } }
+    });
+    if (!item) {
+      throw new BadRequestException("O item de base de glosa deve estar ativo e pertencer a este contrato.");
+    }
+    if (!item.includeInGlosaBase && !item.type.participatesInGlosa && item.type.code !== "MENSALIDADE") {
+      throw new BadRequestException("O item selecionado não está habilitado para compor a base de glosa.");
+    }
+    return item.id;
   }
 
   private async recalculateContractModuleWeights(contractId: string): Promise<void> {

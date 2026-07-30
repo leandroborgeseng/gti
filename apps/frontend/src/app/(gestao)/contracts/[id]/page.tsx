@@ -1,16 +1,19 @@
 import type { Route } from "next";
 import Link from "next/link";
+import { ContractDeleteButton } from "@/components/contracts/contract-delete-button";
+import { ContractInternalCodeRegenerateButton } from "@/components/contracts/contract-internal-code-regenerate-button";
 import { ContractFinancialSnapshotsPanel } from "@/components/contracts/contract-financial-snapshots-panel";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractGlpiGroupsPanel } from "@/components/contracts/contract-glpi-groups-panel";
 import { ContractItemChangeHistoryPanel } from "@/components/contracts/contract-item-change-history-panel";
+import { ContractPricingItemsPanel } from "@/components/contracts/contract-pricing-items-panel";
 import { ContractStatusControl } from "@/components/contracts/contract-status-control";
 import { ContractImplantationProportionPanel } from "@/components/contracts/contract-implantation-proportion-panel";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { formatBrl } from "@/lib/format-brl";
-import { getContract } from "@/lib/api";
+import { getContract, getContractTypeCatalog, getHiringTypes, getOrganizations } from "@/lib/api";
 import { safeLoadNullable } from "@/lib/api-load";
 
 const statusLabel: Record<string, string> = {
@@ -43,7 +46,13 @@ function formatSlaTarget(raw: string | null | undefined): string {
 }
 
 export default async function ContractDetailPage({ params }: { params: { id: string } }): Promise<JSX.Element> {
-  const { data: contract, error } = await safeLoadNullable(() => getContract(params.id));
+  const [contractRes, orgsRes, hiringRes, typesRes] = await Promise.all([
+    safeLoadNullable(() => getContract(params.id)),
+    safeLoadNullable(() => getOrganizations()),
+    safeLoadNullable(() => getHiringTypes()),
+    safeLoadNullable(() => getContractTypeCatalog())
+  ]);
+  const { data: contract, error } = contractRes;
   if (error) {
     return (
       <div className="space-y-4">
@@ -69,26 +78,59 @@ export default async function ContractDetailPage({ params }: { params: { id: str
 
   const cnpj = contract.cnpj ?? contract.supplier?.cnpj ?? "—";
   const law = contract.lawType ? lawTypeLabel[contract.lawType] ?? contract.lawType : "—";
-  const tipo = contractTypeLabel[contract.contractType] ?? contract.contractType;
+  const catalogType = contract.contractTypeCatalog
+    ?? typesRes.data?.find((t) => t.id === contract.contractTypeCatalogId);
+  const tipo = catalogType
+    ? catalogType.acronym
+      ? `${catalogType.acronym} — ${catalogType.name}`
+      : catalogType.name
+    : contractTypeLabel[contract.contractType] ?? contract.contractType;
+  const org = contract.organization ?? orgsRes.data?.find((o) => o.id === contract.organizationId);
+  const orgLabel = org
+    ? org.acronym
+      ? `${org.acronym} — ${org.name}`
+      : org.name
+    : contract.managingUnit ?? "—";
+  const hiring = contract.hiringType ?? hiringRes.data?.find((h) => h.id === contract.hiringTypeId);
+  const formalDisplay =
+    contract.formalNumber && contract.contractYear
+      ? `${contract.formalNumber}/${contract.contractYear}`
+      : contract.number;
+  const globalOriginal = contract.globalValueOriginal;
+  const globalCurrent = contract.globalValueCurrent;
+  const globalAdjustmentDifference =
+    contract.globalValueManual && contract.pricingTotals && globalCurrent != null
+      ? Number(globalCurrent) - contract.pricingTotals.globalEstimated
+      : null;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <Link
-          href={"/contracts" as Route}
-          className="font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
-        >
-          ← Voltar aos contratos
-        </Link>
-        <span className="text-slate-300" aria-hidden>
-          |
-        </span>
-        <Link
-          href={`/measurements?contractId=${contract.id}` as Route}
-          className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
-        >
-          Medições deste contrato
-        </Link>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href={"/contracts" as Route}
+            className="font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
+          >
+            ← Voltar aos contratos
+          </Link>
+          <span className="text-slate-300" aria-hidden>
+            |
+          </span>
+          <Link
+            href={`/measurements?contractId=${contract.id}` as Route}
+            className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
+          >
+            Medições deste contrato
+          </Link>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <ContractInternalCodeRegenerateButton contractId={contract.id} internalCode={contract.internalCode} />
+          <ContractDeleteButton
+            contractId={contract.id}
+            contractNumber={contract.number}
+            contractName={contract.name}
+          />
+        </div>
       </div>
 
       <Card className="p-5">
@@ -98,9 +140,30 @@ export default async function ContractDetailPage({ params }: { params: { id: str
         {contract.description ? <p className="mt-2 text-sm text-slate-600">{contract.description}</p> : null}
 
         <div className="mt-4 grid gap-3 text-sm text-slate-700 md:grid-cols-2">
-          {contract.managingUnit ? (
-            <p className="md:col-span-2">
-              <strong className="text-slate-900">Órgão gestor:</strong> {contract.managingUnit}
+          {contract.internalCode ? (
+            <p>
+              <strong className="text-slate-900">Código interno SIGTI:</strong> {contract.internalCode}
+            </p>
+          ) : null}
+          <p>
+            <strong className="text-slate-900">Número formal:</strong> {formalDisplay}
+          </p>
+          {contract.administrativeProcess ? (
+            <p>
+              <strong className="text-slate-900">Processo administrativo:</strong> {contract.administrativeProcess}
+            </p>
+          ) : null}
+          <p className="md:col-span-2">
+            <strong className="text-slate-900">Órgão gestor:</strong> {orgLabel}
+          </p>
+          {hiring ? (
+            <p>
+              <strong className="text-slate-900">Modalidade de contratação:</strong> {hiring.name}
+            </p>
+          ) : null}
+          {contract.hiringProcedureNumber ? (
+            <p>
+              <strong className="text-slate-900">Procedimento licitatório:</strong> {contract.hiringProcedureNumber}
             </p>
           ) : null}
           <p>
@@ -132,10 +195,11 @@ export default async function ContractDetailPage({ params }: { params: { id: str
             {new Date(contract.endDate).toLocaleDateString("pt-BR")}
           </p>
           <p>
-            <strong className="text-slate-900">Mensalidade:</strong> {formatBrl(contract.monthlyValue)}
+            <strong className="text-slate-900">Mensalidade (equivalente):</strong> {formatBrl(contract.monthlyValue)}
           </p>
           <p>
-            <strong className="text-slate-900">Implantação:</strong> {formatBrl(contract.installationValue)}
+            <strong className="text-slate-900">Valores únicos (impl./outros):</strong>{" "}
+            {formatBrl(contract.installationValue)}
           </p>
           {contract.implementationPeriodStart || contract.implementationPeriodEnd ? (
             <p>
@@ -152,6 +216,37 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           <p>
             <strong className="text-slate-900">Valor total:</strong> {formatBrl(contract.totalValue)}
           </p>
+          {globalOriginal ? (
+            <p>
+              <strong className="text-slate-900">Valor global original:</strong> {formatBrl(globalOriginal)}
+            </p>
+          ) : null}
+          {globalCurrent ? (
+            <p>
+              <strong className="text-slate-900">Valor global vigente:</strong> {formatBrl(globalCurrent)}
+              {contract.globalValueManual ? (
+                <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                  ajuste manual
+                </span>
+              ) : null}
+            </p>
+          ) : null}
+          {contract.globalValueManual ? (
+            <p className="md:col-span-2">
+              <strong className="text-slate-900">Justificativa do ajuste manual:</strong>{" "}
+              {contract.globalValueJustification ?? "—"}
+              {globalAdjustmentDifference != null && Number.isFinite(globalAdjustmentDifference) ? (
+                <> · Diferença para os itens: {formatBrl(globalAdjustmentDifference)}</>
+              ) : null}
+            </p>
+          ) : null}
+          {contract.pricingTotals ? (
+            <p className="md:col-span-2">
+              <strong className="text-slate-900">Resumo dos itens:</strong> Mensalidade equivalente{" "}
+              {formatBrl(contract.pricingTotals.monthlyValue)} · Recorrentes {formatBrl(contract.pricingTotals.recurringPredicted)} ·
+              Únicos {formatBrl(contract.pricingTotals.oneTime)} · Sob demanda {formatBrl(contract.pricingTotals.onDemand)}
+            </p>
+          ) : null}
           <p>
             <strong className="text-slate-900">Meta de SLA (referência):</strong> {formatSlaTarget(contract.slaTarget ?? undefined)}
           </p>
@@ -183,6 +278,8 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           </div>
         </div>
       </Card>
+
+      <ContractPricingItemsPanel contract={contract} />
 
       <ContractFinancialSnapshotsPanel
         contractId={contract.id}

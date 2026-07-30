@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addMeasurementServiceLines } from "@/lib/api";
+import { addMeasurementServiceLines, type ContractPricingItem } from "@/lib/api";
 
 type ServiceRow = { id: string; name: string; unit: string; unitValue: string };
 
@@ -10,6 +10,7 @@ type Props = {
   measurementId: string;
   services: ServiceRow[];
   usedServiceIds: string[];
+  pricingItems: ContractPricingItem[];
 };
 
 export function MeasurementAddServiceLines(props: Props): JSX.Element {
@@ -23,6 +24,7 @@ export function MeasurementAddServiceLines(props: Props): JSX.Element {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const referenceId = String(data.get("serviceId") ?? "");
+    const pricingItemId = String(data.get("pricingItemId") ?? "");
     const quantity = Number(data.get("quantity") ?? 0);
     if (!referenceId) {
       setStatus("Selecione um serviço.");
@@ -35,7 +37,9 @@ export function MeasurementAddServiceLines(props: Props): JSX.Element {
     try {
       setBusy(true);
       setStatus("");
-      await addMeasurementServiceLines(props.measurementId, [{ type: "SERVICE", referenceId, quantity }]);
+      await addMeasurementServiceLines(props.measurementId, [
+        { type: "SERVICE", referenceId, quantity, ...(pricingItemId ? { pricingItemId } : {}) }
+      ]);
       setStatus("Linha adicionada.");
       event.currentTarget.reset();
       router.refresh();
@@ -70,6 +74,18 @@ export function MeasurementAddServiceLines(props: Props): JSX.Element {
             </option>
           ))}
         </select>
+      </label>
+      <label className="grid gap-1 text-sm sm:min-w-[18rem]">
+        <span className="font-medium text-slate-700">Item contratual</span>
+        <select name="pricingItemId" className="rounded-md border border-slate-200 px-3 py-2 text-sm">
+          <option value="">Usar valor do serviço</option>
+          {props.pricingItems.map((item) => (
+            <option key={item.id} value={item.id}>
+              #{item.sequence} — {item.description} ({item.unit?.label ?? "unidade"} · R$ {item.unitValue})
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-slate-500">O valor unitário do item selecionado será usado no cálculo.</span>
       </label>
       <label className="grid gap-1 text-sm sm:w-36">
         <span className="font-medium text-slate-700">Quantidade</span>

@@ -1,5 +1,5 @@
 import { UserApprovalStatus, UserRole } from "@prisma/client";
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength, ValidateIf } from "class-validator";
 
 export class CreateUserDto {
   @IsEmail({}, { message: "E-mail inválido" })
@@ -11,11 +11,53 @@ export class CreateUserDto {
   password!: string;
 
   @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+
+  @IsOptional()
+  @IsString()
+  cpf?: string;
+
+  @IsOptional()
+  @IsString()
+  organizationId?: string;
+
+  @IsOptional()
   @IsEnum(UserRole, { message: "Papel inválido" })
   role?: UserRole;
 }
 
 export class UpdateUserDto {
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  cpf?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  organizationId?: string | null;
+
   @IsOptional()
   @IsEnum(UserRole, { message: "Papel inválido" })
   role?: UserRole;
