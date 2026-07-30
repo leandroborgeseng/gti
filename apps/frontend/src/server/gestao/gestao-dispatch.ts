@@ -41,6 +41,7 @@ type JwtUser = {
   department: string | null;
   phone: string | null;
   role: UserRole;
+  organizationId: string | null;
   mustChangePassword: boolean;
   effectivePermissionKeys: Set<string>;
   usingLegacyPermissionFallback: boolean;
@@ -93,6 +94,7 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
         department: true,
         phone: true,
         role: true,
+        organizationId: true,
         mustChangePassword: true
       }
     });
@@ -108,6 +110,7 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
       department: user.department,
       phone: user.phone,
       role: user.role as UserRole,
+      organizationId: user.organizationId,
       mustChangePassword: user.mustChangePassword,
       effectivePermissionKeys: new Set(),
       usingLegacyPermissionFallback: false
@@ -348,7 +351,12 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
   user.effectivePermissionKeys = new Set(effectivePermissions.keys);
   user.usingLegacyPermissionFallback = effectivePermissions.keys.length === 0;
 
-  const actor = { userId: user.sub, email: user.email, role: user.role };
+  const actor = {
+    userId: user.sub,
+    email: user.email,
+    role: user.role,
+    organizationId: user.organizationId
+  };
 
   requestActorStore.enterWith(actor);
   try {

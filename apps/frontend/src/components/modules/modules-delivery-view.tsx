@@ -18,6 +18,7 @@ import type {
 import {
   deleteContractFeature,
   getContractModulesDelivery,
+  getMyPermissions,
   getModuleFeaturesDelivery,
   getModulesDeliveryOverview,
   searchModulesDeliveryFeatures,
@@ -200,7 +201,9 @@ type DeliveryFilters = {
 
 type FeatureMutationContext = {
   busyRowKey: string | null;
-  canMutate: boolean;
+  canEditFeature: boolean;
+  canEditDelivery: boolean;
+  canEditCriticality: boolean;
   openEdit: (contractId: string, moduleId: string, item: ModulesDeliveryFeature) => void;
   tryDeleteFeature: (contractId: string, moduleId: string, item: ModulesDeliveryFeature) => void;
   updateDelivery: (vars: {
@@ -247,8 +250,6 @@ function FeatureRow({
   const ds = (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus;
   const criticality = (item.criticality ?? "MEDIA") as ContractItemCriticality;
   const rowBusy = ctx.busyRowKey === rowKey(contractId, moduleId, item.id);
-  const readOnly = !ctx.canMutate;
-
   return (
     <li
       className="flex flex-col gap-3 rounded-md border border-border/40 bg-background/80 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
@@ -266,63 +267,67 @@ function FeatureRow({
         <p className="text-[11px] text-muted-foreground">Peso {serializeWeight(item.weight)}</p>
       </div>
       <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-[35rem] sm:flex-row sm:items-center sm:justify-end sm:gap-2">
-        <div className="min-w-0 flex-1 sm:min-w-[10.5rem] sm:flex-1 sm:max-w-[12rem]">
-          <Select
-            value={criticality}
-            disabled={rowBusy || readOnly}
-            onValueChange={(v) => {
-              ctx.updateCriticality({
-                contractId,
-                moduleId,
-                featureId: item.id,
-                criticality: v as ContractItemCriticality
-              });
-            }}
-          >
-            <SelectTrigger
-              className={cn("h-9 w-full text-left text-xs", criticalitySelectTriggerClass(criticality))}
-              aria-label={`Criticidade da funcionalidade: ${item.name}`}
+        {ctx.canEditCriticality ? (
+          <div className="min-w-0 flex-1 sm:min-w-[10.5rem] sm:flex-1 sm:max-w-[12rem]">
+            <Select
+              value={criticality}
+              disabled={rowBusy}
+              onValueChange={(v) => {
+                ctx.updateCriticality({
+                  contractId,
+                  moduleId,
+                  featureId: item.id,
+                  criticality: v as ContractItemCriticality
+                });
+              }}
             >
-              <SelectValue placeholder="Criticidade" />
-            </SelectTrigger>
-            <SelectContent>
-              {criticalityOptions.map((opt) => (
-                <SelectItem key={opt} value={opt} className={cn("text-xs", criticalitySelectItemClass(opt))}>
-                  {criticalityLabels[opt]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="min-w-0 flex-1 sm:min-w-[12rem] sm:flex-1 sm:max-w-[14.5rem]">
-          <Select
-            value={ds}
-            disabled={rowBusy || readOnly}
-            onValueChange={(v) => {
-              ctx.updateDelivery({
-                contractId,
-                moduleId,
-                featureId: item.id,
-                deliveryStatus: v as ContractItemDeliveryStatus
-              });
-            }}
-          >
-            <SelectTrigger
-              className={cn("h-9 w-full text-left text-xs", itemDeliverySelectTriggerClass(ds))}
-              aria-label={`Estado de entrega: ${item.name}`}
+              <SelectTrigger
+                className={cn("h-9 w-full text-left text-xs", criticalitySelectTriggerClass(criticality))}
+                aria-label={`Criticidade da funcionalidade: ${item.name}`}
+              >
+                <SelectValue placeholder="Criticidade" />
+              </SelectTrigger>
+              <SelectContent>
+                {criticalityOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt} className={cn("text-xs", criticalitySelectItemClass(opt))}>
+                    {criticalityLabels[opt]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+        {ctx.canEditDelivery ? (
+          <div className="min-w-0 flex-1 sm:min-w-[12rem] sm:flex-1 sm:max-w-[14.5rem]">
+            <Select
+              value={ds}
+              disabled={rowBusy}
+              onValueChange={(v) => {
+                ctx.updateDelivery({
+                  contractId,
+                  moduleId,
+                  featureId: item.id,
+                  deliveryStatus: v as ContractItemDeliveryStatus
+                });
+              }}
             >
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              {deliveryOptions.map((opt) => (
-                <SelectItem key={opt} value={opt} className={cn("text-xs", itemDeliverySelectItemClass(opt))}>
-                  {deliveryLabels[opt]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {ctx.canMutate ? (
+              <SelectTrigger
+                className={cn("h-9 w-full text-left text-xs", itemDeliverySelectTriggerClass(ds))}
+                aria-label={`Estado de entrega: ${item.name}`}
+              >
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                {deliveryOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt} className={cn("text-xs", itemDeliverySelectItemClass(opt))}>
+                    {deliveryLabels[opt]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+        {ctx.canEditFeature ? (
           <div className="flex shrink-0 items-center justify-end gap-1.5 sm:justify-start">
             <Button
               type="button"
@@ -856,10 +861,17 @@ function ContractSection({
   );
 }
 
-export function ModulesDeliveryView({ initialRows, dataLoadErrors = [], userRole }: Props): JSX.Element {
+export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props): JSX.Element {
   const qc = useQueryClient();
-  const canMutate = userRole === "ADMIN" || userRole === "EDITOR";
-  const canOpenContract = userRole === "ADMIN" || userRole === "EDITOR";
+  const permissionsQuery = useQuery({
+    queryKey: ["gestao", "my-permissions"],
+    queryFn: getMyPermissions
+  });
+  const permissionKeys = permissionsQuery.data?.keys ?? [];
+  const canEditFeature = permissionKeys.includes("contracts.edit");
+  const canEditDelivery = permissionKeys.includes("contracts.features.edit_delivery");
+  const canEditCriticality = permissionKeys.includes("contracts.features.edit_criticality");
+  const canOpenContract = permissionKeys.includes("contracts.view");
 
   const [openContractIds, setOpenContractIds] = useState<Set<string>>(() => new Set());
   const [editDraft, setEditDraft] = useState<EditFeatureDraft | null>(null);
@@ -957,16 +969,16 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [], userRole
       featureId: string;
       itemCode?: string | null;
       name: string;
-      criticality: ContractItemCriticality;
+      criticality?: ContractItemCriticality;
       status: ContractFeatureStatus;
-      deliveryStatus: ContractItemDeliveryStatus;
+      deliveryStatus?: ContractItemDeliveryStatus;
     }) => {
       await updateContractFeature(vars.contractId, vars.moduleId, vars.featureId, {
         itemCode: vars.itemCode,
         name: vars.name,
-        criticality: vars.criticality,
         status: vars.status,
-        deliveryStatus: vars.deliveryStatus,
+        ...(vars.criticality ? { criticality: vars.criticality } : {}),
+        ...(vars.deliveryStatus ? { deliveryStatus: vars.deliveryStatus } : {}),
         changeSource: CHANGE_SOURCE
       });
       return vars;
@@ -1007,7 +1019,9 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [], userRole
 
   const ctx: FeatureMutationContext = {
     busyRowKey,
-    canMutate,
+    canEditFeature,
+    canEditDelivery,
+    canEditCriticality,
     openEdit: (contractId, moduleId, item) => {
       setEditHint(null);
       setEditDraft({
@@ -1070,9 +1084,9 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [], userRole
       featureId: editDraft.featureId,
       itemCode,
       name,
-      criticality: editDraft.criticality,
       status: editDraft.status,
-      deliveryStatus: editDraft.deliveryStatus
+      ...(canEditCriticality ? { criticality: editDraft.criticality } : {}),
+      ...(canEditDelivery ? { deliveryStatus: editDraft.deliveryStatus } : {})
     });
   }
 
@@ -1274,30 +1288,32 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [], userRole
                 onChange={(e) => setEditDraft((d) => (d ? { ...d, name: e.target.value } : d))}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Criticidade</Label>
-              <Select
-                value={editDraft.criticality}
-                disabled={saveFeatureMut.isPending}
-                onValueChange={(v) =>
-                  setEditDraft((d) => (d ? { ...d, criticality: v as ContractItemCriticality } : d))
-                }
-              >
-                <SelectTrigger
-                  className={cn("h-9 text-left text-xs", criticalitySelectTriggerClass(editDraft.criticality))}
+            {canEditCriticality ? (
+              <div className="space-y-2">
+                <Label>Criticidade</Label>
+                <Select
+                  value={editDraft.criticality}
+                  disabled={saveFeatureMut.isPending}
+                  onValueChange={(v) =>
+                    setEditDraft((d) => (d ? { ...d, criticality: v as ContractItemCriticality } : d))
+                  }
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {criticalityOptions.map((opt) => (
-                    <SelectItem key={opt} value={opt} className={cn("text-xs", criticalitySelectItemClass(opt))}>
-                      {criticalityLabels[opt]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">Peso calculado atual: {editDraft.weightStr}</p>
-            </div>
+                  <SelectTrigger
+                    className={cn("h-9 text-left text-xs", criticalitySelectTriggerClass(editDraft.criticality))}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {criticalityOptions.map((opt) => (
+                      <SelectItem key={opt} value={opt} className={cn("text-xs", criticalitySelectItemClass(opt))}>
+                        {criticalityLabels[opt]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Peso calculado atual: {editDraft.weightStr}</p>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label htmlFor="modulos-edit-status">Estado da funcionalidade</Label>
               <select
@@ -1316,31 +1332,33 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [], userRole
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
-              <Label>Estado de entrega</Label>
-              <Select
-                value={editDraft.deliveryStatus}
-                disabled={saveFeatureMut.isPending}
-                onValueChange={(v) =>
-                  setEditDraft((d) =>
-                    d ? { ...d, deliveryStatus: v as ContractItemDeliveryStatus } : d
-                  )
-                }
-              >
-                <SelectTrigger
-                  className={cn("h-9 text-left text-xs", itemDeliverySelectTriggerClass(editDraft.deliveryStatus))}
+            {canEditDelivery ? (
+              <div className="space-y-2">
+                <Label>Estado de entrega</Label>
+                <Select
+                  value={editDraft.deliveryStatus}
+                  disabled={saveFeatureMut.isPending}
+                  onValueChange={(v) =>
+                    setEditDraft((d) =>
+                      d ? { ...d, deliveryStatus: v as ContractItemDeliveryStatus } : d
+                    )
+                  }
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {deliveryOptions.map((opt) => (
-                    <SelectItem key={opt} value={opt} className={cn("text-xs", itemDeliverySelectItemClass(opt))}>
-                      {deliveryLabels[opt]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  <SelectTrigger
+                    className={cn("h-9 text-left text-xs", itemDeliverySelectTriggerClass(editDraft.deliveryStatus))}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deliveryOptions.map((opt) => (
+                      <SelectItem key={opt} value={opt} className={cn("text-xs", itemDeliverySelectItemClass(opt))}>
+                        {deliveryLabels[opt]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
             {editHint ? (
               <p className="text-sm text-destructive" role="alert">
                 {editHint}

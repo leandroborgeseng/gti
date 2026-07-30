@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { getAuditActorId, getAuditActorLabel } from "../../common/audit-actor";
+import { getAuditActorId, getAuditActorLabel, requestActorStore } from "../../common/audit-actor";
 import {
   ContractFeatureStatus,
   ContractItemChangeAction,
@@ -386,6 +386,7 @@ export class ContractsService {
     if (!contractNumber) {
       throw new BadRequestException("Informe o número do contrato ou o número formal.");
     }
+    await this.assertFormalNumberAvailable(formalNumber, contractYear);
 
     let contractType = rest.contractType;
     if (rest.contractTypeCatalogId) {
@@ -871,7 +872,7 @@ export class ContractsService {
 
   async findAll(): Promise<unknown> {
     return this.prisma.contract.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...this.organizationScope() },
       include: {
         fiscal: true,
         manager: true,
@@ -1029,7 +1030,7 @@ export class ContractsService {
 
   async findOne(id: string): Promise<unknown> {
     const contract = await this.prisma.contract.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...this.organizationScope() },
       include: {
         modules: {
           include: {
@@ -1205,11 +1206,9 @@ export class ContractsService {
 
     const startDate = dto.startDate ? new Date(dto.startDate) : prev.startDate;
     const contractYear = startDate.getFullYear();
-    let number = dto.number;
-    if (dto.formalNumber !== undefined) {
-      const formal = dto.formalNumber?.trim() || null;
-      number = formal ? `${formal}/${contractYear}` : dto.number;
-    }
+    const formalNumber = dto.formalNumber !== undefined ? dto.formalNumber?.trim() || null : prev.formalNumber;
+    const number = formalNumber ? `${formalNumber}/${contractYear}` : dto.number;
+    await this.assertFormalNumberAvailable(formalNumber, contractYear, id);
 
     const updated = await this.prisma.contract.update({
       where: { id },
@@ -1217,7 +1216,7 @@ export class ContractsService {
         ...rest,
         ...(contractType !== undefined ? { contractType } : {}),
         ...(number !== undefined ? { number } : {}),
-        ...(dto.formalNumber !== undefined ? { formalNumber: dto.formalNumber?.trim() || null } : {}),
+        ...(dto.formalNumber !== undefined ? { formalNumber } : {}),
         ...(dto.startDate ? { contractYear } : {}),
         ...(dto.administrativeProcess !== undefined
           ? { administrativeProcess: dto.administrativeProcess?.trim() || null }
@@ -1908,6 +1907,38 @@ export class ContractsService {
   private async ensureContract(contractId: string): Promise<void> {
     const c = await this.prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } });
     if (!c) throw new NotFoundException("Contrato não encontrado");
+  }
+
+  /**
+   * Restringe consultas ao órgão do usuário, sem bloquear contas legadas
+   * que ainda não tenham órgão definido.
+   */
+  private organizationScope(): Prisma.ContractWhereInput {
+    const actor = requestActorStore.getStore();
+    if (actor?.role !== "ADMIN" && actor?.organizationId) {
+      return { organizationId: actor.organizationId };
+    }
+    return {};
+  }
+
+  private async assertFormalNumberAvailable(
+    formalNumber: string | null,
+    contractYear: number,
+    excludeId?: string
+  ): Promise<void> {
+    if (!formalNumber) return;
+    const duplicate = await this.prisma.contract.findFirst({
+      where: {
+        formalNumber,
+        contractYear,
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {})
+      },
+      select: { id: true }
+    });
+    if (duplicate) {
+      throw new BadRequestException(`Já existe contrato com o número formal ${formalNumber}/${contractYear}.`);
+    }
   }
 
   private async ensureUser(userId: string): Promise<void> {

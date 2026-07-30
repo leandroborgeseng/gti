@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-07-29";
+export const MANUAL_LAST_UPDATED = "2026-07-30";
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -72,7 +72,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         parts: [
           "Existem três papéis: administrador, editor e leitor. O administrador acessa a área ",
           { href: "/administracao", label: "Administração" },
-          " (usuários, órgãos, permissões, catálogos e backup) e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis. As permissões marcadas na Administração são aplicadas tanto aos menus quanto às operações: permissões adicionais por usuário somam-se às do papel."
+          " (usuários, órgãos, permissões, catálogos e backup) e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis. Quando editor ou leitor estiver vinculado a um órgão, as listas e os detalhes de contratos, medições e glosas mostram somente registros desse órgão; administradores mantêm a visão global. As permissões marcadas na Administração são aplicadas tanto aos menus quanto às operações: permissões adicionais por usuário somam-se às do papel."
         ]
       },
       {
@@ -177,7 +177,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "ul",
         items: [
+          "Lista: a pesquisa também localiza o código interno SIGTI, a identificação formal, o processo administrativo, o nome e o fornecedor.",
           "Vigência: datas de início e fim; período de implantação opcional para o painel de proporcionalidade.",
+          "Número formal: a identificação é formada pelo número e pelo ano da data de início (por exemplo, 0156/2026). O mesmo número formal não pode ser cadastrado mais de uma vez no mesmo ano.",
           "Código interno: administradores com a permissão específica podem usar «Regenerar código interno» no topo do detalhe apenas em situações excepcionais. É obrigatório justificar a emissão; o código anterior permanece no histórico e o novo código recebe outro sequencial.",
           "Excluir contrato: disponível apenas para administradores, no topo do detalhe. Exige digitar EXCLUIR ou o número do contrato e uma justificativa. Só funciona para cadastros sem medições, aditivos, memória financeira, chamados de governança ou funcionalidades já avaliadas; nos demais casos, altere o status para Suspenso ou Encerrado.",
           "Itens contratuais: na criação e na edição, registre quantos itens forem necessários (mensalidade, implantação, horas de desenvolvimento ou suporte, treinamentos, UST, equipamentos, licenças, locações, infraestrutura, materiais e outros). Cada item tem sequência, tipo padronizado (lista da Administração), descrição contratual livre (texto do edital/TR/proposta), unidade de medida, quantidade, valor unitário e valor total (calculado automaticamente; valor manual exige justificativa se divergir). Itens recorrentes pedem periodicidade e período de incidência; marque «Base de glosa» nas mensalidades que devem compor a referência das medições de funcionalidades. Sob demanda registram o teto contratado (consumo controlado depois); valores únicos não exigem periodicidade. Ao final da seção aparecem os totais recorrente, único, sob demanda e global estimado. Com medições ou memória financeira, o item não é excluído — apenas cancelado.",
@@ -209,7 +211,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/modulos", label: "Funcionalidades" },
-          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. A lista começa só com resumos: expandir o contrato carrega os módulos; expandir o módulo carrega a primeira página de itens (use «Carregar mais» se houver continuidade). Os filtros por texto, status de entrega e criticidade pesquisam no servidor e mostram os contratos correspondentes já abertos. Cada funcionalidade deve ter Código do Item separado do nome, para guardar a numeração do Termo de Referência; se o código obrigatório não for preenchido, o campo fica vermelho e o sistema mostra um aviso antes de salvar. A criticidade aparece em um seletor colorido na linha do item, do nível 1 (Apoio, verde) ao nível 5 (Crítica, vermelho), e recalcula automaticamente os pesos de todas as funcionalidades do módulo sempre que um item é incluído, excluído ou alterado. No cabeçalho do contrato aparecem o mini gráfico de requisitos cumpridos, o gestor e o fiscal; no cabeçalho do módulo, as contagens de entregues / parciais / não entregues. Administradores e editores usam os seletores, editar (lápis), excluir (lixeira) e «Abrir contrato»; quem tem perfil de leitura apenas consulta."
+          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. A lista começa só com resumos: expandir o contrato carrega os módulos; expandir o módulo carrega a primeira página de itens (use «Carregar mais» se houver continuidade). Os filtros por texto, status de entrega e criticidade pesquisam no servidor e mostram os contratos correspondentes já abertos. Cada funcionalidade deve ter Código do Item separado do nome, para guardar a numeração do Termo de Referência; se o código obrigatório não for preenchido, o campo fica vermelho e o sistema mostra um aviso antes de salvar. A criticidade aparece em um seletor colorido na linha do item, do nível 1 (Apoio, verde) ao nível 5 (Crítica, vermelho), e recalcula automaticamente os pesos de todas as funcionalidades do módulo sempre que um item é incluído, excluído ou alterado. No cabeçalho do contrato aparecem o mini gráfico de requisitos cumpridos, o gestor e o fiscal; no cabeçalho do módulo, as contagens de entregues / parciais / não entregues. Os seletores de entrega e criticidade só aparecem para quem possui a permissão específica de cada ação; editar a estrutura exige permissão de edição de contratos e «Abrir contrato» exige permissão de visualização. Quem não tiver essas permissões apenas consulta."
         ]
       }
     ]

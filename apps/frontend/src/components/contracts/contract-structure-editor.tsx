@@ -19,6 +19,7 @@ import {
   deleteContractService,
   fetchContractStructureTemplateBlob,
   getContractModuleValidators,
+  getMyPermissions,
   importContractStructureFromXlsx,
   updateContractFeature,
   updateContractModule,
@@ -134,6 +135,10 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const [contract, setContract] = useState(props.contract);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { data: permissions } = useQuery({
+    queryKey: ["gestao", "my-permissions"],
+    queryFn: getMyPermissions
+  });
   const { data: validators = [] } = useQuery({
     queryKey: queryKeys.contractModuleValidators,
     queryFn: getContractModuleValidators
@@ -179,6 +184,15 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const [newSvcName, setNewSvcName] = useState("");
   const [newSvcUnit, setNewSvcUnit] = useState("");
   const [newSvcValue, setNewSvcValue] = useState("");
+
+  const permissionKeys = permissions?.keys ?? [];
+  const canEditStructure = permissionKeys.includes("contracts.edit");
+  const canEditDelivery = permissionKeys.includes("contracts.features.edit_delivery");
+  const canEditCriticality = permissionKeys.includes("contracts.features.edit_criticality");
+
+  if (!canEditStructure) {
+    return <></>;
+  }
 
   const modules = contract.modules ?? [];
   const services = contract.services ?? [];
@@ -430,6 +444,8 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     onUpdated={setContract}
                     validators={validators}
                     glosaPricingItems={glosaPricingItems}
+                    canEditDelivery={canEditDelivery}
+                    canEditCriticality={canEditCriticality}
                   />
                 ))}
               </div>
@@ -585,21 +601,23 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     disabled={busy}
                   />
                 </label>
-                <label className="block text-xs font-medium text-slate-700">
-                  Criticidade
-                  <select
-                    className={`mt-1 w-full ${formControlClass}`}
-                    value={modalFeatCriticality}
-                    onChange={(e) => setModalFeatCriticality(e.target.value as ContractItemCriticality)}
-                    disabled={busy}
-                  >
-                    {criticalityOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {criticalityLabels[opt]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {canEditCriticality ? (
+                  <label className="block text-xs font-medium text-slate-700">
+                    Criticidade
+                    <select
+                      className={`mt-1 w-full ${formControlClass}`}
+                      value={modalFeatCriticality}
+                      onChange={(e) => setModalFeatCriticality(e.target.value as ContractItemCriticality)}
+                      disabled={busy}
+                    >
+                      {criticalityOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {criticalityLabels[opt]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block text-xs font-medium text-slate-700">
                     Estado
@@ -616,21 +634,23 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                       ))}
                     </select>
                   </label>
-                  <label className="block text-xs font-medium text-slate-700">
-                    Entrega
-                    <select
-                      className={`mt-1 w-full ${formControlClass}`}
-                      value={modalFeatDelivery}
-                      onChange={(e) => setModalFeatDelivery(e.target.value as ContractItemDeliveryStatus)}
-                      disabled={busy}
-                    >
-                      {itemDeliveryOptions.map((s) => (
-                        <option key={s} value={s}>
-                          {itemDeliveryLabels[s]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  {canEditDelivery ? (
+                    <label className="block text-xs font-medium text-slate-700">
+                      Entrega
+                      <select
+                        className={`mt-1 w-full ${formControlClass}`}
+                        value={modalFeatDelivery}
+                        onChange={(e) => setModalFeatDelivery(e.target.value as ContractItemDeliveryStatus)}
+                        disabled={busy}
+                      >
+                        {itemDeliveryOptions.map((s) => (
+                          <option key={s} value={s}>
+                            {itemDeliveryLabels[s]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" size="sm" disabled={busy} onClick={closeStructureModal}>
@@ -655,9 +675,9 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                         const c = await createContractFeature(cid, mod.id, {
                           itemCode: modalFeatCode.trim() || null,
                           name: modalFeatName.trim(),
-                          criticality: modalFeatCriticality,
                           status: modalFeatStatus,
-                          deliveryStatus: modalFeatDelivery
+                          ...(canEditCriticality ? { criticality: modalFeatCriticality } : {}),
+                          ...(canEditDelivery ? { deliveryStatus: modalFeatDelivery } : {})
                         });
                         closeStructureModal();
                         return c;
@@ -765,8 +785,22 @@ function ModuleBlock(props: {
   onUpdated: (c: Contract) => void;
   validators: Array<{ id: string; email: string; role: string }>;
   glosaPricingItems: Array<{ id: string; sequence: number; description: string }>;
+  canEditDelivery: boolean;
+  canEditCriticality: boolean;
 }): JSX.Element {
-  const { contractId, module: mod, featureFilters, busy, onError, onBusy, onUpdated, validators, glosaPricingItems } = props;
+  const {
+    contractId,
+    module: mod,
+    featureFilters,
+    busy,
+    onError,
+    onBusy,
+    onUpdated,
+    validators,
+    glosaPricingItems,
+    canEditDelivery,
+    canEditCriticality
+  } = props;
   const [name, setName] = useState(mod.name);
   const [criticality, setCriticality] = useState<ContractItemCriticality>(mod.criticality ?? "MEDIA");
   const [validatorId, setValidatorId] = useState(mod.validatorId ?? "");
@@ -951,6 +985,8 @@ function ModuleBlock(props: {
                 onError={onError}
                 onBusy={onBusy}
                 onUpdated={onUpdated}
+                canEditDelivery={canEditDelivery}
+                canEditCriticality={canEditCriticality}
               />
             ))}
           </ul>
@@ -973,18 +1009,20 @@ function ModuleBlock(props: {
               onChange={(e) => setFName(e.target.value)}
               disabled={busy}
             />
-            <select
-              className={`${formControlClass} text-sm`}
-              value={fCriticality}
-              onChange={(e) => setFCriticality(e.target.value as ContractItemCriticality)}
-              disabled={busy}
-            >
-              {criticalityOptions.map((s) => (
-                <option key={s} value={s}>
-                  {criticalityLabels[s]}
-                </option>
-              ))}
-            </select>
+            {canEditCriticality ? (
+              <select
+                className={`${formControlClass} text-sm`}
+                value={fCriticality}
+                onChange={(e) => setFCriticality(e.target.value as ContractItemCriticality)}
+                disabled={busy}
+              >
+                {criticalityOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {criticalityLabels[s]}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <select
               className={`${formControlClass} text-sm`}
               value={fStatus}
@@ -997,18 +1035,20 @@ function ModuleBlock(props: {
                 </option>
               ))}
             </select>
-            <select
-              className={`${formControlClass} text-sm`}
-              value={fDelivery}
-              onChange={(e) => setFDelivery(e.target.value as ContractItemDeliveryStatus)}
-              disabled={busy}
-            >
-              {itemDeliveryOptions.map((s) => (
-                <option key={s} value={s}>
-                  {itemDeliveryLabels[s]}
-                </option>
-              ))}
-            </select>
+            {canEditDelivery ? (
+              <select
+                className={`${formControlClass} text-sm`}
+                value={fDelivery}
+                onChange={(e) => setFDelivery(e.target.value as ContractItemDeliveryStatus)}
+                disabled={busy}
+              >
+                {itemDeliveryOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {itemDeliveryLabels[s]}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <button
               type="button"
               className="rounded bg-slate-700 px-2 py-1 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
@@ -1023,9 +1063,9 @@ function ModuleBlock(props: {
                   const c = await createContractFeature(contractId, mod.id, {
                     itemCode: fCode.trim() || null,
                     name: fName.trim(),
-                    criticality: fCriticality,
                     status: fStatus,
-                    deliveryStatus: fDelivery
+                    ...(canEditCriticality ? { criticality: fCriticality } : {}),
+                    ...(canEditDelivery ? { deliveryStatus: fDelivery } : {})
                   });
                   setFCode("");
                   setFCodeError(false);
@@ -1055,8 +1095,21 @@ function FeatureRow(props: {
   onError: (m: string | null) => void;
   onBusy: (b: boolean) => void;
   onUpdated: (c: Contract) => void;
+  canEditDelivery: boolean;
+  canEditCriticality: boolean;
 }): JSX.Element {
-  const { contractId, moduleId, feature: f, depth = 0, busy, onError, onBusy, onUpdated } = props;
+  const {
+    contractId,
+    moduleId,
+    feature: f,
+    depth = 0,
+    busy,
+    onError,
+    onBusy,
+    onUpdated,
+    canEditDelivery,
+    canEditCriticality
+  } = props;
   const [itemCode, setItemCode] = useState(f.itemCode ?? "");
   const [itemCodeError, setItemCodeError] = useState(false);
   const [name, setName] = useState(f.name);
@@ -1104,18 +1157,20 @@ function FeatureRow(props: {
         disabled={busy}
       />
       <input className={`min-w-[8rem] flex-1 ${formControlClass}`} value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
-      <select
-        className={`${formControlClass} py-1.5 text-xs`}
-        value={criticality}
-        onChange={(e) => setCriticality(e.target.value as ContractItemCriticality)}
-        disabled={busy}
-      >
-        {criticalityOptions.map((s) => (
-          <option key={s} value={s}>
-            {criticalityLabels[s]}
-          </option>
-        ))}
-      </select>
+      {canEditCriticality ? (
+        <select
+          className={`${formControlClass} py-1.5 text-xs`}
+          value={criticality}
+          onChange={(e) => setCriticality(e.target.value as ContractItemCriticality)}
+          disabled={busy}
+        >
+          {criticalityOptions.map((s) => (
+            <option key={s} value={s}>
+              {criticalityLabels[s]}
+            </option>
+          ))}
+        </select>
+      ) : null}
       <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">Peso {formatWeightPt(Number(f.weight))}</span>
       <select className={`${formControlClass} py-1.5 text-xs`} value={status} onChange={(e) => setStatus(e.target.value as ContractFeatureStatus)} disabled={busy}>
         {featureStatuses.map((s) => (
@@ -1124,18 +1179,20 @@ function FeatureRow(props: {
           </option>
         ))}
       </select>
-      <select
-        className={`${formControlClass} min-w-[10.5rem] py-1.5 text-xs`}
-        value={deliveryStatus}
-        onChange={(e) => setDeliveryStatus(e.target.value as ContractItemDeliveryStatus)}
-        disabled={busy}
-      >
-        {itemDeliveryOptions.map((s) => (
-          <option key={s} value={s}>
-            {itemDeliveryLabels[s]}
-          </option>
-        ))}
-      </select>
+      {canEditDelivery ? (
+        <select
+          className={`${formControlClass} min-w-[10.5rem] py-1.5 text-xs`}
+          value={deliveryStatus}
+          onChange={(e) => setDeliveryStatus(e.target.value as ContractItemDeliveryStatus)}
+          disabled={busy}
+        >
+          {itemDeliveryOptions.map((s) => (
+            <option key={s} value={s}>
+              {itemDeliveryLabels[s]}
+            </option>
+          ))}
+        </select>
+      ) : null}
       <button
         type="button"
         className={`${buttonSmallClass} py-0.5 text-xs`}
@@ -1150,9 +1207,9 @@ function FeatureRow(props: {
             updateContractFeature(contractId, moduleId, f.id, {
               itemCode: itemCode.trim() || null,
               name: name.trim(),
-              criticality,
               status,
-              deliveryStatus
+              ...(canEditCriticality ? { criticality } : {}),
+              ...(canEditDelivery ? { deliveryStatus } : {})
             })
           );
         }}

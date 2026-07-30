@@ -182,6 +182,12 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
         header: "Número",
         cell: (info) => <span className="font-mono text-xs text-muted-foreground">{info.getValue()}</span>
       }),
+      columnHelper.accessor("internalCode", {
+        header: "Código interno",
+        cell: (info) => (
+          <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{info.getValue() ?? "—"}</span>
+        )
+      }),
       columnHelper.accessor("name", {
         header: "Nome",
         cell: (info) => (
@@ -425,7 +431,7 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
         <DataTable
           columns={columns}
           data={contracts}
-          searchPlaceholder="Pesquisar número, fornecedor, órgão…"
+          searchPlaceholder="Pesquisar número, código interno, processo, fornecedor…"
           emptyLabel='Nenhum contrato ainda. Clique em "Novo contrato" para cadastrar.'
         />
       </section>

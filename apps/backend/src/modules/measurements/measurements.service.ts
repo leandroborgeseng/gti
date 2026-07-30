@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { getAuditActorId } from "../../common/audit-actor";
+import { getAuditActorId, requestActorStore } from "../../common/audit-actor";
 import {
   ContractPricingBillingKind,
   ContractPricingItemStatus,
@@ -63,7 +63,7 @@ export class MeasurementsService {
 
   async findAll(): Promise<unknown> {
     return this.prisma.measurement.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...this.organizationScope() },
       include: { contract: true },
       orderBy: { createdAt: "desc" }
     });
@@ -71,7 +71,7 @@ export class MeasurementsService {
 
   async findOne(id: string): Promise<unknown> {
     const m = await this.prisma.measurement.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...this.organizationScope() },
       include: {
         contract: {
           include: {
@@ -400,6 +400,18 @@ export class MeasurementsService {
         newData: newData ? (newData as Prisma.InputJsonValue) : undefined
       }
     });
+  }
+
+  /**
+   * Restringe consultas ao órgão do usuário, sem bloquear contas legadas
+   * que ainda não tenham órgão definido.
+   */
+  private organizationScope(): Prisma.MeasurementWhereInput {
+    const actor = requestActorStore.getStore();
+    if (actor?.role !== "ADMIN" && actor?.organizationId) {
+      return { contract: { is: { organizationId: actor.organizationId } } };
+    }
+    return {};
   }
 
   /**

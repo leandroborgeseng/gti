@@ -6,6 +6,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- Contratos passam a exigir número formal único por ano de vigência, preservando zeros à esquerda na identificação exibida. Usuários vinculados a um órgão consultam contratos, medições e glosas somente do seu próprio órgão; administradores mantêm a visão global.
 - A estrutura de contratos de software e serviço permite vincular, em cada módulo, o item contratual que será sua **Base de glosa**. Quando houver vínculos, a medição considera apenas os módulos associados, aplicando a proporção de funcionalidades validadas de cada um sobre a mensalidade equivalente do item escolhido.
 - A Administração protege o acesso administrativo essencial: o papel Administrador mantém as permissões de gerir usuários e permissões, e o sistema impede remover ou reprovar o último administrador aprovado.
 - O relatório financeiro por item contratual passa a permitir filtrar o valor medido por competência (mês/ano da medição), além de órgão e situação do item.
@@ -50,6 +51,8 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Alterado
 
+- A lista de contratos passa a exibir o código interno SIGTI em coluna própria e permite localizá-lo na pesquisa, junto da identificação formal, processo administrativo, nome e fornecedor.
+- As permissões de funcionalidades agora controlam separadamente a alteração do status de entrega e da criticidade. Sem a chave correspondente, a ação não é exibida; o atalho para abrir o contrato também respeita a permissão de visualização.
 - Para contratos de software e serviço, itens recorrentes podem ser marcados como **Base de glosa**. A medição de funcionalidades usa a soma mensal equivalente dos itens marcados; cadastros sem marcação mantêm a compatibilidade com a primeira mensalidade ativa ou com o valor mensal já cadastrado.
 - A tela **Funcionalidades** passa a carregar resumos primeiro e só busca módulos/itens ao expandir cada sanfona (com «Carregar mais» quando houver paginação). Filtros por texto, status de entrega e criticidade pesquisam no servidor. Perfis de leitura (VIEWER) veem a lista sem editar; administradores e editores mantêm as ações e o atalho «Abrir contrato».
 - O **formulário de contrato** passa a usar os catálogos da Administração: número formal (somente dígitos) com pré-visualização número/ano, órgão gestor, tipo de contrato, modalidade e procedimento licitatório; o código interno SIGTI é gerado ao salvar. A ficha do contrato exibe código interno, identificação formal, órgão, contratação e valores globais original/vigente quando existirem.
