@@ -70,9 +70,9 @@ export async function syncTickets(options: SyncTicketsOptions = {}): Promise<Syn
   logger.info(
     { syncScope, persistFilter },
     persistFilter === "closed"
-      ? "Iniciando sincronizacao de tickets (apenas fechados — passagem estatistica)"
+      ? "Iniciando sincronizacao de tickets (apenas fechados: passagem estatistica)"
       : persistFilter === "open"
-        ? "Iniciando sincronizacao de tickets (apenas abertos — cache hibrido)"
+        ? "Iniciando sincronizacao de tickets (apenas abertos: cache hibrido)"
         : syncScope === "all"
           ? "Iniciando sincronizacao de tickets (cache completo: abertos e fechados)"
           : "Iniciando sincronizacao de tickets (apenas abertos no cache local)"

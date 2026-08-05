@@ -2,9 +2,17 @@ import { HttpException } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { jwtVerify } from "jose";
 import { NextResponse } from "next/server";
+import {
+  buildActiveContext,
+  loadUserAccessContext,
+  resolveAuthMeForUser,
+  switchUserAccessContext,
+  toRequestActor
+} from "@gestao/common/access-context";
+import { requestActorStore } from "@gestao/common/audit-actor";
+import { issueAuthToken } from "@/lib/auth-issue-token";
 import { jwtSecretBytes } from "@/lib/jwt-config";
 import { sendWelcomePasswordEmail } from "@/lib/password-reset";
-import { requestActorStore } from "@gestao/common/audit-actor";
 import {
   ensureGoalsBootstrapped,
   gestaoContracts,
@@ -26,7 +34,9 @@ import {
   gestaoSuppliers,
   gestaoUserAccess,
   gestaoUserAssignments,
-  gestaoUsers
+  gestaoUsers,
+  gestaoAuditLogs,
+  gestaoDeadlines
 } from "./gestao-services";
 import { loadContractGlpiGroupCatalog } from "./contract-glpi-groups-catalog";
 
@@ -42,6 +52,8 @@ type JwtUser = {
   phone: string | null;
   role: UserRole;
   organizationId: string | null;
+  profileId: string | null;
+  allOrganizationsActive: boolean;
   mustChangePassword: boolean;
   effectivePermissionKeys: Set<string>;
   usingLegacyPermissionFallback: boolean;
@@ -78,44 +90,44 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
     const { payload } = await jwtVerify(token, jwtSecretBytes());
     const sub = typeof payload.sub === "string" ? payload.sub : "";
     const email = typeof payload.email === "string" ? payload.email : "";
-    const role = payload.role as UserRole;
-    if (!sub || !email || !role) return null;
+    if (!sub || !email) return null;
     const { prisma } = await import("@/glpi/config/prisma");
-    const user = await prisma.user.findUnique({
-      where: { id: sub },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        displayName: true,
-        profileColor: true,
-        jobTitle: true,
-        department: true,
-        phone: true,
-        role: true,
-        organizationId: true,
-        mustChangePassword: true
+    const accessUser = await loadUserAccessContext(prisma, sub);
+    if (!accessUser || accessUser.email !== email) return null;
+    const ctx = buildActiveContext(accessUser);
+    if (ctx.organizationId && ctx.organizationLabel === ctx.organizationId) {
+      const org = await prisma.organization.findUnique({
+        where: { id: ctx.organizationId },
+        select: { name: true, acronym: true, active: true }
+      });
+      if (!org?.active) {
+        throw new HttpException(
+          "O órgão ativo não está mais disponível. Escolha outro contexto ou faça login novamente.",
+          403
+        );
       }
-    });
-    if (!user || user.email !== email) return null;
+      ctx.organizationLabel = org.acronym ? `${org.acronym} · ${org.name}` : org.name;
+    }
     return {
-      sub: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      displayName: user.displayName,
-      profileColor: user.profileColor,
-      jobTitle: user.jobTitle,
-      department: user.department,
-      phone: user.phone,
-      role: user.role as UserRole,
-      organizationId: user.organizationId,
-      mustChangePassword: user.mustChangePassword,
+      sub: accessUser.id,
+      email: accessUser.email,
+      firstName: accessUser.firstName,
+      lastName: accessUser.lastName,
+      displayName: accessUser.displayName,
+      profileColor: accessUser.profileColor,
+      jobTitle: accessUser.jobTitle,
+      department: accessUser.department,
+      phone: accessUser.phone,
+      role: ctx.role,
+      organizationId: ctx.organizationId,
+      profileId: ctx.profileId,
+      allOrganizationsActive: ctx.allOrganizationsActive,
+      mustChangePassword: accessUser.mustChangePassword,
       effectivePermissionKeys: new Set(),
       usingLegacyPermissionFallback: false
     };
-  } catch {
+  } catch (e) {
+    if (e instanceof HttpException) throw e;
     return null;
   }
 }
@@ -142,6 +154,7 @@ function assertMutation(user: JwtUser, method: string): void {
 const LEGACY_ROLE_PERMISSION_KEYS: Record<UserRole, readonly string[]> = {
   [UserRole.VIEWER]: [
     "dashboard.view",
+    "deadlines.view",
     "contracts.view",
     "contracts.features.view",
     "measurements.view",
@@ -156,6 +169,7 @@ const LEGACY_ROLE_PERMISSION_KEYS: Record<UserRole, readonly string[]> = {
   ],
   [UserRole.EDITOR]: [
     "dashboard.view",
+    "deadlines.view",
     "contracts.view",
     "contracts.features.view",
     "measurements.view",
@@ -184,6 +198,8 @@ const ADMIN_ONLY_PERMISSION_KEYS = [
   "contracts.delete",
   "contracts.internal_code.regenerate",
   "contracts.financial.view",
+  "deadlines.recalculate",
+  "controladoria.manage",
   "admin.users.view",
   "admin.users.manage",
   "admin.organs.view",
@@ -196,7 +212,9 @@ const ADMIN_ONLY_PERMISSION_KEYS = [
   "admin.contract_types.manage",
   "admin.hiring_types.view",
   "admin.hiring_types.manage",
-  "admin.backup.manage"
+  "admin.backup.manage",
+  "admin.email.manage",
+  "admin.audit.manage"
 ] as const;
 
 function legacyPermissionKeys(role: UserRole): Set<string> {
@@ -224,7 +242,20 @@ function assertAnyPermission(user: JwtUser, keys: string[]): void {
   }
 }
 
+/** Encaminhar ocorrência: controladoria.manage, ou ADMIN com contracts.edit. */
+function assertCanForwardToControladoria(user: JwtUser): void {
+  const keys = effectiveKeys(user);
+  if (keys.has("controladoria.manage")) return;
+  if (user.role === UserRole.ADMIN && keys.has("contracts.edit")) return;
+  throw new HttpException("Sem permissão para encaminhar à Controladoria", 403);
+}
+
 function assertFeatureEditPermissions(user: JwtUser, body: Record<string, unknown>): void {
+  const structuralKeys = ["validationGroupId", "responsibleUserIds", "name", "itemCode", "weight", "status"];
+  if (structuralKeys.some((k) => k in body)) {
+    assertPermission(user, "contracts.edit");
+    return;
+  }
   let checkedSpecificPermission = false;
   if ("deliveryStatus" in body) {
     assertPermission(user, "contracts.features.edit_delivery");
@@ -244,10 +275,18 @@ function requiredPermissionForRoute(method: string, seg: string[]): string | nul
   const isRead = method === "GET" || method === "HEAD";
 
   if (root === "dashboard") return isRead ? "dashboard.view" : null;
+  if (root === "deadlines") {
+    if (method === "POST" && seg[1] === "recalculate") return "deadlines.recalculate";
+    return isRead ? "deadlines.view" : null;
+  }
   if (root === "exports") return "exports.run";
   // Leituras de catálogo tratadas em assertCatalogRead (contratos também precisam listar).
   if (root === "organizations") return isRead ? null : "admin.organs.manage";
-  if (root === "users") return isRead ? "admin.users.view" : "admin.users.manage";
+  if (root === "users") {
+    // `/users/options` é usado em selects operacionais (contratos/projetos); permissão checada abaixo.
+    if (seg[1] === "options" && isRead) return null;
+    return isRead ? "admin.users.view" : "admin.users.manage";
+  }
   if (root === "permissions") {
     if (seg[1] === "me") return null;
     return isRead ? "admin.permissions.view" : "admin.permissions.manage";
@@ -261,10 +300,16 @@ function requiredPermissionForRoute(method: string, seg: string[]): string | nul
     }
     if (seg.includes("features-delivery") || seg.includes("modules-delivery")) return "contracts.features.view";
     if (seg.includes("features") && (method === "PUT" || method === "PATCH")) return null;
+    // Controladoria: checagem específica (controladoria.manage ou ADMIN + contracts.edit).
+    if (seg.includes("forward-controladoria") && method === "POST") return null;
+    if (seg.includes("controladoria-cases") && method === "PUT") return null;
     if (method === "GET") return "contracts.view";
     if (method === "POST" && seg.length === 1) return "contracts.create";
     if (method === "DELETE" && seg.length === 2) return "contracts.delete";
     return "contracts.edit";
+  }
+  if (root === "controladoria-cases") {
+    return isRead ? "controladoria.manage" : "controladoria.manage";
   }
   if (root === "measurements") {
     if (isRead) return "measurements.view";
@@ -328,35 +373,74 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
   const seg = pathSegments.filter(Boolean);
 
   if (seg[0] === "auth" && seg[1] === "me" && method === "GET") {
-    const user = await requireUser(req);
-    if (!user) return jsonErr(401, "Não autenticado");
-    return jsonOk({
-      id: user.sub,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      displayName: user.displayName,
-      profileColor: user.profileColor,
-      jobTitle: user.jobTitle,
-      department: user.department,
-      phone: user.phone,
-      role: user.role,
-      mustChangePassword: user.mustChangePassword
-    });
+    try {
+      const user = await requireUser(req);
+      if (!user) return jsonErr(401, "Não autenticado");
+      const { prisma } = await import("@/glpi/config/prisma");
+      return jsonOk(await resolveAuthMeForUser(prisma, user.sub));
+    } catch (e) {
+      if (e instanceof HttpException) {
+        return NextResponse.json({ error: e.message, message: e.message }, { status: e.getStatus() });
+      }
+      return jsonErr(401, "Não autenticado");
+    }
   }
 
-  const user = await requireUser(req);
-  if (!user) return jsonErr(401, "Não autenticado");
-  const effectivePermissions = await gestaoPermissions.resolveEffectivePermissions(user.sub);
+  if (seg[0] === "auth" && seg[1] === "context" && method === "POST") {
+    try {
+      const user = await requireUser(req);
+      if (!user) return jsonErr(401, "Não autenticado");
+      const { prisma } = await import("@/glpi/config/prisma");
+      const body = (await readJsonBody(req)) as { profileId?: string; organizationId?: string | null };
+      if (!body?.profileId) return jsonErr(400, "Informe o perfil de acesso.");
+      const me = await switchUserAccessContext(prisma, user.sub, {
+        profileId: body.profileId,
+        organizationId: body.organizationId
+      });
+      const token = await issueAuthToken({
+        id: me.id,
+        email: me.email,
+        role: me.activeContext.systemKey ?? me.role,
+        mustChangePassword: me.mustChangePassword
+      });
+      return jsonOk({ ...me, access_token: token.access_token, expires_in: token.expires_in });
+    } catch (e) {
+      if (e instanceof HttpException) {
+        return NextResponse.json({ error: e.message, message: e.message }, { status: e.getStatus() });
+      }
+      const msg = e instanceof Error ? e.message : String(e);
+      return jsonErr(400, msg);
+    }
+  }
+
+  let user: JwtUser;
+  try {
+    const u = await requireUser(req);
+    if (!u) return jsonErr(401, "Não autenticado");
+    user = u;
+  } catch (e) {
+    if (e instanceof HttpException) {
+      return NextResponse.json({ error: e.message, message: e.message }, { status: e.getStatus() });
+    }
+    return jsonErr(401, "Não autenticado");
+  }
+
+  const effectivePermissions = await gestaoPermissions.resolveEffectivePermissions(user.sub, user.profileId);
   user.effectivePermissionKeys = new Set(effectivePermissions.keys);
   user.usingLegacyPermissionFallback = effectivePermissions.keys.length === 0;
 
-  const actor = {
-    userId: user.sub,
-    email: user.email,
-    role: user.role,
-    organizationId: user.organizationId
-  };
+  const actor = toRequestActor(
+    { id: user.sub, email: user.email },
+    {
+      profileId: user.profileId ?? "",
+      profileName: "",
+      systemKey: user.role,
+      role: user.role,
+      organizationId: user.organizationId,
+      organizationLabel: "",
+      allOrganizationsActive: user.allOrganizationsActive
+    }
+  );
 
   requestActorStore.enterWith(actor);
   try {
@@ -388,6 +472,15 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertAnyPermission(user, ["admin.hiring_types.view", "contracts.view", "contracts.create", "contracts.edit"]);
     } else if (root === "contracts" && seg[1] === "catalog" && seg[2] === "item-types") {
       assertAnyPermission(user, ["admin.item_types.view", "contracts.view", "contracts.create", "contracts.edit"]);
+    } else if (root === "users" && seg[1] === "options") {
+      assertAnyPermission(user, [
+        "admin.users.view",
+        "contracts.view",
+        "contracts.create",
+        "contracts.edit",
+        "projects.view",
+        "projects.edit"
+      ]);
     }
   }
 
@@ -413,6 +506,62 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
         return jsonErr(400, "Corpo JSON inválido ou ausente. Use Content-Type: application/json.");
       }
       return jsonOk(await gestaoUsers.updateMyProfile(user.sub, body as never));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "admin" && seg[1] === "audit-logs") {
+    assertRoles(user, [UserRole.ADMIN]);
+    if (seg.length === 2 && method === "GET") {
+      const u = new URL(req.url);
+      return jsonOk(
+        await gestaoAuditLogs.list({
+          page: u.searchParams.get("page") ? Number(u.searchParams.get("page")) : undefined,
+          limit: u.searchParams.get("limit") ? Number(u.searchParams.get("limit")) : undefined,
+          from: u.searchParams.get("from"),
+          to: u.searchParams.get("to"),
+          actor: u.searchParams.get("actor"),
+          action: u.searchParams.get("action"),
+          entity: u.searchParams.get("entity"),
+          q: u.searchParams.get("q"),
+          source: u.searchParams.get("source")
+        })
+      );
+    }
+    if (seg.length === 3 && seg[2] === "event-config" && method === "GET") {
+      return jsonOk(await gestaoAuditLogs.listEventConfig());
+    }
+    if (seg.length === 3 && seg[2] === "event-config" && method === "PUT") {
+      const body = (await readJsonBody(req)) as {
+        items?: Array<{ id: string; enabled: boolean; detailLevel?: string }>;
+      };
+      return jsonOk(await gestaoAuditLogs.saveEventConfig({ items: body?.items ?? [] }));
+    }
+    if (seg.length === 4 && seg[2] === "event-config" && seg[3] === "restore-defaults" && method === "POST") {
+      return jsonOk(await gestaoAuditLogs.restoreEventConfigDefaults());
+    }
+    if (seg.length === 3 && seg[2] === "export.csv" && method === "GET") {
+      const u = new URL(req.url);
+      const body = await gestaoAuditLogs.exportCsv({
+        from: u.searchParams.get("from"),
+        to: u.searchParams.get("to"),
+        actor: u.searchParams.get("actor"),
+        action: u.searchParams.get("action"),
+        entity: u.searchParams.get("entity"),
+        q: u.searchParams.get("q"),
+        source: u.searchParams.get("source")
+      });
+      return new NextResponse(`\ufeff${body}`, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="auditoria-logs.csv"'
+        }
+      });
+    }
+    if (seg.length === 3 && method === "GET") {
+      const u = new URL(req.url);
+      return jsonOk(await gestaoAuditLogs.findOne(seg[2], u.searchParams.get("source")));
     }
     return jsonErr(404, "Não encontrado");
   }
@@ -470,6 +619,28 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     return jsonErr(404, "Não encontrado");
   }
 
+  if (root === "deadlines") {
+    if (seg.length === 1 && method === "GET") {
+      const u = new URL(req.url);
+      return jsonOk(
+        await gestaoDeadlines.list({
+          origin: u.searchParams.get("origin") ?? undefined,
+          status: u.searchParams.get("status") ?? undefined,
+          attentionLevel: u.searchParams.get("attentionLevel") ?? undefined,
+          contractId: u.searchParams.get("contractId") ?? undefined,
+          responsibleUserId: u.searchParams.get("responsibleUserId") ?? undefined,
+          q: u.searchParams.get("q") ?? undefined,
+          includeCancelled: u.searchParams.get("includeCancelled") === "1" || u.searchParams.get("includeCancelled") === "true"
+        })
+      );
+    }
+    if (seg.length === 2 && seg[1] === "recalculate" && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN]);
+      return jsonOk(await gestaoDeadlines.recalculate());
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
   if (root === "operational-summary") {
     if (seg.length === 1 && method === "GET") {
       const u = new URL(req.url);
@@ -495,6 +666,14 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertRoles(user, [UserRole.ADMIN]);
       return jsonOk(await gestaoContracts.pricingMigrationReview());
     }
+    if (seg.length === 2 && seg[1] === "identification-migration-review" && method === "GET") {
+      assertRoles(user, [UserRole.ADMIN]);
+      return jsonOk(await gestaoContracts.identificationMigrationReview());
+    }
+    if (seg.length === 2 && seg[1] === "identification-migration-repair" && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN]);
+      return jsonOk(await gestaoContracts.repairIdentificationMigration());
+    }
     if (seg.length === 3 && seg[1] === "catalog" && seg[2] === "measure-units" && method === "POST") {
       return jsonOk(await gestaoContracts.createMeasureUnit((await readJsonBody(req)) as never));
     }
@@ -517,12 +696,18 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
           q: url.searchParams.get("q") ?? undefined,
           deliveryStatus: url.searchParams.get("deliveryStatus") ?? undefined,
           criticality: url.searchParams.get("criticality") ?? undefined,
+          assignment: url.searchParams.get("assignment") ?? undefined,
           pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined
         })
       );
     }
     if (seg.length === 3 && seg[1] === "overview" && seg[2] === "modules-delivery" && method === "GET") {
-      return jsonOk(await gestaoContracts.findModulesDeliveryOverview());
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoContracts.findModulesDeliveryOverview({
+          assignment: url.searchParams.get("assignment") ?? undefined
+        })
+      );
     }
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoContracts.findAll());
     if (seg.length === 1 && method === "POST") {
@@ -553,9 +738,109 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
           pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined,
           q: url.searchParams.get("q") ?? undefined,
           deliveryStatus: url.searchParams.get("deliveryStatus") ?? undefined,
-          criticality: url.searchParams.get("criticality") ?? undefined
+          criticality: url.searchParams.get("criticality") ?? undefined,
+          assignment: url.searchParams.get("assignment") ?? undefined
         })
       );
+    }
+    if (seg.length === 3 && seg[2] === "glpi-tickets" && method === "GET") {
+      const url = new URL(req.url);
+      const overdueRaw = (url.searchParams.get("slaOverdue") ?? "").trim().toLowerCase();
+      return jsonOk(
+        await gestaoContracts.listContractGlpiTickets(seg[1], {
+          status: url.searchParams.get("status") ?? undefined,
+          priority: url.searchParams.get("priority") ?? undefined,
+          from: url.searchParams.get("from") ?? undefined,
+          to: url.searchParams.get("to") ?? undefined,
+          slaOverdue: overdueRaw === "1" || overdueRaw === "true" || overdueRaw === "yes",
+          take: url.searchParams.get("take") ? Number(url.searchParams.get("take")) : undefined
+        })
+      );
+    }
+    if (seg.length === 3 && seg[2] === "schedules" && method === "GET") {
+      return jsonOk(await gestaoContracts.listSchedules(seg[1]));
+    }
+    if (seg.length === 3 && seg[2] === "schedules" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.createSchedule(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 4 && seg[2] === "schedules" && method === "PUT") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.updateSchedule(seg[1], seg[3], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 5 && seg[2] === "schedules" && seg[4] === "approve" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.approveSchedule(seg[1], seg[3]));
+    }
+    if (seg.length === 4 && seg[2] === "schedules" && method === "DELETE") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.deleteSchedule(seg[1], seg[3]));
+    }
+    if (seg.length === 3 && seg[2] === "occurrences" && method === "GET") {
+      return jsonOk(await gestaoContracts.listOccurrences(seg[1]));
+    }
+    if (seg.length === 3 && seg[2] === "occurrences" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.createOccurrence(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 4 && seg[2] === "occurrences" && method === "PUT") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(
+        await gestaoContracts.updateOccurrence(seg[1], seg[3], (await readJsonBody(req)) as never)
+      );
+    }
+    if (seg.length === 5 && seg[2] === "occurrences" && seg[4] === "status" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(
+        await gestaoContracts.changeOccurrenceStatus(seg[1], seg[3], (await readJsonBody(req)) as never)
+      );
+    }
+    if (
+      seg.length === 5 &&
+      seg[2] === "occurrences" &&
+      seg[4] === "forward-controladoria" &&
+      method === "POST"
+    ) {
+      assertCanForwardToControladoria(user);
+      return jsonOk(
+        await gestaoContracts.forwardOccurrenceToControladoria(
+          seg[1],
+          seg[3],
+          (await readJsonBody(req)) as never
+        )
+      );
+    }
+    if (seg.length === 4 && seg[2] === "occurrences" && method === "DELETE") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.deleteOccurrence(seg[1], seg[3]));
+    }
+    if (seg.length === 3 && seg[2] === "controladoria-cases" && method === "GET") {
+      return jsonOk(await gestaoContracts.listControladoriaCases(seg[1]));
+    }
+    if (seg.length === 4 && seg[2] === "controladoria-cases" && method === "PUT") {
+      assertCanForwardToControladoria(user);
+      return jsonOk(
+        await gestaoContracts.updateControladoriaCase(seg[1], seg[3], (await readJsonBody(req)) as never)
+      );
+    }
+    if (seg.length === 3 && seg[2] === "validation-groups" && method === "GET") {
+      return jsonOk(await gestaoContracts.listValidationGroups(seg[1]));
+    }
+    if (seg.length === 3 && seg[2] === "validation-groups" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.createValidationGroup(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 4 && seg[2] === "validation-groups" && method === "PUT") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.updateValidationGroup(seg[1], seg[3], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 4 && seg[2] === "validation-groups" && method === "DELETE") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.deleteValidationGroup(seg[1], seg[3]));
+    }
+    if (seg.length === 4 && seg[2] === "features" && seg[3] === "bulk-validation-group" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.bulkUpdateFeatureValidationGroup(seg[1], (await readJsonBody(req)) as never));
     }
     if (seg.length === 3 && seg[2] === "modules" && method === "POST") {
       return jsonOk(await gestaoContracts.createModule(seg[1], (await readJsonBody(req)) as never));
@@ -589,8 +874,10 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 3 && seg[2] === "amendments" && method === "POST") {
       return jsonOk(await gestaoContracts.createAmendment(seg[1], (await readJsonBody(req)) as never));
     }
-    if (seg.length === 3 && seg[2] === "financial-snapshots" && method === "POST") {
-      return jsonOk(await gestaoContracts.createFinancialSnapshot(seg[1], (await readJsonBody(req)) as never));
+    if (seg.length === 5 && seg[2] === "amendments" && seg[4] === "cancel" && method === "POST") {
+      return jsonOk(
+        await gestaoContracts.cancelAmendment(seg[1], seg[3], (await readJsonBody(req)) as never)
+      );
     }
     if (seg.length === 3 && seg[2] === "pricing-items" && method === "PUT") {
       const body = (await readJsonBody(req)) as { items?: unknown };
@@ -627,6 +914,15 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     return jsonErr(404, "Não encontrado");
   }
 
+  if (root === "controladoria-cases") {
+    if (seg.length === 1 && method === "GET") {
+      const url = new URL(req.url);
+      const take = url.searchParams.get("take") ? Number(url.searchParams.get("take")) : 100;
+      return jsonOk(await gestaoContracts.listAllControladoriaCases(take));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
   if (root === "measurements") {
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoMeasurements.findAll());
     if (seg.length === 1 && method === "POST") {
@@ -648,6 +944,9 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     }
     if (seg.length === 3 && seg[2] === "approve" && method === "POST") {
       return jsonOk(await gestaoMeasurements.approve(seg[1]));
+    }
+    if (seg.length === 3 && seg[2] === "glosas" && method === "POST") {
+      return jsonOk(await gestaoMeasurements.addManualGlosa(seg[1], (await readJsonBody(req)) as never));
     }
     if (seg.length === 3 && seg[2] === "attachments" && method === "POST") {
       const form = await req.formData();
@@ -732,10 +1031,35 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       const keys = user.usingLegacyPermissionFallback
         ? [...legacyPermissionKeys(user.role)]
         : [...user.effectivePermissionKeys];
-      return jsonOk({ role: user.role, keys: keys.sort() });
+      return jsonOk({ role: user.role, profileId: user.profileId, keys: keys.sort() });
     }
     if (seg.length === 2 && seg[1] === "catalog" && method === "GET") {
       return jsonOk(gestaoPermissions.listCatalog());
+    }
+    if (seg.length === 2 && seg[1] === "profiles" && method === "GET") {
+      const u = new URL(req.url);
+      return jsonOk(
+        await gestaoPermissions.listProfiles({ includeInactive: u.searchParams.get("includeInactive") === "true" })
+      );
+    }
+    if (seg.length === 2 && seg[1] === "profiles" && method === "POST") {
+      return jsonOk(await gestaoPermissions.createProfile((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[1] === "profiles" && method === "PATCH") {
+      return jsonOk(await gestaoPermissions.updateProfile(seg[2], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[1] === "profiles" && method === "DELETE") {
+      return jsonOk(await gestaoPermissions.deleteProfile(seg[2]));
+    }
+    if (seg.length === 3 && seg[1] === "profile" && method === "GET") {
+      return jsonOk(await gestaoPermissions.getProfilePermissions(seg[2]));
+    }
+    if (seg.length === 3 && seg[1] === "profile" && method === "PUT") {
+      const body = (await readJsonBody(req)) as { keys?: string[] };
+      return jsonOk(await gestaoPermissions.setProfilePermissions(seg[2], body?.keys ?? []));
+    }
+    if (seg.length === 4 && seg[1] === "profile" && seg[3] === "history" && method === "GET") {
+      return jsonOk(await gestaoPermissions.listProfilePermissionHistory(seg[2]));
     }
     if (seg.length === 3 && seg[1] === "role" && method === "GET") {
       return jsonOk(await gestaoPermissions.getRolePermissions(gestaoPermissions.parseRoleParam(seg[2])));
@@ -750,11 +1074,12 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       return jsonOk(await gestaoPermissions.listRolePermissionHistory(gestaoPermissions.parseRoleParam(seg[2])));
     }
     if (seg.length === 3 && seg[1] === "user" && method === "GET") {
-      return jsonOk(await gestaoPermissions.getUserPermissions(seg[2]));
+      const u = new URL(req.url);
+      return jsonOk(await gestaoPermissions.getUserPermissions(seg[2], u.searchParams.get("profileId") ?? undefined));
     }
     if (seg.length === 3 && seg[1] === "user" && method === "PUT") {
-      const body = (await readJsonBody(req)) as { keys?: string[] };
-      return jsonOk(await gestaoPermissions.setUserExtraPermissions(seg[2], body?.keys ?? []));
+      const body = (await readJsonBody(req)) as { keys?: string[]; profileId?: string };
+      return jsonOk(await gestaoPermissions.setUserExtraPermissions(seg[2], body?.keys ?? [], body?.profileId));
     }
     if (seg.length === 4 && seg[1] === "user" && seg[3] === "history" && method === "GET") {
       return jsonOk(await gestaoPermissions.listUserPermissionHistory(seg[2]));
@@ -804,6 +1129,9 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
 
   if (root === "users") {
     if (seg.length === 1 && method === "GET") return jsonOk(await gestaoUsers.findAll());
+    if (seg.length === 2 && seg[1] === "options" && method === "GET") {
+      return jsonOk(await gestaoUsers.findOptions());
+    }
     if (seg.length === 1 && method === "POST") {
       const created = await gestaoUsers.create((await readJsonBody(req)) as never);
       sendWelcomePasswordEmail(created).catch((e) => {

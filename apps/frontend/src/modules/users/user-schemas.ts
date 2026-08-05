@@ -46,25 +46,47 @@ const cpfFieldOptionalSchema = z
   .transform((v) => (v === "" ? "" : onlyDigitsCpf(v)))
   .refine((d) => d === "" || (d.length === 11 && isValidCpf(d)), { message: "CPF inválido." });
 
-export const createUserFormSchema = z.object({
-  fullName: z.string().min(1, "Informe o nome completo."),
-  cpf: cpfFieldSchema,
-  email: z.string().min(1, "Obrigatório").email("E-mail inválido"),
-  password: z.string().min(8, "Mínimo 8 caracteres"),
-  organizationId: z.string().min(1, "Selecione o órgão."),
-  role: userRoleSchema
-});
+export const createUserFormSchema = z
+  .object({
+    fullName: z.string().min(1, "Informe o nome completo."),
+    cpf: cpfFieldSchema,
+    email: z.string().min(1, "Obrigatório").email("E-mail inválido"),
+    password: z.string().min(8, "Mínimo 8 caracteres"),
+    profileIds: z.array(z.string()).min(1, "Selecione ao menos um perfil."),
+    organizationIds: z.array(z.string()),
+    allOrganizations: z.boolean().default(false)
+  })
+  .superRefine((val, ctx) => {
+    if (!val.allOrganizations && val.organizationIds.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selecione ao menos um órgão ou marque «Todos os órgãos».",
+        path: ["organizationIds"]
+      });
+    }
+  });
 
 export type CreateUserFormValues = z.infer<typeof createUserFormSchema>;
 
-export const editUserFormSchema = z.object({
-  fullName: z.string().min(1, "Informe o nome completo."),
-  cpf: cpfFieldOptionalSchema,
-  organizationId: z.string().min(1, "Selecione o órgão."),
-  role: userRoleSchema,
-  approvalStatus: userApprovalStatusSchema,
-  /** Vazio mantém a senha atual; caso contrário mínimo 8 caracteres. */
-  password: z.union([z.literal(""), z.string().min(8, "Mínimo 8 caracteres")])
-});
+export const editUserFormSchema = z
+  .object({
+    fullName: z.string().min(1, "Informe o nome completo."),
+    cpf: cpfFieldOptionalSchema,
+    profileIds: z.array(z.string()).min(1, "Selecione ao menos um perfil."),
+    organizationIds: z.array(z.string()),
+    allOrganizations: z.boolean().default(false),
+    approvalStatus: userApprovalStatusSchema,
+    /** Vazio mantém a senha atual; caso contrário mínimo 8 caracteres. */
+    password: z.union([z.literal(""), z.string().min(8, "Mínimo 8 caracteres")])
+  })
+  .superRefine((val, ctx) => {
+    if (!val.allOrganizations && val.organizationIds.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selecione ao menos um órgão ou marque «Todos os órgãos».",
+        path: ["organizationIds"]
+      });
+    }
+  });
 
 export type EditUserFormValues = z.infer<typeof editUserFormSchema>;

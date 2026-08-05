@@ -1,4 +1,4 @@
-import { GlosaType } from "@prisma/client";
+import { GlosaOrigin, GlosaType } from "@prisma/client";
 import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from "class-validator";
 
 export class CreateGlosaDto {
@@ -20,4 +20,14 @@ export class CreateGlosaDto {
   @IsOptional()
   @IsString()
   createdBy?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  measurementItemId?: string;
+
+  /** Mantido para compatibilidade; glosas avulsas são sempre manuais. */
+  @IsOptional()
+  @IsEnum(GlosaOrigin)
+  origin?: GlosaOrigin;
 }

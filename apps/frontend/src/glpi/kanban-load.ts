@@ -71,11 +71,11 @@ function formatDateTime(value: string | Date | null | undefined): string {
 
 function formatTicketAge(iso: string | null | undefined, end: Date): string {
   if (!iso) {
-    return "—";
+    return "-";
   }
   const start = Date.parse(iso);
   if (Number.isNaN(start)) {
-    return "—";
+    return "-";
   }
   const ms = Math.max(0, end.getTime() - start);
   const days = Math.floor(ms / 86_400_000);
@@ -860,7 +860,7 @@ async function buildChamadosOperationsSummary(
   const oldestTickets: ChamadosOldestTicketRow[] = oldestRaw.map((t) => {
     const daysOpen = Math.floor(openDaysApprox(t.dateCreation, now));
     const req =
-      [t.requesterName?.trim(), t.requesterEmail?.trim()].filter(Boolean).join(" · ") || "—";
+      [t.requesterName?.trim(), t.requesterEmail?.trim()].filter(Boolean).join(" · ") || "-";
     return {
       glpiTicketId: t.glpiTicketId,
       title: t.title,
@@ -1099,7 +1099,7 @@ export async function loadKanbanBoardPayload(
         contractGroupName: ticket.contractGroupName,
         pendLabel,
         pendClass,
-        requesterName: reqName || "—",
+        requesterName: reqName || "-",
         requesterEmail: reqEmail || "",
         assigneeLabel,
         openFor: formatTicketAge(ticket.dateCreation, now),

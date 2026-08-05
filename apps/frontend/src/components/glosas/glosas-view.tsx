@@ -1,16 +1,13 @@
 "use client";
 
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Receipt } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Glosa } from "@/lib/api";
 import { getGlosas } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import { GlosaForm, type MeasurementOption } from "@/components/actions/glosa-form";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
-import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
 
@@ -25,14 +22,10 @@ const columnHelper = createColumnHelper<Glosa>();
 
 type Props = {
   glosas: Glosa[];
-  measurementOptions?: MeasurementOption[];
   dataLoadErrors?: string[];
 };
 
-export function GlosasView({ glosas: initialGlosas, measurementOptions, dataLoadErrors = [] }: Props): JSX.Element {
-  const qc = useQueryClient();
-  const [modalOpen, setModalOpen] = useState(false);
-
+export function GlosasView({ glosas: initialGlosas, dataLoadErrors = [] }: Props): JSX.Element {
   const { data: glosas = initialGlosas } = useQuery({
     queryKey: queryKeys.glosas,
     queryFn: getGlosas,
@@ -49,19 +42,37 @@ export function GlosasView({ glosas: initialGlosas, measurementOptions, dataLoad
         {
           id: "measurement",
           header: "Medição",
-          cell: (info) => <span className="font-mono text-xs text-muted-foreground">{info.getValue()}</span>
+          cell: (info) => <span className="text-xs text-muted-foreground">{info.getValue()}</span>
         }
       ),
+      columnHelper.accessor((row) => row.measurement?.contract?.internalCode ?? row.measurement?.contract?.number ?? "-", {
+        id: "contract",
+        header: "Contrato",
+        cell: (info) => (
+          <span className="max-w-[140px] truncate text-xs text-muted-foreground" title={String(info.getValue())}>
+            {String(info.getValue())}
+          </span>
+        )
+      }),
       columnHelper.accessor("type", {
         header: "Tipo",
         cell: (info) => <span className="text-foreground">{typeLabel[info.getValue()] ?? info.getValue()}</span>
+      }),
+      columnHelper.accessor((row) => row.origin ?? "MANUAL", {
+        id: "origin",
+        header: "Origem",
+        cell: (info) => (
+          <span className="text-muted-foreground">
+            {info.getValue() === "AUTOMATIC" ? "Automática" : "Manual"}
+          </span>
+        )
       }),
       columnHelper.accessor("value", {
         header: () => <span className="flex w-full justify-end">Valor</span>,
         cell: (info) => <div className="text-right tabular-nums text-foreground">{info.getValue()}</div>
       }),
       columnHelper.accessor("createdBy", {
-        header: "Criado por",
+        header: "Responsável",
         cell: (info) => <span className="text-muted-foreground">{info.getValue()}</span>
       }),
       columnHelper.accessor("createdAt", {
@@ -74,13 +85,18 @@ export function GlosasView({ glosas: initialGlosas, measurementOptions, dataLoad
         id: "actions",
         enableSorting: false,
         header: () => <span className="sr-only">Ações</span>,
-        cell: (ctx) => (
-          <div className="text-right">
-            <Button variant="link" className="h-auto p-0 text-foreground" asChild>
-              <Link href={`/glosas/${ctx.row.original.id}`}>Abrir</Link>
-            </Button>
-          </div>
-        )
+        cell: (ctx) => {
+          const measurementId = ctx.row.original.measurementId;
+          return (
+            <div className="text-right">
+              <Button variant="link" className="h-auto p-0 text-foreground" asChild>
+                <Link href={measurementId ? `/measurements/${measurementId}` : `/glosas/${ctx.row.original.id}`}>
+                  Abrir medição
+                </Link>
+              </Button>
+            </div>
+          );
+        }
       })
     ],
     []
@@ -89,43 +105,22 @@ export function GlosasView({ glosas: initialGlosas, measurementOptions, dataLoad
   return (
     <div className="space-y-6">
       {dataLoadErrors.length > 0 ? <DataLoadAlert messages={dataLoadErrors} /> : null}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Glosas</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Registro por medição (atraso, não entrega, SLA, qualidade). Use <strong className="font-medium text-foreground">Nova glosa</strong>{" "}
-            para lançar valores; a lista atualiza ao salvar.
-          </p>
-        </div>
-        <Button type="button" className="shrink-0 gap-2" onClick={() => setModalOpen(true)}>
-          <Receipt className="h-4 w-4" />
-          Nova glosa
-        </Button>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Glosas</h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Área consolidada de consulta e acompanhamento. A glosa é uma dedução da medição, não um lançamento financeiro
+          isolado. Novas glosas adicionais devem ser registradas dentro da medição correspondente.
+        </p>
       </div>
 
       <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <DataTable
           columns={columns}
           data={glosas}
-          searchPlaceholder="Pesquisar medição, tipo…"
-          emptyLabel='Nenhuma glosa ainda. Clique em "Nova glosa" após calcular a medição.'
+          searchPlaceholder="Pesquisar medição, contrato, tipo…"
+          emptyLabel="Nenhuma glosa registrada nas medições."
         />
       </section>
-
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title="Nova glosa"
-        description="A glosa deve estar associada a uma medição já calculada. Indique valor e justificativa."
-      >
-        <GlosaForm
-          measurementOptions={measurementOptions}
-          onSuccess={() => {
-            setModalOpen(false);
-            void qc.invalidateQueries({ queryKey: queryKeys.glosas });
-          }}
-        />
-      </Modal>
     </div>
   );
 }

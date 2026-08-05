@@ -443,14 +443,14 @@ export function AllProjectTasksView(): JSX.Element {
                     </span>
                   </div>
                 </td>
-                <td className="p-2 align-middle text-xs">{r.status.trim() || "—"}</td>
+                <td className="p-2 align-middle text-xs">{r.status.trim() || "-"}</td>
                 <td className="p-2 align-middle tabular-nums text-xs">
                   {r.dueDate ? (
                     <span className={isOverdueNotDoneUtc(r.dueDate, r.status) ? "font-semibold text-destructive" : ""}>
                       {r.dueDate.slice(0, 10)}
                     </span>
                   ) : (
-                    "—"
+                    "-"
                   )}
                 </td>
                 <td className="p-2 align-middle">

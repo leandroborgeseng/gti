@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { MeasurementItemRow } from "@/lib/api";
 import { MeasurementItemsList } from "@/components/measurements/measurement-items-list";
-
-type ItemRow = { id: string; type: string; referenceId: string; quantity: string; calculatedValue: string };
 
 type Props = {
   measurementId: string;
   measurementStatus: string;
   /** Muda quando o servidor revalida (ex.: Calcular, nova linha); alinha a lista local. */
   serverSnapshotKey: string;
-  items: ItemRow[];
+  items: MeasurementItemRow[];
 };
 
 /**
@@ -18,7 +17,7 @@ type Props = {
  * alinhando de novo com o servidor quando `serverSnapshotKey` mudar.
  */
 export function MeasurementItemsStateful(props: Props): JSX.Element | null {
-  const [items, setItems] = useState<ItemRow[]>(props.items);
+  const [items, setItems] = useState<MeasurementItemRow[]>(props.items);
 
   useEffect(() => {
     setItems(props.items);
@@ -29,7 +28,7 @@ export function MeasurementItemsStateful(props: Props): JSX.Element | null {
       measurementId={props.measurementId}
       measurementStatus={props.measurementStatus}
       items={items}
-      onMeasurementUpdate={(m) => setItems((m.items ?? []) as ItemRow[])}
+      onMeasurementUpdate={(m) => setItems((m.items ?? []) as MeasurementItemRow[])}
     />
   );
 }

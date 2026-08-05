@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  AlarmClock,
   BookOpen,
   ClipboardList,
   ClipboardCheck,
@@ -40,6 +41,7 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
     label: "Painel e operação",
     items: [
       { href: "/dashboard", label: "Painel executivo", icon: LayoutDashboard },
+      { href: "/prazos-pendencias", label: "Prazos e pendências", icon: AlarmClock },
       { href: "/resumo-operacional", label: "Resumo operacional", icon: ClipboardCheck },
       { href: "/minhas-atribuicoes", label: "Minhas atribuições", icon: UserRoundCheck },
       { href: "/chamados", label: "Chamados (GLPI)", icon: Ticket }
@@ -84,6 +86,7 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
 
 const NAV_REQUIRED_PERMISSIONS: Record<string, readonly string[]> = {
   "/dashboard": ["dashboard.view"],
+  "/prazos-pendencias": ["deadlines.view"],
   "/contracts": ["contracts.view"],
   "/modulos": ["contracts.features.view"],
   "/measurements": ["measurements.view"],
@@ -101,7 +104,9 @@ const NAV_REQUIRED_PERMISSIONS: Record<string, readonly string[]> = {
     "admin.item_types.view",
     "admin.contract_types.view",
     "admin.hiring_types.view",
-    "admin.backup.manage"
+    "admin.backup.manage",
+    "admin.email.manage",
+    "admin.audit.manage"
   ]
 };
 

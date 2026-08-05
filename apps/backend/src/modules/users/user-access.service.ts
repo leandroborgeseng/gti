@@ -2,7 +2,7 @@ import { ForbiddenException } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import type { PrismaService } from "../../prisma/prisma.service";
 
-type AccessEventType = "LOGIN" | "PAGE_VIEW" | "HEARTBEAT";
+type AccessEventType = "LOGIN" | "LOGOUT" | "PAGE_VIEW" | "HEARTBEAT";
 
 type AccessReportParams = {
   preset?: string | null;

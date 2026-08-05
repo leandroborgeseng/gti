@@ -184,8 +184,8 @@ export class GoalsService implements OnModuleInit {
   private async seedInitialGoals(): Promise<void> {
     const seedGoals: SeedGoal[] = [
       { title: "Implantação de Termo de Responsabilidade/Compromisso para usuários de Assinatura Eletrônica", status: "PLANNED", year: 2026 },
-      { title: "Identificação e tratativas dos riscos de TIC — ISO/IEC 27000", status: "PLANNED", year: 2026 },
-      { title: "Identificação e tratativas dos riscos de TIC — ISO 31000", status: "PLANNED", year: 2026 },
+      { title: "Identificação e tratativas dos riscos de TIC · ISO/IEC 27000", status: "PLANNED", year: 2026 },
+      { title: "Identificação e tratativas dos riscos de TIC · ISO 31000", status: "PLANNED", year: 2026 },
       { title: "Elaboração do Plano de Continuidade de TIC", status: "PLANNED", year: 2026 },
       { title: "Regulamentação da Lei 14.129/2021", status: "PLANNED", year: 2026 },
       { title: "Dados abertos (JSON, XML, CSV, etc)", status: "PLANNED", year: 2026 },

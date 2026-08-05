@@ -260,7 +260,7 @@ export async function createSystemBackup(options: {
       envChecklistFile: "env-checklist.json",
       notes: [
         "Este pacote contém a base PostgreSQL (formato custom do pg_dump).",
-        "Variáveis de ambiente (GLPI, JWT, Resend, etc.) não são exportadas por segurança — configure-as no servidor de destino.",
+        "Variáveis de ambiente (GLPI, JWT, Resend, etc.) não são exportadas por segurança: configure-as no servidor de destino.",
         "Preferências em SyncState (Kanban, âmbito de sync, etc.) vão no dump da base.",
         includeUploads
           ? "Anexos de medições, glosas e tarefas estão na pasta uploads/."

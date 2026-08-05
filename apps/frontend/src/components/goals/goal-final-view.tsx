@@ -237,9 +237,9 @@ export function GoalFinalView({ goal, projects, tasks }: Props): JSX.Element {
                         {task.projectName}
                       </Link>
                     </td>
-                    <td className="p-2 text-slate-600">{task.assigneeExternal || task.internalResponsible || "—"}</td>
+                    <td className="p-2 text-slate-600">{task.assigneeExternal || task.internalResponsible || "-"}</td>
                     <td className="p-2 text-slate-600">{task.status || "sem status"}</td>
-                    <td className="p-2 text-slate-600">{task.glpiTicketId ? `#${task.glpiTicketId}` : "—"}</td>
+                    <td className="p-2 text-slate-600">{task.glpiTicketId ? `#${task.glpiTicketId}` : "-"}</td>
                   </tr>
                 );
               })}

@@ -17,9 +17,9 @@ const presetLinks = [
 ];
 
 function formatDateTime(value?: string | null): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
@@ -34,6 +34,7 @@ function formatDuration(seconds: number): string {
 
 function eventLabel(eventType: string): string {
   if (eventType === "LOGIN") return "Login";
+  if (eventType === "LOGOUT") return "Logout";
   if (eventType === "PAGE_VIEW") return "Acesso";
   if (eventType === "HEARTBEAT") return "Uso ativo";
   return eventType;
@@ -104,7 +105,7 @@ export default async function UserUsageReportPage({
                 <div className="min-w-0">
                   <h2 className="truncate text-base font-semibold text-foreground">{user.userEmail}</h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Perfil: {user.role ?? "—"} · Primeiro registro: {formatDateTime(user.firstSeenAt)} · Último registro:{" "}
+                    Perfil: {user.role ?? "-"} · Primeiro registro: {formatDateTime(user.firstSeenAt)} · Último registro:{" "}
                     {formatDateTime(user.lastSeenAt)}
                   </p>
                 </div>
@@ -156,7 +157,7 @@ export default async function UserUsageReportPage({
                           <span className="shrink-0 text-xs text-muted-foreground">{formatDateTime(event.occurredAt)}</span>
                         </div>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {event.pathLabel || event.path || "—"}
+                          {event.pathLabel || event.path || "-"}
                           {event.durationSeconds > 0 ? ` · ${formatDuration(event.durationSeconds)}` : ""}
                         </p>
                       </div>

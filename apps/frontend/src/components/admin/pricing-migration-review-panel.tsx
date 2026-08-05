@@ -27,7 +27,7 @@ const FLAG_LABELS: Record<string, string> = {
 };
 
 function formatCurrency(value: number | null): string {
-  if (value == null) return "—";
+  if (value == null) return "-";
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 

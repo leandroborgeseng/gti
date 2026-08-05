@@ -52,6 +52,8 @@ enum MeasurementStatus {
 enum MeasurementItemType {
   FEATURE
   SERVICE
+  /// Linha composta a partir de item contratual de precificação.
+  PRICING_ITEM
 }
 
 enum GlosaType {
@@ -59,6 +61,12 @@ enum GlosaType {
   NAO_ENTREGA
   SLA
   QUALIDADE
+}
+
+/// Origem da glosa: gerada pelo cálculo ou lançada manualmente na medição.
+enum GlosaOrigin {
+  AUTOMATIC
+  MANUAL
 }
 
 enum GovernancePriority {
@@ -166,6 +174,179 @@ enum ContractPricingItemStatus {
   CANCELLED
 }
 
+/// Tipo do instrumento de alteração contratual (aditivo, reajuste, etc.).
+enum ContractAmendmentType {
+  TERMO_ADITIVO
+  REAJUSTE
+  REPACTUACAO
+  REVISAO
+  RENOVACAO
+  PRORROGACAO
+  ACRESCIMO
+  SUPRESSAO
+  APOSTILAMENTO
+  OUTRO
+}
+
+enum ContractAmendmentStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum ContractAmendmentItemAction {
+  CREATE
+  UPDATE
+  SUPPRESS
+}
+
+/// Tipo operacional do cronograma do contrato.
+enum ContractScheduleType {
+  IMPLANTACAO
+  MIGRACAO
+  TREINAMENTO
+  ENTREGA_EQUIPAMENTOS
+  INSTALACAO
+  INTEGRACAO
+  DESENVOLVIMENTO
+  TRANSICAO
+  OPERACAO_ASSISTIDA
+  PLANO_ACAO
+  CORRECAO_PENDENCIAS
+  ENCERRAMENTO
+  OUTRO
+}
+
+/// Origem do documento/planejamento que gerou o cronograma.
+enum ContractScheduleOrigin {
+  TERMO_REFERENCIA
+  PROPOSTA_EMPRESA
+  PLANEJAMENTO_INICIAL
+  REUNIAO
+  ADITIVO
+  NOTIFICACAO
+  PLANO_ACAO
+  DETERMINACAO_ADMIN
+  OUTRO
+}
+
+/// Situação do cronograma (ciclo de vida operacional).
+enum ContractScheduleStatus {
+  RASCUNHO
+  ENVIADO_ANALISE
+  AJUSTES_SOLICITADOS
+  APROVADO
+  EM_EXECUCAO
+  SUSPENSO
+  CONCLUIDO
+  CANCELADO
+  SUBSTITUIDO
+}
+
+/// Situação de uma etapa/marco do cronograma.
+enum ContractScheduleMilestoneStatus {
+  NAO_INICIADA
+  EM_ANDAMENTO
+  CONCLUIDA
+  ATRASADA
+  BLOQUEADA
+  CANCELADA
+}
+
+/// Tipo de ocorrência contratual (ticket 47).
+enum ContractOccurrenceType {
+  DESCUMPRIMENTO_SLA
+  ATRASO_ENTREGA
+  FALHA_QUALIDADE
+  INCIDENTE_OPERACIONAL
+  NAO_CONFORMIDADE
+  RECLAMACAO
+  AUDITORIA
+  OUTRO
+}
+
+/// Origem do registro da ocorrência.
+enum ContractOccurrenceOrigin {
+  FISCALIZACAO
+  MEDICAO
+  CHAMADO_GLPI
+  EMPRESA
+  AUDITORIA_INTERNA
+  DENUNCIA
+  CONTROLADORIA
+  OUTRO
+}
+
+/// Gravidade da ocorrência.
+enum ContractOccurrenceSeverity {
+  BAIXA
+  MEDIA
+  ALTA
+  CRITICA
+}
+
+/// Situação da ocorrência contratual.
+enum ContractOccurrenceStatus {
+  EM_ANALISE
+  AGUARDANDO_PROVIDENCIA_INTERNA
+  AGUARDANDO_EMPRESA
+  EM_REGULARIZACAO
+  REGULARIZADA
+  NAO_REGULARIZADA
+  REINCIDENTE
+  ENCAMINHADA_CONTROLADORIA
+  EM_PROCESSO_ADMINISTRATIVO
+  CONCLUIDA
+  ARQUIVADA
+}
+
+/// Situação do dossiê / caso na Controladoria (ticket 48).
+enum ContractControladoriaCaseStatus {
+  EM_PREPARACAO
+  ENCAMINHADO
+  RECEBIDO_CONTROLADORIA
+  COMPLEMENTACAO_SOLICITADA
+  EM_INSTRUCAO
+  AGUARDANDO_DEFESA
+  EM_ANALISE
+  AGUARDANDO_DECISAO
+  EM_RECURSO
+  CONCLUIDO
+  ARQUIVADO
+}
+
+/// Origem materializada do prazo/alerta (tickets 49/51/58).
+enum DeadlineOrigin {
+  CONTRACT_END
+  SCHEDULE_STEP
+  OCCURRENCE
+  MEASUREMENT_PENDING
+  FEATURE_VALIDATION
+  GLPI_SLA
+  DOCUMENT
+  OTHER
+}
+
+/// Situação do prazo recalculada por dueAt vs agora (ou conclusão).
+enum DeadlineStatus {
+  FUTURE
+  NEAR_DUE
+  DUE_TODAY
+  OVERDUE
+  DONE_ON_TIME
+  DONE_LATE
+  SUSPENDED
+  EXTENDED
+  CANCELLED
+}
+
+/// Nível de atenção derivado da situação / criticidade da origem.
+enum DeadlineAttentionLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 model User {
   id                  String               @id @default(uuid())
   email               String               @unique
@@ -178,18 +359,42 @@ model User {
   jobTitle            String?
   department          String?
   phone               String?
-  /// Órgão principal do usuário (cadastro Administração → Órgãos).
+  /// Órgão principal do usuário (legado; sincronizado com o vínculo padrão).
   organizationId      String?              @map("organization_id")
+  /// Quando true, o usuário pode atuar com visão «Todos os órgãos».
+  allOrganizations    Boolean              @default(false) @map("all_organizations")
+  /// Último perfil ativo na sessão (contexto).
+  lastActiveProfileId String?              @map("last_active_profile_id")
+  /// Último órgão ativo; null + allOrganizations = Todos os órgãos.
+  lastActiveOrganizationId String?         @map("last_active_organization_id")
+  /// Perfil padrão ao login (quando lastActive não for válido).
+  defaultProfileId    String?              @map("default_profile_id")
+  /// Órgão padrão; null + allOrganizations = Todos.
+  defaultOrganizationId String?            @map("default_organization_id")
   passwordHash        String
   mustChangePassword  Boolean              @default(false)
   approvalStatus      UserApprovalStatus   @default(APPROVED)
+  /// Papel legado; sincronizado com o systemKey do perfil padrão.
   role                UserRole             @default(EDITOR)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
-  organization        Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  organization        Organization?        @relation("UserPrimaryOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
+  lastActiveProfile   AccessProfile?       @relation("UserLastActiveProfile", fields: [lastActiveProfileId], references: [id], onDelete: SetNull)
+  lastActiveOrganization Organization?     @relation("UserLastActiveOrganization", fields: [lastActiveOrganizationId], references: [id], onDelete: SetNull)
+  defaultProfile      AccessProfile?       @relation("UserDefaultProfile", fields: [defaultProfileId], references: [id], onDelete: SetNull)
+  defaultOrganization Organization?        @relation("UserDefaultOrganization", fields: [defaultOrganizationId], references: [id], onDelete: SetNull)
+  accessProfiles      UserAccessProfile[]
+  organizations       UserOrganization[]
   passwordResetTokens PasswordResetToken[]
   supervisedProjects  Project[]            @relation("ProjectSupervisor")
   validatedContractModules ContractModule[] @relation("ContractModuleValidator")
+  moduleFiscalLinks   ContractModuleFiscal[] @relation("ContractModuleFiscalUser")
+  featureResponsibleLinks ContractFeatureResponsible[] @relation("ContractFeatureResponsibleUser")
+  validationGroupMemberships ContractValidationGroupMember[] @relation("ContractValidationGroupMemberUser")
+  scheduleResponsibleLinks ContractScheduleInternalResponsible[] @relation("ContractScheduleInternalResponsibleUser")
+  scheduleMilestoneResponsibleLinks ContractScheduleMilestoneInternalResponsible[] @relation("ContractScheduleMilestoneInternalResponsibleUser")
+  occurrenceResponsibleLinks ContractOccurrence[] @relation("ContractOccurrenceInternalResponsible")
+  deadlineResponsibleLinks Deadline[] @relation("DeadlineResponsibleUser")
   accessEvents        UserAccessEvent[]
   fiscalProfile       Fiscal?              @relation("FiscalUser")
   projectTaskComments ProjectTaskComment[]  @relation("ProjectTaskCommentAuthor")
@@ -198,6 +403,59 @@ model User {
   extraPermissions    UserPermission[]
 
   @@index([organizationId])
+  @@index([lastActiveProfileId])
+  @@index([lastActiveOrganizationId])
+  @@index([defaultProfileId])
+  @@index([defaultOrganizationId])
+}
+
+/// Perfil de acesso dinâmico (Administrador/Editor/Leitor do sistema + perfis customizados).
+model AccessProfile {
+  id             String              @id @default(uuid())
+  name           String
+  description    String?
+  active         Boolean             @default(true)
+  nameNormalized String              @unique @map("name_normalized")
+  /// ADMIN | EDITOR | VIEWER para os três perfis de sistema protegidos.
+  systemKey      String?             @unique @map("system_key")
+  protected      Boolean             @default(false)
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  rolePermissions RolePermission[]
+  userLinks      UserAccessProfile[]
+  userPermissions UserPermission[]
+  usersLastActive User[]             @relation("UserLastActiveProfile")
+  usersDefault    User[]             @relation("UserDefaultProfile")
+
+  @@map("access_profile")
+}
+
+/// Vínculo N:N usuário ↔ perfil de acesso.
+model UserAccessProfile {
+  userId    String        @map("user_id")
+  profileId String        @map("profile_id")
+  isDefault Boolean       @default(false) @map("is_default")
+  createdAt DateTime      @default(now()) @map("created_at")
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile   AccessProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+
+  @@id([userId, profileId])
+  @@index([profileId])
+  @@map("user_access_profile")
+}
+
+/// Vínculo N:N usuário ↔ órgão.
+model UserOrganization {
+  userId         String       @map("user_id")
+  organizationId String       @map("organization_id")
+  isDefault      Boolean      @default(false) @map("is_default")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, organizationId])
+  @@index([organizationId])
+  @@map("user_organization")
 }
 
 model UserAccessEvent {
@@ -321,12 +579,20 @@ model Contract {
   amendments        ContractAmendment[]
   /** Grupos GLPI atribuídos aos chamados (alinhado a `Ticket.contractGroupId`) para métricas de SLA por contrato. */
   glpiGroups        ContractGlpiGroup[]
-  /** Memória dos valores antes de alterações / renovações (consulta e comparação). */
-  financialSnapshots ContractFinancialSnapshot[]
+  /** Grupos de validação de entrega das funcionalidades do contrato. */
+  validationGroups ContractValidationGroup[]
   /** Histórico auditável de inserção, exclusão e mudança de status dos itens contratuais. */
   itemChangeLogs ContractItemChangeLog[]
   /** Itens de precificação dinâmica (mensalidade, horas, UST, equipamentos, etc.). */
   pricingItems   ContractPricingItem[]
+  /** Cronogramas e marcos operacionais do contrato. */
+  schedules      ContractSchedule[]
+  /** Ocorrências contratuais (ticket 47). */
+  occurrences  ContractOccurrence[]
+  /** Dossiês encaminhados à Controladoria (ticket 48). */
+  controladoriaCases ContractControladoriaCase[]
+  /** Prazos e alertas materializados (tickets 49/51/58). */
+  deadlines    Deadline[]
 
   @@index([status, endDate])
   @@index([deletedAt])
@@ -360,20 +626,6 @@ model ContractItemChangeLog {
   @@index([action, changedAt])
 }
 
-/// Registro pontual dos valores do contrato (ex.: antes de uma renovação), para comparar com os valores atuais.
-model ContractFinancialSnapshot {
-  id                String   @id @default(uuid())
-  contractId        String
-  recordedAt        DateTime @default(now())
-  monthlyValue      Decimal  @db.Decimal(18, 2)
-  totalValue        Decimal  @db.Decimal(18, 2)
-  installationValue Decimal? @db.Decimal(18, 2)
-  note              String?
-  contract          Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
-
-  @@index([contractId, recordedAt])
-}
-
 /// Liga um contrato a um ou mais grupos de trabalho do GLPI (ID do grupo na instância sincronizada).
 model ContractGlpiGroup {
   id            String   @id @default(uuid())
@@ -387,24 +639,61 @@ model ContractGlpiGroup {
   @@index([glpiGroupId])
 }
 
-/// Registro de aditivo ou reajuste formal (valores e vigência); aplica alterações ao contrato na criação.
+/// Registro de aditivo/reajuste/repactuação (histórico contratual e financeiro).
 model ContractAmendment {
-  id                   String   @id @default(uuid())
+  id                   String                   @id @default(uuid())
   contractId           String
+  type                 ContractAmendmentType    @default(OUTRO)
+  status               ContractAmendmentStatus  @default(ACTIVE)
   referenceCode        String?
+  /// Data de formalização do instrumento (assinatura/publicação).
+  formalizationDate    DateTime?
+  /// Início dos efeitos financeiros/contratuais (legado e API: effectiveDate / effectsStartDate).
   effectiveDate        DateTime
   description          String
-  previousTotalValue   Decimal  @db.Decimal(18, 2)
-  previousMonthlyValue Decimal  @db.Decimal(18, 2)
+  previousTotalValue   Decimal                  @db.Decimal(18, 2)
+  previousMonthlyValue Decimal                  @db.Decimal(18, 2)
   previousEndDate      DateTime
-  newTotalValue        Decimal  @db.Decimal(18, 2)
-  newMonthlyValue      Decimal  @db.Decimal(18, 2)
-  newEndDate           DateTime
-  createdAt            DateTime @default(now())
+  previousGlobalValue  Decimal?                 @map("previous_global_value") @db.Decimal(18, 2)
+  newTotalValue        Decimal?                 @db.Decimal(18, 2)
+  newMonthlyValue      Decimal?                 @db.Decimal(18, 2)
+  newEndDate           DateTime?
+  newGlobalValue       Decimal?                 @map("new_global_value") @db.Decimal(18, 2)
+  adjustmentPercent    Decimal?                 @map("adjustment_percent") @db.Decimal(9, 4)
+  indexReference       String?                  @map("index_reference")
+  cancelJustification  String?                  @map("cancel_justification") @db.Text
+  cancelledAt          DateTime?                @map("cancelled_at")
+  actorId              String?                  @map("actor_id")
+  actorLabel           String?                  @map("actor_label")
+  createdAt            DateTime                 @default(now())
 
-  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  contract Contract                 @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  items    ContractAmendmentItem[]
 
   @@index([contractId, createdAt])
+  @@index([contractId, effectiveDate])
+  @@index([status])
+}
+
+/// Item afetado por um aditivo (criação, atualização com versionamento ou supressão).
+model ContractAmendmentItem {
+  id                  String                       @id @default(uuid())
+  amendmentId         String                       @map("amendment_id")
+  /// Item de precificação de origem (UPDATE/SUPPRESS); nulo em CREATE puro.
+  pricingItemId       String?                      @map("pricing_item_id")
+  /// Item resultante após CREATE/UPDATE (nova versão ACTIVE).
+  resultPricingItemId String?                      @map("result_pricing_item_id")
+  action              ContractAmendmentItemAction
+  adjustmentPercent   Decimal?                     @map("adjustment_percent") @db.Decimal(9, 4)
+  beforeSnapshot      Json?                        @map("before_snapshot")
+  afterSnapshot       Json?                        @map("after_snapshot")
+  createdAt           DateTime                     @default(now()) @map("created_at")
+
+  amendment ContractAmendment @relation(fields: [amendmentId], references: [id], onDelete: Cascade)
+
+  @@index([amendmentId])
+  @@index([pricingItemId])
+  @@map("contract_amendment_item")
 }
 
 model ContractModule {
@@ -412,6 +701,7 @@ model ContractModule {
   contractId         String
   name               String
   criticality        ContractItemCriticality @default(MEDIA) @map("modulo_criticidade")
+  /// Legado (um fiscal). Mantido sincronizado com o primeiro vínculo em `fiscals`.
   validatorId        String?                 @map("fiscal_responsavel_id")
   glosaPricingItemId String?                 @map("glosa_pricing_item_id")
   weight             Decimal                 @db.Decimal(18, 8)
@@ -419,21 +709,82 @@ model ContractModule {
   validator          User?                   @relation("ContractModuleValidator", fields: [validatorId], references: [id], onDelete: SetNull)
   glosaPricingItem   ContractPricingItem?    @relation("ContractModuleGlosaPricingItem", fields: [glosaPricingItemId], references: [id], onDelete: SetNull)
   features           ContractFeature[]
+  fiscals            ContractModuleFiscal[]
 
   @@index([validatorId])
   @@index([glosaPricingItemId])
 }
 
+/// Fiscais responsáveis pelo módulo (N:N). Substitui gradualmente o uso exclusivo de `validatorId`.
+model ContractModuleFiscal {
+  moduleId  String
+  userId    String
+  createdAt DateTime       @default(now())
+  module    ContractModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  user      User           @relation("ContractModuleFiscalUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([moduleId, userId])
+  @@index([userId])
+}
+
+/// Grupo de validação do contrato: membros responsáveis pela validação das funcionalidades vinculadas.
+model ContractValidationGroup {
+  id          String   @id @default(uuid())
+  contractId  String
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  contract    Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  members     ContractValidationGroupMember[]
+  features    ContractFeature[]
+
+  @@index([contractId, active])
+  @@index([contractId, name])
+}
+
+/// Membros (usuários) de um grupo de validação. Podem ser de outros órgãos.
+model ContractValidationGroupMember {
+  groupId   String
+  userId    String
+  createdAt DateTime                @default(now())
+  group     ContractValidationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User                    @relation("ContractValidationGroupMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
 model ContractFeature {
-  id             String                     @id @default(uuid())
-  moduleId       String
-  itemCode       String?                    @map("funcionalidade_codigo")
-  name           String
-  criticality    ContractItemCriticality    @default(MEDIA) @map("funcionalidade_criticidade")
-  weight         Decimal                    @db.Decimal(18, 8)
-  status         ContractFeatureStatus      @default(NOT_STARTED)
-  deliveryStatus ContractItemDeliveryStatus @default(NOT_DELIVERED)
-  module         ContractModule             @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+  id                String                     @id @default(uuid())
+  moduleId          String
+  itemCode          String?                    @map("funcionalidade_codigo")
+  name              String
+  criticality       ContractItemCriticality    @default(MEDIA) @map("funcionalidade_criticidade")
+  weight            Decimal                    @db.Decimal(18, 8)
+  status            ContractFeatureStatus      @default(NOT_STARTED)
+  deliveryStatus    ContractItemDeliveryStatus @default(NOT_DELIVERED)
+  /// Grupo de validação (obrigatório em novos itens; nullable para legado).
+  validationGroupId String?                    @map("validation_group_id")
+  module            ContractModule             @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+  validationGroup   ContractValidationGroup?   @relation(fields: [validationGroupId], references: [id], onDelete: Restrict)
+  responsibles      ContractFeatureResponsible[]
+  scheduleMilestones ContractScheduleMilestone[]
+
+  @@index([validationGroupId])
+}
+
+/// Responsáveis específicos do item/funcionalidade. Complementam (não substituem) os membros do grupo de validação.
+model ContractFeatureResponsible {
+  featureId String
+  userId    String
+  createdAt DateTime        @default(now())
+  feature   ContractFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  user      User            @relation("ContractFeatureResponsibleUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([featureId, userId])
+  @@index([userId])
 }
 
 model ContractService {
@@ -474,22 +825,45 @@ model MeasurementItem {
   pricingItemId   String?             @map("pricing_item_id")
   quantity        Decimal             @db.Decimal(18, 4)
   calculatedValue Decimal             @db.Decimal(18, 2)
+  /// Snapshot da descrição do item contratual na composição da medição.
+  descriptionSnapshot String?         @map("description_snapshot") @db.Text
+  /// Snapshot do valor unitário usado no cálculo.
+  unitValueSnapshot   Decimal?        @map("unit_value_snapshot") @db.Decimal(18, 4)
+  billingKindSnapshot ContractPricingBillingKind? @map("billing_kind_snapshot")
+  periodicitySnapshot ContractPricingPeriodicity? @map("periodicity_snapshot")
+  /// Período efetivo da linha dentro da competência (split por mudança no mês).
+  coverageStart   DateTime?           @map("coverage_start")
+  coverageEnd     DateTime?           @map("coverage_end")
+  /// Memória de cálculo (dias, proporção, fórmula, etc.).
+  calculationMemory Json?             @map("calculation_memory")
+  /// Linha legada gerada a partir de monthlyValue sem item equivalente.
+  isLegacyMonthly Boolean             @default(false) @map("is_legacy_monthly")
+  /// Soma de glosas associadas a esta linha (informativo).
+  glosedValue     Decimal             @default(0) @map("glosed_value") @db.Decimal(18, 2)
   measurement     Measurement         @relation(fields: [measurementId], references: [id], onDelete: Restrict)
   pricingItem     ContractPricingItem? @relation(fields: [pricingItemId], references: [id], onDelete: SetNull)
+  glosas          Glosa[]
 
   @@index([pricingItemId])
 }
 
 model Glosa {
-  id            String   @id @default(uuid())
-  measurementId String
-  type          GlosaType
-  value         Decimal  @db.Decimal(18, 2)
-  justification String
-  createdBy     String
-  createdAt     DateTime @default(now())
-  measurement   Measurement @relation(fields: [measurementId], references: [id], onDelete: Restrict)
-  attachments   Attachment[]
+  id                String      @id @default(uuid())
+  measurementId     String
+  /// Linha da medição à qual a glosa se refere (opcional).
+  measurementItemId String?     @map("measurement_item_id")
+  type              GlosaType
+  origin            GlosaOrigin @default(MANUAL)
+  value             Decimal     @db.Decimal(18, 2)
+  justification     String
+  createdBy         String
+  createdAt         DateTime    @default(now())
+  measurement       Measurement @relation(fields: [measurementId], references: [id], onDelete: Restrict)
+  measurementItem   MeasurementItem? @relation(fields: [measurementItemId], references: [id], onDelete: SetNull)
+  attachments       Attachment[]
+
+  @@index([measurementItemId])
+  @@index([measurementId, origin])
 }
 
 model AuditLog {
@@ -800,7 +1174,10 @@ model Organization {
   acronymNormalized  String     @unique @map("acronym_normalized")
   createdAt          DateTime   @default(now()) @map("created_at")
   updatedAt          DateTime   @updatedAt @map("updated_at")
-  users              User[]
+  users              User[]     @relation("UserPrimaryOrganization")
+  userLinks          UserOrganization[]
+  usersLastActive    User[]     @relation("UserLastActiveOrganization")
+  usersDefault       User[]     @relation("UserDefaultOrganization")
   contracts          Contract[]
 
   @@map("organization")
@@ -893,30 +1270,37 @@ model MeasureUnit {
   @@map("measure_unit")
 }
 
-/// Permissão concedida a um papel (base de acesso).
+/// Permissão concedida a um perfil de acesso (base herdada).
 model RolePermission {
-  id            String   @id @default(uuid())
+  id            String        @id @default(uuid())
+  /// Papel legado sincronizado com AccessProfile.systemKey (transição).
   role          UserRole
-  permissionKey String   @map("permission_key")
-  granted       Boolean  @default(true)
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  profileId     String        @map("profile_id")
+  permissionKey String        @map("permission_key")
+  granted       Boolean       @default(true)
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  profile       AccessProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  @@unique([role, permissionKey])
+  @@unique([profileId, permissionKey])
   @@index([role])
+  @@index([profileId])
   @@map("role_permission")
 }
 
-/// Permissão adicional concedida diretamente a um usuário (soma-se ao papel).
+/// Permissão adicional concedida a um usuário em um perfil vinculado.
 model UserPermission {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
-  permissionKey String   @map("permission_key")
-  granted       Boolean  @default(true)
-  updatedAt     DateTime @updatedAt @map("updated_at")
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String        @id @default(uuid())
+  userId        String        @map("user_id")
+  profileId     String        @map("profile_id")
+  permissionKey String        @map("permission_key")
+  granted       Boolean       @default(true)
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile       AccessProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, permissionKey])
+  @@unique([userId, profileId, permissionKey])
   @@index([userId])
+  @@index([profileId])
   @@map("user_permission")
 }
 
@@ -950,11 +1334,245 @@ model ContractPricingItem {
   unit               MeasureUnit                @relation(fields: [unitId], references: [id])
   measurementItems   MeasurementItem[]
   glosaBaseModules   ContractModule[]           @relation("ContractModuleGlosaPricingItem")
+  scheduleLinks      ContractSchedule[]         @relation("ContractSchedulePricingItem")
+  scheduleMilestoneLinks ContractScheduleMilestone[] @relation("ContractScheduleMilestonePricingItem")
 
   @@unique([contractId, sequence])
   @@index([contractId, status])
   @@index([typeId])
   @@map("contract_pricing_item")
+}
+
+/// Cronograma operacional do contrato (implantação, migração, plano de ação, etc.).
+/// Independente de notificações; aprovação operacional não substitui aditivo.
+model ContractSchedule {
+  id                   String                 @id @default(uuid())
+  contractId           String                 @map("contract_id")
+  name                 String
+  type                 ContractScheduleType
+  /// Finalidade / objetivo do cronograma (texto livre).
+  purpose              String?                @db.Text
+  origin               ContractScheduleOrigin  @default(OUTRO)
+  description          String?                @db.Text
+  plannedStartDate     DateTime?              @map("planned_start_date")
+  plannedEndDate       DateTime?              @map("planned_end_date")
+  /// Responsáveis da empresa (nomes livres; usuários externos ainda não existem no cadastro).
+  companyResponsibles  String?                @map("company_responsibles") @db.Text
+  status               ContractScheduleStatus @default(RASCUNHO)
+  version              Int                    @default(1)
+  /// Identificador estável da linhagem de versões (igual ao id da 1ª versão).
+  lineageId            String                 @map("lineage_id")
+  /// Versão que substituiu este registro (quando status = SUBSTITUIDO).
+  replacedById         String?                @map("replaced_by_id")
+  impactaFinanceiro    Boolean                @default(false) @map("impacta_financeiro")
+  pricingItemId        String?                @map("pricing_item_id")
+  observations         String?                @db.Text
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+
+  contract      Contract                            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  pricingItem   ContractPricingItem?                @relation("ContractSchedulePricingItem", fields: [pricingItemId], references: [id], onDelete: SetNull)
+  replacedBy    ContractSchedule?                   @relation("ContractScheduleReplacement", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces      ContractSchedule[]                  @relation("ContractScheduleReplacement")
+  responsibles  ContractScheduleInternalResponsible[]
+  milestones    ContractScheduleMilestone[]
+
+  @@index([contractId, status])
+  @@index([contractId, lineageId, version])
+  @@index([pricingItemId])
+  @@map("contract_schedule")
+}
+
+model ContractScheduleInternalResponsible {
+  scheduleId String           @map("schedule_id")
+  userId     String           @map("user_id")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  schedule   ContractSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  user       User             @relation("ContractScheduleInternalResponsibleUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([scheduleId, userId])
+  @@index([userId])
+  @@map("contract_schedule_internal_responsible")
+}
+
+/// Etapa ou marco de um cronograma.
+model ContractScheduleMilestone {
+  id               String                          @id @default(uuid())
+  scheduleId       String                          @map("schedule_id")
+  sequence         Int
+  activity         String
+  description      String?                         @db.Text
+  pricingItemId    String?                         @map("pricing_item_id")
+  featureId        String?                         @map("feature_id")
+  plannedStartDate DateTime?                       @map("planned_start_date")
+  plannedEndDate   DateTime?                       @map("planned_end_date")
+  actualStartDate  DateTime?                       @map("actual_start_date")
+  actualEndDate    DateTime?                       @map("actual_end_date")
+  percentComplete  Decimal?                        @map("percent_complete") @db.Decimal(5, 2)
+  status           ContractScheduleMilestoneStatus  @default(NAO_INICIADA)
+  /// Dependências (texto livre ou lista de ids/sequências).
+  dependencies     String?                         @db.Text
+  observations     String?                         @db.Text
+  createdAt        DateTime                        @default(now()) @map("created_at")
+  updatedAt        DateTime                        @updatedAt @map("updated_at")
+
+  schedule     ContractSchedule                              @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  pricingItem  ContractPricingItem?                          @relation("ContractScheduleMilestonePricingItem", fields: [pricingItemId], references: [id], onDelete: SetNull)
+  feature      ContractFeature?                              @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  responsibles ContractScheduleMilestoneInternalResponsible[]
+
+  @@index([scheduleId, sequence])
+  @@index([pricingItemId])
+  @@index([featureId])
+  @@map("contract_schedule_milestone")
+}
+
+model ContractScheduleMilestoneInternalResponsible {
+  milestoneId String                    @map("milestone_id")
+  userId      String                    @map("user_id")
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  milestone   ContractScheduleMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  user        User                      @relation("ContractScheduleMilestoneInternalResponsibleUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([milestoneId, userId])
+  @@index([userId])
+  @@map("contract_schedule_milestone_internal_responsible")
+}
+
+/// Ocorrência contratual (descumprimento, atraso, não conformidade etc.).
+/// Sem notificação automática nesta versão; evidências em texto (anexos em onda futura).
+model ContractOccurrence {
+  id                         String                     @id @default(uuid())
+  contractId                 String                     @map("contract_id")
+  type                       ContractOccurrenceType
+  origin                     ContractOccurrenceOrigin
+  title                      String
+  description                String?                    @db.Text
+  /// Data da constatação.
+  detectionDate              DateTime                   @map("detection_date")
+  /// IDs opcionais de itens de precificação (JSON string[]).
+  linkedPricingItemIds       Json?                      @map("linked_pricing_item_ids")
+  linkedFeatureIds           Json?                      @map("linked_feature_ids")
+  linkedMeasurementIds       Json?                      @map("linked_measurement_ids")
+  linkedGlosaIds             Json?                      @map("linked_glosa_ids")
+  linkedScheduleIds          Json?                      @map("linked_schedule_ids")
+  severity                   ContractOccurrenceSeverity  @default(MEDIA)
+  internalResponsibleUserId  String?                    @map("internal_responsible_user_id")
+  regularizationDeadline     DateTime?                  @map("regularization_deadline")
+  status                     ContractOccurrenceStatus    @default(EM_ANALISE)
+  conclusion                 String?                    @db.Text
+  /// Evidências / observações em texto (anexos ficam para onda futura).
+  evidenceNotes              String?                    @map("evidence_notes") @db.Text
+  createdAt                  DateTime                   @default(now()) @map("created_at")
+  updatedAt                  DateTime                   @updatedAt @map("updated_at")
+
+  contract            Contract                    @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  internalResponsible User?                       @relation("ContractOccurrenceInternalResponsible", fields: [internalResponsibleUserId], references: [id], onDelete: SetNull)
+  events              ContractOccurrenceEvent[]
+  controladoriaCases  ContractControladoriaCase[]
+
+  @@index([contractId, status])
+  @@index([contractId, detectionDate])
+  @@index([internalResponsibleUserId])
+  @@map("contract_occurrence")
+}
+
+/// Linha do tempo / histórico de eventos da ocorrência.
+model ContractOccurrenceEvent {
+  id             String                    @id @default(uuid())
+  occurrenceId   String                    @map("occurrence_id")
+  /// CREATE | UPDATE | STATUS_CHANGE | FORWARD_CONTROLADORIA | NOTE
+  eventType      String                    @map("event_type")
+  fromStatus     ContractOccurrenceStatus? @map("from_status")
+  toStatus       ContractOccurrenceStatus? @map("to_status")
+  justification  String?                   @db.Text
+  actorId        String?                   @map("actor_id")
+  actorLabel     String?                   @map("actor_label")
+  payload        Json?
+  createdAt      DateTime                  @default(now()) @map("created_at")
+
+  occurrence ContractOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+
+  @@index([occurrenceId, createdAt])
+  @@map("contract_occurrence_event")
+}
+
+/// Dossiê consolidado encaminhado à Controladoria (não apaga a ocorrência de origem).
+model ContractControladoriaCase {
+  id               String                          @id @default(uuid())
+  contractId       String                          @map("contract_id")
+  occurrenceId     String                          @map("occurrence_id")
+  status           ContractControladoriaCaseStatus @default(EM_PREPARACAO)
+  /// Justificativa do encaminhamento (obrigatória na abertura).
+  justification    String                          @db.Text
+  /// Resumo do caso.
+  summary          String                          @db.Text
+  /// Providências sugeridas.
+  suggestedActions String?                         @map("suggested_actions") @db.Text
+  /// Snapshot consolidado (contrato + ocorrência + vínculos) no momento do encaminhamento.
+  snapshotJson     Json                            @map("snapshot_json")
+  /// Acompanhamento do processo externo.
+  processNumber    String?                         @map("process_number")
+  originSystem     String?                         @map("origin_system")
+  processLink      String?                         @map("process_link")
+  openedAt         DateTime?                       @map("opened_at")
+  /// Objeto do processo.
+  subject          String?
+  /// Unidade responsável.
+  unit             String?
+  responsiblesText String?                         @map("responsibles_text") @db.Text
+  phase            String?
+  deadlinesText    String?                         @map("deadlines_text") @db.Text
+  decisionsText    String?                         @map("decisions_text") @db.Text
+  penaltiesText    String?                         @map("penalties_text") @db.Text
+  resultText       String?                         @map("result_text") @db.Text
+  /// Campos preparados para integração SEI futura.
+  seiNumber        String?                         @map("sei_number")
+  seiLink          String?                         @map("sei_link")
+  createdAt        DateTime                        @default(now()) @map("created_at")
+  updatedAt        DateTime                        @updatedAt @map("updated_at")
+
+  contract   Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  occurrence ContractOccurrence  @relation(fields: [occurrenceId], references: [id], onDelete: Restrict)
+
+  @@index([contractId, status])
+  @@index([occurrenceId])
+  @@index([status, createdAt])
+  @@map("contract_controladoria_case")
+}
+
+/// Prazo/alerta materializado pelo motor de sync (tickets 49/51/58).
+/// Situação aberta é recalculada por dueAt vs agora; conclusões e cancelamentos são preservados no sync.
+model Deadline {
+  id                String                 @id @default(uuid())
+  origin            DeadlineOrigin
+  contractId        String?                @map("contract_id")
+  title             String
+  description       String?                @db.Text
+  responsibleUserId String?                @map("responsible_user_id")
+  dueAt             DateTime               @map("due_at")
+  status            DeadlineStatus         @default(FUTURE)
+  attentionLevel    DeadlineAttentionLevel @default(LOW) @map("attention_level")
+  expectedAction    String?                @map("expected_action")
+  sourceEntityType  String                 @map("source_entity_type")
+  sourceEntityId    String                 @map("source_entity_id")
+  /// Chave estável para upsert no sync (origin|tipo|id|responsável).
+  syncKey           String                 @unique @map("sync_key")
+  /// Se true, gerido por syncDeadlines (pode ser atualizado/cancelado automaticamente).
+  syncManaged       Boolean                @default(true) @map("sync_managed")
+  completedAt       DateTime?              @map("completed_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  contract    Contract? @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  responsible User?     @relation("DeadlineResponsibleUser", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, dueAt])
+  @@index([origin, status])
+  @@index([contractId])
+  @@index([responsibleUserId])
+  @@index([sourceEntityType, sourceEntityId])
+  @@map("deadline")
 }
 
 /// Configuração singleton do backup automático para S3 (AWS, MinIO, R2…).
@@ -987,4 +1605,107 @@ model S3BackupConfig {
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
   @@map("s3_backup_config")
+}
+
+/// Configuração singleton de e-mail de saída (SMTP) — Administração → Configuração de e-mail.
+model EmailOutboundConfig {
+  id     String @id @default("default")
+  active Boolean @default(false)
+
+  /// NOT_CONFIGURED | CONFIGURED_UNTESTED | TEST_OK | ACTIVE | FAILED
+  status String @default("NOT_CONFIGURED")
+
+  smtpHost     String @default("") @map("smtp_host")
+  smtpPort     Int    @default(587) @map("smtp_port")
+  /// NONE | STARTTLS | SSL_TLS
+  security     String @default("STARTTLS")
+  authRequired Boolean @default(true) @map("auth_required")
+  username     String @default("")
+  /// Senha SMTP criptografada (AES-256-GCM). Nunca retornada pela API.
+  passwordEnc  String? @map("password_enc") @db.Text
+
+  /// USER_PASS | APP_PASSWORD | OAUTH (OAuth: campos stub)
+  authMethod   String  @default("USER_PASS") @map("auth_method")
+  oauthClientId     String? @map("oauth_client_id")
+  oauthTenantId     String? @map("oauth_tenant_id")
+  oauthRefreshTokenEnc String? @map("oauth_refresh_token_enc") @db.Text
+
+  fromName  String @default("") @map("from_name")
+  fromEmail String @default("") @map("from_email")
+  replyTo   String @default("") @map("reply_to")
+
+  ccDefault         String @default("") @map("cc_default")
+  bccDefault        String @default("") @map("bcc_default")
+  failureAlertEmail String @default("") @map("failure_alert_email")
+
+  subjectPrefix       String @default("") @map("subject_prefix")
+  footerSignature     String @default("") @map("footer_signature") @db.Text
+  confidentialityText String @default("") @map("confidentiality_text") @db.Text
+
+  maxAttachmentBytes Int @default(10485760) @map("max_attachment_bytes")
+  maxRecipients      Int @default(50) @map("max_recipients")
+  retryIntervalSec   Int @default(60) @map("retry_interval_sec")
+  maxRetries         Int @default(3) @map("max_retries")
+
+  attachNotificationPdf Boolean @default(false) @map("attach_notification_pdf")
+  attachmentsAsLink     Boolean @default(false) @map("attachments_as_link")
+  requirePortalAccess   Boolean @default(false) @map("require_portal_access")
+
+  /// Caixa de entrada (stub — desabilitada por padrão).
+  inboundEnabled Boolean @default(false) @map("inbound_enabled")
+  imapHost       String  @default("") @map("imap_host")
+  imapPort       Int     @default(993) @map("imap_port")
+  imapSecurity   String  @default("SSL_TLS") @map("imap_security")
+  imapUsername   String  @default("") @map("imap_username")
+  imapPasswordEnc String? @map("imap_password_enc") @db.Text
+
+  lastTestAt           DateTime? @map("last_test_at")
+  lastTestOk           Boolean?  @map("last_test_ok")
+  lastTestError        String?   @map("last_test_error") @db.Text
+  lastTestRecipient    String?   @map("last_test_recipient")
+  activationJustification String? @map("activation_justification") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("email_outbound_config")
+}
+
+/// Histórico mínimo de envios (sem corpo/anexos sensíveis).
+model EmailSendLog {
+  id           String   @id @default(uuid())
+  /// TEST | SYSTEM | NOTIFICATION | OTHER
+  type         String
+  recipients   String   @db.Text
+  /// PENDING | SENT | FAILED
+  status       String
+  attempts     Int      @default(1)
+  errorSummary String?  @map("error_summary") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([type, status])
+  @@map("email_send_log")
+}
+
+/// Preferências de quais eventos gravar na auditoria (Administração → Auditoria).
+model AuditEventConfig {
+  id          String   @id @default(uuid())
+  moduleKey   String   @map("module_key")
+  screenKey   String   @map("screen_key")
+  actionKey   String   @map("action_key")
+  label       String   @default("")
+  moduleLabel String   @default("") @map("module_label")
+  enabled     Boolean  @default(true)
+  /// ACTION_ONLY | ACTION_AND_VALUES
+  detailLevel String   @default("ACTION_AND_VALUES") @map("detail_level")
+  /// Se true, sempre habilitado (login, logout, permissões, criar usuário, config de auditoria).
+  mandatory   Boolean  @default(false)
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([moduleKey, screenKey, actionKey])
+  @@index([moduleKey, sortOrder])
+  @@map("audit_event_config")
 }

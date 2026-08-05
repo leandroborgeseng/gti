@@ -12,6 +12,8 @@ import type {
   ContractItemDeliveryStatus,
   ContractModulesDeliveryModule,
   ContractModulesDeliveryOverview,
+  FeatureAssignmentReason,
+  ModulesDeliveryAssignmentFilter,
   ModulesDeliveryFeature,
   ModulesDeliveryTotals
 } from "@/lib/api";
@@ -37,6 +39,8 @@ import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { FeatureDescriptionText } from "@/components/features/feature-description-text";
+import { Textarea } from "@/components/ui/textarea";
 
 const deliveryLabels: Record<ContractItemDeliveryStatus, string> = {
   NOT_DELIVERED: "Não entregue",
@@ -196,14 +200,50 @@ type EditFeatureDraft = {
 type DeliveryFilters = {
   deliveryStatus: "" | ContractItemDeliveryStatus;
   criticality: "" | ContractItemCriticality;
+  assignment: ModulesDeliveryAssignmentFilter;
   query: string;
 };
+
+const assignmentFilterLabels: Record<Exclude<ModulesDeliveryAssignmentFilter, "">, string> = {
+  ALL: "Todos",
+  ASSIGNED_TO_ME: "Atribuídos a mim",
+  GROUP_MEMBER: "Sou responsável pelo grupo",
+  MODULE_FISCAL: "Sou responsável pelo módulo",
+  NO_RESPONSIBLE: "Sem responsável"
+};
+
+function assignmentReasonBadges(reasons: FeatureAssignmentReason[] | undefined, groupUndefined?: boolean): JSX.Element | null {
+  const list = [...(reasons ?? [])];
+  if (groupUndefined && !list.includes("UNDEFINED_GROUP")) list.push("UNDEFINED_GROUP");
+  if (list.length === 0) return null;
+  const labels: Partial<Record<FeatureAssignmentReason, { text: string; className: string }>> = {
+    GROUP: { text: "Grupo", className: "bg-violet-100 text-violet-900" },
+    FEATURE: { text: "Específico", className: "bg-sky-100 text-sky-900" },
+    MODULE: { text: "Módulo (acompanhamento)", className: "bg-slate-200 text-slate-800" },
+    UNDEFINED_GROUP: { text: "Grupo não definido", className: "bg-amber-100 text-amber-900" },
+    NONE: { text: "Sem responsável", className: "bg-rose-100 text-rose-900" }
+  };
+  return (
+    <span className="flex flex-wrap gap-1">
+      {list.map((reason) => {
+        const meta = labels[reason];
+        if (!meta) return null;
+        return (
+          <span key={reason} className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", meta.className)}>
+            {meta.text}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
 
 type FeatureMutationContext = {
   busyRowKey: string | null;
   canEditFeature: boolean;
   canEditDelivery: boolean;
   canEditCriticality: boolean;
+  searchQuery: string;
   openEdit: (contractId: string, moduleId: string, item: ModulesDeliveryFeature) => void;
   tryDeleteFeature: (contractId: string, moduleId: string, item: ModulesDeliveryFeature) => void;
   updateDelivery: (vars: {
@@ -259,12 +299,18 @@ function FeatureRow({
           : undefined
       }
     >
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">
-          {item.itemCode ? <span className="mr-2 font-mono text-xs text-muted-foreground">{item.itemCode}</span> : null}
-          {item.name}
-        </p>
-        <p className="text-[11px] text-muted-foreground">Peso {serializeWeight(item.weight)}</p>
+      <div className="min-w-0 flex-1 space-y-1">
+        {item.itemCode ? (
+          <p className="text-xs font-medium text-muted-foreground">{item.itemCode}</p>
+        ) : null}
+        <FeatureDescriptionText text={item.name} searchQuery={ctx.searchQuery} />
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11px] text-muted-foreground">Peso {serializeWeight(item.weight)}</p>
+          {assignmentReasonBadges(item.assignmentReasons, item.groupUndefined)}
+          {item.validationGroup?.name ? (
+            <span className="text-[11px] text-muted-foreground">Grupo: {item.validationGroup.name}</span>
+          ) : null}
+        </div>
       </div>
       <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-[35rem] sm:flex-row sm:items-center sm:justify-end sm:gap-2">
         {ctx.canEditCriticality ? (
@@ -511,7 +557,7 @@ function ModuleFeaturesSearchPanel({
   moduleId: string;
   initialFeatures: ModulesDeliveryFeature[];
   initialHasMore: boolean;
-  filters: { q?: string; deliveryStatus?: string; criticality?: string };
+  filters: { q?: string; deliveryStatus?: string; criticality?: string; assignment?: string };
   ctx: FeatureMutationContext;
 }): JSX.Element {
   const [features, setFeatures] = useState(initialFeatures);
@@ -534,7 +580,8 @@ function ModuleFeaturesSearchPanel({
         pageSize: FEATURES_PAGE_SIZE,
         q: filters.q,
         deliveryStatus: filters.deliveryStatus,
-        criticality: filters.criticality
+        criticality: filters.criticality,
+        assignment: filters.assignment
       });
       setFeatures((prev) => {
         const seen = new Set(prev.map((f) => f.id));
@@ -574,7 +621,7 @@ function ModuleAccordion({
   mod: ContractModulesDeliveryModule;
   /** Em modo pesquisa, módulos começam abertos com features da busca. */
   forceOpen?: boolean;
-  searchFilters?: { q?: string; deliveryStatus?: string; criticality?: string } | null;
+  searchFilters?: { q?: string; deliveryStatus?: string; criticality?: string; assignment?: string } | null;
   ctx: FeatureMutationContext;
 }): JSX.Element {
   const [collapsed, setCollapsed] = useState(!forceOpen);
@@ -613,7 +660,7 @@ function ModuleAccordion({
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-foreground">
             {mod.name}
-            <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
               peso {serializeWeight(mod.weight)}
             </span>
           </h3>
@@ -631,7 +678,7 @@ function ModuleAccordion({
           )}
           {mod.glosaPricingItem ? (
             <p className="mt-1 text-xs text-muted-foreground">
-              Base de glosa: #{mod.glosaPricingItem.sequence} — {mod.glosaPricingItem.description}
+              Base de glosa: #{mod.glosaPricingItem.sequence} · {mod.glosaPricingItem.description}
             </p>
           ) : null}
         </div>
@@ -730,7 +777,7 @@ function ContractSection({
   isOpen: boolean;
   onToggle: () => void;
   searchMode: boolean;
-  searchFilters: { q?: string; deliveryStatus?: string; criticality?: string } | null;
+  searchFilters: { q?: string; deliveryStatus?: string; criticality?: string; assignment?: string } | null;
   canOpenContract: boolean;
   ctx: FeatureMutationContext;
 }): JSX.Element {
@@ -784,7 +831,7 @@ function ContractSection({
               </p>
             ) : (
               <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
-                Sem módulos ou itens — configure na página do contrato.
+                Sem módulos ou itens: configure na página do contrato.
               </p>
             )}
             <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -876,21 +923,31 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
   const [openContractIds, setOpenContractIds] = useState<Set<string>>(() => new Set());
   const [editDraft, setEditDraft] = useState<EditFeatureDraft | null>(null);
   const [editHint, setEditHint] = useState<string | null>(null);
-  const [filters, setFilters] = useState<DeliveryFilters>({ deliveryStatus: "", criticality: "", query: "" });
+  const [filters, setFilters] = useState<DeliveryFilters>({
+    deliveryStatus: "",
+    criticality: "",
+    assignment: "",
+    query: ""
+  });
   const debouncedQuery = useDebouncedValue(filters.query, 300);
+  const assignmentParam =
+    filters.assignment && filters.assignment !== "ALL" ? filters.assignment : undefined;
 
   const { data: rows = initialRows } = useQuery({
-    queryKey: queryKeys.modulesDeliveryOverview,
-    queryFn: getModulesDeliveryOverview,
-    initialData: initialRows
+    queryKey: [...queryKeys.modulesDeliveryOverview, assignmentParam ?? "ALL"],
+    queryFn: () => getModulesDeliveryOverview({ assignment: assignmentParam }),
+    initialData: assignmentParam ? undefined : initialRows
   });
 
-  const hasFilters = Boolean(filters.deliveryStatus || filters.criticality || debouncedQuery.trim());
+  const hasFilters = Boolean(
+    filters.deliveryStatus || filters.criticality || filters.assignment || debouncedQuery.trim()
+  );
   const searchKey = hasFilters
     ? JSON.stringify({
         q: debouncedQuery.trim() || undefined,
         deliveryStatus: filters.deliveryStatus || undefined,
-        criticality: filters.criticality || undefined
+        criticality: filters.criticality || undefined,
+        assignment: assignmentParam
       })
     : "";
 
@@ -898,7 +955,8 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     ? {
         q: debouncedQuery.trim() || undefined,
         deliveryStatus: filters.deliveryStatus || undefined,
-        criticality: filters.criticality || undefined
+        criticality: filters.criticality || undefined,
+        assignment: assignmentParam
       }
     : null;
 
@@ -909,6 +967,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
         q: searchFilters?.q,
         deliveryStatus: searchFilters?.deliveryStatus,
         criticality: searchFilters?.criticality,
+        assignment: searchFilters?.assignment,
         pageSize: FEATURES_PAGE_SIZE
       }),
     enabled: hasFilters
@@ -1022,6 +1081,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     canEditFeature,
     canEditDelivery,
     canEditCriticality,
+    searchQuery: filters.query,
     openEdit: (contractId, moduleId, item) => {
       setEditHint(null);
       setEditDraft({
@@ -1097,7 +1157,9 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     (saveFeatureMut.error instanceof Error ? saveFeatureMut.error.message : null);
 
   const queryPending = filters.query.trim() !== debouncedQuery.trim();
-  const uiHasFilters = Boolean(filters.deliveryStatus || filters.criticality || filters.query.trim());
+  const uiHasFilters = Boolean(
+    filters.deliveryStatus || filters.criticality || filters.assignment || filters.query.trim()
+  );
 
   return (
     <div className="space-y-6">
@@ -1126,7 +1188,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       </div>
 
       <div className="rounded-xl border bg-card px-4 py-3 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-[1.3fr_1fr_1fr_auto] md:items-end">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1fr_1fr_auto] xl:items-end">
           <Label className="space-y-1.5 text-xs font-medium">
             <span>Pesquisar por código ou descrição</span>
             <Input
@@ -1175,11 +1237,33 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
               ))}
             </select>
           </Label>
+          <Label className="space-y-1.5 text-xs font-medium">
+            <span>Atribuição</span>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+              value={filters.assignment}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  assignment: event.target.value as DeliveryFilters["assignment"]
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              {(Object.keys(assignmentFilterLabels) as Array<keyof typeof assignmentFilterLabels>)
+                .filter((k) => k !== "ALL")
+                .map((key) => (
+                  <option key={key} value={key}>
+                    {assignmentFilterLabels[key]}
+                  </option>
+                ))}
+            </select>
+          </Label>
           <Button
             type="button"
             variant="secondary"
             disabled={!uiHasFilters}
-            onClick={() => setFilters({ deliveryStatus: "", criticality: "", query: "" })}
+            onClick={() => setFilters({ deliveryStatus: "", criticality: "", assignment: "", query: "" })}
           >
             Limpar filtros
           </Button>
@@ -1189,7 +1273,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
             ? queryPending || searchQuery.isFetching
               ? "Pesquisando funcionalidades no servidor…"
               : `Exibindo ${visibleItems} funcionalidade(s) correspondente(s) aos filtros (pesquisa no servidor).`
-            : "Use os filtros para priorizar itens por entrega, criticidade ou localizar rapidamente pelo código e descrição. Expanda um contrato para carregar os módulos sob demanda."}
+            : "Use os filtros para priorizar itens por entrega, criticidade, atribuição ou localizar pelo código e descrição. Expanda um contrato para carregar os módulos sob demanda."}
         </p>
       </div>
 
@@ -1280,11 +1364,13 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="modulos-edit-nome">Nome</Label>
-              <Input
+              <Label htmlFor="modulos-edit-nome">Descrição da funcionalidade</Label>
+              <Textarea
                 id="modulos-edit-nome"
                 value={editDraft.name}
                 disabled={saveFeatureMut.isPending}
+                rows={4}
+                className="min-h-[6rem] max-h-[20rem] resize-y"
                 onChange={(e) => setEditDraft((d) => (d ? { ...d, name: e.target.value } : d))}
               />
             </div>

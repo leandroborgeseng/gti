@@ -19,6 +19,14 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     permissions: [{ key: "dashboard.view", label: "Visualizar dashboard" }]
   },
   {
+    module: "Prazos e pendências",
+    moduleKey: "deadlines",
+    permissions: [
+      { key: "deadlines.view", label: "Visualizar prazos e pendências" },
+      { key: "deadlines.recalculate", label: "Recalcular prazos e alertas" }
+    ]
+  },
+  {
     module: "Contratos",
     moduleKey: "contracts",
     permissions: [
@@ -54,6 +62,11 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     module: "Governança",
     moduleKey: "governance",
     permissions: [{ key: "governance.view", label: "Visualizar chamados de governança" }]
+  },
+  {
+    module: "Controladoria",
+    moduleKey: "controladoria",
+    permissions: [{ key: "controladoria.manage", label: "Encaminhar e acompanhar casos na Controladoria" }]
   },
   {
     module: "Metas",
@@ -92,7 +105,7 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     permissions: [{ key: "manual.view", label: "Acessar manual do utilizador" }]
   },
   {
-    module: "Administração — Usuários",
+    module: "Administração · Usuários",
     moduleKey: "admin.users",
     permissions: [
       { key: "admin.users.view", label: "Visualizar usuários" },
@@ -100,7 +113,7 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     ]
   },
   {
-    module: "Administração — Órgãos",
+    module: "Administração · Órgãos",
     moduleKey: "admin.organs",
     permissions: [
       { key: "admin.organs.view", label: "Visualizar órgãos" },
@@ -108,7 +121,7 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     ]
   },
   {
-    module: "Administração — Permissões",
+    module: "Administração · Permissões",
     moduleKey: "admin.permissions",
     permissions: [
       { key: "admin.permissions.view", label: "Visualizar permissões" },
@@ -116,7 +129,7 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     ]
   },
   {
-    module: "Administração — Tipos de item",
+    module: "Administração · Tipos de item",
     moduleKey: "admin.item_types",
     permissions: [
       { key: "admin.item_types.view", label: "Visualizar tipos de item" },
@@ -124,7 +137,7 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     ]
   },
   {
-    module: "Administração — Tipos de contrato",
+    module: "Administração · Tipos de contrato",
     moduleKey: "admin.contract_types",
     permissions: [
       { key: "admin.contract_types.view", label: "Visualizar tipos de contrato" },
@@ -132,7 +145,7 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     ]
   },
   {
-    module: "Administração — Tipos de contratação",
+    module: "Administração · Tipos de contratação",
     moduleKey: "admin.hiring_types",
     permissions: [
       { key: "admin.hiring_types.view", label: "Visualizar tipos de contratação" },
@@ -140,9 +153,19 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     ]
   },
   {
-    module: "Administração — Backup",
+    module: "Administração · Backup",
     moduleKey: "admin.backup",
     permissions: [{ key: "admin.backup.manage", label: "Gerir backup do sistema" }]
+  },
+  {
+    module: "Administração · E-mail",
+    moduleKey: "admin.email",
+    permissions: [{ key: "admin.email.manage", label: "Gerir configuração de e-mail" }]
+  },
+  {
+    module: "Administração · Auditoria",
+    moduleKey: "admin.audit",
+    permissions: [{ key: "admin.audit.manage", label: "Gerir configuração de auditoria" }]
   }
 ];
 

@@ -304,7 +304,7 @@ export async function persistGlpiSyncStatusSafe(
     } else {
       logger.error(
         { error: details },
-        "Não foi possível persistir o estado da sincronização GLPI em SyncState — verifique DATABASE_URL e migrações"
+        "Não foi possível persistir o estado da sincronização GLPI em SyncState: verifique DATABASE_URL e migrações"
       );
     }
   }

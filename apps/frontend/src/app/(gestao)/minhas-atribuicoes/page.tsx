@@ -21,30 +21,38 @@ export const revalidate = 0;
 
 const emptyAssignments: MyAssignments = {
   user: { id: "", email: "" },
-  totals: { contracts: 0, modules: 0, projects: 0, tasks: 0, governanceTickets: 0, glpiTickets: 0 },
+  totals: { contracts: 0, modules: 0, pendingFeatures: 0, projects: 0, tasks: 0, governanceTickets: 0, glpiTickets: 0 },
   listLimits: {
     maxItemsPerList: 100,
     tasksTruncated: false,
     governanceTruncated: false,
-    glpiTruncated: false
+    glpiTruncated: false,
+    pendingFeaturesTruncated: false
   },
   contracts: [],
   modules: [],
+  pendingFeatures: [],
   projects: [],
   tasks: [],
   governanceTickets: [],
   glpiTickets: []
 };
 
+const deliveryStatusLabels: Record<string, string> = {
+  NOT_DELIVERED: "Não entregue",
+  PARTIALLY_DELIVERED: "Parcialmente entregue",
+  DELIVERED: "Entregue"
+};
+
 function formatDate(value?: string | null): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleDateString("pt-BR");
 }
 
 function formatDateTimeShort(value?: string | null): string {
-  if (!value?.trim()) return "—";
+  if (!value?.trim()) return "-";
   const d = new Date(value.trim());
   if (Number.isNaN(d.getTime())) return value.trim();
   return new Intl.DateTimeFormat("pt-BR", {
@@ -93,7 +101,7 @@ export default async function MyAssignmentsPage(): Promise<JSX.Element> {
         </div>
       </header>
 
-      <section id="resumo-atribuicoes" aria-label="Resumo por tipo de atribuição" className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <section id="resumo-atribuicoes" aria-label="Resumo por tipo de atribuição" className="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
         <AssignmentSummaryStatLink anchor="lista-chamados-glpi">
           <Card className="p-4 transition-colors hover:bg-muted/40">
             <p className="text-xs text-muted-foreground">Chamados GLPI</p>
@@ -119,9 +127,16 @@ export default async function MyAssignmentsPage(): Promise<JSX.Element> {
             <strong className="mt-1 block text-2xl">{data.totals.contracts}</strong>
           </Card>
         </AssignmentSummaryStatLink>
+        <AssignmentSummaryStatLink anchor="lista-funcionalidades-pendentes">
+          <Card className="p-4 transition-colors hover:bg-muted/40">
+            <p className="text-xs text-muted-foreground">Funcionalidades pendentes</p>
+            <strong className="mt-1 block text-2xl">{data.totals.pendingFeatures}</strong>
+            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">Sob sua responsabilidade</p>
+          </Card>
+        </AssignmentSummaryStatLink>
         <AssignmentSummaryStatLink anchor="lista-modulos">
           <Card className="p-4 transition-colors hover:bg-muted/40">
-            <p className="text-xs text-muted-foreground">Módulos</p>
+            <p className="text-xs text-muted-foreground">Módulos (acompanhamento)</p>
             <strong className="mt-1 block text-2xl">{data.totals.modules}</strong>
           </Card>
         </AssignmentSummaryStatLink>
@@ -152,7 +167,7 @@ export default async function MyAssignmentsPage(): Promise<JSX.Element> {
                     #{ticket.glpiTicketId} · {ticket.title || "Chamado sem título"}
                   </Link>
                 }
-                meta={`Técnico: ${ticket.assignedUserName || "—"} · Grupo: ${ticket.contractGroupName || "—"} · Atualizado em ${formatDateTimeShort(ticket.dateModification)}`}
+                meta={`Técnico: ${ticket.assignedUserName || "-"} · Grupo: ${ticket.contractGroupName || "-"} · Atualizado em ${formatDateTimeShort(ticket.dateModification)}`}
               />
             ))}
           </>
@@ -274,10 +289,49 @@ export default async function MyAssignmentsPage(): Promise<JSX.Element> {
         </AssignmentSection>
 
         <AssignmentSection
+          sectionId="lista-funcionalidades-pendentes"
+          title="Funcionalidades pendentes sob minha responsabilidade"
+          count={data.pendingFeatures.length}
+          empty="Nenhuma funcionalidade pendente sob sua responsabilidade direta (grupo ou responsável específico)."
+          footer={
+            <ListTruncationFooter
+              truncated={Boolean(LM.pendingFeaturesTruncated)}
+              label="Funcionalidades pendentes"
+              maxItems={LM.maxItemsPerList}
+            />
+          }
+        >
+          <>
+            {data.pendingFeatures.map((feat) => {
+              const reasonLabel = feat.assignmentReasons
+                .map((r) => (r === "GROUP" ? "grupo" : "específico"))
+                .join(" + ");
+              const codeName = feat.itemCode ? `${feat.itemCode} · ${feat.name}` : feat.name;
+              return (
+                <AssignmentRowCard
+                  key={feat.id}
+                  pill={deliveryStatusLabels[feat.deliveryStatus] ?? feat.deliveryStatus}
+                  pillTone="amber"
+                  title={
+                    <Link
+                      href={`/modulos` as Route}
+                      className="font-medium text-foreground underline-offset-4 hover:underline"
+                    >
+                      {codeName}
+                    </Link>
+                  }
+                  meta={`Contrato: ${feat.contract.number} · Módulo: ${feat.module.name}${feat.validationGroup ? ` · Grupo: ${feat.validationGroup.name}` : ""} · Motivo: ${reasonLabel || "-"}`}
+                />
+              );
+            })}
+          </>
+        </AssignmentSection>
+
+        <AssignmentSection
           sectionId="lista-modulos"
-          title="Módulos sob sua validação"
+          title="Módulos sob seu acompanhamento"
           count={data.modules.length}
-          empty="Nenhum módulo contratual sob sua validação."
+          empty="Nenhum módulo contratual sob seu acompanhamento."
         >
           <>
             {data.modules.map((mod) => (
@@ -289,7 +343,7 @@ export default async function MyAssignmentsPage(): Promise<JSX.Element> {
                     {mod.name}
                   </Link>
                 }
-                meta={`Contrato: ${mod.contract.number} · ${mod.contract.name} · Criticidade: ${mod.criticality}`}
+                meta={`Contrato: ${mod.contract.number} · ${mod.contract.name} · Criticidade: ${mod.criticality} · Papel: acompanhamento`}
               />
             ))}
           </>

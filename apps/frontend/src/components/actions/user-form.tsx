@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { UserRecord } from "@/lib/api";
-import { createUser, getOrganizations } from "@/lib/api";
+import { createUser, getAccessProfiles, getOrganizations } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import {
   createUserFormSchema,
@@ -14,9 +14,9 @@ import {
   type CreateUserFormValues
 } from "@/modules/users/user-schemas";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormSection } from "@/components/ui/form-primitives";
 import { useMemo } from "react";
 
@@ -26,12 +26,22 @@ type Props = {
   submitLabel?: string;
 };
 
+function toggleId(list: string[], id: string, checked: boolean): string[] {
+  if (checked) return list.includes(id) ? list : [...list, id];
+  return list.filter((x) => x !== id);
+}
+
 export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" }: Props): JSX.Element {
   const qc = useQueryClient();
   const qOrganizations = useQuery({ queryKey: queryKeys.organizations, queryFn: getOrganizations });
+  const qProfiles = useQuery({ queryKey: queryKeys.accessProfiles, queryFn: () => getAccessProfiles(false) });
   const activeOrganizations = useMemo(
     () => (qOrganizations.data ?? []).filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [qOrganizations.data]
+  );
+  const activeProfiles = useMemo(
+    () => (qProfiles.data ?? []).filter((p) => p.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    [qProfiles.data]
   );
 
   const form = useForm<CreateUserFormValues>({
@@ -41,10 +51,13 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" 
       cpf: "",
       email: "",
       password: "",
-      organizationId: "",
-      role: "EDITOR"
+      profileIds: [],
+      organizationIds: [],
+      allOrganizations: false
     }
   });
+
+  const allOrganizations = form.watch("allOrganizations");
 
   const mutation = useMutation({
     mutationFn: (values: CreateUserFormValues) =>
@@ -53,8 +66,11 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" 
         password: values.password,
         fullName: values.fullName.trim(),
         cpf: values.cpf,
-        organizationId: values.organizationId,
-        role: values.role
+        profileIds: values.profileIds,
+        organizationIds: values.allOrganizations ? values.organizationIds : values.organizationIds,
+        allOrganizations: values.allOrganizations,
+        defaultProfileId: values.profileIds[0],
+        defaultOrganizationId: values.allOrganizations ? null : values.organizationIds[0] ?? null
       }),
     onSuccess: (created) => {
       toast.success("Usuário criado. No primeiro acesso, será obrigado a trocar a senha.");
@@ -64,8 +80,9 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" 
         cpf: "",
         email: "",
         password: "",
-        organizationId: "",
-        role: "EDITOR"
+        profileIds: [],
+        organizationIds: [],
+        allOrganizations: false
       });
       onCreated?.(created);
       onSuccess?.();
@@ -85,7 +102,7 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" 
       >
         <FormSection
           title="Identificação"
-          description="Nome completo, CPF e órgão conforme cadastro da Administração."
+          description="Nome completo e CPF conforme cadastro da Administração."
         >
           <FormField
             control={form.control}
@@ -119,26 +136,81 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" 
               </FormItem>
             )}
           />
+        </FormSection>
+
+        <FormSection
+          title="Perfis e órgãos"
+          description="Obrigatório ao menos um perfil e (um órgão ou abrangência «Todos os órgãos»)."
+        >
           <FormField
             control={form.control}
-            name="organizationId"
+            name="profileIds"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Órgão</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value || undefined} disabled={qOrganizations.isPending}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder={qOrganizations.isPending ? "Carregando…" : "Selecione o órgão"} />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {activeOrganizations.map((org) => (
-                      <SelectItem key={org.id} value={org.id}>
-                        {org.acronym ? `${org.acronym} — ${org.name}` : org.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Perfis de acesso</FormLabel>
+                <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+                  {activeProfiles.map((p) => {
+                    const checked = field.value.includes(p.id);
+                    return (
+                      <label key={p.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => field.onChange(toggleId(field.value, p.id, v === true))}
+                        />
+                        <span>
+                          {p.name}
+                          {p.systemKey ? (
+                            <span className="text-muted-foreground"> · {p.systemKey}</span>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {activeProfiles.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum perfil ativo disponível.</p>
+                  ) : null}
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="allOrganizations"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2 flex flex-row items-center gap-2 space-y-0">
+                <FormControl>
+                  <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} />
+                </FormControl>
+                <FormLabel className="font-normal">Todos os órgãos</FormLabel>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="organizationIds"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>{allOrganizations ? "Órgãos vinculados (opcional)" : "Órgãos"}</FormLabel>
+                <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+                  {activeOrganizations.map((org) => {
+                    const checked = field.value.includes(org.id);
+                    return (
+                      <label key={org.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => field.onChange(toggleId(field.value, org.id, v === true))}
+                        />
+                        <span>{org.acronym ? `${org.acronym} · ${org.name}` : org.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <FormDescription>
+                  {allOrganizations
+                    ? "Com «Todos os órgãos», o usuário pode escolher visão global ou um órgão específico no seletor de contexto."
+                    : "Selecione um ou mais órgãos de atuação."}
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -146,7 +218,7 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" 
         </FormSection>
 
         <FormSection
-          title="Credenciais e papel"
+          title="Credenciais"
           description="E-mail único no sistema. Senha inicial com pelo menos 8 caracteres; o usuário deverá trocá-la no primeiro acesso."
         >
           <FormField
@@ -175,32 +247,9 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" 
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name="role"
-            render={({ field }) => (
-              <FormItem className="sm:col-span-2">
-                <FormLabel>Papel</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o papel" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="VIEWER">Leitura (VIEWER)</SelectItem>
-                    <SelectItem value="EDITOR">Edição (EDITOR)</SelectItem>
-                    <SelectItem value="ADMIN">Administrador (ADMIN)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormDescription>Pode alterar mais tarde na edição do usuário.</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
         </FormSection>
 
-        <Button type="submit" disabled={mutation.isPending || qOrganizations.isPending}>
+        <Button type="submit" disabled={mutation.isPending || qOrganizations.isPending || qProfiles.isPending}>
           {mutation.isPending ? "Salvando…" : submitLabel}
         </Button>
       </form>

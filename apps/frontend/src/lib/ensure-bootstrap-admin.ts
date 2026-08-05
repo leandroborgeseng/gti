@@ -17,8 +17,22 @@ export async function ensureBootstrapAdminIfNoUsers(): Promise<void> {
   const plain = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? "admin123";
   const passwordHash = await bcrypt.hash(plain, 10);
   try {
+    const adminProfile = await prisma.accessProfile.findUnique({ where: { systemKey: "ADMIN" } });
     await prisma.user.create({
-      data: { email, passwordHash, mustChangePassword: true, role: "ADMIN" }
+      data: {
+        email,
+        passwordHash,
+        mustChangePassword: true,
+        role: "ADMIN",
+        allOrganizations: true,
+        ...(adminProfile
+          ? {
+              defaultProfileId: adminProfile.id,
+              lastActiveProfileId: adminProfile.id,
+              accessProfiles: { create: { profileId: adminProfile.id, isDefault: true } }
+            }
+          : {})
+      }
     });
   } catch (e) {
     if (isUniqueConstraintError(e)) {

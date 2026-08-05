@@ -137,7 +137,7 @@ export function ContractItemChangeHistoryPanel({ logs = [] }: { logs?: ContractI
                     </span>
                     <span className="text-xs text-slate-500">{itemTypeLabel[log.itemType] ?? log.itemType}</span>
                   </div>
-                  <p className="mt-2 text-sm font-medium text-slate-900">{log.itemName}</p>
+                  <p className="mt-2 text-sm font-normal leading-relaxed text-slate-800">{log.itemName}</p>
                 </div>
                 <span className="text-xs text-slate-500">{formatDateTime(log.changedAt)}</span>
               </div>

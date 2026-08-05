@@ -155,7 +155,7 @@ export function ContractTypesAdminPanel(): JSX.Element {
       columnHelper.accessor("acronym", { header: "Sigla" }),
       columnHelper.accessor("description", {
         header: "Descrição",
-        cell: (info) => info.getValue() ?? "—"
+        cell: (info) => info.getValue() ?? "-"
       }),
       columnHelper.accessor("active", {
         header: "Status",

@@ -44,7 +44,7 @@ export function MeasurementActions({ measurementId, measurementStatus }: Props):
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         <Button type="button" disabled={busy || !canCalculate} onClick={() => calculateMut.mutate()}>
-          {calculateMut.isPending ? "A calcular…" : "Calcular"}
+          {calculateMut.isPending ? "A calcular…" : "Calcular medição"}
         </Button>
         <Button type="button" variant="secondary" disabled={busy || !canApprove} onClick={() => approveMut.mutate()}>
           {approveMut.isPending ? "A aprovar…" : "Aprovar"}

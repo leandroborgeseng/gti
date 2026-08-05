@@ -55,14 +55,14 @@ export function GovernanceTicketsView({ tickets: initialTickets, contractOptions
         header: "Chamado GLPI",
         cell: (info) => <span className="font-medium text-foreground">#{info.getValue()}</span>
       }),
-      columnHelper.accessor((row) => row.contract?.number ?? "—", {
+      columnHelper.accessor((row) => row.contract?.number ?? "-", {
         id: "contract",
         header: "Contrato",
         cell: (info) => <span className="whitespace-nowrap text-muted-foreground">{info.getValue()}</span>
       }),
       columnHelper.accessor("priority", {
         header: "Prioridade",
-        cell: (info) => <span className="text-muted-foreground">{info.getValue() ?? "—"}</span>
+        cell: (info) => <span className="text-muted-foreground">{info.getValue() ?? "-"}</span>
       }),
       columnHelper.accessor("slaDeadline", {
         header: "Prazo SLA",
@@ -70,7 +70,7 @@ export function GovernanceTicketsView({ tickets: initialTickets, contractOptions
           const v = info.getValue();
           return (
             <span className="whitespace-nowrap text-muted-foreground">
-              {v ? new Date(v as string).toLocaleString("pt-BR") : "—"}
+              {v ? new Date(v as string).toLocaleString("pt-BR") : "-"}
             </span>
           );
         }

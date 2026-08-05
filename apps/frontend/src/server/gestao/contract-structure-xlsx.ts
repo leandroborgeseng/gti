@@ -125,24 +125,24 @@ function canonicalHeader(cell: unknown): string | null {
 /** Gera o arquivo .xlsx modelo (folhas Instrucoes + Dados). */
 export function buildContractStructureTemplateBuffer(_contractNumber: string): Buffer {
   const instr: string[][] = [
-    ["Modelo — módulos e funcionalidades do contrato"],
+    ["Modelo · módulos e funcionalidades do contrato"],
     [""],
     ["Preencha apenas a aba «Dados». Pode apagar as linhas de exemplo."],
     [""],
     ["Colunas obrigatórias"],
-    ["modulo_nome — nome do módulo (repetir o mesmo nome em várias linhas para várias funcionalidades no mesmo módulo)."],
-    ["funcionalidade_nome — nome da funcionalidade / item."],
-    ["funcionalidade_criticidade — CRITICA | ALTA | MEDIA | BAIXA | APOIO. O peso proporcional é calculado automaticamente."],
+    ["modulo_nome · nome do módulo (repetir o mesmo nome em várias linhas para várias funcionalidades no mesmo módulo)."],
+    ["funcionalidade_nome · nome da funcionalidade / item."],
+    ["funcionalidade_criticidade · CRITICA | ALTA | MEDIA | BAIXA | APOIO. O peso proporcional é calculado automaticamente."],
     [""],
     ["Colunas opcionais (códigos em inglês ou rótulos em português)"],
-    ["modulo_criticidade — CRITICA | ALTA | MEDIA | BAIXA | APOIO. Se vazio, usa MEDIA."],
-    ["modulo_peso e funcionalidade_peso — aceitos por compatibilidade, mas recalculados automaticamente pela criticidade."],
-    ["funcionalidade_codigo — código/numeração do item no Termo de Referência (ex.: 1.2.3)."],
+    ["modulo_criticidade · CRITICA | ALTA | MEDIA | BAIXA | APOIO. Se vazio, usa MEDIA."],
+    ["modulo_peso e funcionalidade_peso · aceitos por compatibilidade, mas recalculados automaticamente pela criticidade."],
+    ["funcionalidade_codigo · código/numeração do item no Termo de Referência (ex.: 1.2.3)."],
     [
-      "funcionalidade_status — NOT_STARTED | IN_PROGRESS | DELIVERED | VALIDATED (ou: não iniciada, em progresso, entregue, validada)."
+      "funcionalidade_status · NOT_STARTED | IN_PROGRESS | DELIVERED | VALIDATED (ou: não iniciada, em progresso, entregue, validada)."
     ],
     [
-      "funcionalidade_entrega — NOT_DELIVERED | PARTIALLY_DELIVERED | DELIVERED (ou: não entregue, parcialmente entregue, entregue)."
+      "funcionalidade_entrega · NOT_DELIVERED | PARTIALLY_DELIVERED | DELIVERED (ou: não entregue, parcialmente entregue, entregue)."
     ],
     [""],
     ["Importação"],
@@ -151,7 +151,7 @@ export function buildContractStructureTemplateBuffer(_contractNumber: string): B
     ],
     ["Com «substituir», remove todos os módulos e funcionalidades atuais do contrato antes de importar."],
     [""],
-    ["No cadastro do contrato (página web) pode ainda definir as datas de início e fim do período de implantação e os valores de implantação e mensalidade — o sistema calcula os indicadores proporcionais por fase."]
+    ["No cadastro do contrato (página web) pode ainda definir as datas de início e fim do período de implantação e os valores de implantação e mensalidade: o sistema calcula os indicadores proporcionais por fase."]
   ];
 
   const dataSheet: (string | number)[][] = [

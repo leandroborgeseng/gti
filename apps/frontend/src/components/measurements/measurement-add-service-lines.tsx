@@ -81,7 +81,7 @@ export function MeasurementAddServiceLines(props: Props): JSX.Element {
           <option value="">Usar valor do serviço</option>
           {props.pricingItems.map((item) => (
             <option key={item.id} value={item.id}>
-              #{item.sequence} — {item.description} ({item.unit?.label ?? "unidade"} · R$ {item.unitValue})
+              #{item.sequence} · {item.description} ({item.unit?.label ?? "unidade"} · R$ {item.unitValue})
             </option>
           ))}
         </select>

@@ -456,7 +456,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         enableSorting: true,
         cell: (info) => {
           const value = info.getValue() as string;
-          return value ? <span className="text-sm text-foreground">{value}</span> : <span className="text-muted-foreground">—</span>;
+          return value ? <span className="text-sm text-foreground">{value}</span> : <span className="text-muted-foreground">-</span>;
         }
       }),
       columnHelper.display({
@@ -471,7 +471,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         enableSorting: true,
         cell: (info) => {
           const value = info.getValue() as string;
-          return value ? <span className="text-sm text-foreground">{value}</span> : <span className="text-muted-foreground">—</span>;
+          return value ? <span className="text-sm text-foreground">{value}</span> : <span className="text-muted-foreground">-</span>;
         }
       }),
       columnHelper.accessor((row) => row._count?.groups ?? 0, {
@@ -493,7 +493,7 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
         cell: (info) => {
           const n = info.getValue() as number;
           const id = info.row.original.id;
-          if (n <= 0) return <span className="text-muted-foreground">—</span>;
+          if (n <= 0) return <span className="text-muted-foreground">-</span>;
           return (
             <Link
               href={`/projetos/tarefas?filter=overdue&projectId=${id}`}

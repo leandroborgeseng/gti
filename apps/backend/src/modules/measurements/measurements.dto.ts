@@ -1,4 +1,4 @@
-import { MeasurementItemType } from "@prisma/client";
+import { GlosaType, MeasurementItemType } from "@prisma/client";
 import { ArrayMinSize, IsArray, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 
@@ -53,6 +53,29 @@ export class AddMeasurementItemsDto {
 export class PatchMeasurementItemDto {
   @Type(() => Number)
   @IsNumber({}, { message: "Quantidade inválida" })
-  @Min(0.0001, { message: "A quantidade deve ser maior que zero" })
+  @Min(0, { message: "A quantidade não pode ser negativa" })
   quantity!: number;
+}
+
+export class AddMeasurementGlosaDto {
+  @IsEnum(GlosaType)
+  type!: GlosaType;
+
+  @Type(() => Number)
+  @IsNumber({}, { message: "Valor inválido" })
+  @Min(0.01, { message: "O valor da glosa deve ser maior que zero" })
+  value!: number;
+
+  @IsString()
+  @IsNotEmpty({ message: "Glosa manual exige justificativa" })
+  justification!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  measurementItemId?: string;
+
+  @IsOptional()
+  @IsString()
+  createdBy?: string;
 }

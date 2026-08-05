@@ -1,5 +1,15 @@
 import { UserApprovalStatus, UserRole } from "@prisma/client";
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength, ValidateIf } from "class-validator";
+import {
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+  ValidateIf
+} from "class-validator";
 
 export class CreateUserDto {
   @IsEmail({}, { message: "E-mail inválido" })
@@ -26,13 +36,38 @@ export class CreateUserDto {
   @IsString()
   cpf?: string;
 
+  /** Legado: órgão único. Preferir organizationIds. */
   @IsOptional()
   @IsString()
   organizationId?: string;
 
+  /** Legado: papel único. Preferir profileIds. */
   @IsOptional()
   @IsEnum(UserRole, { message: "Papel inválido" })
   role?: UserRole;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  profileIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  organizationIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  allOrganizations?: boolean;
+
+  @IsOptional()
+  @IsString()
+  defaultProfileId?: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  defaultOrganizationId?: string | null;
 }
 
 export class UpdateUserDto {
@@ -61,6 +96,29 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(UserRole, { message: "Papel inválido" })
   role?: UserRole;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  profileIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  organizationIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  allOrganizations?: boolean;
+
+  @IsOptional()
+  @IsString()
+  defaultProfileId?: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  defaultOrganizationId?: string | null;
 
   @IsOptional()
   @IsEnum(UserApprovalStatus, { message: "Status de aprovação inválido" })

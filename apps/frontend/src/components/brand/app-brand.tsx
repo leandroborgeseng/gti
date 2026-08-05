@@ -27,13 +27,15 @@ export function AppBrand({
 }: Props): JSX.Element {
   const compact = variant === "sidebar-collapsed";
   const isLogin = variant === "login";
+  const isSidebarExpanded = variant === "sidebar" || variant === "mobile";
 
   const mark = (
     <div
       className={cn(
-        "flex min-w-0",
-        compact ? "flex-col items-center gap-1" : "flex-col gap-2",
-        isLogin && "items-start gap-4",
+        "flex min-w-0 items-center",
+        compact && "flex-col justify-center gap-1",
+        isSidebarExpanded && "gap-3",
+        isLogin && "flex-col items-start gap-4",
         className
       )}
     >
@@ -44,21 +46,21 @@ export function AppBrand({
         height={BRAND.logoHeight}
         priority={variant === "login" || variant === "sidebar"}
         className={cn(
-          "object-contain object-left",
-          compact && "h-9 w-9 object-center",
-          variant === "sidebar" && "h-14 w-14",
-          variant === "mobile" && "h-12 w-12",
-          isLogin && "h-20 w-20 sm:h-24 sm:w-24"
+          "shrink-0 object-contain",
+          compact && "h-9 w-9",
+          variant === "sidebar" && "h-11 w-11",
+          variant === "mobile" && "h-10 w-10",
+          isLogin && "h-20 w-20 object-left sm:h-24 sm:w-24"
         )}
       />
-      {!compact && !isLogin ? (
-        <div className="min-w-0 space-y-0.5">
+      {isSidebarExpanded ? (
+        <div className="min-w-0 flex-1 space-y-0.5">
           <p className="text-base font-semibold tracking-tight text-slate-900">{BRAND.shortName}</p>
           <p className="text-[11px] leading-snug text-slate-600">{BRAND.fullName}</p>
         </div>
       ) : null}
       {compact ? <span className="sr-only">{BRAND.displayTitle}</span> : null}
-      {isLogin ? <span className="sr-only">{BRAND.displayTitle}</span> : null}
+      {isLogin ? <span className="sr-only">{BRAND.loginTitle}</span> : null}
     </div>
   );
 

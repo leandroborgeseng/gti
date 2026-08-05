@@ -13,7 +13,12 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
-import { AddMeasurementItemsDto, CreateMeasurementDto, PatchMeasurementItemDto } from "./measurements.dto";
+import {
+  AddMeasurementGlosaDto,
+  AddMeasurementItemsDto,
+  CreateMeasurementDto,
+  PatchMeasurementItemDto
+} from "./measurements.dto";
 import { MeasurementsService } from "./measurements.service";
 
 function uploadMaxBytes(): number {
@@ -58,6 +63,11 @@ export class MeasurementsController {
   @Post(":id/approve")
   approve(@Param("id") id: string): Promise<unknown> {
     return this.service.approve(id);
+  }
+
+  @Post(":id/glosas")
+  addGlosa(@Param("id") id: string, @Body() dto: AddMeasurementGlosaDto): Promise<unknown> {
+    return this.service.addManualGlosa(id, dto);
   }
 
   @Post(":id/attachments")

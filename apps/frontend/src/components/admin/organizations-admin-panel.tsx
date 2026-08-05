@@ -161,7 +161,7 @@ export function OrganizationsAdminPanel(): JSX.Element {
       columnHelper.accessor("acronym", { header: "Sigla" }),
       columnHelper.accessor("code", {
         header: "Código",
-        cell: (info) => info.getValue() ?? "—"
+        cell: (info) => info.getValue() ?? "-"
       }),
       columnHelper.accessor("active", {
         header: "Status",

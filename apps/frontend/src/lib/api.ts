@@ -98,7 +98,7 @@ function formatFetchError(e: unknown): string {
   if (c !== undefined && c !== null) {
     parts.push(c instanceof Error ? c.message : String(c));
   }
-  return parts.filter(Boolean).join(" — ");
+  return parts.filter(Boolean).join(" · ");
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -136,29 +136,111 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export type ContractFinancialSnapshot = {
+export type ContractAmendmentType =
+  | "TERMO_ADITIVO"
+  | "REAJUSTE"
+  | "REPACTUACAO"
+  | "REVISAO"
+  | "RENOVACAO"
+  | "PRORROGACAO"
+  | "ACRESCIMO"
+  | "SUPRESSAO"
+  | "APOSTILAMENTO"
+  | "OUTRO";
+
+export type ContractAmendmentStatus = "ACTIVE" | "CANCELLED";
+export type ContractAmendmentItemAction = "CREATE" | "UPDATE" | "SUPPRESS";
+
+export type ContractAmendmentItemSnapshot = {
+  id?: string | null;
+  sequence?: number | null;
+  typeId?: string;
+  description?: string;
+  unitId?: string;
+  quantity?: number;
+  unitValue?: number;
+  totalValue?: number;
+  totalManual?: boolean;
+  totalJustification?: string | null;
+  billingKind?: ContractPricingBillingKind;
+  periodicity?: ContractPricingPeriodicity | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  status?: ContractPricingItemStatus;
+  includeInGlosaBase?: boolean;
+};
+
+export type ContractAmendmentItem = {
   id: string;
-  contractId: string;
-  recordedAt: string;
-  monthlyValue: string;
-  totalValue: string;
-  installationValue?: string | null;
-  note?: string | null;
+  amendmentId: string;
+  pricingItemId?: string | null;
+  resultPricingItemId?: string | null;
+  action: ContractAmendmentItemAction;
+  adjustmentPercent?: string | null;
+  beforeSnapshot?: ContractAmendmentItemSnapshot | null;
+  afterSnapshot?: ContractAmendmentItemSnapshot | null;
+  createdAt: string;
 };
 
 export type ContractAmendment = {
   id: string;
   contractId: string;
+  type?: ContractAmendmentType;
+  status?: ContractAmendmentStatus;
   referenceCode?: string | null;
+  formalizationDate?: string | null;
+  /** Início dos efeitos (também enviado como effectsStartDate na criação). */
   effectiveDate: string;
   description: string;
   previousTotalValue: string;
   previousMonthlyValue: string;
   previousEndDate: string;
-  newTotalValue: string;
-  newMonthlyValue: string;
-  newEndDate: string;
+  previousGlobalValue?: string | null;
+  newTotalValue?: string | null;
+  newMonthlyValue?: string | null;
+  newEndDate?: string | null;
+  newGlobalValue?: string | null;
+  adjustmentPercent?: string | null;
+  indexReference?: string | null;
+  cancelJustification?: string | null;
+  cancelledAt?: string | null;
+  actorId?: string | null;
+  actorLabel?: string | null;
   createdAt: string;
+  items?: ContractAmendmentItem[];
+};
+
+export type CreateContractAmendmentPayload = {
+  type: ContractAmendmentType;
+  referenceCode?: string;
+  formalizationDate?: string;
+  effectsStartDate: string;
+  description: string;
+  newEndDate?: string;
+  newTotalValue?: number;
+  newMonthlyValue?: number;
+  adjustmentPercent?: number;
+  indexReference?: string;
+  items?: Array<{
+    action: ContractAmendmentItemAction;
+    pricingItemId?: string;
+    adjustmentPercent?: number;
+    after?: {
+      typeId?: string;
+      description?: string;
+      unitId?: string;
+      quantity?: number;
+      unitValue?: number;
+      totalValue?: number;
+      totalManual?: boolean;
+      totalJustification?: string | null;
+      billingKind?: ContractPricingBillingKind;
+      periodicity?: ContractPricingPeriodicity | null;
+      periodStart?: string | null;
+      periodEnd?: string | null;
+      includeInGlosaBase?: boolean;
+    };
+  }>;
 };
 
 export type ContractGlpiGroup = {
@@ -197,6 +279,344 @@ export type FeatureImplantationProportion = {
   billingEmphasis: "INSTALLATION" | "MONTHLY" | "BOTH";
   explanation: string | null;
 };
+
+export type ContractLinkedUser = {
+  id: string;
+  name: string;
+  email: string;
+  organizationAcronym?: string | null;
+  active: boolean;
+  role?: string;
+};
+
+export type EffectiveResponsibleUser = ContractLinkedUser & {
+  sources?: Array<"GROUP" | "FEATURE">;
+};
+
+export type ContractValidationGroup = {
+  id: string;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  memberUserIds?: string[];
+  members?: ContractLinkedUser[];
+  featuresCount?: number;
+};
+
+export type ContractScheduleType =
+  | "IMPLANTACAO"
+  | "MIGRACAO"
+  | "TREINAMENTO"
+  | "ENTREGA_EQUIPAMENTOS"
+  | "INSTALACAO"
+  | "INTEGRACAO"
+  | "DESENVOLVIMENTO"
+  | "TRANSICAO"
+  | "OPERACAO_ASSISTIDA"
+  | "PLANO_ACAO"
+  | "CORRECAO_PENDENCIAS"
+  | "ENCERRAMENTO"
+  | "OUTRO";
+
+export type ContractScheduleOrigin =
+  | "TERMO_REFERENCIA"
+  | "PROPOSTA_EMPRESA"
+  | "PLANEJAMENTO_INICIAL"
+  | "REUNIAO"
+  | "ADITIVO"
+  | "NOTIFICACAO"
+  | "PLANO_ACAO"
+  | "DETERMINACAO_ADMIN"
+  | "OUTRO";
+
+export type ContractScheduleStatus =
+  | "RASCUNHO"
+  | "ENVIADO_ANALISE"
+  | "AJUSTES_SOLICITADOS"
+  | "APROVADO"
+  | "EM_EXECUCAO"
+  | "SUSPENSO"
+  | "CONCLUIDO"
+  | "CANCELADO"
+  | "SUBSTITUIDO";
+
+export type ContractScheduleMilestoneStatus =
+  | "NAO_INICIADA"
+  | "EM_ANDAMENTO"
+  | "CONCLUIDA"
+  | "ATRASADA"
+  | "BLOQUEADA"
+  | "CANCELADA";
+
+export type ContractScheduleMilestone = {
+  id: string;
+  sequence: number;
+  activity: string;
+  description?: string | null;
+  pricingItemId?: string | null;
+  featureId?: string | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  actualStartDate?: string | null;
+  actualEndDate?: string | null;
+  percentComplete?: number | null;
+  status: ContractScheduleMilestoneStatus;
+  dependencies?: string | null;
+  observations?: string | null;
+  responsibleUserIds?: string[];
+  responsibleUsers?: ContractLinkedUser[];
+};
+
+export type ContractSchedule = {
+  id: string;
+  contractId: string;
+  name: string;
+  type: ContractScheduleType;
+  purpose?: string | null;
+  origin: ContractScheduleOrigin;
+  description?: string | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  companyResponsibles?: string | null;
+  status: ContractScheduleStatus;
+  version: number;
+  lineageId: string;
+  replacedById?: string | null;
+  impactaFinanceiro: boolean;
+  pricingItemId?: string | null;
+  observations?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  responsibleUserIds?: string[];
+  responsibleUsers?: ContractLinkedUser[];
+  milestones?: ContractScheduleMilestone[];
+};
+
+export type ContractScheduleMilestonePayload = {
+  id?: string;
+  sequence: number;
+  activity: string;
+  description?: string | null;
+  pricingItemId?: string | null;
+  featureId?: string | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  actualStartDate?: string | null;
+  actualEndDate?: string | null;
+  percentComplete?: number | null;
+  status?: ContractScheduleMilestoneStatus;
+  dependencies?: string | null;
+  observations?: string | null;
+  responsibleUserIds?: string[];
+};
+
+export type CreateContractSchedulePayload = {
+  name: string;
+  type: ContractScheduleType;
+  purpose?: string | null;
+  origin?: ContractScheduleOrigin;
+  description?: string | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  responsibleUserIds?: string[];
+  companyResponsibles?: string | null;
+  status?: ContractScheduleStatus;
+  impactaFinanceiro?: boolean;
+  pricingItemId?: string | null;
+  observations?: string | null;
+  milestones?: ContractScheduleMilestonePayload[];
+};
+
+export type UpdateContractSchedulePayload = Partial<CreateContractSchedulePayload>;
+
+
+export type ContractOccurrenceType =
+  | "DESCUMPRIMENTO_SLA"
+  | "ATRASO_ENTREGA"
+  | "FALHA_QUALIDADE"
+  | "INCIDENTE_OPERACIONAL"
+  | "NAO_CONFORMIDADE"
+  | "RECLAMACAO"
+  | "AUDITORIA"
+  | "OUTRO";
+
+export type ContractOccurrenceOrigin =
+  | "FISCALIZACAO"
+  | "MEDICAO"
+  | "CHAMADO_GLPI"
+  | "EMPRESA"
+  | "AUDITORIA_INTERNA"
+  | "DENUNCIA"
+  | "CONTROLADORIA"
+  | "OUTRO";
+
+export type ContractOccurrenceSeverity = "BAIXA" | "MEDIA" | "ALTA" | "CRITICA";
+
+export type ContractOccurrenceStatus =
+  | "EM_ANALISE"
+  | "AGUARDANDO_PROVIDENCIA_INTERNA"
+  | "AGUARDANDO_EMPRESA"
+  | "EM_REGULARIZACAO"
+  | "REGULARIZADA"
+  | "NAO_REGULARIZADA"
+  | "REINCIDENTE"
+  | "ENCAMINHADA_CONTROLADORIA"
+  | "EM_PROCESSO_ADMINISTRATIVO"
+  | "CONCLUIDA"
+  | "ARQUIVADA";
+
+export type ContractControladoriaCaseStatus =
+  | "EM_PREPARACAO"
+  | "ENCAMINHADO"
+  | "RECEBIDO_CONTROLADORIA"
+  | "COMPLEMENTACAO_SOLICITADA"
+  | "EM_INSTRUCAO"
+  | "AGUARDANDO_DEFESA"
+  | "EM_ANALISE"
+  | "AGUARDANDO_DECISAO"
+  | "EM_RECURSO"
+  | "CONCLUIDO"
+  | "ARQUIVADO";
+
+export type ContractOccurrenceEvent = {
+  id: string;
+  eventType: string;
+  fromStatus?: ContractOccurrenceStatus | null;
+  toStatus?: ContractOccurrenceStatus | null;
+  justification?: string | null;
+  actorId?: string | null;
+  actorLabel?: string | null;
+  payload?: unknown;
+  createdAt?: string;
+};
+
+export type ContractControladoriaCase = {
+  id: string;
+  contractId: string;
+  occurrenceId: string;
+  status: ContractControladoriaCaseStatus;
+  justification: string;
+  summary: string;
+  suggestedActions?: string | null;
+  snapshotJson?: unknown;
+  processNumber?: string | null;
+  originSystem?: string | null;
+  processLink?: string | null;
+  openedAt?: string | null;
+  subject?: string | null;
+  unit?: string | null;
+  responsiblesText?: string | null;
+  phase?: string | null;
+  deadlinesText?: string | null;
+  decisionsText?: string | null;
+  penaltiesText?: string | null;
+  resultText?: string | null;
+  seiNumber?: string | null;
+  seiLink?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  occurrence?: {
+    id: string;
+    title: string;
+    status: ContractOccurrenceStatus;
+    type: ContractOccurrenceType;
+  };
+  contract?: {
+    id: string;
+    number: string;
+    name: string;
+    internalCode?: string | null;
+    companyName?: string;
+  };
+};
+
+export type ContractOccurrence = {
+  id: string;
+  contractId: string;
+  type: ContractOccurrenceType;
+  origin: ContractOccurrenceOrigin;
+  title: string;
+  description?: string | null;
+  detectionDate: string;
+  linkedPricingItemIds?: string[];
+  linkedFeatureIds?: string[];
+  linkedMeasurementIds?: string[];
+  linkedGlosaIds?: string[];
+  linkedScheduleIds?: string[];
+  severity: ContractOccurrenceSeverity;
+  internalResponsibleUserId?: string | null;
+  internalResponsible?: ContractLinkedUser | null;
+  regularizationDeadline?: string | null;
+  status: ContractOccurrenceStatus;
+  conclusion?: string | null;
+  evidenceNotes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  events?: ContractOccurrenceEvent[];
+  controladoriaCases?: ContractControladoriaCase[];
+};
+
+export type CreateContractOccurrencePayload = {
+  type: ContractOccurrenceType;
+  origin: ContractOccurrenceOrigin;
+  title: string;
+  description?: string | null;
+  detectionDate: string;
+  linkedPricingItemIds?: string[];
+  linkedFeatureIds?: string[];
+  linkedMeasurementIds?: string[];
+  linkedGlosaIds?: string[];
+  linkedScheduleIds?: string[];
+  severity?: ContractOccurrenceSeverity;
+  internalResponsibleUserId?: string | null;
+  regularizationDeadline?: string | null;
+  status?: ContractOccurrenceStatus;
+  conclusion?: string | null;
+  evidenceNotes?: string | null;
+};
+
+export type UpdateContractOccurrencePayload = Partial<Omit<CreateContractOccurrencePayload, "status">>;
+
+export type ChangeContractOccurrenceStatusPayload = {
+  status: ContractOccurrenceStatus;
+  justification: string;
+};
+
+export type ForwardOccurrenceToControladoriaPayload = {
+  justification: string;
+  summary: string;
+  suggestedActions?: string | null;
+};
+
+export type UpdateContractControladoriaCasePayload = {
+  status?: ContractControladoriaCaseStatus;
+  processNumber?: string | null;
+  originSystem?: string | null;
+  processLink?: string | null;
+  openedAt?: string | null;
+  subject?: string | null;
+  unit?: string | null;
+  responsiblesText?: string | null;
+  phase?: string | null;
+  deadlinesText?: string | null;
+  decisionsText?: string | null;
+  penaltiesText?: string | null;
+  resultText?: string | null;
+  seiNumber?: string | null;
+  seiLink?: string | null;
+};
+
+
+export type FeatureAssignmentReason = "GROUP" | "FEATURE" | "MODULE" | "UNDEFINED_GROUP" | "NONE";
+export type ModulesDeliveryAssignmentFilter =
+  | ""
+  | "ALL"
+  | "ASSIGNED_TO_ME"
+  | "GROUP_MEMBER"
+  | "MODULE_FISCAL"
+  | "NO_RESPONSIBLE";
 
 export type Contract = {
   id: string;
@@ -249,7 +669,10 @@ export type Contract = {
     name: string;
     criticality?: ContractItemCriticality;
     validatorId?: string | null;
-    validator?: { id: string; email: string; role: string } | null;
+    validator?: { id: string; email: string; role: string; name?: string } | null;
+    /** Fiscais responsáveis (N:N). Preferir este campo em relação a `validatorId`. */
+    fiscalUsers?: ContractLinkedUser[];
+    fiscalUserIds?: string[];
     glosaPricingItemId?: string | null;
     glosaPricingItem?: Pick<ContractPricingItem, "id" | "description" | "sequence"> | null;
     weight: string;
@@ -261,23 +684,37 @@ export type Contract = {
       status: string;
       weight: string;
       deliveryStatus?: ContractItemDeliveryStatus;
+      validationGroupId?: string | null;
+      validationGroup?: { id: string; name: string; active: boolean } | null;
+      groupUndefined?: boolean;
+      groupMemberUsers?: ContractLinkedUser[];
+      /** Responsáveis específicos do item (complementam o grupo). */
+      responsibleUsers?: ContractLinkedUser[];
+      responsibleUserIds?: string[];
+      responsibilitySource?: "GROUP" | "FEATURE" | "GROUP_AND_FEATURE" | "UNDEFINED_GROUP" | "MODULE";
+      effectiveResponsibles?: EffectiveResponsibleUser[];
+      assignmentReasons?: FeatureAssignmentReason[];
     }>;
   }>;
+  /** Grupos de validação do contrato. */
+  validationGroups?: ContractValidationGroup[];
+  /** Cronogramas e marcos operacionais do contrato. */
+  schedules?: ContractSchedule[];
+  occurrences?: ContractOccurrence[];
+  controladoriaCases?: ContractControladoriaCase[];
   services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
   amendments?: ContractAmendment[];
   /** Presente na listagem (`GET /contracts`) para indicar quantos aditivos existem. */
   _count?: { amendments: number };
   /** Indicador: valor mensal × (funcionalidades entregues / total em módulos). */
   featureImplantationProportion?: FeatureImplantationProportion;
-  /** Memória dos valores antes de renovações ou reajustes (mais recente primeiro). */
-  financialSnapshots?: ContractFinancialSnapshot[];
   /** Histórico auditável de inserção, exclusão e mudança de status dos itens contratuais. */
   itemChangeLogs?: ContractItemChangeLog[];
   /** Itens de precificação dinâmica (mensalidade, horas, UST, etc.). */
   pricingItems?: ContractPricingItem[];
   /** Totais consolidados dos itens ativos. */
   pricingTotals?: ContractPricingTotals;
-  /** Quando true, exclusão definitiva de itens é bloqueada (há medições/aditivos/snapshots). */
+  /** Quando true, exclusão definitiva de itens é bloqueada (há medições ou aditivos). */
   pricingLocked?: boolean;
 };
 
@@ -392,6 +829,61 @@ export async function getGlpiAssignedGroupsCatalog(): Promise<GlpiAssignedGroupO
   return request("/contracts/catalog/glpi-assigned-groups");
 }
 
+/** Chamado GLPI em cache vinculado a um grupo do contrato (somente leitura). */
+export type ContractGlpiTicketRow = {
+  glpiTicketId: number;
+  title: string | null;
+  status: string | null;
+  priority: string | null;
+  dateCreation: string | null;
+  dateModification: string | null;
+  contractGroupId: number | null;
+  contractGroupName: string | null;
+  requesterName: string | null;
+  assignedUserName: string | null;
+  waitingParty: string | null;
+  slaDeadline: string | null;
+  slaOverdue: boolean | null;
+  updatedAt: string;
+};
+
+export type ContractGlpiTicketsResponse = {
+  contractId: string;
+  glpiGroupIds: number[];
+  glpiGroups: Array<{ glpiGroupId: number; glpiGroupName: string | null }>;
+  tickets: ContractGlpiTicketRow[];
+  total: number;
+  facets: {
+    statuses: string[];
+    priorities: string[];
+    slaOverdueAvailable: boolean;
+  };
+};
+
+export type ContractGlpiTicketsQuery = {
+  status?: string;
+  priority?: string;
+  from?: string;
+  to?: string;
+  slaOverdue?: boolean;
+  take?: number;
+};
+
+export async function getContractGlpiTickets(
+  contractId: string,
+  params: ContractGlpiTicketsQuery = {}
+): Promise<ContractGlpiTicketsResponse> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.priority) query.set("priority", params.priority);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.slaOverdue) query.set("slaOverdue", "1");
+  if (params.take != null) query.set("take", String(params.take));
+  const suffix = query.toString();
+  return request(`/contracts/${contractId}/glpi-tickets${suffix ? `?${suffix}` : ""}`);
+}
+
 /** Totais agregados de entrega (sem listar funcionalidades). */
 export type ModulesDeliveryTotals = {
   totalFeatures: number;
@@ -422,7 +914,9 @@ export type ContractModulesDeliveryModule = {
   name: string;
   criticality: ContractItemCriticality;
   validatorId?: string | null;
-  validator?: { id: string; email: string; role: string } | null;
+  validator?: { id: string; email: string; role: string; name?: string } | null;
+  fiscalUsers?: ContractLinkedUser[];
+  fiscalUserIds?: string[];
   glosaPricingItemId?: string | null;
   glosaPricingItem?: Pick<ContractPricingItem, "id" | "description" | "sequence"> | null;
   weight: unknown;
@@ -438,6 +932,15 @@ export type ModulesDeliveryFeature = {
   status: string;
   criticality: ContractItemCriticality;
   deliveryStatus: ContractItemDeliveryStatus;
+  validationGroupId?: string | null;
+  validationGroup?: { id: string; name: string; active: boolean } | null;
+  groupUndefined?: boolean;
+  groupMemberUsers?: ContractLinkedUser[];
+  responsibleUsers?: ContractLinkedUser[];
+  responsibleUserIds?: string[];
+  effectiveResponsibles?: EffectiveResponsibleUser[];
+  assignmentReasons?: FeatureAssignmentReason[];
+  isModuleFiscalForActor?: boolean;
 };
 
 export type ModulesDeliveryFeaturesPage = {
@@ -450,8 +953,13 @@ export type ModulesDeliveryFeaturesPage = {
   features: ModulesDeliveryFeature[];
 };
 
-export async function getModulesDeliveryOverview(): Promise<ContractModulesDeliveryOverview[]> {
-  return request("/contracts/overview/modules-delivery");
+export async function getModulesDeliveryOverview(params?: {
+  assignment?: string;
+}): Promise<ContractModulesDeliveryOverview[]> {
+  const sp = new URLSearchParams();
+  if (params?.assignment) sp.set("assignment", params.assignment);
+  const qs = sp.toString();
+  return request(`/contracts/overview/modules-delivery${qs ? `?${qs}` : ""}`);
 }
 
 export async function getContractModulesDelivery(
@@ -469,6 +977,7 @@ export async function getModuleFeaturesDelivery(
     q?: string;
     deliveryStatus?: string;
     criticality?: string;
+    assignment?: string;
   }
 ): Promise<ModulesDeliveryFeaturesPage> {
   const sp = new URLSearchParams();
@@ -477,6 +986,7 @@ export async function getModuleFeaturesDelivery(
   if (params?.q) sp.set("q", params.q);
   if (params?.deliveryStatus) sp.set("deliveryStatus", params.deliveryStatus);
   if (params?.criticality) sp.set("criticality", params.criticality);
+  if (params?.assignment) sp.set("assignment", params.assignment);
   const qs = sp.toString();
   return request(`/contracts/${contractId}/modules/${moduleId}/features-delivery${qs ? `?${qs}` : ""}`);
 }
@@ -485,6 +995,7 @@ export async function searchModulesDeliveryFeatures(params: {
   q?: string;
   deliveryStatus?: string;
   criticality?: string;
+  assignment?: string;
   pageSize?: number;
 }): Promise<{
   contracts: ContractModulesDeliveryOverview[];
@@ -495,15 +1006,29 @@ export async function searchModulesDeliveryFeatures(params: {
   if (params.q) sp.set("q", params.q);
   if (params.deliveryStatus) sp.set("deliveryStatus", params.deliveryStatus);
   if (params.criticality) sp.set("criticality", params.criticality);
+  if (params.assignment) sp.set("assignment", params.assignment);
   if (params.pageSize != null) sp.set("pageSize", String(params.pageSize));
   const qs = sp.toString();
   return request(`/contracts/overview/modules-delivery/search${qs ? `?${qs}` : ""}`);
 }
 
-export type ContractModuleValidator = { id: string; email: string; role: string };
+export type ContractModuleValidator = ContractLinkedUser & { role: string };
 
 export async function getContractModuleValidators(): Promise<ContractModuleValidator[]> {
   return request("/contracts/module-validators");
+}
+
+export type UserOption = {
+  id: string;
+  name: string;
+  email: string;
+  organizationAcronym?: string | null;
+  active: boolean;
+};
+
+/** Listagem leve para selects de usuários (fiscais, responsáveis, etc.). */
+export async function getUserOptions(): Promise<UserOption[]> {
+  return request("/users/options");
 }
 
 export type AttachmentRecord = {
@@ -512,6 +1037,36 @@ export type AttachmentRecord = {
   mimeType: string;
   filePath: string;
   createdAt: string;
+};
+
+export type MeasurementItemRow = {
+  id: string;
+  type: string;
+  referenceId: string;
+  pricingItemId?: string | null;
+  quantity: string;
+  calculatedValue: string;
+  descriptionSnapshot?: string | null;
+  unitValueSnapshot?: string | null;
+  billingKindSnapshot?: string | null;
+  periodicitySnapshot?: string | null;
+  coverageStart?: string | null;
+  coverageEnd?: string | null;
+  calculationMemory?: Record<string, unknown> | null;
+  isLegacyMonthly?: boolean;
+  glosedValue?: string;
+  pricingItem?: Pick<ContractPricingItem, "id" | "description" | "sequence" | "billingKind" | "unitValue"> | null;
+};
+
+export type MeasurementGlosaRow = {
+  id: string;
+  type: string;
+  origin?: "AUTOMATIC" | "MANUAL" | string;
+  value: string;
+  justification: string;
+  createdBy: string;
+  createdAt: string;
+  measurementItemId?: string | null;
 };
 
 export type Measurement = {
@@ -525,28 +1080,50 @@ export type Measurement = {
   totalMeasuredValue: string;
   totalApprovedValue: string;
   totalGlosedValue: string;
+  financialSummary?: {
+    gross: string;
+    automaticGlosas: string;
+    manualGlosas: string;
+    net: string;
+  };
   contract?: {
     id: string;
     number?: string;
     name: string;
+    internalCode?: string | null;
+    formalNumber?: string | null;
+    contractYear?: number | null;
+    companyName?: string;
     contractType?: string;
+    startDate?: string;
+    endDate?: string;
+    organization?: { id: string; name: string; acronym: string } | null;
+    supplier?: { id: string; name: string; cnpj: string } | null;
     services?: Array<{ id: string; name: string; unit: string; unitValue: string }>;
     pricingItems?: ContractPricingItem[];
   };
-  items?: Array<{ id: string; type: string; referenceId: string; pricingItemId?: string | null; quantity: string; calculatedValue: string }>;
-  glosas?: Array<{ id: string; type: string; value: string; justification: string; createdBy: string; createdAt: string }>;
+  items?: MeasurementItemRow[];
+  glosas?: MeasurementGlosaRow[];
   attachments?: Array<AttachmentRecord>;
 };
 
 export type Glosa = {
   id: string;
   measurementId: string;
+  measurementItemId?: string | null;
   type: string;
+  origin?: "AUTOMATIC" | "MANUAL" | string;
   value: string;
   justification: string;
   createdBy: string;
   createdAt: string;
-  measurement?: { id: string; referenceMonth: number; referenceYear: number; contract?: { number?: string; name: string } };
+  measurement?: {
+    id: string;
+    referenceMonth: number;
+    referenceYear: number;
+    contract?: { number?: string; internalCode?: string | null; name: string; formalNumber?: string | null };
+  };
+  measurementItem?: { id: string; descriptionSnapshot?: string | null; isLegacyMonthly?: boolean } | null;
   attachments?: Array<AttachmentRecord>;
 };
 
@@ -618,6 +1195,94 @@ export async function getDashboardSummary(): Promise<Record<string, unknown>> {
 
 export async function getDashboardAlerts(): Promise<Record<string, unknown>> {
   return request("/dashboard/alerts");
+}
+
+export type DeadlineOrigin =
+  | "CONTRACT_END"
+  | "SCHEDULE_STEP"
+  | "OCCURRENCE"
+  | "MEASUREMENT_PENDING"
+  | "FEATURE_VALIDATION"
+  | "GLPI_SLA"
+  | "DOCUMENT"
+  | "OTHER";
+
+export type DeadlineStatus =
+  | "FUTURE"
+  | "NEAR_DUE"
+  | "DUE_TODAY"
+  | "OVERDUE"
+  | "DONE_ON_TIME"
+  | "DONE_LATE"
+  | "SUSPENDED"
+  | "EXTENDED"
+  | "CANCELLED";
+
+export type DeadlineAttentionLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export type DeadlineItem = {
+  id: string;
+  origin: DeadlineOrigin;
+  contractId: string | null;
+  title: string;
+  description: string | null;
+  responsibleUserId: string | null;
+  responsibleLabel: string | null;
+  dueAt: string;
+  status: DeadlineStatus;
+  attentionLevel: DeadlineAttentionLevel;
+  expectedAction: string | null;
+  sourceEntityType: string;
+  sourceEntityId: string;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  href: string | null;
+  contract: {
+    id: string;
+    number: string;
+    name: string;
+    internalCode: string | null;
+    formalNumber: string | null;
+    organizationId: string | null;
+  } | null;
+};
+
+export type DeadlineListResponse = {
+  items: DeadlineItem[];
+  summary: {
+    totalOpen: number;
+    byStatus: Record<string, number>;
+    byOrigin: Record<string, number>;
+    byAttention: Record<string, number>;
+  };
+};
+
+export type DeadlineListParams = {
+  origin?: string;
+  status?: string;
+  attentionLevel?: string;
+  contractId?: string;
+  responsibleUserId?: string;
+  q?: string;
+  includeCancelled?: boolean;
+};
+
+export async function getDeadlines(params: DeadlineListParams = {}): Promise<DeadlineListResponse> {
+  const qs = new URLSearchParams();
+  if (params.origin) qs.set("origin", params.origin);
+  if (params.status) qs.set("status", params.status);
+  if (params.attentionLevel) qs.set("attentionLevel", params.attentionLevel);
+  if (params.contractId) qs.set("contractId", params.contractId);
+  if (params.responsibleUserId) qs.set("responsibleUserId", params.responsibleUserId);
+  if (params.q) qs.set("q", params.q);
+  if (params.includeCancelled) qs.set("includeCancelled", "1");
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/deadlines${suffix}`);
+}
+
+export async function recalculateDeadlines(): Promise<{ upserted: number; cancelled: number; desired: number }> {
+  return request("/deadlines/recalculate", { method: "POST", body: "{}" });
 }
 
 export type OperationalSummaryPreset = "today" | "yesterday" | "week" | "month";
@@ -744,28 +1409,22 @@ export async function getContract(id: string): Promise<Contract> {
   return request(`/contracts/${id}`);
 }
 
-export async function createContractFinancialSnapshot(
-  contractId: string,
-  payload?: { note?: string }
-): Promise<Contract> {
-  return request(`/contracts/${contractId}/financial-snapshots`, {
-    method: "POST",
-    body: JSON.stringify(payload ?? {})
-  });
-}
-
 export async function createContractAmendment(
   contractId: string,
-  payload: {
-    referenceCode?: string;
-    effectiveDate: string;
-    description: string;
-    newTotalValue: number;
-    newMonthlyValue: number;
-    newEndDate: string;
-  }
+  payload: CreateContractAmendmentPayload
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/amendments`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function cancelContractAmendment(
+  contractId: string,
+  amendmentId: string,
+  justification: string
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/amendments/${amendmentId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ justification })
+  });
 }
 
 export async function deleteContract(
@@ -831,8 +1490,8 @@ export async function createContract(payload: {
   number?: string;
   formalNumber?: string;
   administrativeProcess?: string | null;
-  organizationId?: string;
-  contractTypeCatalogId?: string;
+  organizationId?: string | null;
+  contractTypeCatalogId?: string | null;
   hiringTypeId?: string | null;
   hiringProcedureNumber?: string | null;
   name: string;
@@ -901,6 +1560,60 @@ export async function getPricingMigrationReview(): Promise<PricingMigrationRevie
   return request("/contracts/pricing-migration-review");
 }
 
+export type IdentificationIssue =
+  | "MISSING_FORMAL_NUMBER"
+  | "MISSING_CONTRACT_TYPE"
+  | "MISSING_ADMIN_PROCESS"
+  | "MISSING_HIRING_TYPE"
+  | "MISSING_START_DATE"
+  | "YEAR_MISMATCH"
+  | "ORGANIZATION_PENDING"
+  | "MISSING_INTERNAL_CODE";
+
+export type IdentificationMigrationReviewContract = {
+  id: string;
+  name: string;
+  number: string;
+  status: string;
+  internalCode: string | null;
+  formalNumber: string | null;
+  contractYear: number | null;
+  administrativeProcess: string | null;
+  hiringProcedureNumber: string | null;
+  startDate: string | null;
+  organizationPending: boolean;
+  organizationName: string | null;
+  contractTypeName: string | null;
+  hiringTypeName: string | null;
+  issues: IdentificationIssue[];
+};
+
+export type IdentificationMigrationReview = {
+  summary: {
+    total: number;
+    withIssues: number;
+    missingFormal: number;
+    missingType: number;
+    missingProcess: number;
+    missingHiringType: number;
+    yearMismatch: number;
+    missingStartDate: number;
+    organizationPending: number;
+    missingInternalCode: number;
+  };
+  contracts: IdentificationMigrationReviewContract[];
+};
+
+/** Conferência administrativa da migração de identificação dos contratos. */
+export async function getIdentificationMigrationReview(): Promise<IdentificationMigrationReview> {
+  return request("/contracts/identification-migration-review");
+}
+
+/** Reaplica somente correções seguras de identificação (admin). */
+export async function repairIdentificationMigration(): Promise<{ scanned: number; updated: number }> {
+  return request("/contracts/identification-migration-repair", { method: "POST", body: "{}" });
+}
+
 export async function createMeasureUnit(payload: { code: string; label: string }): Promise<MeasureUnitCatalog> {
   return request("/contracts/catalog/measure-units", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -931,6 +1644,7 @@ export async function createContractModule(
     weight?: number;
     criticality?: ContractItemCriticality;
     validatorId?: string | null;
+    fiscalUserIds?: string[];
     glosaPricingItemId?: string | null;
   }
 ): Promise<Contract> {
@@ -945,6 +1659,7 @@ export async function updateContractModule(
     weight?: number;
     criticality?: ContractItemCriticality;
     validatorId?: string | null;
+    fiscalUserIds?: string[];
     glosaPricingItemId?: string | null;
   }
 ): Promise<Contract> {
@@ -965,6 +1680,8 @@ export async function createContractFeature(
     criticality?: ContractItemCriticality;
     status?: ContractFeatureStatus;
     deliveryStatus?: ContractItemDeliveryStatus;
+    validationGroupId: string;
+    responsibleUserIds?: string[];
   }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}/features`, { method: "POST", body: JSON.stringify(payload) });
@@ -981,12 +1698,152 @@ export async function updateContractFeature(
     criticality?: ContractItemCriticality;
     status?: ContractFeatureStatus;
     deliveryStatus?: ContractItemDeliveryStatus;
+    validationGroupId?: string | null;
+    responsibleUserIds?: string[];
     /** Origem para auditoria (ex.: MODULES_SIMPLIFIED). */
     changeSource?: string;
   }
 ): Promise<Contract> {
   return request(`/contracts/${contractId}/modules/${moduleId}/features/${featureId}`, {
     method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function createContractValidationGroup(
+  contractId: string,
+  payload: {
+    name: string;
+    description?: string | null;
+    active?: boolean;
+    memberUserIds?: string[];
+  }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/validation-groups`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateContractValidationGroup(
+  contractId: string,
+  groupId: string,
+  payload: {
+    name?: string;
+    description?: string | null;
+    active?: boolean;
+    memberUserIds?: string[];
+  }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/validation-groups/${groupId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteContractValidationGroup(contractId: string, groupId: string): Promise<Contract> {
+  return request(`/contracts/${contractId}/validation-groups/${groupId}`, { method: "DELETE" });
+}
+
+export async function createContractSchedule(
+  contractId: string,
+  payload: CreateContractSchedulePayload
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/schedules`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateContractSchedule(
+  contractId: string,
+  scheduleId: string,
+  payload: UpdateContractSchedulePayload
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/schedules/${scheduleId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function approveContractSchedule(contractId: string, scheduleId: string): Promise<Contract> {
+  return request(`/contracts/${contractId}/schedules/${scheduleId}/approve`, { method: "POST" });
+}
+
+export async function deleteContractSchedule(contractId: string, scheduleId: string): Promise<Contract> {
+  return request(`/contracts/${contractId}/schedules/${scheduleId}`, { method: "DELETE" });
+}
+
+
+export async function createContractOccurrence(
+  contractId: string,
+  payload: CreateContractOccurrencePayload
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/occurrences`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateContractOccurrence(
+  contractId: string,
+  occurrenceId: string,
+  payload: UpdateContractOccurrencePayload
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/occurrences/${occurrenceId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function changeContractOccurrenceStatus(
+  contractId: string,
+  occurrenceId: string,
+  payload: ChangeContractOccurrenceStatusPayload
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/occurrences/${occurrenceId}/status`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function forwardOccurrenceToControladoria(
+  contractId: string,
+  occurrenceId: string,
+  payload: ForwardOccurrenceToControladoriaPayload
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/occurrences/${occurrenceId}/forward-controladoria`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteContractOccurrence(contractId: string, occurrenceId: string): Promise<Contract> {
+  return request(`/contracts/${contractId}/occurrences/${occurrenceId}`, { method: "DELETE" });
+}
+
+export async function updateContractControladoriaCase(
+  contractId: string,
+  caseId: string,
+  payload: UpdateContractControladoriaCasePayload
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/controladoria-cases/${caseId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function listAllControladoriaCases(take = 100): Promise<ContractControladoriaCase[]> {
+  return request(`/controladoria-cases?take=${take}`);
+}
+
+
+export async function bulkUpdateFeatureValidationGroup(
+  contractId: string,
+  payload: { featureIds: string[]; validationGroupId?: string | null }
+): Promise<Contract> {
+  return request(`/contracts/${contractId}/features/bulk-validation-group`, {
+    method: "POST",
     body: JSON.stringify(payload)
   });
 }
@@ -1136,12 +1993,27 @@ export async function getGlosa(id: string): Promise<Glosa> {
 
 export async function createGlosa(payload: {
   measurementId: string;
-  type: "ATRASO" | "NAO_ENTREGA" | "SLA" | "QUALIDADE";
+  type: "ATRASO" | "NAO_ENTREGA" | "SLA" | "QUALIDADE" | string;
   value: number;
   justification: string;
   createdBy?: string;
+  measurementItemId?: string;
 }): Promise<Glosa> {
   return request("/glosas", { method: "POST", body: JSON.stringify(payload) });
+}
+
+/** Glosa manual pela tela da medição (caminho preferencial). */
+export async function addMeasurementGlosa(
+  measurementId: string,
+  payload: {
+    type: string;
+    value: number;
+    justification: string;
+    measurementItemId?: string;
+    createdBy?: string;
+  }
+): Promise<Measurement> {
+  return request(`/measurements/${measurementId}/glosas`, { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function getSuppliers(): Promise<Supplier[]> {
@@ -1193,6 +2065,28 @@ export const USER_PROFILE_COLORS: UserProfileColor[] = [
   "#111827"
 ];
 
+export type AuthMeProfile = {
+  id: string;
+  name: string;
+  systemKey: string | null;
+};
+
+export type AuthMeOrganization = {
+  id: string;
+  name: string;
+  acronym: string;
+};
+
+export type AuthMeActiveContext = {
+  profileId: string;
+  profileName: string;
+  systemKey: string | null;
+  role: string;
+  organizationId: string | null;
+  organizationLabel: string;
+  allOrganizationsActive: boolean;
+};
+
 export type AuthMe = {
   id: string;
   email: string;
@@ -1205,15 +2099,27 @@ export type AuthMe = {
   phone?: string | null;
   role: string;
   mustChangePassword?: boolean;
+  allOrganizations?: boolean;
+  profiles?: AuthMeProfile[];
+  organizations?: AuthMeOrganization[];
+  activeContext?: AuthMeActiveContext;
 };
 
 export async function getAuthMe(): Promise<AuthMe> {
   return request("/auth/me");
 }
 
+export async function switchAccessContext(payload: {
+  profileId: string;
+  organizationId?: string | null;
+}): Promise<AuthMe & { access_token?: string; expires_in?: string }> {
+  return request("/auth/context", { method: "POST", body: JSON.stringify(payload) });
+}
+
 export type MyPermissions = {
   keys: string[];
   role: string;
+  profileId?: string | null;
 };
 
 export async function getMyPermissions(): Promise<MyPermissions> {
@@ -1281,10 +2187,18 @@ export type MyAssignments = {
   totals: {
     contracts: number;
     modules: number;
+    pendingFeatures: number;
     projects: number;
     tasks: number;
     governanceTickets: number;
     glpiTickets: number;
+  };
+  listLimits: {
+    maxItemsPerList: number;
+    tasksTruncated: boolean;
+    governanceTruncated: boolean;
+    glpiTruncated: boolean;
+    pendingFeaturesTruncated?: boolean;
   };
   contracts: Array<{ id: string; number: string; name: string; status: string; endDate: string; role: string }>;
   modules: Array<{
@@ -1296,6 +2210,18 @@ export type MyAssignments = {
     delivered: number;
     partial: number;
     total: number;
+    role?: "acompanhamento";
+    contract: { id: string; number: string; name: string; status: string };
+  }>;
+  pendingFeatures: Array<{
+    id: string;
+    itemCode?: string | null;
+    name: string;
+    deliveryStatus: string;
+    criticality: string;
+    validationGroup?: { id: string; name: string } | null;
+    assignmentReasons: Array<"GROUP" | "FEATURE">;
+    module: { id: string; name: string };
     contract: { id: string; number: string; name: string; status: string };
   }>;
   projects: Array<{
@@ -1340,18 +2266,27 @@ export type MyAssignments = {
     contractGroupName?: string | null;
     open: boolean;
   }>;
-  /** Limites de paginação do servidor nestas listas (caps aplicados antes dos filtros adicionais em GLPI). */
-  listLimits: {
-    maxItemsPerList: number;
-    tasksTruncated: boolean;
-    governanceTruncated: boolean;
-    glpiTruncated: boolean;
-  };
 };
 
 export async function getMyAssignments(): Promise<MyAssignments> {
   return request("/assignments/me");
 }
+
+export type UserAccessProfileLink = {
+  id: string;
+  name: string;
+  systemKey: string | null;
+  active: boolean;
+  isDefault: boolean;
+};
+
+export type UserOrganizationLink = {
+  id: string;
+  name: string;
+  acronym: string;
+  active: boolean;
+  isDefault: boolean;
+};
 
 export type UserRecord = {
   id: string;
@@ -1367,6 +2302,13 @@ export type UserRecord = {
   phone?: string | null;
   organizationId?: string | null;
   organization?: { id: string; name: string; acronym: string; active: boolean } | null;
+  allOrganizations?: boolean;
+  defaultProfileId?: string | null;
+  defaultOrganizationId?: string | null;
+  profiles?: UserAccessProfileLink[];
+  organizations?: UserOrganizationLink[];
+  profileSummary?: string | null;
+  organizationSummary?: string | null;
   role: string;
   approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
   mustChangePassword?: boolean;
@@ -1378,6 +2320,291 @@ export async function getUsers(): Promise<UserRecord[]> {
   return request("/users");
 }
 
+export type AuditLogSource = "AUDIT" | "ACCESS";
+
+export type AuditLogListItem = {
+  id: string;
+  source: AuditLogSource;
+  occurredAt: string;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  actorId: string | null;
+  actorLabel: string;
+  description: string;
+  hasDiff: boolean;
+  originHref: string | null;
+  oldData?: unknown;
+  newData?: unknown;
+  metadata?: unknown;
+};
+
+export type AuditLogListResponse = {
+  items: AuditLogListItem[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export type AuditLogListParams = {
+  page?: number;
+  limit?: number;
+  from?: string;
+  to?: string;
+  actor?: string;
+  action?: string;
+  entity?: string;
+  q?: string;
+  source?: "ALL" | AuditLogSource;
+};
+
+function auditLogsQueryString(params: AuditLogListParams = {}): string {
+  const sp = new URLSearchParams();
+  if (params.page != null) sp.set("page", String(params.page));
+  if (params.limit != null) sp.set("limit", String(params.limit));
+  if (params.from) sp.set("from", params.from);
+  if (params.to) sp.set("to", params.to);
+  if (params.actor) sp.set("actor", params.actor);
+  if (params.action) sp.set("action", params.action);
+  if (params.entity) sp.set("entity", params.entity);
+  if (params.q) sp.set("q", params.q);
+  if (params.source && params.source !== "ALL") sp.set("source", params.source);
+  const qs = sp.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/** Lista paginada de auditoria + login/logout (ADMIN). */
+export async function getAuditLogs(params: AuditLogListParams = {}): Promise<AuditLogListResponse> {
+  return request(`/admin/audit-logs${auditLogsQueryString(params)}`);
+}
+
+/** Detalhe de um registro de auditoria ou evento de acesso (ADMIN). */
+export async function getAuditLogDetail(id: string, source?: AuditLogSource): Promise<AuditLogListItem> {
+  const qs = source ? `?source=${encodeURIComponent(source)}` : "";
+  return request(`/admin/audit-logs/${encodeURIComponent(id)}${qs}`);
+}
+
+/** CSV dos resultados filtrados de auditoria (ADMIN; até 10 mil linhas). */
+export async function fetchAuditLogsCsvBlob(params: AuditLogListParams = {}): Promise<Blob> {
+  return fetchExportCsvBlob(`/admin/audit-logs/export.csv${auditLogsQueryString(params)}`, "auditoria");
+}
+
+export type AuditDetailLevel = "ACTION_ONLY" | "ACTION_AND_VALUES";
+
+export type AuditEventConfigItem = {
+  id: string;
+  moduleKey: string;
+  screenKey: string;
+  actionKey: string;
+  label: string;
+  enabled: boolean;
+  detailLevel: AuditDetailLevel;
+  mandatory: boolean;
+  sortOrder: number;
+};
+
+export type AuditEventConfigModule = {
+  moduleKey: string;
+  moduleLabel: string;
+  events: AuditEventConfigItem[];
+};
+
+export type AuditEventConfigResponse = {
+  modules: AuditEventConfigModule[];
+  total: number;
+  enabledCount: number;
+};
+
+export type AuditEventConfigSaveResult = {
+  ok: true;
+  summary: { total: number; enabled: number; disabled: number; changed: number };
+};
+
+export type AuditEventConfigRestoreResult = {
+  ok: true;
+  summary: { total: number; enabled: number; disabled: number; restored: number };
+};
+
+/** Preferências de eventos de auditoria (ADMIN). */
+export async function getAuditEventConfig(): Promise<AuditEventConfigResponse> {
+  return request("/admin/audit-logs/event-config");
+}
+
+export async function saveAuditEventConfig(payload: {
+  items: Array<{ id: string; enabled: boolean; detailLevel?: string }>;
+}): Promise<AuditEventConfigSaveResult> {
+  return request("/admin/audit-logs/event-config", {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function restoreAuditEventConfigDefaults(): Promise<AuditEventConfigRestoreResult> {
+  return request("/admin/audit-logs/event-config/restore-defaults", { method: "POST" });
+}
+
+export type EmailOutboundPublicConfig = {
+  active: boolean;
+  status: "NOT_CONFIGURED" | "CONFIGURED_UNTESTED" | "TEST_OK" | "ACTIVE" | "FAILED";
+  smtpHost: string;
+  smtpPort: number;
+  security: "NONE" | "STARTTLS" | "SSL_TLS";
+  authRequired: boolean;
+  username: string;
+  hasPassword: boolean;
+  credentialConfigured: boolean;
+  authMethod: "USER_PASS" | "APP_PASSWORD" | "OAUTH";
+  oauthClientId: string;
+  oauthTenantId: string;
+  hasOauthRefreshToken: boolean;
+  fromName: string;
+  fromEmail: string;
+  replyTo: string;
+  ccDefault: string;
+  bccDefault: string;
+  failureAlertEmail: string;
+  subjectPrefix: string;
+  footerSignature: string;
+  confidentialityText: string;
+  maxAttachmentBytes: number;
+  maxRecipients: number;
+  retryIntervalSec: number;
+  maxRetries: number;
+  attachNotificationPdf: boolean;
+  attachmentsAsLink: boolean;
+  requirePortalAccess: boolean;
+  inboundEnabled: boolean;
+  imapHost: string;
+  imapPort: number;
+  imapSecurity: "NONE" | "STARTTLS" | "SSL_TLS";
+  imapUsername: string;
+  hasImapPassword: boolean;
+  lastTestAt: string | null;
+  lastTestOk: boolean | null;
+  lastTestError: string | null;
+  lastTestRecipient: string | null;
+  activationJustification: string | null;
+  updatedAt: string;
+};
+
+export type EmailOutboundConfigPayload = {
+  smtpHost: string;
+  smtpPort: number;
+  security: "NONE" | "STARTTLS" | "SSL_TLS";
+  authRequired: boolean;
+  username: string;
+  password?: string;
+  authMethod: "USER_PASS" | "APP_PASSWORD" | "OAUTH";
+  oauthClientId?: string | null;
+  oauthTenantId?: string | null;
+  oauthRefreshToken?: string;
+  fromName: string;
+  fromEmail: string;
+  replyTo?: string;
+  ccDefault?: string;
+  bccDefault?: string;
+  failureAlertEmail?: string;
+  subjectPrefix?: string;
+  footerSignature?: string;
+  confidentialityText?: string;
+  maxAttachmentBytes?: number;
+  maxRecipients?: number;
+  retryIntervalSec?: number;
+  maxRetries?: number;
+  attachNotificationPdf?: boolean;
+  attachmentsAsLink?: boolean;
+  requirePortalAccess?: boolean;
+  active?: boolean;
+  activationJustification?: string | null;
+  imapHost?: string;
+  imapPort?: number;
+  imapSecurity?: "NONE" | "STARTTLS" | "SSL_TLS";
+  imapUsername?: string;
+  imapPassword?: string;
+};
+
+export type EmailSendLogItem = {
+  id: string;
+  type: string;
+  recipients: string;
+  status: string;
+  attempts: number;
+  errorSummary: string | null;
+  createdAt: string;
+};
+
+async function parseAdminJsonError(res: Response, fallback: string): Promise<never> {
+  let detail = "";
+  try {
+    const payload = (await res.json()) as { message?: string };
+    detail = typeof payload.message === "string" ? payload.message : "";
+  } catch {
+    detail = "";
+  }
+  throw new Error(detail || `${fallback} (${res.status})`);
+}
+
+/** Configuração SMTP de saída (ADMIN). */
+export async function getEmailOutboundConfig(): Promise<EmailOutboundPublicConfig> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/email-outbound`, { headers: { ...auth }, cache: "no-store" });
+  if (!res.ok) await parseAdminJsonError(res, "Falha ao obter configuração de e-mail");
+  const data = (await res.json()) as EmailOutboundPublicConfig & { ok?: boolean };
+  return data;
+}
+
+export async function saveEmailOutboundConfig(
+  payload: EmailOutboundConfigPayload
+): Promise<EmailOutboundPublicConfig> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/email-outbound`, {
+    method: "PUT",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+  if (!res.ok) await parseAdminJsonError(res, "Falha ao salvar configuração de e-mail");
+  return (await res.json()) as EmailOutboundPublicConfig;
+}
+
+export async function testEmailOutbound(to: string): Promise<{
+  ok: boolean;
+  message: string;
+  logId: string;
+  config: EmailOutboundPublicConfig;
+}> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/email-outbound/test`, {
+    method: "POST",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify({ to }),
+    cache: "no-store"
+  });
+  if (!res.ok) await parseAdminJsonError(res, "Falha ao testar e-mail");
+  return (await res.json()) as {
+    ok: boolean;
+    message: string;
+    logId: string;
+    config: EmailOutboundPublicConfig;
+  };
+}
+
+export async function getEmailOutboundLogs(limit = 20): Promise<EmailSendLogItem[]> {
+  const apiBase = await resolveRequestApiBase();
+  const auth = await authHeadersForApi();
+  const res = await fetch(`${apiBase}/admin/email-outbound/logs?limit=${encodeURIComponent(String(limit))}`, {
+    headers: { ...auth },
+    cache: "no-store"
+  });
+  if (!res.ok) await parseAdminJsonError(res, "Falha ao listar histórico de e-mails");
+  const data = (await res.json()) as { items?: EmailSendLogItem[] };
+  return data.items ?? [];
+}
+
 export async function createUser(payload: {
   email: string;
   password: string;
@@ -1387,6 +2614,11 @@ export async function createUser(payload: {
   cpf?: string;
   organizationId?: string;
   role?: "ADMIN" | "EDITOR" | "VIEWER";
+  profileIds?: string[];
+  organizationIds?: string[];
+  allOrganizations?: boolean;
+  defaultProfileId?: string;
+  defaultOrganizationId?: string | null;
 }): Promise<UserRecord> {
   return request("/users", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -1400,6 +2632,11 @@ export async function updateUser(
     cpf?: string | null;
     organizationId?: string | null;
     role?: "ADMIN" | "EDITOR" | "VIEWER";
+    profileIds?: string[];
+    organizationIds?: string[];
+    allOrganizations?: boolean;
+    defaultProfileId?: string;
+    defaultOrganizationId?: string | null;
     password?: string;
     approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
   }
@@ -2243,20 +3480,88 @@ export type PermissionGrant = {
   granted: boolean;
 };
 
+export type AccessProfileRecord = {
+  id: string;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  systemKey: string | null;
+  protected: boolean;
+  userCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type RolePermissionsPayload = {
   role: "ADMIN" | "EDITOR" | "VIEWER";
   permissions: PermissionGrant[];
 };
 
-export type UserPermissionsPayload = {
-  userId: string;
+export type ProfilePermissionsPayload = {
+  profileId: string;
   permissions: PermissionGrant[];
 };
 
-type PermissionKeysResponse = { role?: "ADMIN" | "EDITOR" | "VIEWER"; userId?: string; keys: string[] };
+export type UserPermissionsPayload = {
+  userId: string;
+  profileId?: string;
+  permissions: PermissionGrant[];
+  inheritedKeys?: string[];
+  effectiveKeys?: string[];
+};
+
+type PermissionKeysResponse = {
+  role?: "ADMIN" | "EDITOR" | "VIEWER";
+  userId?: string;
+  profileId?: string;
+  keys: string[];
+  inheritedKeys?: string[];
+  effectiveKeys?: string[];
+};
 
 function permissionKeysToGrants(keys: string[]): PermissionGrant[] {
   return keys.map((permissionKey) => ({ permissionKey, granted: true }));
+}
+
+export async function getAccessProfiles(includeInactive = true): Promise<AccessProfileRecord[]> {
+  const qs = includeInactive ? "?includeInactive=true" : "";
+  return request(`/permissions/profiles${qs}`);
+}
+
+export async function createAccessProfile(payload: {
+  name: string;
+  description?: string | null;
+}): Promise<AccessProfileRecord> {
+  return request("/permissions/profiles", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateAccessProfile(
+  id: string,
+  payload: { name?: string; description?: string | null; active?: boolean }
+): Promise<AccessProfileRecord> {
+  return request(`/permissions/profiles/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export async function deleteAccessProfile(id: string): Promise<{ ok: true }> {
+  return request(`/permissions/profiles/${id}`, { method: "DELETE" });
+}
+
+export async function getProfilePermissions(profileId: string): Promise<ProfilePermissionsPayload> {
+  const response = await request<PermissionKeysResponse>(`/permissions/profile/${profileId}`);
+  return { profileId, permissions: permissionKeysToGrants(response.keys) };
+}
+
+export async function updateProfilePermissions(
+  profileId: string,
+  permissions: PermissionGrant[]
+): Promise<ProfilePermissionsPayload> {
+  const response = await request<PermissionKeysResponse>(`/permissions/profile/${profileId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      keys: permissions.filter((permission) => permission.granted).map((permission) => permission.permissionKey)
+    })
+  });
+  return { profileId, permissions: permissionKeysToGrants(response.keys) };
 }
 
 export async function getRolePermissions(role: "ADMIN" | "EDITOR" | "VIEWER"): Promise<RolePermissionsPayload> {
@@ -2275,22 +3580,36 @@ export async function updateRolePermissions(
   return { role, permissions: permissionKeysToGrants(response.keys) };
 }
 
-export async function getUserPermissions(userId: string): Promise<UserPermissionsPayload> {
-  const response = await request<PermissionKeysResponse>(`/permissions/user/${userId}`);
-  return { userId, permissions: permissionKeysToGrants(response.keys) };
+export async function getUserPermissions(userId: string, profileId?: string): Promise<UserPermissionsPayload> {
+  const qs = profileId ? `?profileId=${encodeURIComponent(profileId)}` : "";
+  const response = await request<PermissionKeysResponse>(`/permissions/user/${userId}${qs}`);
+  return {
+    userId,
+    profileId: response.profileId,
+    permissions: permissionKeysToGrants(response.keys),
+    inheritedKeys: response.inheritedKeys,
+    effectiveKeys: response.effectiveKeys
+  };
 }
 
-export async function updateUserPermissions(userId: string, permissions: PermissionGrant[]): Promise<UserPermissionsPayload> {
+export async function updateUserPermissions(
+  userId: string,
+  permissions: PermissionGrant[],
+  profileId?: string
+): Promise<UserPermissionsPayload> {
   const response = await request<PermissionKeysResponse>(`/permissions/user/${userId}`, {
     method: "PUT",
-    body: JSON.stringify({ keys: permissions.filter((permission) => permission.granted).map((permission) => permission.permissionKey) })
+    body: JSON.stringify({
+      profileId,
+      keys: permissions.filter((permission) => permission.granted).map((permission) => permission.permissionKey)
+    })
   });
-  return { userId, permissions: permissionKeysToGrants(response.keys) };
+  return { userId, profileId: response.profileId, permissions: permissionKeysToGrants(response.keys) };
 }
 
 export type PermissionHistoryEntry = {
   id: string;
-  entity: "RolePermission" | "UserPermission";
+  entity: "RolePermission" | "UserPermission" | "AccessProfile";
   entityId: string;
   action: string;
   userId: string;
@@ -2303,6 +3622,10 @@ export async function getRolePermissionHistory(
   role: "ADMIN" | "EDITOR" | "VIEWER"
 ): Promise<PermissionHistoryEntry[]> {
   return request(`/permissions/role/${role}/history`);
+}
+
+export async function getProfilePermissionHistory(profileId: string): Promise<PermissionHistoryEntry[]> {
+  return request(`/permissions/profile/${profileId}/history`);
 }
 
 export async function getUserPermissionHistory(userId: string): Promise<PermissionHistoryEntry[]> {

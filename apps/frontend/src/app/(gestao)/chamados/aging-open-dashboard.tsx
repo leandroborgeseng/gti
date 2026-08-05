@@ -6,7 +6,7 @@ const LABEL_RADIUS = 0.56;
 
 function formatAgingPercentOfTotal(count: number, total: number): string {
   if (total <= 0) {
-    return "—";
+    return "-";
   }
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 0 }).format(
     (100 * count) / total
@@ -248,7 +248,7 @@ export function TicketDistributionDashboard({
 }: TicketDistributionDashboardProps): JSX.Element {
   const total = sumOpenAgeBuckets(buckets);
   const delayedCount = buckets.days15 + buckets.days30 + buckets.days60 + buckets.over60;
-  const delayedPctLabel = total > 0 ? formatAgingPercentOfTotal(delayedCount, total) : "—";
+  const delayedPctLabel = total > 0 ? formatAgingPercentOfTotal(delayedCount, total) : "-";
   const noDateNote =
     buckets.noDate > 0 ? (
       <span className="aging-dash__nodate" title={noDateNoteTitle}>
@@ -388,7 +388,7 @@ const AGE_CARDS: TicketDistributionDashboardProps["cards"] = [
   {
     bucket: "over60",
     title: "Mais de 60 dias",
-    hint: "Envelhecidos — priorizar revisão",
+    hint: "Envelhecidos: priorizar revisão",
     tone: "over",
     icon: SHARED_CARD_ICONS.over60
   }
@@ -426,7 +426,7 @@ const IDLE_CARDS: TicketDistributionDashboardProps["cards"] = [
   {
     bucket: "over60",
     title: "Mais de 60 dias",
-    hint: "Sem alteração GLPI há mais de 60 dias — priorizar revisão",
+    hint: "Sem alteração GLPI há mais de 60 dias: priorizar revisão",
     tone: "over",
     icon: SHARED_CARD_ICONS.over60
   }

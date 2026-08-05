@@ -3,21 +3,31 @@ import { UserRole } from "@prisma/client";
 import { Roles } from "../../auth/roles-required.decorator";
 import { ContractsService } from "./contracts.service";
 import {
+  CancelContractAmendmentDto,
+  ChangeContractOccurrenceStatusDto,
   CreateContractAmendmentDto,
   CreateContractDto,
+  BulkUpdateFeatureValidationGroupDto,
   CreateContractFeatureDto,
-  CreateContractFinancialSnapshotDto,
   CreateContractItemTypeAdminDto,
   CreateContractModuleDto,
+  CreateContractOccurrenceDto,
+  CreateContractScheduleDto,
   CreateContractServiceDto,
+  CreateContractValidationGroupDto,
   DeleteContractDto,
+  ForwardOccurrenceToControladoriaDto,
   PricingItemDto,
   RegenerateInternalCodeDto,
+  UpdateContractControladoriaCaseDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
   UpdateContractItemTypeAdminDto,
   UpdateContractModuleDto,
-  UpdateContractServiceDto
+  UpdateContractOccurrenceDto,
+  UpdateContractScheduleDto,
+  UpdateContractServiceDto,
+  UpdateContractValidationGroupDto
 } from "./contracts.dto";
 
 @Controller("contracts")
@@ -51,6 +61,20 @@ export class ContractsController {
   @Roles(UserRole.ADMIN)
   pricingMigrationReview(): Promise<unknown> {
     return this.service.pricingMigrationReview();
+  }
+
+  /** Conferência administrativa da migração de identificação dos contratos. */
+  @Get("identification-migration-review")
+  @Roles(UserRole.ADMIN)
+  identificationMigrationReview(): Promise<unknown> {
+    return this.service.identificationMigrationReview();
+  }
+
+  /** Reaplica migração segura de identificação (sem inventar número formal). */
+  @Post("identification-migration-repair")
+  @Roles(UserRole.ADMIN)
+  repairIdentificationMigration(): Promise<unknown> {
+    return this.service.repairIdentificationMigration();
   }
 
   /** Relatório financeiro por item contratual, exclusivo para administração. */
@@ -101,10 +125,16 @@ export class ContractsController {
     return this.service.updateItemType(id, body);
   }
 
+  /** Usuários elegíveis para seleção como fiscais/responsáveis de módulo. */
+  @Get("module-validators")
+  moduleValidators(): Promise<unknown> {
+    return this.service.findModuleValidators();
+  }
+
   /** Resumo dos contratos com estrutura modular (totais agregados, sem funcionalidades). */
   @Get("overview/modules-delivery")
-  modulesDeliveryOverview(): Promise<unknown> {
-    return this.service.findModulesDeliveryOverview();
+  modulesDeliveryOverview(@Query("assignment") assignment?: string): Promise<unknown> {
+    return this.service.findModulesDeliveryOverview({ assignment });
   }
 
   /** Pesquisa/filtros server-side sobre funcionalidades de todos os contratos visíveis. */
@@ -113,12 +143,14 @@ export class ContractsController {
     @Query("q") q?: string,
     @Query("deliveryStatus") deliveryStatus?: string,
     @Query("criticality") criticality?: string,
+    @Query("assignment") assignment?: string,
     @Query("pageSize") pageSize?: string
   ): Promise<unknown> {
     return this.service.searchModulesDeliveryFeatures({
       q,
       deliveryStatus,
       criticality,
+      assignment,
       pageSize: pageSize ? Number(pageSize) : undefined
     });
   }
@@ -138,15 +170,177 @@ export class ContractsController {
     @Query("pageSize") pageSize?: string,
     @Query("q") q?: string,
     @Query("deliveryStatus") deliveryStatus?: string,
-    @Query("criticality") criticality?: string
+    @Query("criticality") criticality?: string,
+    @Query("assignment") assignment?: string
   ): Promise<unknown> {
     return this.service.findModuleFeaturesDelivery(contractId, moduleId, {
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
       q,
       deliveryStatus,
-      criticality
+      criticality,
+      assignment
     });
+  }
+
+  @Get(":id/validation-groups")
+  listValidationGroups(@Param("id") contractId: string): Promise<unknown> {
+    return this.service.listValidationGroups(contractId);
+  }
+
+  /** Chamados GLPI em cache vinculados aos grupos do contrato (somente leitura). */
+  @Get(":id/glpi-tickets")
+  listGlpiTickets(
+    @Param("id") contractId: string,
+    @Query("status") status?: string,
+    @Query("priority") priority?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("slaOverdue") slaOverdue?: string,
+    @Query("take") take?: string
+  ): Promise<unknown> {
+    const overdueRaw = (slaOverdue ?? "").trim().toLowerCase();
+    return this.service.listContractGlpiTickets(contractId, {
+      status,
+      priority,
+      from,
+      to,
+      slaOverdue: overdueRaw === "1" || overdueRaw === "true" || overdueRaw === "yes",
+      take: take ? Number(take) : undefined
+    });
+  }
+
+  @Get(":id/schedules")
+  listSchedules(@Param("id") contractId: string): Promise<unknown> {
+    return this.service.listSchedules(contractId);
+  }
+
+  @Post(":id/schedules")
+  createSchedule(
+    @Param("id") contractId: string,
+    @Body() dto: CreateContractScheduleDto
+  ): Promise<unknown> {
+    return this.service.createSchedule(contractId, dto);
+  }
+
+  @Put(":id/schedules/:scheduleId")
+  updateSchedule(
+    @Param("id") contractId: string,
+    @Param("scheduleId") scheduleId: string,
+    @Body() dto: UpdateContractScheduleDto
+  ): Promise<unknown> {
+    return this.service.updateSchedule(contractId, scheduleId, dto);
+  }
+
+  @Post(":id/schedules/:scheduleId/approve")
+  approveSchedule(
+    @Param("id") contractId: string,
+    @Param("scheduleId") scheduleId: string
+  ): Promise<unknown> {
+    return this.service.approveSchedule(contractId, scheduleId);
+  }
+
+  @Delete(":id/schedules/:scheduleId")
+  deleteSchedule(
+    @Param("id") contractId: string,
+    @Param("scheduleId") scheduleId: string
+  ): Promise<unknown> {
+    return this.service.deleteSchedule(contractId, scheduleId);
+  }
+
+  @Get(":id/occurrences")
+  listOccurrences(@Param("id") contractId: string): Promise<unknown> {
+    return this.service.listOccurrences(contractId);
+  }
+
+  @Post(":id/occurrences")
+  createOccurrence(
+    @Param("id") contractId: string,
+    @Body() dto: CreateContractOccurrenceDto
+  ): Promise<unknown> {
+    return this.service.createOccurrence(contractId, dto);
+  }
+
+  @Put(":id/occurrences/:occurrenceId")
+  updateOccurrence(
+    @Param("id") contractId: string,
+    @Param("occurrenceId") occurrenceId: string,
+    @Body() dto: UpdateContractOccurrenceDto
+  ): Promise<unknown> {
+    return this.service.updateOccurrence(contractId, occurrenceId, dto);
+  }
+
+  @Post(":id/occurrences/:occurrenceId/status")
+  changeOccurrenceStatus(
+    @Param("id") contractId: string,
+    @Param("occurrenceId") occurrenceId: string,
+    @Body() dto: ChangeContractOccurrenceStatusDto
+  ): Promise<unknown> {
+    return this.service.changeOccurrenceStatus(contractId, occurrenceId, dto);
+  }
+
+  @Post(":id/occurrences/:occurrenceId/forward-controladoria")
+  forwardOccurrenceToControladoria(
+    @Param("id") contractId: string,
+    @Param("occurrenceId") occurrenceId: string,
+    @Body() dto: ForwardOccurrenceToControladoriaDto
+  ): Promise<unknown> {
+    return this.service.forwardOccurrenceToControladoria(contractId, occurrenceId, dto);
+  }
+
+  @Delete(":id/occurrences/:occurrenceId")
+  deleteOccurrence(
+    @Param("id") contractId: string,
+    @Param("occurrenceId") occurrenceId: string
+  ): Promise<unknown> {
+    return this.service.deleteOccurrence(contractId, occurrenceId);
+  }
+
+  @Get(":id/controladoria-cases")
+  listControladoriaCases(@Param("id") contractId: string): Promise<unknown> {
+    return this.service.listControladoriaCases(contractId);
+  }
+
+  @Put(":id/controladoria-cases/:caseId")
+  updateControladoriaCase(
+    @Param("id") contractId: string,
+    @Param("caseId") caseId: string,
+    @Body() dto: UpdateContractControladoriaCaseDto
+  ): Promise<unknown> {
+    return this.service.updateControladoriaCase(contractId, caseId, dto);
+  }
+
+  @Post(":id/validation-groups")
+  createValidationGroup(
+    @Param("id") contractId: string,
+    @Body() dto: CreateContractValidationGroupDto
+  ): Promise<unknown> {
+    return this.service.createValidationGroup(contractId, dto);
+  }
+
+  @Put(":id/validation-groups/:groupId")
+  updateValidationGroup(
+    @Param("id") contractId: string,
+    @Param("groupId") groupId: string,
+    @Body() dto: UpdateContractValidationGroupDto
+  ): Promise<unknown> {
+    return this.service.updateValidationGroup(contractId, groupId, dto);
+  }
+
+  @Delete(":id/validation-groups/:groupId")
+  deleteValidationGroup(
+    @Param("id") contractId: string,
+    @Param("groupId") groupId: string
+  ): Promise<unknown> {
+    return this.service.deleteValidationGroup(contractId, groupId);
+  }
+
+  @Post(":id/features/bulk-validation-group")
+  bulkUpdateFeatureValidationGroup(
+    @Param("id") contractId: string,
+    @Body() dto: BulkUpdateFeatureValidationGroupDto
+  ): Promise<unknown> {
+    return this.service.bulkUpdateFeatureValidationGroup(contractId, dto);
   }
 
   /** Rotas mais específicas antes de `:id` solto (evita ambiguidade em alguns casos). */
@@ -221,12 +415,13 @@ export class ContractsController {
     return this.service.createAmendment(contractId, dto);
   }
 
-  @Post(":id/financial-snapshots")
-  createFinancialSnapshot(
+  @Post(":id/amendments/:amendmentId/cancel")
+  cancelAmendment(
     @Param("id") contractId: string,
-    @Body() dto: CreateContractFinancialSnapshotDto
+    @Param("amendmentId") amendmentId: string,
+    @Body() dto: CancelContractAmendmentDto
   ): Promise<unknown> {
-    return this.service.createFinancialSnapshot(contractId, dto);
+    return this.service.cancelAmendment(contractId, amendmentId, dto);
   }
 
   @Put(":id/pricing-items")

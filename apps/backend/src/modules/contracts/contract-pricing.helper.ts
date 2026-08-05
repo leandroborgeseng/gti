@@ -97,6 +97,40 @@ function computedTotal(quantity: number, unitValue: number): number {
   return round2(quantity * unitValue);
 }
 
+/** Normaliza para meia-noite UTC (comparação de datas civis). */
+export function startOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+export function addUtcDays(d: Date, days: number): Date {
+  const x = startOfUtcDay(d);
+  x.setUTCDate(x.getUTCDate() + days);
+  return x;
+}
+
+type PricingItemForEffect = {
+  status: ContractPricingItemStatus;
+  periodStart?: Date | string | null;
+  periodEnd?: Date | string | null;
+};
+
+function asDate(value: Date | string | null | undefined): Date | null {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Item ACTIVE cuja vigência cobre a data (periodStart/periodEnd abertos = sem limite). */
+export function isPricingItemEffectiveOn(item: PricingItemForEffect, at: Date): boolean {
+  if (item.status !== ContractPricingItemStatus.ACTIVE) return false;
+  const day = startOfUtcDay(at);
+  const start = asDate(item.periodStart);
+  const end = asDate(item.periodEnd);
+  if (start && startOfUtcDay(start) > day) return false;
+  if (end && startOfUtcDay(end) < day) return false;
+  return true;
+}
+
 export function summarizePricingItems(
   items: Array<{
     quantity: Prisma.Decimal | number;
@@ -105,7 +139,10 @@ export function summarizePricingItems(
     billingKind: ContractPricingBillingKind;
     periodicity: ContractPricingPeriodicity | null;
     status: ContractPricingItemStatus;
-  }>
+    periodStart?: Date | string | null;
+    periodEnd?: Date | string | null;
+  }>,
+  asOf: Date = new Date()
 ): PricingTotals {
   let recurringPredicted = 0;
   let oneTime = 0;
@@ -114,7 +151,7 @@ export function summarizePricingItems(
   let installationValue = 0;
 
   for (const item of items) {
-    if (item.status !== ContractPricingItemStatus.ACTIVE) continue;
+    if (!isPricingItemEffectiveOn(item, asOf)) continue;
     const total = num(item.totalValue);
     const unit = num(item.unitValue);
     if (item.billingKind === ContractPricingBillingKind.RECURRING) {
@@ -147,6 +184,52 @@ export function summarizePricingItems(
     globalEstimated: round2(recurringPredicted + oneTime + onDemand),
     monthlyValue: round2(Math.max(monthlyValue, 0)),
     installationValue: installationValue > 0 ? round2(installationValue) : null
+  };
+}
+
+/** Atalho explícito para totais vigentes em uma data. */
+export function summarizePricingItemsAsOf(
+  items: Parameters<typeof summarizePricingItems>[0],
+  asOf: Date
+): PricingTotals {
+  return summarizePricingItems(items, asOf);
+}
+
+export function serializePricingItemSnapshot(item: {
+  id?: string;
+  sequence?: number;
+  typeId: string;
+  description: string;
+  unitId: string;
+  quantity: Prisma.Decimal | number;
+  unitValue: Prisma.Decimal | number;
+  totalValue: Prisma.Decimal | number;
+  totalManual?: boolean;
+  totalJustification?: string | null;
+  billingKind: ContractPricingBillingKind;
+  periodicity: ContractPricingPeriodicity | null;
+  periodStart?: Date | string | null;
+  periodEnd?: Date | string | null;
+  status?: ContractPricingItemStatus;
+  includeInGlosaBase?: boolean;
+}) {
+  return {
+    id: item.id ?? null,
+    sequence: item.sequence ?? null,
+    typeId: item.typeId,
+    description: item.description,
+    unitId: item.unitId,
+    quantity: num(item.quantity),
+    unitValue: num(item.unitValue),
+    totalValue: num(item.totalValue),
+    totalManual: Boolean(item.totalManual),
+    totalJustification: item.totalJustification ?? null,
+    billingKind: item.billingKind,
+    periodicity: item.periodicity,
+    periodStart: item.periodStart ? asDate(item.periodStart)?.toISOString().slice(0, 10) ?? null : null,
+    periodEnd: item.periodEnd ? asDate(item.periodEnd)?.toISOString().slice(0, 10) ?? null : null,
+    status: item.status ?? ContractPricingItemStatus.ACTIVE,
+    includeInGlosaBase: Boolean(item.includeInGlosaBase)
   };
 }
 
@@ -391,12 +474,11 @@ export class ContractPricingHelper {
   }
 
   async contractHasMovements(contractId: string): Promise<boolean> {
-    const [measurements, amendments, snapshots] = await Promise.all([
+    const [measurements, amendments] = await Promise.all([
       this.prisma.measurement.count({ where: { contractId } }),
-      this.prisma.contractAmendment.count({ where: { contractId } }),
-      this.prisma.contractFinancialSnapshot.count({ where: { contractId } })
+      this.prisma.contractAmendment.count({ where: { contractId } })
     ]);
-    return measurements + amendments + snapshots > 0;
+    return measurements + amendments > 0;
   }
 
   async replaceItems(
@@ -414,7 +496,7 @@ export class ContractPricingHelper {
       for (const prev of existing) {
         if (!keptIds.has(prev.id) && prev.status === ContractPricingItemStatus.ACTIVE) {
           throw new BadRequestException(
-            "Não é possível excluir itens após medições, aditivos ou memória financeira. Cancele o item."
+            "Não é possível excluir itens após medições ou aditivos. Cancele o item."
           );
         }
       }
@@ -428,7 +510,9 @@ export class ContractPricingHelper {
         totalValue: n.totalValue,
         billingKind: n.billingKind,
         periodicity: n.periodicity,
-        status: n.status
+        status: n.status,
+        periodStart: n.periodStart,
+        periodEnd: n.periodEnd
       }))
     );
 

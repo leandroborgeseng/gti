@@ -9,11 +9,20 @@ async function main(): Promise<void> {
   const hash = await bcrypt.hash(plain, 10);
   const existing = await prisma.user.findUnique({ where: { email } });
   if (!existing) {
+    const adminProfile = await prisma.accessProfile.findUnique({ where: { systemKey: "ADMIN" } });
     await prisma.user.create({
       data: {
         email,
         passwordHash: hash,
-        role: UserRole.ADMIN
+        role: UserRole.ADMIN,
+        allOrganizations: true,
+        ...(adminProfile
+          ? {
+              defaultProfileId: adminProfile.id,
+              lastActiveProfileId: adminProfile.id,
+              accessProfiles: { create: { profileId: adminProfile.id, isDefault: true } }
+            }
+          : {})
       }
     });
     console.log(`Usuário administrador criado: ${email}`);

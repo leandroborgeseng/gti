@@ -70,7 +70,7 @@ export function ContractImplantationProportionPanel({ data }: Props): JSX.Elemen
         <p className="mt-1 leading-relaxed text-slate-700 dark:text-slate-300">{phaseDescription[phase]}</p>
         {data.implementationPeriodStart || data.implementationPeriodEnd ? (
           <p className="mt-2 tabular-nums text-slate-600 dark:text-slate-400">
-            Período registrado: {data.implementationPeriodStart ?? "—"} → {data.implementationPeriodEnd ?? "—"}
+            Período registrado: {data.implementationPeriodStart ?? "-"} → {data.implementationPeriodEnd ?? "-"}
           </p>
         ) : null}
       </div>
@@ -92,7 +92,7 @@ export function ContractImplantationProportionPanel({ data }: Props): JSX.Elemen
         <div className="rounded-md border border-sky-100/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-slate-900/40">
           <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">Proporção (peso de entrega)</dt>
           <dd className="mt-0.5 text-lg font-semibold tabular-nums text-sky-900 dark:text-sky-200">
-            {data.ratioImplantedPercent ?? "—"}%
+            {data.ratioImplantedPercent ?? "-"}%
           </dd>
         </div>
         <div
@@ -108,7 +108,7 @@ export function ContractImplantationProportionPanel({ data }: Props): JSX.Elemen
           </dd>
           <dt className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Implantação proporcional (indicador)</dt>
           <dd className="mt-0.5 text-lg font-semibold tabular-nums text-amber-950 dark:text-amber-100">
-            {data.proportionalInstallationValue != null ? formatBrl(data.proportionalInstallationValue) : "—"}
+            {data.proportionalInstallationValue != null ? formatBrl(data.proportionalInstallationValue) : "-"}
           </dd>
         </div>
         <div
@@ -122,7 +122,7 @@ export function ContractImplantationProportionPanel({ data }: Props): JSX.Elemen
           <dd className="mt-0.5 font-semibold tabular-nums text-slate-900 dark:text-slate-100">{formatBrl(data.contractMonthlyValue)}</dd>
           <dt className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Mensalidade proporcional (indicador)</dt>
           <dd className="mt-0.5 text-lg font-semibold tabular-nums text-sky-950 dark:text-sky-100">
-            {data.proportionalMonthlyValue != null ? formatBrl(data.proportionalMonthlyValue) : "—"}
+            {data.proportionalMonthlyValue != null ? formatBrl(data.proportionalMonthlyValue) : "-"}
           </dd>
         </div>
       </dl>

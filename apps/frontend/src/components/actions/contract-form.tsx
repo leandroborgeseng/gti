@@ -62,41 +62,48 @@ type Props = {
   initialContract?: Contract | null;
 };
 
+function safeDateInput(value: string | null | undefined): string {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (raw.length < 10) return "";
+  return raw.slice(0, 10);
+}
+
+function normalizeContractType(raw: string | null | undefined): ContractPageFormInput["contractType"] {
+  if (raw === "SOFTWARE" || raw === "DATACENTER" || raw === "INFRA" || raw === "SERVICO") {
+    return raw;
+  }
+  return "SOFTWARE";
+}
+
 function contractToFormDefaults(c: Contract): ContractPageFormInput {
   const cnpjDigits = onlyDigitsCnpj(c.cnpj ?? c.supplier?.cnpj ?? "");
   const lt = (c.lawType ?? "") as ContractPageFormInput["lawType"];
-  const ct = c.contractType as ContractPageFormInput["contractType"];
   return {
     ...CONTRACT_FORM_DEFAULT_VALUES,
     formalNumber: formalNumberFromContract(c),
-    number: c.number,
+    number: c.number ?? "",
     administrativeProcess: c.administrativeProcess ?? "",
     organizationId: c.organizationId ?? "",
     contractTypeCatalogId: c.contractTypeCatalogId ?? "",
-    contractType: ct,
+    contractType: normalizeContractType(c.contractType),
     hiringTypeId: c.hiringTypeId ?? "",
     hiringProcedureNumber: c.hiringProcedureNumber ?? "",
-    name: c.name,
+    name: c.name ?? "",
     description: c.description ?? "",
     managingUnit: c.managingUnit ?? "",
-    companyName: c.companyName,
+    companyName: c.companyName ?? "",
     cnpj: cnpjDigits,
     lawType: lt === "LEI_8666" || lt === "LEI_14133" ? lt : "",
-    startDate: c.startDate.slice(0, 10),
-    endDate: c.endDate.slice(0, 10),
+    startDate: safeDateInput(c.startDate),
+    endDate: safeDateInput(c.endDate),
     monthlyValue: "",
     installationValue: "",
     globalValueManual: Boolean(c.globalValueManual),
     globalValueCurrent: c.globalValueManual ? String(c.globalValueCurrent ?? "") : "",
     globalValueJustification: c.globalValueManual ? c.globalValueJustification ?? "" : "",
-    implementationPeriodStart:
-      c.implementationPeriodStart && String(c.implementationPeriodStart).trim().length >= 10
-        ? String(c.implementationPeriodStart).slice(0, 10)
-        : "",
-    implementationPeriodEnd:
-      c.implementationPeriodEnd && String(c.implementationPeriodEnd).trim().length >= 10
-        ? String(c.implementationPeriodEnd).slice(0, 10)
-        : "",
+    implementationPeriodStart: safeDateInput(c.implementationPeriodStart),
+    implementationPeriodEnd: safeDateInput(c.implementationPeriodEnd),
     fiscalId: c.fiscal?.id ?? "",
     managerId: c.manager?.id ?? "",
     supplierId: c.supplier?.id ?? "",
@@ -110,8 +117,8 @@ function contractToFormDefaults(c: Contract): ContractPageFormInput {
 function catalogPayloadFields(data: ContractPageParsed): {
   formalNumber?: string;
   administrativeProcess?: string | null;
-  organizationId: string;
-  contractTypeCatalogId: string;
+  organizationId?: string | null;
+  contractTypeCatalogId?: string | null;
   contractType: ContractPageParsed["contractType"];
   hiringTypeId?: string | null;
   hiringProcedureNumber?: string | null;
@@ -119,15 +126,17 @@ function catalogPayloadFields(data: ContractPageParsed): {
 } {
   const adminProcess = data.administrativeProcess.trim();
   const hiringProc = data.hiringProcedureNumber.trim();
+  const organizationId = data.organizationId.trim();
+  const contractTypeCatalogId = data.contractTypeCatalogId.trim();
   return {
     ...(data.formalNumber ? { formalNumber: data.formalNumber } : {}),
     administrativeProcess: adminProcess || null,
-    organizationId: data.organizationId,
-    contractTypeCatalogId: data.contractTypeCatalogId,
+    organizationId: organizationId || null,
+    contractTypeCatalogId: contractTypeCatalogId || null,
     contractType: data.contractType,
     hiringTypeId: data.hiringTypeId.trim() || null,
     hiringProcedureNumber: hiringProc || null,
-    managingUnit: data.organizationId ? null : data.managingUnit.trim() || null
+    managingUnit: organizationId ? null : data.managingUnit.trim() || null
   };
 }
 
@@ -171,24 +180,63 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const editContract = qContractDetail.data ?? initialContract;
   const fiscais = qFiscais.data ?? [];
   const suppliers = qSuppliers.data ?? [];
-  const activeOrganizations = useMemo(
-    () => (qOrganizations.data ?? []).filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
-    [qOrganizations.data]
-  );
-  const activeContractTypes = useMemo(
-    () =>
-      (qContractTypes.data ?? [])
-        .filter((t) => t.active)
-        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR")),
-    [qContractTypes.data]
-  );
-  const activeHiringTypes = useMemo(
-    () =>
-      (qHiringTypes.data ?? [])
-        .filter((t) => t.active)
-        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR")),
-    [qHiringTypes.data]
-  );
+  const organizationOptions = useMemo(() => {
+    const all = qOrganizations.data ?? [];
+    const active = all.filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    const linkedId = editContract?.organizationId;
+    if (!linkedId) return active;
+    if (active.some((o) => o.id === linkedId)) return active;
+    const linked =
+      editContract?.organization ??
+      all.find((o) => o.id === linkedId) ??
+      ({ id: linkedId, name: "Órgão vinculado (indisponível)", acronym: "", active: false } as const);
+    return [
+      {
+        id: linked.id,
+        name: linked.name,
+        acronym: "acronym" in linked ? linked.acronym ?? "" : "",
+        active: false
+      },
+      ...active
+    ];
+  }, [qOrganizations.data, editContract?.organizationId, editContract?.organization]);
+
+  const contractTypeOptions = useMemo(() => {
+    const all = qContractTypes.data ?? [];
+    const active = all
+      .filter((t) => t.active)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR"));
+    const linkedId = editContract?.contractTypeCatalogId;
+    if (!linkedId) return active;
+    if (active.some((t) => t.id === linkedId)) return active;
+    const linked =
+      editContract?.contractTypeCatalog ??
+      all.find((t) => t.id === linkedId) ??
+      ({
+        id: linkedId,
+        name: "Tipo vinculado (indisponível)",
+        acronym: "",
+        legacyEnum: null,
+        active: false,
+        sortOrder: 0
+      });
+    return [{ ...linked, active: false }, ...active];
+  }, [qContractTypes.data, editContract?.contractTypeCatalogId, editContract?.contractTypeCatalog]);
+
+  const hiringTypeOptions = useMemo(() => {
+    const all = qHiringTypes.data ?? [];
+    const active = all
+      .filter((t) => t.active)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR"));
+    const linkedId = editContract?.hiringTypeId;
+    if (!linkedId) return active;
+    if (active.some((t) => t.id === linkedId)) return active;
+    const linked =
+      editContract?.hiringType ??
+      all.find((t) => t.id === linkedId) ??
+      ({ id: linkedId, name: "Modalidade vinculada (indisponível)", active: false, sortOrder: 0 });
+    return [{ ...linked, active: false }, ...active];
+  }, [qHiringTypes.data, editContract?.hiringTypeId, editContract?.hiringType]);
   const catalogsLoading =
     qOrganizations.isPending || qContractTypes.isPending || qHiringTypes.isPending;
   const catalogsError =
@@ -247,17 +295,30 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   );
 
   useEffect(() => {
-    if (editContract) {
-      form.reset(contractToFormDefaults(editContract));
-      if (editContract.pricingItems) {
-        setPricingItems(pricingItemsFromContract(editContract.pricingItems));
+    try {
+      if (editContract) {
+        // Aguarda catálogos para evitar Select com value sem opção correspondente (crash do Radix).
+        if (catalogsLoading) return;
+        form.reset(contractToFormDefaults(editContract));
+        if (editContract.pricingItems) {
+          setPricingItems(pricingItemsFromContract(editContract.pricingItems));
+        } else {
+          setPricingItems([]);
+        }
+      } else {
+        form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+        setPricingItems([]);
       }
-    } else {
-      form.reset(CONTRACT_FORM_DEFAULT_VALUES);
-      setPricingItems([]);
+      setPricingError(null);
+    } catch (err) {
+      console.error("Falha ao preparar formulário do contrato", err);
+      toast.error(
+        err instanceof Error
+          ? `Não foi possível carregar o formulário: ${err.message}`
+          : "Não foi possível carregar o formulário do contrato."
+      );
     }
-    setPricingError(null);
-  }, [editContract?.id, editContract?.updatedAt, form, editContract]);
+  }, [editContract?.id, editContract?.updatedAt, form, editContract, catalogsLoading]);
 
   const createFiscalMut = useMutation({
     mutationFn: async (vars: { name: string; email: string; phone: string; role: FiscalModalRole }) => {
@@ -520,7 +581,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             <FormLabel>Número completo (pré-visualização)</FormLabel>
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">{numberPreview}</div>
             <FormDescription>
-              Formato número/ano — o ano vem do início da vigência.{" "}
+              Formato número/ano: o ano vem do início da vigência.{" "}
               {editContract?.internalCode ? (
                 <>Código interno atual: <strong>{editContract.internalCode}</strong>.</>
               ) : (
@@ -554,9 +615,10 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {activeOrganizations.map((org) => (
+                    {organizationOptions.map((org) => (
                       <SelectItem key={org.id} value={org.id}>
-                        {org.acronym ? `${org.acronym} — ${org.name}` : org.name}
+                        {org.acronym ? `${org.acronym} · ${org.name}` : org.name}
+                        {org.active === false ? " (Inativo)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -589,8 +651,8 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                 <FormLabel>Tipo de contrato</FormLabel>
                 <Select
                   onValueChange={(id) => {
-                    const catalog = activeContractTypes.find((t) => t.id === id);
-                    onContractTypeCatalogChange(id, catalog);
+                    const catalog = contractTypeOptions.find((t) => t.id === id);
+                    onContractTypeCatalogChange(id, catalog as ContractTypeCatalogRecord | undefined);
                   }}
                   value={field.value || undefined}
                   disabled={catalogsLoading}
@@ -601,9 +663,10 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {activeContractTypes.map((t) => (
+                    {contractTypeOptions.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
-                        {t.acronym ? `${t.acronym} — ${t.name}` : t.name}
+                        {t.acronym ? `${t.acronym} · ${t.name}` : t.name}
+                        {"active" in t && t.active === false ? " (Inativo)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -625,14 +688,15 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                 >
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="— Nenhuma —" />
+                      <SelectValue placeholder="- Nenhuma -" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="__none__">— Nenhuma —</SelectItem>
-                    {activeHiringTypes.map((t) => (
+                    <SelectItem value="__none__">- Nenhuma -</SelectItem>
+                    {hiringTypeOptions.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
                         {t.name}
+                        {"active" in t && t.active === false ? " (Inativo)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -713,7 +777,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                     onSupplierSelect(id);
                   }}
                   options={supplierOptions}
-                  placeholder="— Nenhum; preencher manualmente abaixo —"
+                  placeholder="- Nenhum; preencher manualmente abaixo -"
                   addNewLabel="+ Novo fornecedor"
                   onAddNew={() => {
                     form.setValue("quickSupplierName", "");
@@ -793,7 +857,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                   id="c-fiscal"
                   label="Fiscal"
                   required
-                  value={field.value}
+                  value={field.value ?? ""}
                   onChange={(v) => {
                     field.onChange(v);
                     form.clearErrors("fiscalId");
@@ -822,7 +886,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                     form.clearErrors("managerId");
                   }}
                   options={fiscalOptions}
-                  placeholder="— Igual ao fiscal (omissão no servidor) —"
+                  placeholder="- Igual ao fiscal (omissão no servidor) -"
                   addNewLabel="+ Novo gestor"
                   onAddNew={() => openFiscalModal("manager")}
                   disabled={listsLoading}
@@ -903,7 +967,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
 
         <FormSection
           title="Itens contratuais"
-          description="Registre mensalidade, implantação, horas, UST, equipamentos, licenças e demais itens precificados. A descrição livre e o tipo padronizado são complementares — não se substituem. O valor total é calculado automaticamente (quantidade × unitário), salvo indicação manual justificada."
+          description="Registre mensalidade, implantação, horas, UST, equipamentos, licenças e demais itens precificados. A descrição livre e o tipo padronizado são complementares: não se substituem. O valor total é calculado automaticamente (quantidade × unitário), salvo indicação manual justificada."
         >
           <ContractPricingItemsEditor
             value={pricingItems}
@@ -995,7 +1059,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
           ) : null}
         </FormSection>
 
-        <FormSection title="Descrição" description="Opcional — objeto ou observações.">
+        <FormSection title="Descrição" description="Opcional: objeto ou observações.">
           <FormField
             control={form.control}
             name="description"

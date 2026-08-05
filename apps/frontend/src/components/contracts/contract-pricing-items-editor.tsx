@@ -346,11 +346,11 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
   }
 
   function typeLabel(typeId: string): string {
-    return types.find((t) => t.id === typeId)?.label ?? "—";
+    return types.find((t) => t.id === typeId)?.label ?? "-";
   }
 
   function unitLabel(unitId: string): string {
-    return units.find((u) => u.id === unitId)?.label ?? "—";
+    return units.find((u) => u.id === unitId)?.label ?? "-";
   }
 
   return (
@@ -396,10 +396,10 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
                       {item.description.trim() || "Sem descrição contratual"}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {Number.isFinite(qty) ? qty : "—"} {unitLabel(item.unitId).toLowerCase()} ×{" "}
-                      {Number.isFinite(uv) ? formatBrl(uv) : "—"} ={" "}
+                      {Number.isFinite(qty) ? qty : "-"} {unitLabel(item.unitId).toLowerCase()} ×{" "}
+                      {Number.isFinite(uv) ? formatBrl(uv) : "-"} ={" "}
                       <span className="font-medium text-slate-800">
-                        {Number.isFinite(total) ? formatBrl(total) : "—"}
+                        {Number.isFinite(total) ? formatBrl(total) : "-"}
                       </span>
                       {item.billingKind === "ON_DEMAND" && item.consumedQuantity != null ? (
                         <span>
@@ -724,8 +724,8 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
 
       {lockHardDelete ? (
         <p className="text-xs text-amber-800">
-          Este contrato já possui medições, aditivos ou memória financeira. Itens existentes não podem ser
-          excluídos definitivamente — use cancelamento para inativá-los.
+          Este contrato já possui medições ou aditivos. Itens existentes não podem ser
+          excluídos definitivamente: use cancelamento para inativá-los.
         </p>
       ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

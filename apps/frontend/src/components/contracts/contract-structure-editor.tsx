@@ -18,13 +18,13 @@ import {
   deleteContractModule,
   deleteContractService,
   fetchContractStructureTemplateBlob,
-  getContractModuleValidators,
   getMyPermissions,
   importContractStructureFromXlsx,
   updateContractFeature,
   updateContractModule,
   updateContractService,
-  type ContractFeatureStatus
+  type ContractFeatureStatus,
+  type ContractLinkedUser
 } from "@/lib/api";
 import {
   formatWeightPt,
@@ -32,10 +32,38 @@ import {
   projectModuleFeaturesSum,
   weightSumMatchesTarget
 } from "@/lib/contract-weights";
-import { queryKeys } from "@/lib/query-keys";
 import { buttonSmallClass, buttonSmallPrimaryClass, formControlClass } from "@/components/ui/form-primitives";
+import { UserMultiSelect } from "@/components/ui/user-multi-select";
 import { cn } from "@/lib/utils";
 import { orderFeaturesByItemCode } from "@/lib/item-code-order";
+
+function moduleFiscalUsers(mod: ModuleRow): ContractLinkedUser[] {
+  if (mod.fiscalUsers && mod.fiscalUsers.length > 0) return mod.fiscalUsers;
+  if (mod.validator) {
+    return [
+      {
+        id: mod.validator.id,
+        name: mod.validator.name || mod.validator.email,
+        email: mod.validator.email,
+        active: true,
+        role: mod.validator.role
+      }
+    ];
+  }
+  return [];
+}
+
+function moduleFiscalUserIds(mod: ModuleRow): string[] {
+  if (mod.fiscalUserIds && mod.fiscalUserIds.length > 0) return mod.fiscalUserIds;
+  return moduleFiscalUsers(mod).map((u) => u.id);
+}
+
+function formatUsersSummary(users: ContractLinkedUser[], emptyLabel = "Sem responsável"): string {
+  if (users.length === 0) return emptyLabel;
+  const names = users.map((u) => u.name || u.email);
+  if (names.length <= 2) return names.join(", ");
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+}
 
 const featureStatusLabels: Record<ContractFeatureStatus, string> = {
   NOT_STARTED: "Não iniciada",
@@ -121,10 +149,10 @@ function ModuleWeightsSummary(props: { modules: ModuleRow[] }): JSX.Element {
       <span className="font-medium">Soma dos pesos dos módulos:</span>{" "}
       <span className="tabular-nums font-semibold">{formatWeightPt(sum)}</span>
       {ok ? (
-        <span className="ml-2 text-emerald-900">— alinhado à meta 1</span>
+        <span className="ml-2 text-emerald-900">- alinhado à meta 1</span>
       ) : (
         <span className="ml-2">
-          — fora da meta (esperado ≈ 1). Ajuste os pesos ou confirme ao salvar; o sistema pedirá confirmação se a soma continuar desalinhada.
+          - fora da meta (esperado ≈ 1). Ajuste os pesos ou confirme ao salvar; o sistema pedirá confirmação se a soma continuar desalinhada.
         </span>
       )}
     </div>
@@ -133,17 +161,15 @@ function ModuleWeightsSummary(props: { modules: ModuleRow[] }): JSX.Element {
 
 export function ContractStructureEditor(props: { contract: Contract }): JSX.Element {
   const [contract, setContract] = useState(props.contract);
+  useEffect(() => {
+    setContract(props.contract);
+  }, [props.contract]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { data: permissions } = useQuery({
     queryKey: ["gestao", "my-permissions"],
     queryFn: getMyPermissions
   });
-  const { data: validators = [] } = useQuery({
-    queryKey: queryKeys.contractModuleValidators,
-    queryFn: getContractModuleValidators
-  });
-
   const cid = contract.id;
 
   async function run(op: () => Promise<Contract>): Promise<void> {
@@ -163,7 +189,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const [structureModalKind, setStructureModalKind] = useState<"module" | "feature">("module");
   const [modalModName, setModalModName] = useState("");
   const [modalModCriticality, setModalModCriticality] = useState<ContractItemCriticality>("MEDIA");
-  const [modalModValidatorId, setModalModValidatorId] = useState("");
+  const [modalModFiscalUserIds, setModalModFiscalUserIds] = useState<string[]>([]);
   const [modalFeatModuleId, setModalFeatModuleId] = useState("");
   const [modalFeatCode, setModalFeatCode] = useState("");
   const [modalFeatCodeError, setModalFeatCodeError] = useState(false);
@@ -171,6 +197,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const [modalFeatCriticality, setModalFeatCriticality] = useState<ContractItemCriticality>("MEDIA");
   const [modalFeatStatus, setModalFeatStatus] = useState<ContractFeatureStatus>("NOT_STARTED");
   const [modalFeatDelivery, setModalFeatDelivery] = useState<ContractItemDeliveryStatus>("NOT_DELIVERED");
+  const [modalFeatValidationGroupId, setModalFeatValidationGroupId] = useState("");
 
   const [replaceOnImport, setReplaceOnImport] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -214,13 +241,14 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   function openStructureModal(): void {
     setModalModName("");
     setModalModCriticality("MEDIA");
-    setModalModValidatorId("");
+    setModalModFiscalUserIds([]);
     setModalFeatName("");
     setModalFeatCode("");
     setModalFeatCodeError(false);
     setModalFeatCriticality("MEDIA");
     setModalFeatStatus("NOT_STARTED");
     setModalFeatDelivery("NOT_DELIVERED");
+    setModalFeatValidationGroupId((contract.validationGroups ?? []).find((g) => g.active)?.id ?? "");
     setModalFeatModuleId(modules[0]?.id ?? "");
     setStructureModalKind(modules.length > 0 ? "feature" : "module");
     setStructureModalOpen(true);
@@ -437,12 +465,12 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     key={mod.id}
                     contractId={cid}
                     module={mod}
+                    validationGroups={contract.validationGroups ?? []}
                     featureFilters={featureFilters}
                     busy={busy}
                     onError={setError}
                     onBusy={setBusy}
                     onUpdated={setContract}
-                    validators={validators}
                     glosaPricingItems={glosaPricingItems}
                     canEditDelivery={canEditDelivery}
                     canEditCriticality={canEditCriticality}
@@ -515,22 +543,15 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     ))}
                   </select>
                 </label>
-                <label className="block text-xs font-medium text-slate-700">
-                  Fiscal responsável pelo módulo
-                  <select
-                    className={`mt-1 w-full ${formControlClass}`}
-                    value={modalModValidatorId}
-                    onChange={(e) => setModalModValidatorId(e.target.value)}
-                    disabled={busy}
-                  >
-                    <option value="">Sem responsável definido</option>
-                    {validators.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.email}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <UserMultiSelect
+                  id="modal-mod-fiscals"
+                  label="Fiscais / responsáveis pelo acompanhamento do módulo"
+                  value={modalModFiscalUserIds}
+                  onChange={setModalModFiscalUserIds}
+                  disabled={busy}
+                  placeholder="Sem acompanhamento definido"
+                  hint="Acompanham o módulo; não são automaticamente responsáveis diretos das funcionalidades."
+                />
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" size="sm" disabled={busy} onClick={closeStructureModal}>
                     Cancelar
@@ -544,7 +565,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                         const c = await createContractModule(cid, {
                           name: modalModName.trim(),
                           criticality: modalModCriticality,
-                          validatorId: modalModValidatorId || null
+                          fiscalUserIds: modalModFiscalUserIds
                         });
                         closeStructureModal();
                         return c;
@@ -592,13 +613,14 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                   {modalFeatCodeError ? <span className="mt-1 block text-xs text-destructive">{REQUIRED_ITEM_CODE_MESSAGE}</span> : null}
                 </label>
                 <label className="block text-xs font-medium text-slate-700">
-                  Nome da funcionalidade
-                  <input
-                    className={`mt-1 w-full ${formControlClass}`}
-                    placeholder="Descrição curta"
+                  Descrição da funcionalidade
+                  <textarea
+                    className={`mt-1 min-h-[5.5rem] max-h-[18rem] w-full resize-y ${formControlClass}`}
+                    placeholder="Descrição completa da funcionalidade"
                     value={modalFeatName}
                     onChange={(e) => setModalFeatName(e.target.value)}
                     disabled={busy}
+                    rows={4}
                   />
                 </label>
                 {canEditCriticality ? (
@@ -652,6 +674,24 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     </label>
                   ) : null}
                 </div>
+                <label className="block text-xs font-medium text-slate-700">
+                  Grupo de validação <span className="text-destructive">*</span>
+                  <select
+                    className={`mt-1 w-full ${formControlClass}`}
+                    value={modalFeatValidationGroupId}
+                    onChange={(e) => setModalFeatValidationGroupId(e.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="">Selecione um grupo…</option>
+                    {(contract.validationGroups ?? [])
+                      .filter((g) => g.active)
+                      .map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" size="sm" disabled={busy} onClick={closeStructureModal}>
                     Cancelar
@@ -659,11 +699,15 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                   <Button
                     type="button"
                     size="sm"
-                    disabled={busy || !modalFeatName.trim() || !modalFeatModuleId}
+                    disabled={busy || !modalFeatName.trim() || !modalFeatModuleId || !modalFeatValidationGroupId}
                     onClick={() => {
                       if (!modalFeatCode.trim()) {
                         setModalFeatCodeError(true);
                         toast.error(REQUIRED_ITEM_CODE_MESSAGE);
+                        return;
+                      }
+                      if (!modalFeatValidationGroupId) {
+                        setError("Selecione o grupo de validação da funcionalidade.");
                         return;
                       }
                       const mod = modules.find((m) => m.id === modalFeatModuleId);
@@ -676,6 +720,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                           itemCode: modalFeatCode.trim() || null,
                           name: modalFeatName.trim(),
                           status: modalFeatStatus,
+                          validationGroupId: modalFeatValidationGroupId,
                           ...(canEditCriticality ? { criticality: modalFeatCriticality } : {}),
                           ...(canEditDelivery ? { deliveryStatus: modalFeatDelivery } : {})
                         });
@@ -778,12 +823,12 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 function ModuleBlock(props: {
   contractId: string;
   module: ModuleRow;
+  validationGroups: NonNullable<Contract["validationGroups"]>;
   featureFilters: FeatureFilters;
   busy: boolean;
   onError: (m: string | null) => void;
   onBusy: (b: boolean) => void;
   onUpdated: (c: Contract) => void;
-  validators: Array<{ id: string; email: string; role: string }>;
   glosaPricingItems: Array<{ id: string; sequence: number; description: string }>;
   canEditDelivery: boolean;
   canEditCriticality: boolean;
@@ -791,19 +836,20 @@ function ModuleBlock(props: {
   const {
     contractId,
     module: mod,
+    validationGroups,
     featureFilters,
     busy,
     onError,
     onBusy,
     onUpdated,
-    validators,
     glosaPricingItems,
     canEditDelivery,
     canEditCriticality
   } = props;
+  const fiscalUsers = moduleFiscalUsers(mod);
   const [name, setName] = useState(mod.name);
   const [criticality, setCriticality] = useState<ContractItemCriticality>(mod.criticality ?? "MEDIA");
-  const [validatorId, setValidatorId] = useState(mod.validatorId ?? "");
+  const [fiscalUserIds, setFiscalUserIds] = useState<string[]>(() => moduleFiscalUserIds(mod));
   const [glosaPricingItemId, setGlosaPricingItemId] = useState(mod.glosaPricingItemId ?? "");
   const [fCode, setFCode] = useState("");
   const [fCodeError, setFCodeError] = useState(false);
@@ -813,12 +859,14 @@ function ModuleBlock(props: {
   useEffect(() => {
     setName(mod.name);
     setCriticality(mod.criticality ?? "MEDIA");
-    setValidatorId(mod.validatorId ?? "");
+    setFiscalUserIds(moduleFiscalUserIds(mod));
     setGlosaPricingItemId(mod.glosaPricingItemId ?? "");
-  }, [mod.name, mod.criticality, mod.validatorId, mod.glosaPricingItemId]);
+  }, [mod]);
   const [fCriticality, setFCriticality] = useState<ContractItemCriticality>("MEDIA");
   const [fStatus, setFStatus] = useState<ContractFeatureStatus>("NOT_STARTED");
   const [fDelivery, setFDelivery] = useState<ContractItemDeliveryStatus>("NOT_DELIVERED");
+  const activeGroups = validationGroups.filter((g) => g.active);
+  const [fValidationGroupId, setFValidationGroupId] = useState(activeGroups[0]?.id ?? "");
 
   async function exec(op: () => Promise<Contract>): Promise<void> {
     onError(null);
@@ -836,7 +884,7 @@ function ModuleBlock(props: {
   const deliveredCount = mod.features.filter((f) => f.deliveryStatus === "DELIVERED").length;
   const partialCount = mod.features.filter((f) => f.deliveryStatus === "PARTIALLY_DELIVERED").length;
   const notDeliveredCount = mod.features.filter((f) => (f.deliveryStatus ?? "NOT_DELIVERED") === "NOT_DELIVERED").length;
-  const validatorLabel = mod.validator?.email ?? validators.find((user) => user.id === validatorId)?.email ?? "Sem responsável";
+  const fiscalsLabel = formatUsersSummary(fiscalUsers, "Sem fiscal definido");
   const hasFeatureFilters = Boolean(featureFilters.deliveryStatus || featureFilters.criticality || featureFilters.query.trim());
   const filteredFeatures = mod.features.filter((feature) => featureMatchesFilters(feature, featureFilters));
   const orderedFeatures = orderFeaturesByItemCode(filteredFeatures, { flatDepth: hasFeatureFilters });
@@ -851,14 +899,14 @@ function ModuleBlock(props: {
           <span className="text-red-700">{notDeliveredCount} não entregues</span>
         </div>
         <div className="min-w-0">
-          <span className="font-medium text-slate-900">Fiscal responsável: </span>
-          <span className="break-all text-slate-600">{validatorLabel}</span>
+          <span className="font-medium text-slate-900">Acompanhamento do módulo: </span>
+          <span className="break-all text-slate-600">{fiscalsLabel}</span>
         </div>
         {mod.glosaPricingItem ? (
           <div className="min-w-0">
             <span className="font-medium text-slate-900">Base de glosa: </span>
             <span className="break-words text-slate-600">
-              #{mod.glosaPricingItem.sequence} — {mod.glosaPricingItem.description}
+              #{mod.glosaPricingItem.sequence} · {mod.glosaPricingItem.description}
             </span>
           </div>
         ) : null}
@@ -888,22 +936,16 @@ function ModuleBlock(props: {
             ))}
           </select>
         </label>
-        <label className="flex min-w-[14rem] flex-col text-xs text-slate-600">
-          Fiscal responsável
-          <select
-            className={`mt-0.5 ${formControlClass}`}
-            value={validatorId}
-            onChange={(e) => setValidatorId(e.target.value)}
-            disabled={busy}
-          >
-            <option value="">Sem responsável</option>
-            {validators.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.email}
-              </option>
-            ))}
-          </select>
-        </label>
+        <UserMultiSelect
+          id={`module-fiscals-${mod.id}`}
+          label="Fiscais / responsáveis pelo acompanhamento do módulo"
+          className="min-w-[16rem] flex-1"
+          value={fiscalUserIds}
+          onChange={setFiscalUserIds}
+          linkedUsers={fiscalUsers}
+          disabled={busy}
+          placeholder="Sem acompanhamento definido"
+        />
         <label className="flex min-w-[16rem] flex-col text-xs text-slate-600">
           Base de glosa (item contratual)
           <select
@@ -915,7 +957,7 @@ function ModuleBlock(props: {
             <option value="">Sem vínculo</option>
             {glosaPricingItems.map((item) => (
               <option key={item.id} value={item.id}>
-                #{item.sequence} — {item.description}
+                #{item.sequence} · {item.description}
               </option>
             ))}
           </select>
@@ -932,7 +974,7 @@ function ModuleBlock(props: {
               updateContractModule(contractId, mod.id, {
                 name: name.trim(),
                 criticality,
-                validatorId: validatorId || null,
+                fiscalUserIds,
                 glosaPricingItemId: glosaPricingItemId || null
               })
             );
@@ -980,6 +1022,7 @@ function ModuleBlock(props: {
                 contractId={contractId}
                 moduleId={mod.id}
                 feature={f}
+                validationGroups={validationGroups}
                 depth={depth}
                 busy={busy}
                 onError={onError}
@@ -1009,6 +1052,20 @@ function ModuleBlock(props: {
               onChange={(e) => setFName(e.target.value)}
               disabled={busy}
             />
+            <select
+              className={`${formControlClass} text-sm`}
+              value={fValidationGroupId}
+              onChange={(e) => setFValidationGroupId(e.target.value)}
+              disabled={busy || activeGroups.length === 0}
+              title="Grupo de validação"
+            >
+              <option value="">{activeGroups.length === 0 ? "Cadastre um grupo primeiro" : "Grupo de validação…"}</option>
+              {activeGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
             {canEditCriticality ? (
               <select
                 className={`${formControlClass} text-sm`}
@@ -1052,11 +1109,15 @@ function ModuleBlock(props: {
             <button
               type="button"
               className="rounded bg-slate-700 px-2 py-1 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
-              disabled={busy || !fName.trim()}
+              disabled={busy || !fName.trim() || !fValidationGroupId}
               onClick={() => {
                 if (!fCode.trim()) {
                   setFCodeError(true);
                   toast.error(REQUIRED_ITEM_CODE_MESSAGE);
+                  return;
+                }
+                if (!fValidationGroupId) {
+                  onError("Selecione o grupo de validação da funcionalidade.");
                   return;
                 }
                 void exec(async () => {
@@ -1064,6 +1125,7 @@ function ModuleBlock(props: {
                     itemCode: fCode.trim() || null,
                     name: fName.trim(),
                     status: fStatus,
+                    validationGroupId: fValidationGroupId,
                     ...(canEditCriticality ? { criticality: fCriticality } : {}),
                     ...(canEditDelivery ? { deliveryStatus: fDelivery } : {})
                   });
@@ -1090,6 +1152,7 @@ function FeatureRow(props: {
   contractId: string;
   moduleId: string;
   feature: ModuleRow["features"][number];
+  validationGroups: NonNullable<Contract["validationGroups"]>;
   depth?: number;
   busy: boolean;
   onError: (m: string | null) => void;
@@ -1102,6 +1165,7 @@ function FeatureRow(props: {
     contractId,
     moduleId,
     feature: f,
+    validationGroups,
     depth = 0,
     busy,
     onError,
@@ -1118,6 +1182,8 @@ function FeatureRow(props: {
   const [deliveryStatus, setDeliveryStatus] = useState<ContractItemDeliveryStatus>(
     (f.deliveryStatus as ContractItemDeliveryStatus | undefined) ?? "NOT_DELIVERED"
   );
+  const [responsibleUserIds, setResponsibleUserIds] = useState<string[]>(() => f.responsibleUserIds ?? []);
+  const [validationGroupId, setValidationGroupId] = useState(f.validationGroupId ?? "");
 
   useEffect(() => {
     setItemCode(f.itemCode ?? "");
@@ -1126,7 +1192,9 @@ function FeatureRow(props: {
     setCriticality(f.criticality ?? "MEDIA");
     setStatus(f.status as ContractFeatureStatus);
     setDeliveryStatus((f.deliveryStatus as ContractItemDeliveryStatus | undefined) ?? "NOT_DELIVERED");
-  }, [f.itemCode, f.name, f.criticality, f.status, f.deliveryStatus]);
+    setResponsibleUserIds(f.responsibleUserIds ?? []);
+    setValidationGroupId(f.validationGroupId ?? "");
+  }, [f]);
 
   async function exec(op: () => Promise<Contract>): Promise<void> {
     onError(null);
@@ -1140,93 +1208,153 @@ function FeatureRow(props: {
     }
   }
 
+  const groupUndefined = !validationGroupId;
+  const effectiveUsers = f.effectiveResponsibles ?? [
+    ...(f.groupMemberUsers ?? []),
+    ...(f.responsibleUsers ?? []).filter((u) => responsibleUserIds.includes(u.id))
+  ];
+  const effectiveSummary = formatUsersSummary(effectiveUsers, "Sem responsáveis efetivos");
+  const activeGroups = validationGroups.filter((g) => g.active || g.id === validationGroupId);
+
   return (
     <li
-      className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-sm"
+      className="flex flex-col gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-sm"
       style={depth > 0 ? { marginLeft: `${depth * 1.25}rem`, borderLeftWidth: "3px", borderLeftColor: "rgb(203 213 225)" } : undefined}
     >
-      <input
-        className={cn("w-32", formControlClass, itemCodeError && "border-destructive focus-visible:ring-destructive")}
-        placeholder="Código"
-        value={itemCode}
-        aria-invalid={itemCodeError}
-        onChange={(e) => {
-          setItemCode(e.target.value);
-          if (e.target.value.trim()) setItemCodeError(false);
-        }}
+      <div className="flex flex-wrap items-end gap-2">
+        <input
+          className={cn("w-32", formControlClass, itemCodeError && "border-destructive focus-visible:ring-destructive")}
+          placeholder="Código"
+          value={itemCode}
+          aria-invalid={itemCodeError}
+          onChange={(e) => {
+            setItemCode(e.target.value);
+            if (e.target.value.trim()) setItemCodeError(false);
+          }}
+          disabled={busy}
+        />
+        {canEditCriticality ? (
+          <select
+            className={`${formControlClass} py-1.5 text-xs`}
+            value={criticality}
+            onChange={(e) => setCriticality(e.target.value as ContractItemCriticality)}
+            disabled={busy}
+          >
+            {criticalityOptions.map((s) => (
+              <option key={s} value={s}>
+                {criticalityLabels[s]}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">Peso {formatWeightPt(Number(f.weight))}</span>
+        <select className={`${formControlClass} py-1.5 text-xs`} value={status} onChange={(e) => setStatus(e.target.value as ContractFeatureStatus)} disabled={busy}>
+          {featureStatuses.map((s) => (
+            <option key={s} value={s}>
+              {featureStatusLabels[s]}
+            </option>
+          ))}
+        </select>
+        {canEditDelivery ? (
+          <select
+            className={`${formControlClass} min-w-[10.5rem] py-1.5 text-xs`}
+            value={deliveryStatus}
+            onChange={(e) => setDeliveryStatus(e.target.value as ContractItemDeliveryStatus)}
+            disabled={busy}
+          >
+            {itemDeliveryOptions.map((s) => (
+              <option key={s} value={s}>
+                {itemDeliveryLabels[s]}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <button
+          type="button"
+          className={`${buttonSmallClass} py-0.5 text-xs`}
+          disabled={busy}
+          onClick={() => {
+            if (!itemCode.trim()) {
+              setItemCodeError(true);
+              toast.error(REQUIRED_ITEM_CODE_MESSAGE);
+              return;
+            }
+            void exec(async () =>
+              updateContractFeature(contractId, moduleId, f.id, {
+                itemCode: itemCode.trim() || null,
+                name: name.trim(),
+                status,
+                validationGroupId: validationGroupId || null,
+                responsibleUserIds,
+                ...(canEditCriticality ? { criticality } : {}),
+                ...(canEditDelivery ? { deliveryStatus } : {})
+              })
+            );
+          }}
+        >
+          Salvar
+        </button>
+        <button
+          type="button"
+          className="text-xs text-red-700 hover:underline disabled:opacity-50"
+          disabled={busy}
+          onClick={() => {
+            if (!confirm("Remover esta funcionalidade?")) return;
+            void exec(() => deleteContractFeature(contractId, moduleId, f.id));
+          }}
+        >
+          Apagar
+        </button>
+      </div>
+      <textarea
+        className={`min-h-[4.5rem] max-h-[16rem] w-full resize-y font-normal ${formControlClass}`}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
         disabled={busy}
+        rows={3}
+        aria-label="Descrição da funcionalidade"
       />
-      <input className={`min-w-[8rem] flex-1 ${formControlClass}`} value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
-      {canEditCriticality ? (
-        <select
-          className={`${formControlClass} py-1.5 text-xs`}
-          value={criticality}
-          onChange={(e) => setCriticality(e.target.value as ContractItemCriticality)}
+      <div className="rounded-md border border-slate-100 bg-slate-50/80 px-2 py-2 space-y-2">
+        <label className="block text-xs font-medium text-slate-700">
+          Grupo de validação
+          <select
+            className={cn("mt-1 w-full", formControlClass, groupUndefined && "border-amber-400")}
+            value={validationGroupId}
+            onChange={(e) => setValidationGroupId(e.target.value)}
+            disabled={busy}
+          >
+            <option value="">Grupo não definido</option>
+            {activeGroups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}{g.active ? "" : " (inativo)"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {groupUndefined ? (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-900">Grupo não definido</span>
+          ) : (
+            <span className="rounded bg-violet-100 px-1.5 py-0.5 font-medium text-violet-900">
+              Grupo: {f.validationGroup?.name ?? "selecionado"}
+            </span>
+          )}
+          {responsibleUserIds.length > 0 ? (
+            <span className="rounded bg-sky-100 px-1.5 py-0.5 font-medium text-sky-900">+ responsáveis específicos</span>
+          ) : null}
+          <span className="text-slate-600">Efetivos: {effectiveSummary}</span>
+        </div>
+        <UserMultiSelect
+          id={`feature-responsibles-${f.id}`}
+          label="Responsáveis específicos do item (complementam o grupo)"
+          value={responsibleUserIds}
+          onChange={setResponsibleUserIds}
+          linkedUsers={f.responsibleUsers ?? []}
           disabled={busy}
-        >
-          {criticalityOptions.map((s) => (
-            <option key={s} value={s}>
-              {criticalityLabels[s]}
-            </option>
-          ))}
-        </select>
-      ) : null}
-      <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">Peso {formatWeightPt(Number(f.weight))}</span>
-      <select className={`${formControlClass} py-1.5 text-xs`} value={status} onChange={(e) => setStatus(e.target.value as ContractFeatureStatus)} disabled={busy}>
-        {featureStatuses.map((s) => (
-          <option key={s} value={s}>
-            {featureStatusLabels[s]}
-          </option>
-        ))}
-      </select>
-      {canEditDelivery ? (
-        <select
-          className={`${formControlClass} min-w-[10.5rem] py-1.5 text-xs`}
-          value={deliveryStatus}
-          onChange={(e) => setDeliveryStatus(e.target.value as ContractItemDeliveryStatus)}
-          disabled={busy}
-        >
-          {itemDeliveryOptions.map((s) => (
-            <option key={s} value={s}>
-              {itemDeliveryLabels[s]}
-            </option>
-          ))}
-        </select>
-      ) : null}
-      <button
-        type="button"
-        className={`${buttonSmallClass} py-0.5 text-xs`}
-        disabled={busy}
-        onClick={() => {
-          if (!itemCode.trim()) {
-            setItemCodeError(true);
-            toast.error(REQUIRED_ITEM_CODE_MESSAGE);
-            return;
-          }
-          void exec(async () =>
-            updateContractFeature(contractId, moduleId, f.id, {
-              itemCode: itemCode.trim() || null,
-              name: name.trim(),
-              status,
-              ...(canEditCriticality ? { criticality } : {}),
-              ...(canEditDelivery ? { deliveryStatus } : {})
-            })
-          );
-        }}
-      >
-        Salvar
-      </button>
-      <button
-        type="button"
-        className="text-xs text-red-700 hover:underline disabled:opacity-50"
-        disabled={busy}
-        onClick={() => {
-          if (!confirm("Remover esta funcionalidade?")) return;
-          void exec(() => deleteContractFeature(contractId, moduleId, f.id));
-        }}
-      >
-        Apagar
-      </button>
+          placeholder="Somente membros do grupo"
+          hint="Os selecionados complementam os membros do grupo de validação; não substituem o grupo."
+        />
+      </div>
     </li>
   );
 }

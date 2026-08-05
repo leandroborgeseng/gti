@@ -13,7 +13,7 @@ type Props = {
 /**
  * Prévia do conteúdo GLPI como HTML (sanitizado + proxy de anexos no browser).
  */
-export function TicketHtmlPreview({ html, className, emptyLabel = "—" }: Props): JSX.Element {
+export function TicketHtmlPreview({ html, className, emptyLabel = "-" }: Props): JSX.Element {
   const safe = useMemo(() => sanitizeAndProxyTicketHtml(html), [html]);
   const isEmpty = !safe.trim() || safe === "<p></p>" || safe === "<p><br></p>";
 

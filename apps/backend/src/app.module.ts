@@ -22,6 +22,8 @@ import { OrganizationsModule } from "./modules/organizations/organizations.modul
 import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { ContractTypeCatalogModule } from "./modules/contract-type-catalog/contract-type-catalog.module";
 import { HiringTypesModule } from "./modules/hiring-types/hiring-types.module";
+import { AuditLogsModule } from "./modules/audit-logs/audit-logs.module";
+import { DeadlinesModule } from "./modules/deadlines/deadlines.module";
 
 @Module({
   imports: [
@@ -42,7 +44,9 @@ import { HiringTypesModule } from "./modules/hiring-types/hiring-types.module";
     OrganizationsModule,
     PermissionsModule,
     ContractTypeCatalogModule,
-    HiringTypesModule
+    HiringTypesModule,
+    AuditLogsModule,
+    DeadlinesModule
   ],
   providers: [
     PrismaService,

@@ -89,12 +89,12 @@ export async function GET(): Promise<NextResponse> {
       if (!arranqueGlpiUltimo) {
         avisos.push(
           checkpointVisivel
-            ? "Checkpoint de inicialização não foi relido após espera — chame este URL novamente ou veja Deploy Logs."
+            ? "Checkpoint de inicialização não foi relido após espera: chame este URL novamente ou veja Deploy Logs."
             : "Após esperar até 5 s, ainda não há checkpoint em SyncState (`glpi_bootstrap_last_v1_next`). Possíveis causas: falha ao salvar no banco de dados (Deploy Logs: «Não foi possível salvar o checkpoint de inicialização GLPI»), `DATABASE_URL` errada neste processo, ou o bootstrap não iniciou (veja «register() executado» / «Agendando bootstrap GLPI»)."
         );
       } else if (arranqueGlpiUltimo.phase === "instrumentation_pre_bootstrap") {
         avisos.push(
-          "Checkpoint legado «instrumentation_pre_bootstrap» — redeploy com a versão atual do código ou ver Deploy Logs por falhas no import do `sync-cron`."
+          "Checkpoint legado «instrumentation_pre_bootstrap»: redeploy com a versão atual do código ou ver Deploy Logs por falhas no import do `sync-cron`."
         );
       } else if (
         arranqueGlpiUltimo.phase === "first_sync_delegated" &&
@@ -103,7 +103,7 @@ export async function GET(): Promise<NextResponse> {
         Date.now() - Date.parse(arranqueGlpiUltimo.at) > 600_000
       ) {
         avisos.push(
-          "A primeira sync foi lançada em segundo plano há mais de 10 minutos e ainda não há estado persistido — falha na sync ou na escrita em SyncState (ver Deploy Logs: «Primeira sincronização GLPI em segundo plano» ou erro Prisma). Pode forçar uma sync com POST /api/glpi/sync e o cabeçalho x-gti-glpi-sync-secret (variável GLPI_SYNC_TRIGGER_SECRET)."
+          "A primeira sync foi lançada em segundo plano há mais de 10 minutos e ainda não há estado persistido: falha na sync ou na escrita em SyncState (ver Deploy Logs: «Primeira sincronização GLPI em segundo plano» ou erro Prisma). Pode forçar uma sync com POST /api/glpi/sync e o cabeçalho x-gti-glpi-sync-secret (variável GLPI_SYNC_TRIGGER_SECRET)."
         );
       } else if (
         arranqueGlpiUltimo.phase === "after_ensure_db" &&
@@ -121,11 +121,11 @@ export async function GET(): Promise<NextResponse> {
         Date.now() - Date.parse(arranqueGlpiUltimo.at) > 120_000
       ) {
         avisos.push(
-          `O último checkpoint («${arranqueGlpiUltimo.phase}») tem mais de 2 minutos — o arranque pode estar preso antes de delegar a sync (ver Deploy Logs).`
+          `O último checkpoint («${arranqueGlpiUltimo.phase}») tem mais de 2 minutos: o arranque pode estar preso antes de delegar a sync (ver Deploy Logs).`
         );
       } else if (arranqueGlpiUltimo.phase === "bootstrap_done" && !dbRead.linhaComValor) {
         avisos.push(
-          "Arranque concluído (`bootstrap_done`) sem estado de sync no banco de dados — possível base nova ou `DATABASE_URL` diferente entre o arranque e este pedido, ou falhas repetidas ao persistir só a chave de estado da sync."
+          "Arranque concluído (`bootstrap_done`) sem estado de sync no banco de dados: possível base nova ou `DATABASE_URL` diferente entre o arranque e este pedido, ou falhas repetidas ao persistir só a chave de estado da sync."
         );
       } else {
         avisos.push(
@@ -160,12 +160,12 @@ export async function GET(): Promise<NextResponse> {
           Math.abs(tInicioSync - tBootstrapConcluido) < 120_000;
         if (!sincronizacaoDaMesmaVaga) {
           avisos.push(
-            `O checkpoint «${arranqueGlpiUltimo.phase}» (${arranqueGlpiUltimo.at}) é posterior ao último bootstrap concluído (${arranqueGlpiBootstrapConcluidoEm}) — típico de novo processo/redeploy ou de um nova inicialização a disputar a mesmo banco de dados enquanto o estado da sync ainda reflete uma execução anterior (ex.: sync longa). Isso não indica, por si, várias réplicas do Next.`
+            `O checkpoint «${arranqueGlpiUltimo.phase}» (${arranqueGlpiUltimo.at}) é posterior ao último bootstrap concluído (${arranqueGlpiBootstrapConcluidoEm}): típico de novo processo/redeploy ou de um nova inicialização a disputar a mesmo banco de dados enquanto o estado da sync ainda reflete uma execução anterior (ex.: sync longa). Isso não indica, por si, várias réplicas do Next.`
           );
         }
       } else if (!bootstrapConcluidoValido) {
         avisos.push(
-          "O checkpoint de inicialização no banco de dados é mais recente que o início da sync atual e ainda não há marcador de bootstrap concluído nesta base — pode haver mais do que uma réplica do Next a escrever na mesma base. Use 1 réplica ou GLPI_CRON_DISABLED=1 nas réplicas só HTTP e um worker de sync único."
+          "O checkpoint de inicialização no banco de dados é mais recente que o início da sync atual e ainda não há marcador de bootstrap concluído nesta base: pode haver mais do que uma réplica do Next a escrever na mesma base. Use 1 réplica ou GLPI_CRON_DISABLED=1 nas réplicas só HTTP e um worker de sync único."
         );
       }
     }

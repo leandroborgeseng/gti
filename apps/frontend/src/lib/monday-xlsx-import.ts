@@ -334,7 +334,7 @@ export function buildMondayImportWarnings(payload: MondayImportPayload): string[
   const titleByGroup = new Map<string, Map<string, number>>();
 
   function walk(nodes: MondayImportTaskNode[], groupName: string): void {
-    const gKey = groupName.trim().toLowerCase() || "—";
+    const gKey = groupName.trim().toLowerCase() || "-";
     let titles = titleByGroup.get(gKey);
     if (!titles) {
       titles = new Map();
@@ -358,7 +358,7 @@ export function buildMondayImportWarnings(payload: MondayImportPayload): string[
   }
 
   if (emptyStatus > 0) {
-    warnings.push(`${emptyStatus} tarefa(s) sem status — considere preencher no Monday para o quadro ficar mais claro.`);
+    warnings.push(`${emptyStatus} tarefa(s) sem status: considere preencher no Monday para o quadro ficar mais claro.`);
   }
   if (invalidDates > 0) {
     warnings.push(`${invalidDates} valor(es) de data inválido(s); serão salvos como sem data se a importação os rejeitar.`);
@@ -371,7 +371,7 @@ export function buildMondayImportWarnings(payload: MondayImportPayload): string[
     }
   }
   if (dupRoots > 0) {
-    warnings.push(`${dupRoots} título(s) repetido(s) no mesmo grupo — verifique se não é erro de exportação.`);
+    warnings.push(`${dupRoots} título(s) repetido(s) no mesmo grupo: verifique se não é erro de exportação.`);
   }
 
   if (countMondayImportRootTasks(payload) === 0) {

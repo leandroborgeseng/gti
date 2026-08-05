@@ -56,7 +56,7 @@ export function ContractPricingItemsPanel({ contract }: Props): JSX.Element {
                   className={`border-b border-slate-100 ${item.status === "CANCELLED" ? "opacity-60" : ""}`}
                 >
                   <td className="px-2 py-2 align-top text-slate-700">{item.sequence}</td>
-                  <td className="px-2 py-2 align-top text-slate-800">{item.type?.label ?? "—"}</td>
+                  <td className="px-2 py-2 align-top text-slate-800">{item.type?.label ?? "-"}</td>
                   <td className="max-w-xs px-2 py-2 align-top text-slate-700">
                     <p className="line-clamp-3 whitespace-pre-wrap">{item.description}</p>
                     {item.status === "CANCELLED" ? (
@@ -79,7 +79,7 @@ export function ContractPricingItemsPanel({ contract }: Props): JSX.Element {
                       </p>
                     ) : null}
                   </td>
-                  <td className="px-2 py-2 align-top text-slate-700">{item.unit?.label ?? "—"}</td>
+                  <td className="px-2 py-2 align-top text-slate-700">{item.unit?.label ?? "-"}</td>
                   <td className="px-2 py-2 align-top tabular-nums text-slate-800">{formatBrl(item.unitValue)}</td>
                   <td className="px-2 py-2 align-top tabular-nums font-medium text-slate-900">
                     {formatBrl(item.totalValue)}

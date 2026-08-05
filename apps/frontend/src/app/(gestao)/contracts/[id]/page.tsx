@@ -2,14 +2,17 @@ import type { Route } from "next";
 import Link from "next/link";
 import { ContractDeleteButton } from "@/components/contracts/contract-delete-button";
 import { ContractInternalCodeRegenerateButton } from "@/components/contracts/contract-internal-code-regenerate-button";
-import { ContractFinancialSnapshotsPanel } from "@/components/contracts/contract-financial-snapshots-panel";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractGlpiGroupsPanel } from "@/components/contracts/contract-glpi-groups-panel";
+import { ContractGlpiTicketsPanel } from "@/components/contracts/contract-glpi-tickets-panel";
 import { ContractItemChangeHistoryPanel } from "@/components/contracts/contract-item-change-history-panel";
 import { ContractPricingItemsPanel } from "@/components/contracts/contract-pricing-items-panel";
 import { ContractStatusControl } from "@/components/contracts/contract-status-control";
 import { ContractImplantationProportionPanel } from "@/components/contracts/contract-implantation-proportion-panel";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
+import { ContractOccurrencesPanel } from "@/components/contracts/contract-occurrences-panel";
+import { ContractSchedulesPanel } from "@/components/contracts/contract-schedules-panel";
+import { ContractValidationGroupsPanel } from "@/components/contracts/contract-validation-groups-panel";
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { formatBrl } from "@/lib/format-brl";
@@ -36,11 +39,11 @@ const lawTypeLabel: Record<string, string> = {
 
 function formatSlaTarget(raw: string | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {
-    return "—";
+    return "-";
   }
   const n = Number(String(raw).replace(",", "."));
   if (!Number.isFinite(n)) {
-    return "—";
+    return "-";
   }
   return n.toLocaleString("pt-BR", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
 }
@@ -76,21 +79,21 @@ export default async function ContractDetailPage({ params }: { params: { id: str
     );
   }
 
-  const cnpj = contract.cnpj ?? contract.supplier?.cnpj ?? "—";
-  const law = contract.lawType ? lawTypeLabel[contract.lawType] ?? contract.lawType : "—";
+  const cnpj = contract.cnpj ?? contract.supplier?.cnpj ?? "-";
+  const law = contract.lawType ? lawTypeLabel[contract.lawType] ?? contract.lawType : "-";
   const catalogType = contract.contractTypeCatalog
     ?? typesRes.data?.find((t) => t.id === contract.contractTypeCatalogId);
   const tipo = catalogType
     ? catalogType.acronym
-      ? `${catalogType.acronym} — ${catalogType.name}`
+      ? `${catalogType.acronym} · ${catalogType.name}`
       : catalogType.name
     : contractTypeLabel[contract.contractType] ?? contract.contractType;
   const org = contract.organization ?? orgsRes.data?.find((o) => o.id === contract.organizationId);
   const orgLabel = org
     ? org.acronym
-      ? `${org.acronym} — ${org.name}`
+      ? `${org.acronym} · ${org.name}`
       : org.name
-    : contract.managingUnit ?? "—";
+    : contract.managingUnit ?? "-";
   const hiring = contract.hiringType ?? hiringRes.data?.find((h) => h.id === contract.hiringTypeId);
   const formalDisplay =
     contract.formalNumber && contract.contractYear
@@ -135,7 +138,7 @@ export default async function ContractDetailPage({ params }: { params: { id: str
 
       <Card className="p-5">
         <h1 className="text-xl font-semibold text-slate-900">
-          {contract.number} — {contract.name}
+          {contract.number} · {contract.name}
         </h1>
         {contract.description ? <p className="mt-2 text-sm text-slate-600">{contract.description}</p> : null}
 
@@ -206,11 +209,11 @@ export default async function ContractDetailPage({ params }: { params: { id: str
               <strong className="text-slate-900">Período de implantação:</strong>{" "}
               {contract.implementationPeriodStart
                 ? new Date(contract.implementationPeriodStart).toLocaleDateString("pt-BR")
-                : "—"}{" "}
+                : "-"}{" "}
               a{" "}
               {contract.implementationPeriodEnd
                 ? new Date(contract.implementationPeriodEnd).toLocaleDateString("pt-BR")
-                : "—"}
+                : "-"}
             </p>
           ) : null}
           <p>
@@ -234,7 +237,7 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           {contract.globalValueManual ? (
             <p className="md:col-span-2">
               <strong className="text-slate-900">Justificativa do ajuste manual:</strong>{" "}
-              {contract.globalValueJustification ?? "—"}
+              {contract.globalValueJustification ?? "-"}
               {globalAdjustmentDifference != null && Number.isFinite(globalAdjustmentDifference) ? (
                 <> · Diferença para os itens: {formatBrl(globalAdjustmentDifference)}</>
               ) : null}
@@ -255,7 +258,7 @@ export default async function ContractDetailPage({ params }: { params: { id: str
         <div className="mt-6 grid gap-4 border-t border-slate-100 pt-4 md:grid-cols-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fiscal</p>
-            <p className="mt-1 text-sm text-slate-800">{contract.fiscal?.name ?? "—"}</p>
+            <p className="mt-1 text-sm text-slate-800">{contract.fiscal?.name ?? "-"}</p>
             {contract.fiscal?.email ? (
               <a href={`mailto:${contract.fiscal.email}`} className="text-xs text-slate-600 underline">
                 {contract.fiscal.email}
@@ -264,7 +267,7 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gestor</p>
-            <p className="mt-1 text-sm text-slate-800">{contract.manager?.name ?? "—"}</p>
+            <p className="mt-1 text-sm text-slate-800">{contract.manager?.name ?? "-"}</p>
             {contract.manager?.email ? (
               <a href={`mailto:${contract.manager.email}`} className="text-xs text-slate-600 underline">
                 {contract.manager.email}
@@ -273,7 +276,7 @@ export default async function ContractDetailPage({ params }: { params: { id: str
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fornecedor cadastrado</p>
-            <p className="mt-1 text-sm text-slate-800">{contract.supplier?.name ?? "—"}</p>
+            <p className="mt-1 text-sm text-slate-800">{contract.supplier?.name ?? "-"}</p>
             {contract.supplier?.cnpj ? <p className="text-xs text-slate-600">{contract.supplier.cnpj}</p> : null}
           </div>
         </div>
@@ -281,17 +284,19 @@ export default async function ContractDetailPage({ params }: { params: { id: str
 
       <ContractPricingItemsPanel contract={contract} />
 
-      <ContractFinancialSnapshotsPanel
-        contractId={contract.id}
-        snapshots={contract.financialSnapshots}
-        currentMonthly={contract.monthlyValue}
-      />
-
       <ContractImplantationProportionPanel data={contract.featureImplantationProportion} />
 
       <ContractGlpiGroupsPanel contractId={contract.id} initialGroups={contract.glpiGroups ?? []} />
 
+      <ContractGlpiTicketsPanel contractId={contract.id} glpiGroups={contract.glpiGroups ?? []} />
+
       <ContractAmendmentsPanel contract={contract} />
+
+      <ContractSchedulesPanel contract={contract} />
+
+      <ContractOccurrencesPanel contract={contract} />
+
+      <ContractValidationGroupsPanel contractId={contract.id} groups={contract.validationGroups ?? []} />
 
       <ContractStructureEditor contract={contract} />
 

@@ -5,7 +5,7 @@ import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, FilePlus2, FileStack, Layers, Pencil } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Component, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
 import type { Contract } from "@/lib/api";
 import { getContracts } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
@@ -17,6 +17,47 @@ import "@/styles/gti-exec-metric-dash.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
+
+class ContractFormErrorBoundary extends Component<
+  { children: ReactNode; onReset: () => void },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Erro ao abrir formulário de contrato", error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-medium">Não foi possível abrir o formulário deste contrato.</p>
+          <p className="text-amber-900/90">
+            Alguns dados podem estar incompletos ou incompatíveis com o cadastro atual. Use «Abrir» para consultar o
+            detalhe ou tente novamente após regularizar órgãos e tipos de contrato.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              this.setState({ error: null });
+              this.props.onReset();
+            }}
+          >
+            Voltar à listagem
+          </Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const statusLabel: Record<string, string> = {
   ACTIVE: "Ativo",
@@ -96,7 +137,7 @@ function computeContractDashboardStats(list: Contract[]): {
 
 function formatDashPct(count: number, total: number): string {
   if (total <= 0) {
-    return "—";
+    return "-";
   }
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 0 }).format(
     (100 * count) / total
@@ -178,55 +219,65 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
 
   const columns = useMemo<ColumnDef<Contract, any>[]>(
     () => [
-      columnHelper.accessor("number", {
-        header: "Número",
-        cell: (info) => <span className="font-mono text-xs text-muted-foreground">{info.getValue()}</span>
-      }),
       columnHelper.accessor("internalCode", {
         header: "Código interno",
         cell: (info) => (
-          <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{info.getValue() ?? "—"}</span>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">{info.getValue() ?? "-"}</span>
+        )
+      }),
+      columnHelper.display({
+        id: "formalContract",
+        header: "Contrato nº",
+        cell: (info) => {
+          const row = info.row.original;
+          if (row.formalNumber) {
+            return (
+              <span className="whitespace-nowrap text-xs text-foreground">
+                {row.formalNumber}
+                {row.contractYear != null ? `/${row.contractYear}` : ""}
+              </span>
+            );
+          }
+          return <span className="text-xs text-amber-700">Pendente</span>;
+        }
+      }),
+      columnHelper.accessor("administrativeProcess", {
+        header: "Processo administrativo",
+        cell: (info) => (
+          <span className="max-w-[140px] truncate text-xs text-muted-foreground" title={info.getValue() ?? ""}>
+            {info.getValue() ?? "-"}
+          </span>
+        )
+      }),
+      columnHelper.accessor((row) => row.hiringType?.name ?? null, {
+        id: "hiringType",
+        header: "Tipo de contratação",
+        cell: (info) => (
+          <span className="max-w-[140px] truncate text-xs text-muted-foreground" title={info.getValue() ?? ""}>
+            {info.getValue() ?? "-"}
+          </span>
+        )
+      }),
+      columnHelper.accessor("hiringProcedureNumber", {
+        header: "Número da contratação",
+        cell: (info) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">{info.getValue() ?? "-"}</span>
         )
       }),
       columnHelper.accessor("name", {
         header: "Nome",
         cell: (info) => (
-          <span className="max-w-[200px] truncate font-medium text-foreground" title={info.getValue()}>
+          <span className="max-w-[180px] truncate font-medium text-foreground" title={info.getValue()}>
             {info.getValue()}
           </span>
         )
       }),
-      columnHelper.accessor((row) => row.supplier?.name ?? row.companyName, {
-        id: "supplier",
-        header: "Fornecedor",
+      columnHelper.accessor((row) => row.organization?.acronym ?? row.managingUnit, {
+        id: "organization",
+        header: "Órgão",
         cell: (info) => (
-          <span className="max-w-[180px] truncate text-muted-foreground" title={String(info.getValue())}>
-            {String(info.getValue())}
-          </span>
-        )
-      }),
-      columnHelper.accessor("managingUnit", {
-        header: "Órgão gestor",
-        cell: (info) => (
-          <span className="max-w-[140px] truncate text-muted-foreground" title={info.getValue() ?? ""}>
-            {info.getValue() ?? "—"}
-          </span>
-        )
-      }),
-      columnHelper.accessor("monthlyValue", {
-        header: () => <span className="flex w-full justify-end">Valor mensal</span>,
-        cell: (info) => (
-          <div className="whitespace-nowrap text-right tabular-nums text-foreground">
-            R${" "}
-            {Number(info.getValue()).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-        )
-      }),
-      columnHelper.accessor("endDate", {
-        header: "Vigência (fim)",
-        cell: (info) => (
-          <span className="whitespace-nowrap text-muted-foreground">
-            {new Date(info.getValue()).toLocaleDateString("pt-BR")}
+          <span className="max-w-[120px] truncate text-xs text-muted-foreground" title={String(info.getValue() ?? "")}>
+            {info.getValue() ?? "-"}
           </span>
         )
       }),
@@ -237,11 +288,6 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
             {statusLabel[info.getValue()] ?? info.getValue()}
           </Badge>
         )
-      }),
-      columnHelper.accessor((row) => row._count?.amendments ?? 0, {
-        id: "amendments",
-        header: () => <span className="flex w-full justify-center tabular-nums">Aditivos</span>,
-        cell: (info) => <div className="text-center tabular-nums text-muted-foreground">{info.getValue()}</div>
       }),
       columnHelper.display({
         id: "actions",
@@ -442,24 +488,35 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
           setModalOpen(false);
           setEditingContract(null);
         }}
-        title={editingContract ? `Editar contrato ${editingContract.number}` : "Novo contrato"}
+        title={
+          editingContract
+            ? `Editar contrato ${editingContract.internalCode || editingContract.number || editingContract.name || ""}`.trim()
+            : "Novo contrato"
+        }
         description={
           editingContract
-            ? "Altere os dados e clique em Salvar alterações. O número do contrato deve continuar único no sistema."
+            ? "Altere os dados e clique em Salvar alterações. Campos pendentes de migração podem ficar em branco até a regularização."
             : "Preencha os campos obrigatórios. O contrato fica disponível na lista assim que for salvo."
         }
       >
-        <ContractForm
-          key={editingContract?.id ?? "create"}
-          initialContract={editingContract}
-          onSuccess={() => {
+        <ContractFormErrorBoundary
+          onReset={() => {
             setModalOpen(false);
             setEditingContract(null);
-            void qc.invalidateQueries({ queryKey: queryKeys.contracts });
-            void qc.invalidateQueries({ queryKey: queryKeys.suppliers });
-            void qc.invalidateQueries({ queryKey: queryKeys.fiscais });
           }}
-        />
+        >
+          <ContractForm
+            key={editingContract?.id ?? "create"}
+            initialContract={editingContract}
+            onSuccess={() => {
+              setModalOpen(false);
+              setEditingContract(null);
+              void qc.invalidateQueries({ queryKey: queryKeys.contracts });
+              void qc.invalidateQueries({ queryKey: queryKeys.suppliers });
+              void qc.invalidateQueries({ queryKey: queryKeys.fiscais });
+            }}
+          />
+        </ContractFormErrorBoundary>
       </Modal>
     </div>
   );

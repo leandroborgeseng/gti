@@ -114,7 +114,7 @@ function LoginForm(): JSX.Element {
           <CardHeader className="space-y-6 p-8">
             <AppBrand variant="login" linkHome={false} />
             <div className="space-y-3">
-              <CardTitle className="text-xl leading-snug sm:text-2xl">{BRAND.displayTitle}</CardTitle>
+              <CardTitle className="text-xl leading-snug sm:text-2xl">{BRAND.loginTitle}</CardTitle>
               <CardDescription className="text-base leading-relaxed">{BRAND.description}</CardDescription>
             </div>
           </CardHeader>

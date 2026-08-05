@@ -122,8 +122,9 @@ export function MeasurementsView({
               className="font-medium text-foreground underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground"
             >
               Relatório de fechamento mensal
-            </Link>{" "}
-            — pagamentos por medição aprovada, valor de referência do mês anterior e OS GLPI (abertas, fechadas e represadas) por contrato.
+            </Link>
+            {" · "}
+            Pagamentos por medição aprovada, valor de referência do mês anterior e OS GLPI (abertas, fechadas e represadas) por contrato.
           </p>
           {filterContractId ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">

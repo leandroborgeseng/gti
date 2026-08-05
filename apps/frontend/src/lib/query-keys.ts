@@ -12,12 +12,18 @@ export const queryKeys = {
     ["gestao", "module-features-delivery", contractId, moduleId] as const,
   modulesDeliverySearch: (key: string) => ["gestao", "modules-delivery-search", key] as const,
   contractModuleValidators: ["gestao", "contract-module-validators"] as const,
+  userOptions: ["gestao", "user-options"] as const,
   /** Grupos GLPI distintos nos tickets em cache (catálogo para vínculo ao contrato). */
   glpiAssignedGroups: ["gestao", "glpi-assigned-groups"] as const,
+  /** Chamados GLPI em cache vinculados aos grupos do contrato. */
+  contractGlpiTickets: (contractId: string, filterKey: string) =>
+    ["gestao", "contract-glpi-tickets", contractId, filterKey] as const,
   /** Catálogo de tipos padronizados e unidades de medida dos itens de precificação. */
   contractPricingCatalog: ["gestao", "contract-pricing-catalog"] as const,
   /** Conferência administrativa do backfill dos itens de precificação. */
   pricingMigrationReview: ["gestao", "admin", "pricing-migration-review"] as const,
+  /** Conferência administrativa da migração de identificação dos contratos. */
+  identificationMigrationReview: ["gestao", "admin", "identification-migration-review"] as const,
   measurements: ["gestao", "measurements"] as const,
   glosas: ["gestao", "glosas"] as const,
   goals: ["gestao", "goals"] as const,
@@ -30,10 +36,19 @@ export const queryKeys = {
   projectsAllTasksRoot: ["gestao", "projects", "all-tasks"] as const,
   dashboardSummary: ["gestao", "dashboard-summary"] as const,
   dashboardAlerts: ["gestao", "dashboard-alerts"] as const,
+  deadlines: (filterKey: string) => ["gestao", "deadlines", filterKey] as const,
   organizations: ["gestao", "admin", "organizations"] as const,
+  accessProfiles: ["gestao", "admin", "access-profiles"] as const,
   rolePermissions: (role: string) => ["gestao", "admin", "role-permissions", role] as const,
-  userPermissions: (userId: string) => ["gestao", "admin", "user-permissions", userId] as const,
+  profilePermissions: (profileId: string) => ["gestao", "admin", "profile-permissions", profileId] as const,
+  userPermissions: (userId: string, profileId?: string) =>
+    ["gestao", "admin", "user-permissions", userId, profileId ?? "default"] as const,
   adminItemTypes: ["gestao", "admin", "item-types"] as const,
   contractTypeCatalog: ["gestao", "admin", "contract-types"] as const,
-  hiringTypes: ["gestao", "admin", "hiring-types"] as const
+  hiringTypes: ["gestao", "admin", "hiring-types"] as const,
+  /** Consulta central de auditoria e logs (admin). */
+  auditLogs: (filterKey: string) => ["gestao", "admin", "audit-logs", filterKey] as const,
+  auditEventConfig: ["gestao", "admin", "audit-event-config"] as const,
+  emailOutboundConfig: ["gestao", "admin", "email-outbound"] as const,
+  emailOutboundLogs: ["gestao", "admin", "email-outbound-logs"] as const
 } as const;

@@ -87,7 +87,7 @@ export function GovernanceCreateForm({ onSuccess, contractOptions }: Props): JSX
                     <SelectContent>
                       {contractOptions!.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
-                          {c.number} — {c.name}
+                          {c.number} · {c.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

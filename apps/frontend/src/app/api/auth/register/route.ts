@@ -30,6 +30,14 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Já existe uma conta com este e-mail." }, { status: 409 });
   }
 
+  const viewerProfile = await prisma.accessProfile.findUnique({ where: { systemKey: "VIEWER" } });
+  if (!viewerProfile) {
+    return NextResponse.json(
+      { error: "Perfis de acesso ainda não foram inicializados. Contate a administração." },
+      { status: 503 }
+    );
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
   await prisma.user.create({
     data: {
@@ -37,7 +45,12 @@ export async function POST(req: Request): Promise<NextResponse> {
       passwordHash,
       role: "VIEWER",
       mustChangePassword: false,
-      approvalStatus: "PENDING"
+      approvalStatus: "PENDING",
+      defaultProfileId: viewerProfile.id,
+      lastActiveProfileId: viewerProfile.id,
+      accessProfiles: {
+        create: { profileId: viewerProfile.id, isDefault: true }
+      }
     },
     select: { id: true }
   });

@@ -235,7 +235,7 @@ export function DashboardHome(props: {
                 {a.vencendo.map((c) => (
                   <li key={c.id}>
                     <span className="font-semibold text-[var(--ink)]">
-                      {c.number} — {c.name}
+                      {c.number} · {c.name}
                     </span>
                     <span className="flex flex-wrap items-center gap-2 text-xs text-[var(--ink-muted)]">
                       <span>{new Date(c.endDate).toLocaleDateString("pt-BR")}</span>
@@ -259,7 +259,7 @@ export function DashboardHome(props: {
                 {a.pendentes.map((m) => (
                   <li key={m.id}>
                     <span className="text-[var(--ink)]">
-                      {m.contract?.name ?? "Contrato"} — {String(m.referenceMonth).padStart(2, "0")}/{m.referenceYear}
+                      {m.contract?.name ?? "Contrato"} · {String(m.referenceMonth).padStart(2, "0")}/{m.referenceYear}
                     </span>
                     <span className="flex flex-wrap gap-2">
                       {m.contract?.id ? (
@@ -290,7 +290,7 @@ export function DashboardHome(props: {
                 {a.baixaEntrega.map((c) => (
                   <li key={c.id}>
                     <span className="font-semibold text-[var(--ink)]">
-                      {c.number} — {c.name}{" "}
+                      {c.number} · {c.name}{" "}
                       <span className="tabular-nums text-amber-800">({formatPercent(c.percentual, 1)} validado)</span>
                     </span>
                     <Link href={`/contracts/${c.id}` as Route} className="text-xs font-semibold text-[var(--brand)] no-underline hover:underline">
@@ -312,7 +312,7 @@ export function DashboardHome(props: {
                 {a.sla.map((g) => (
                   <li key={g.id}>
                     <span className="text-[var(--ink)]">
-                      Ticket <span className="font-mono text-xs">{g.ticketId}</span> — {g.status}
+                      Ticket <span className="font-mono text-xs">{g.ticketId}</span> · {g.status}
                     </span>
                     <span className="flex flex-wrap items-center gap-2 text-xs text-[var(--ink-muted)]">
                       <span>{new Date(g.slaDeadline).toLocaleString("pt-BR")}</span>

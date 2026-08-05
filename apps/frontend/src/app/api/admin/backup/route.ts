@@ -33,7 +33,7 @@ export async function GET(req: Request): Promise<NextResponse> {
       envChecklist,
       notes: [
         "A exportação gera um .tar.gz com dump PostgreSQL (pg_dump), checklist de variáveis e, opcionalmente, anexos.",
-        "Segredos (JWT, senhas GLPI, chaves Resend, etc.) nunca entram no pacote — configure-os no servidor de destino.",
+        "Segredos (JWT, senhas GLPI, chaves Resend, etc.) nunca entram no pacote: configure-os no servidor de destino.",
         "A restauração substitui os dados da base atual. Faça-a apenas em manutenção, no servidor de destino."
       ]
     },

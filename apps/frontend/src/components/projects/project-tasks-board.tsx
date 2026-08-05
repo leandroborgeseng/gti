@@ -79,7 +79,7 @@ function statusCellColors(status: string): { bg: string; fg: string } {
 function StatusDistributionFooterBar({ counts }: { counts: Record<ProjectTaskStatusKind, number> }): JSX.Element {
   const total = STATUS_KIND_ORDER.reduce((s, k) => s + counts[k], 0);
   if (total === 0) {
-    return <span className="text-[11px] text-[#c5c7d0]">—</span>;
+    return <span className="text-[11px] text-[#c5c7d0]">-</span>;
   }
   return (
     <div
@@ -114,7 +114,7 @@ function FooterStatusLegend({ counts }: { counts: Record<ProjectTaskStatusKind, 
     parts.push(`${n} ${STATUS_KIND_LABEL[kind]}`);
   }
   if (parts.length === 0) {
-    return <span className="text-[#c5c7d0]">—</span>;
+    return <span className="text-[#c5c7d0]">-</span>;
   }
   const text = parts.join(" · ");
   return (
@@ -141,7 +141,7 @@ function pmfBadgeClass(name: string): string {
 
 function PmfPill({ name }: { name: string }): JSX.Element | null {
   const raw = name.trim();
-  if (!raw) return <span className="text-[#c5c7d0]">—</span>;
+  if (!raw) return <span className="text-[#c5c7d0]">-</span>;
   return (
     <span
       className={cn(
@@ -196,11 +196,11 @@ function initials(name: string): string {
 }
 
 function formatBoardDate(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   try {
     return new Date(iso).toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" });
   } catch {
-    return "—";
+    return "-";
   }
 }
 
@@ -325,7 +325,7 @@ function flattenTaskIds(roots: ProjectTaskTree[]): string[] {
 function flattenTaskOptions(groups: ProjectGroupWithTasks[]): Array<{ id: string; label: string }> {
   const out: Array<{ id: string; label: string }> = [];
   function walk(task: ProjectTaskTree, depth: number): void {
-    out.push({ id: task.id, label: `${"— ".repeat(depth)}${task.title}` });
+    out.push({ id: task.id, label: `${"- ".repeat(depth)}${task.title}` });
     task.children?.forEach((child) => walk(child, depth + 1));
   }
   for (const group of groups) {
@@ -514,7 +514,7 @@ function AssigneeUserCell({
   const label = userDisplay(task.assigneeUser) || task.assigneeExternal?.trim() || "";
 
   if (!canEdit) {
-    return label ? <UserBadge user={task.assigneeUser} fallback={label} /> : <span className="text-[#c5c7d0]">—</span>;
+    return label ? <UserBadge user={task.assigneeUser} fallback={label} /> : <span className="text-[#c5c7d0]">-</span>;
   }
 
   return (
@@ -602,7 +602,7 @@ function ResponsibleUsersCell({
         ))}
       </div>
     ) : (
-      <span className="text-[#c5c7d0]">—</span>
+      <span className="text-[#c5c7d0]">-</span>
     );
 
   if (!canEdit) {
@@ -682,7 +682,7 @@ function ObservationCell({
   if (!canEdit) {
     return (
       <span className="block max-w-md text-xs leading-snug text-[#323338]" title={text || undefined}>
-        {text ? <span className="line-clamp-3 whitespace-pre-wrap">{description}</span> : <span className="text-[#c5c7d0]">—</span>}
+        {text ? <span className="line-clamp-3 whitespace-pre-wrap">{description}</span> : <span className="text-[#c5c7d0]">-</span>}
       </span>
     );
   }
@@ -758,7 +758,7 @@ function GoalCell({
 }): JSX.Element {
   const label = task.goal?.title ?? goals.find((goal) => goal.id === task.goalId)?.title ?? "";
   if (!canEdit) {
-    return label ? <span className="block max-w-[180px] truncate text-xs text-[#323338]">{label}</span> : <span className="text-[#c5c7d0]">—</span>;
+    return label ? <span className="block max-w-[180px] truncate text-xs text-[#323338]">{label}</span> : <span className="text-[#c5c7d0]">-</span>;
   }
   return (
     <select
@@ -792,7 +792,7 @@ function TicketCell({
   onPatch: (taskId: string, payload: ProjectTaskPatchPayload) => Promise<void>;
 }): JSX.Element {
   if (!canEdit) {
-    return task.glpiTicketId ? <span className="text-xs tabular-nums text-[#323338]">#{task.glpiTicketId}</span> : <span className="text-[#c5c7d0]">—</span>;
+    return task.glpiTicketId ? <span className="text-xs tabular-nums text-[#323338]">#{task.glpiTicketId}</span> : <span className="text-[#c5c7d0]">-</span>;
   }
   return (
     <Input
@@ -974,7 +974,7 @@ function TaskRows({
               className="flex min-h-[32px] items-center justify-center rounded-md px-2 text-xs font-semibold"
               style={{ backgroundColor: statusColors.bg, color: statusColors.fg }}
             >
-              {task.status.trim() ? task.status : "—"}
+              {task.status.trim() ? task.status : "-"}
             </div>
           )}
         </td>

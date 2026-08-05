@@ -1,11 +1,16 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-/** Contexto do pedido HTTP autenticado (preenchido pelo interceptor após o JWT). */
+/** Contexto do pedido HTTP autenticado (preenchido pelo interceptor / gestao-dispatch). */
 export type RequestActor = {
   userId: string;
   email?: string;
+  /** systemKey do perfil ativo (ADMIN|EDITOR|VIEWER) ou role legado. */
   role: string;
+  profileId?: string | null;
+  /** Órgão ativo; null quando «Todos os órgãos». */
   organizationId?: string | null;
+  /** true quando o contexto ativo é visão global de órgãos. */
+  allOrganizationsActive?: boolean;
 };
 
 export const requestActorStore = new AsyncLocalStorage<RequestActor>();

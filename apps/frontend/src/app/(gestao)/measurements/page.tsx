@@ -25,7 +25,7 @@ export default async function MeasurementsPage({
   ]);
 
   const filterLabel = filterRes.data;
-  const filterTitle = filterLabel ? `${filterLabel.number} — ${filterLabel.name}` : contractId ?? undefined;
+  const filterTitle = filterLabel ? `${filterLabel.number} · ${filterLabel.name}` : contractId ?? undefined;
   const contractOptions = coRes.data.map((c) => ({ id: c.id, number: c.number, name: c.name }));
   const dataLoadErrors = collectLoadErrors([meRes.error, filterRes.error, coRes.error]);
 

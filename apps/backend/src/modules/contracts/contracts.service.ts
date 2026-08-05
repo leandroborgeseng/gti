@@ -1,12 +1,27 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { getAuditActorId, getAuditActorLabel, requestActorStore } from "../../common/audit-actor";
+import { applyAuditDetailLevel, resolveAuditGate } from "../../common/audit-event-gate";
 import {
+  ContractAmendmentItemAction,
+  ContractAmendmentStatus,
+  ContractAmendmentType,
   ContractFeatureStatus,
   ContractItemChangeAction,
   ContractItemChangeType,
   ContractItemCriticality,
   ContractItemDeliveryStatus,
+  ContractPricingBillingKind,
   ContractPricingItemStatus,
+  ContractPricingPeriodicity,
+  ContractControladoriaCaseStatus,
+  ContractOccurrenceOrigin,
+  ContractOccurrenceSeverity,
+  ContractOccurrenceStatus,
+  ContractOccurrenceType,
+  ContractScheduleMilestoneStatus,
+  ContractScheduleOrigin,
+  ContractScheduleStatus,
+  ContractScheduleType,
   ContractStatus,
   ContractType,
   LawType,
@@ -15,26 +30,55 @@ import {
 import { compareItemCodes, sortFeaturesByItemCode } from "../../common/item-code-order";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
+  BulkUpdateFeatureValidationGroupDto,
+  CancelContractAmendmentDto,
   CreateContractAmendmentDto,
   CreateContractDto,
   CreateContractFeatureDto,
-  CreateContractFinancialSnapshotDto,
   CreateContractModuleDto,
   CreateContractServiceDto,
+  ChangeContractOccurrenceStatusDto,
+  CreateContractOccurrenceDto,
+  CreateContractScheduleDto,
+  CreateContractValidationGroupDto,
   ContractGlpiGroupLinkDto,
+  ContractScheduleMilestoneDto,
   ContractStructureImportRow,
   DeleteContractDto,
+  ForwardOccurrenceToControladoriaDto,
   PricingItemDto,
+  UpdateContractControladoriaCaseDto,
   UpdateContractDto,
   UpdateContractFeatureDto,
   UpdateContractModuleDto,
-  UpdateContractServiceDto
+  UpdateContractOccurrenceDto,
+  UpdateContractScheduleDto,
+  UpdateContractServiceDto,
+  UpdateContractValidationGroupDto
 } from "./contracts.dto";
-import { ContractPricingHelper, type PricingItemInput } from "./contract-pricing.helper";
+import {
+  parseAssignmentFilter,
+  resolveFeatureResponsibility,
+  type AssignmentFilter
+} from "./contract-responsibility";
+import {
+  addUtcDays,
+  ContractPricingHelper,
+  serializePricingItemSnapshot,
+  startOfUtcDay,
+  summarizePricingItemsAsOf,
+  type PricingItemInput
+} from "./contract-pricing.helper";
 import {
   PricingItemsFinancialReportService,
   type PricingItemsFinancialReportQuery
 } from "../reports/pricing-items-financial-report.service";
+import {
+  collectIdentificationIssues,
+  isFormalDerivedFromInternal,
+  parseInternalCode,
+  type IdentificationIssue
+} from "./contract-identification";
 
 function moduleGroupKey(name: string): string {
   return name.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
@@ -53,9 +97,60 @@ function dedupeGlpiGroupLinks(links: ContractGlpiGroupLinkDto[]): { glpiGroupId:
   return out;
 }
 
+function isGlpiTicketClosedStatus(status: string | null | undefined): boolean {
+  const s = (status || "").toLowerCase();
+  return (
+    s.includes("fechado") ||
+    s.includes("solucionado") ||
+    s.includes("resolvido") ||
+    s.includes("closed") ||
+    s.includes("solved") ||
+    s === "5" ||
+    s === "6"
+  );
+}
+
+function asJsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+/** Extrai prazo de resolução do JSON bruto do GLPI quando existir (campos variam por versão). */
+function extractGlpiSlaDeadline(raw: unknown): string | null {
+  const o = asJsonObject(raw);
+  const candidates: unknown[] = [
+    o.time_to_resolve,
+    o.time_to_resolve_date,
+    o.internal_time_to_resolve,
+    o.sla_due_date,
+    o.due_date,
+    o.time_to_own
+  ];
+  for (const key of ["sla_ttr", "slas_id_ttr", "ola_ttr"] as const) {
+    const nested = asJsonObject(o[key]);
+    candidates.push(nested.date ?? nested.datetime ?? nested.due_date ?? nested.time_to_resolve);
+  }
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim() && !/^(0+|null|undefined)$/i.test(c.trim())) {
+      const t = Date.parse(c.trim().replace(" ", "T"));
+      if (Number.isFinite(t) && t > 0) return c.trim();
+    }
+  }
+  return null;
+}
+
+/** Normaliza bound de data (YYYY-MM-DD) para comparação lexicográfica com `dateCreation` do cache. */
+function normalizeDateBound(raw: string | undefined, kind: "start" | "end"): string | null {
+  const v = (raw ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  return kind === "start" ? `${v} 00:00:00` : `${v} 23:59:59`;
+}
+
 function featureDisplayName(itemCode: string | null | undefined, name: string): string {
   const code = itemCode?.trim();
-  return code ? `${code} — ${name}` : name;
+  return code ? `${code} · ${name}` : name;
 }
 
 function sortModuleListFeatures<T extends { features: Array<{ itemCode?: string | null; name?: string }> }>(modules: T[]): T[] {
@@ -63,6 +158,62 @@ function sortModuleListFeatures<T extends { features: Array<{ itemCode?: string 
     ...module,
     features: sortFeaturesByItemCode(module.features)
   }));
+}
+
+const LINKED_USER_SELECT = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  displayName: true,
+  approvalStatus: true,
+  role: true,
+  organization: { select: { acronym: true } }
+} as const;
+
+type LinkedUserRow = {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  displayName: string | null;
+  approvalStatus: string;
+  role: string;
+  organization?: { acronym: string } | null;
+};
+
+export type ContractLinkedUser = {
+  id: string;
+  name: string;
+  email: string;
+  organizationAcronym: string | null;
+  active: boolean;
+  role: string;
+};
+
+function resolveUserDisplayName(user: {
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+}): string {
+  const composed = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+  return user.displayName?.trim() || composed || user.email;
+}
+
+function serializeLinkedUser(user: LinkedUserRow): ContractLinkedUser {
+  return {
+    id: user.id,
+    name: resolveUserDisplayName(user),
+    email: user.email,
+    organizationAcronym: user.organization?.acronym ?? null,
+    active: user.approvalStatus === "APPROVED",
+    role: user.role
+  };
+}
+
+function normalizeUserIds(ids: string[] | undefined | null): string[] {
+  return Array.from(new Set((ids ?? []).map((id) => id.trim()).filter(Boolean)));
 }
 
 const CRITICALITY_SCORE: Record<ContractItemCriticality, number> = {
@@ -473,24 +624,239 @@ export class ContractsService {
       .map((r) => ({ glpiGroupId: r.contractGroupId, glpiGroupName: r.contractGroupName ?? null }));
   }
 
-  async findModuleValidators(): Promise<Array<{ id: string; email: string; role: string }>> {
-    return this.prisma.user.findMany({
-      where: { approvalStatus: "APPROVED" },
-      orderBy: { email: "asc" },
-      select: { id: true, email: true, role: true }
+  /**
+   * Chamados GLPI em cache cujos grupos técnicos coincidem com os vínculos do contrato.
+   * Somente leitura do cache local — não consulta nem altera o GLPI.
+   */
+  async listContractGlpiTickets(
+    contractId: string,
+    query?: {
+      status?: string;
+      priority?: string;
+      from?: string;
+      to?: string;
+      slaOverdue?: boolean;
+      take?: number;
+    }
+  ): Promise<{
+    contractId: string;
+    glpiGroupIds: number[];
+    glpiGroups: Array<{ glpiGroupId: number; glpiGroupName: string | null }>;
+    tickets: Array<{
+      glpiTicketId: number;
+      title: string | null;
+      status: string | null;
+      priority: string | null;
+      dateCreation: string | null;
+      dateModification: string | null;
+      contractGroupId: number | null;
+      contractGroupName: string | null;
+      requesterName: string | null;
+      assignedUserName: string | null;
+      waitingParty: string | null;
+      slaDeadline: string | null;
+      slaOverdue: boolean | null;
+      updatedAt: string;
+    }>;
+    total: number;
+    facets: {
+      statuses: string[];
+      priorities: string[];
+      slaOverdueAvailable: boolean;
+    };
+  }> {
+    const accessible = await this.accessibleContractWhere(contractId);
+    const contract = await this.prisma.contract.findFirst({
+      where: accessible,
+      select: {
+        id: true,
+        glpiGroups: {
+          select: { glpiGroupId: true, glpiGroupName: true },
+          orderBy: { glpiGroupName: "asc" }
+        }
+      }
     });
+    if (!contract) throw new NotFoundException("Contrato não encontrado");
+
+    const glpiGroupIds = contract.glpiGroups.map((g) => g.glpiGroupId);
+    const empty = {
+      contractId: contract.id,
+      glpiGroupIds,
+      glpiGroups: contract.glpiGroups,
+      tickets: [] as Array<{
+        glpiTicketId: number;
+        title: string | null;
+        status: string | null;
+        priority: string | null;
+        dateCreation: string | null;
+        dateModification: string | null;
+        contractGroupId: number | null;
+        contractGroupName: string | null;
+        requesterName: string | null;
+        assignedUserName: string | null;
+        waitingParty: string | null;
+        slaDeadline: string | null;
+        slaOverdue: boolean | null;
+        updatedAt: string;
+      }>,
+      total: 0,
+      facets: { statuses: [] as string[], priorities: [] as string[], slaOverdueAvailable: false }
+    };
+    if (glpiGroupIds.length === 0) {
+      return empty;
+    }
+
+    const takeRaw = query?.take != null ? Math.trunc(Number(query.take)) : 200;
+    const take = Number.isFinite(takeRaw) ? Math.min(500, Math.max(1, takeRaw)) : 200;
+    const statusFilter = (query?.status ?? "").trim();
+    const priorityFilter = (query?.priority ?? "").trim();
+    const from = normalizeDateBound(query?.from, "start");
+    const to = normalizeDateBound(query?.to, "end");
+    const slaOverdueOnly = query?.slaOverdue === true;
+
+    const baseWhere: Prisma.TicketWhereInput = {
+      contractGroupId: { in: glpiGroupIds }
+    };
+
+    const [statusRows, priorityRows, slaSample] = await Promise.all([
+      this.prisma.ticket.findMany({
+        where: baseWhere,
+        distinct: ["status"],
+        select: { status: true }
+      }),
+      this.prisma.ticket.findMany({
+        where: baseWhere,
+        distinct: ["priority"],
+        select: { priority: true }
+      }),
+      this.prisma.ticket.findMany({
+        where: baseWhere,
+        select: { rawJson: true },
+        take: 80,
+        orderBy: { updatedAt: "desc" }
+      })
+    ]);
+    const statuses = statusRows
+      .map((r) => r.status?.trim())
+      .filter((s): s is string => Boolean(s))
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
+    const priorities = priorityRows
+      .map((r) => r.priority?.trim())
+      .filter((s): s is string => Boolean(s))
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
+    const slaOverdueAvailable = slaSample.some((row) => Boolean(extractGlpiSlaDeadline(row.rawJson)));
+
+    const where: Prisma.TicketWhereInput = {
+      ...baseWhere,
+      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(priorityFilter ? { priority: priorityFilter } : {}),
+      ...(from || to
+        ? {
+            dateCreation: {
+              ...(from ? { gte: from } : {}),
+              ...(to ? { lte: to } : {})
+            }
+          }
+        : {})
+    };
+
+    const rows = await this.prisma.ticket.findMany({
+      where,
+      orderBy: [{ dateCreation: "desc" }, { glpiTicketId: "desc" }],
+      take: slaOverdueOnly ? Math.min(2000, take * 5) : take,
+      select: {
+        glpiTicketId: true,
+        title: true,
+        status: true,
+        priority: true,
+        dateCreation: true,
+        dateModification: true,
+        contractGroupId: true,
+        contractGroupName: true,
+        requesterName: true,
+        assignedUserName: true,
+        waitingParty: true,
+        rawJson: true,
+        updatedAt: true
+      }
+    });
+
+    const now = Date.now();
+    let mapped = rows.map((row) => {
+      const slaDeadline = extractGlpiSlaDeadline(row.rawJson);
+      const closed = isGlpiTicketClosedStatus(row.status);
+      let slaOverdue: boolean | null = null;
+      if (slaDeadline) {
+        const t = Date.parse(slaDeadline.replace(" ", "T"));
+        if (Number.isFinite(t)) {
+          slaOverdue = !closed && t < now;
+        }
+      }
+      return {
+        glpiTicketId: row.glpiTicketId,
+        title: row.title,
+        status: row.status,
+        priority: row.priority,
+        dateCreation: row.dateCreation,
+        dateModification: row.dateModification,
+        contractGroupId: row.contractGroupId,
+        contractGroupName: row.contractGroupName,
+        requesterName: row.requesterName,
+        assignedUserName: row.assignedUserName,
+        waitingParty: row.waitingParty,
+        slaDeadline,
+        slaOverdue,
+        updatedAt: row.updatedAt.toISOString()
+      };
+    });
+
+    if (slaOverdueOnly) {
+      mapped = mapped.filter((t) => t.slaOverdue === true).slice(0, take);
+    }
+
+    return {
+      contractId: contract.id,
+      glpiGroupIds,
+      glpiGroups: contract.glpiGroups,
+      tickets: mapped,
+      total: mapped.length,
+      facets: {
+        statuses,
+        priorities,
+        slaOverdueAvailable
+      }
+    };
+  }
+
+  async findModuleValidators(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      email: string;
+      organizationAcronym: string | null;
+      active: boolean;
+      role: string;
+    }>
+  > {
+    const rows = await this.prisma.user.findMany({
+      where: { approvalStatus: "APPROVED" },
+      orderBy: [{ displayName: "asc" }, { email: "asc" }],
+      select: LINKED_USER_SELECT
+    });
+    return rows.map(serializeLinkedUser);
   }
 
   /**
    * Resumo dos contratos com estrutura modular (sem carregar funcionalidades).
    * Totais de entrega vêm de agregação no banco.
+   * Escopo: órgão do usuário + contratos de outros órgãos onde há atribuição (ticket 56).
    */
-  async findModulesDeliveryOverview(): Promise<unknown> {
+  async findModulesDeliveryOverview(query?: { assignment?: string }): Promise<unknown> {
+    const assignment = parseAssignmentFilter(query?.assignment);
+    const actorId = requestActorStore.getStore()?.userId ?? null;
+    const contractWhere = await this.modulesDeliveryContractWhere();
     const rows = await this.prisma.contract.findMany({
-      where: {
-        deletedAt: null,
-        contractType: { in: [ContractType.SOFTWARE, ContractType.INFRA, ContractType.SERVICO] }
-      },
+      where: contractWhere,
       select: {
         id: true,
         number: true,
@@ -509,7 +875,12 @@ export class ContractsService {
     });
     if (rows.length === 0) return [];
 
-    const contractIds = rows.map((r) => r.id);
+    let contractIds = rows.map((r) => r.id);
+    if (assignment !== "ALL" && actorId) {
+      contractIds = await this.filterContractIdsByAssignment(contractIds, assignment, actorId);
+      if (contractIds.length === 0) return [];
+    }
+
     const modules = await this.prisma.contractModule.findMany({
       where: { contractId: { in: contractIds } },
       select: { id: true, contractId: true }
@@ -517,12 +888,15 @@ export class ContractsService {
     const moduleIds = modules.map((m) => m.id);
     const moduleToContract = new Map(modules.map((m) => [m.id, m.contractId]));
 
+    const featureWhereExtra =
+      assignment !== "ALL" && actorId ? this.featureAssignmentWhere(assignment, actorId) : {};
+
     const grouped =
       moduleIds.length === 0
         ? []
         : await this.prisma.contractFeature.groupBy({
             by: ["moduleId", "deliveryStatus"],
-            where: { moduleId: { in: moduleIds } },
+            where: { moduleId: { in: moduleIds }, ...featureWhereExtra },
             _count: { _all: true }
           });
 
@@ -545,7 +919,8 @@ export class ContractsService {
       else bucket.notDelivered += n;
     }
 
-    return rows.map((row) => {
+    const filteredRows = rows.filter((r) => contractIds.includes(r.id));
+    return filteredRows.map((row) => {
       const c = countsByContract.get(row.id) ?? { total: 0, delivered: 0, partial: 0, notDelivered: 0 };
       return {
         id: row.id,
@@ -581,19 +956,35 @@ export class ContractsService {
   /** Módulos de um contrato com totais por status (sem funcionalidades). */
   async findContractModulesDelivery(contractId: string): Promise<unknown> {
     await this.ensureContract(contractId);
-    const modules = await this.prisma.contractModule.findMany({
+    const modulesRaw = await this.prisma.contractModule.findMany({
       where: { contractId },
       select: {
         id: true,
         name: true,
         criticality: true,
         validatorId: true,
-        validator: { select: { id: true, email: true, role: true } },
+        validator: { select: LINKED_USER_SELECT },
+        fiscals: {
+          include: { user: { select: LINKED_USER_SELECT } },
+          orderBy: { createdAt: "asc" }
+        },
         glosaPricingItemId: true,
         glosaPricingItem: { select: { id: true, sequence: true, description: true } },
         weight: true
       },
       orderBy: { name: "asc" }
+    });
+    const modules = modulesRaw.map((mod) => {
+      const fiscalUsers = this.resolveModuleFiscalUsers(mod);
+      const { fiscals: _fiscals, ...rest } = mod;
+      return {
+        ...rest,
+        validator: mod.validator
+          ? { id: mod.validator.id, email: mod.validator.email, role: mod.validator.role }
+          : null,
+        fiscalUsers,
+        fiscalUserIds: fiscalUsers.map((u) => u.id)
+      };
     });
     if (modules.length === 0) return { contractId, modules: [] };
 
@@ -644,12 +1035,18 @@ export class ContractsService {
       q?: string;
       deliveryStatus?: string;
       criticality?: string;
+      assignment?: string;
     }
   ): Promise<unknown> {
     await this.ensureModule(contractId, moduleId);
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 40));
-    const where = this.buildFeatureDeliveryWhere(moduleId, query);
+    const assignment = parseAssignmentFilter(query.assignment);
+    const actorId = requestActorStore.getStore()?.userId ?? null;
+    const where: Prisma.ContractFeatureWhereInput = {
+      ...this.buildFeatureDeliveryWhere(moduleId, query),
+      ...(assignment !== "ALL" && actorId ? this.featureAssignmentWhere(assignment, actorId) : {})
+    };
 
     const [total, features] = await Promise.all([
       this.prisma.contractFeature.count({ where }),
@@ -662,7 +1059,23 @@ export class ContractsService {
           weight: true,
           status: true,
           criticality: true,
-          deliveryStatus: true
+          deliveryStatus: true,
+          validationGroupId: true,
+          validationGroup: {
+            select: {
+              id: true,
+              name: true,
+              active: true,
+              members: {
+                include: { user: { select: LINKED_USER_SELECT } },
+                orderBy: { createdAt: "asc" }
+              }
+            }
+          },
+          responsibles: {
+            include: { user: { select: LINKED_USER_SELECT } },
+            orderBy: { createdAt: "asc" }
+          }
         },
         orderBy: [{ itemCode: "asc" }, { name: "asc" }],
         skip: (page - 1) * pageSize,
@@ -670,7 +1083,51 @@ export class ContractsService {
       })
     ]);
 
-    const ordered = sortFeaturesByItemCode(features);
+    const moduleFiscals = await this.prisma.contractModule.findFirst({
+      where: { id: moduleId, contractId },
+      select: {
+        validatorId: true,
+        validator: { select: LINKED_USER_SELECT },
+        fiscals: {
+          include: { user: { select: LINKED_USER_SELECT } },
+          orderBy: { createdAt: "asc" }
+        }
+      }
+    });
+    const moduleFiscalUsers = moduleFiscals ? this.resolveModuleFiscalUsers(moduleFiscals) : [];
+    const moduleFiscalUserIds = new Set(moduleFiscalUsers.map((u) => u.id));
+
+    const ordered = sortFeaturesByItemCode(
+      features.map((feat) => {
+        const responsibleUsers = (feat.responsibles ?? []).map((r) => serializeLinkedUser(r.user));
+        const groupMembers = (feat.validationGroup?.members ?? []).map((m) => serializeLinkedUser(m.user));
+        const responsibility = resolveFeatureResponsibility({
+          validationGroupId: feat.validationGroupId,
+          validationGroup: feat.validationGroup
+            ? {
+                id: feat.validationGroup.id,
+                name: feat.validationGroup.name,
+                active: feat.validationGroup.active,
+                members: groupMembers
+              }
+            : null,
+          responsibleUsers
+        });
+        const reasons: Array<"GROUP" | "FEATURE" | "MODULE" | "UNDEFINED_GROUP" | "NONE"> = [
+          ...responsibility.assignmentReasons
+        ];
+        if (actorId && moduleFiscalUserIds.has(actorId)) {
+          reasons.push("MODULE");
+        }
+        const { responsibles: _r, validationGroup: _vg, ...rest } = feat;
+        return {
+          ...rest,
+          ...responsibility,
+          assignmentReasons: reasons,
+          isModuleFiscalForActor: Boolean(actorId && moduleFiscalUserIds.has(actorId))
+        };
+      })
+    );
     return {
       contractId,
       moduleId,
@@ -690,23 +1147,23 @@ export class ContractsService {
     q?: string;
     deliveryStatus?: string;
     criticality?: string;
+    assignment?: string;
     pageSize?: number;
   }): Promise<unknown> {
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 40));
     const q = (query.q ?? "").trim();
     const deliveryStatus = query.deliveryStatus?.trim() || undefined;
     const criticality = query.criticality?.trim() || undefined;
-    if (!q && !deliveryStatus && !criticality) {
+    const assignment = parseAssignmentFilter(query.assignment);
+    const actorId = requestActorStore.getStore()?.userId ?? null;
+    if (!q && !deliveryStatus && !criticality && assignment === "ALL") {
       return { contracts: [], totalFeatures: 0 };
     }
 
+    const contractWhere = await this.modulesDeliveryContractWhere();
     const featureWhere: Prisma.ContractFeatureWhereInput = {
-      module: {
-        contract: {
-          deletedAt: null,
-          contractType: { in: [ContractType.SOFTWARE, ContractType.INFRA, ContractType.SERVICO] }
-        }
-      }
+      module: { contract: contractWhere },
+      ...(assignment !== "ALL" && actorId ? this.featureAssignmentWhere(assignment, actorId) : {})
     };
     if (deliveryStatus && Object.values(ContractItemDeliveryStatus).includes(deliveryStatus as ContractItemDeliveryStatus)) {
       featureWhere.deliveryStatus = deliveryStatus as ContractItemDeliveryStatus;
@@ -877,6 +1334,9 @@ export class ContractsService {
         fiscal: true,
         manager: true,
         supplier: true,
+        organization: { select: { id: true, name: true, acronym: true, active: true } },
+        contractTypeCatalog: { select: { id: true, name: true, acronym: true, legacyEnum: true } },
+        hiringType: { select: { id: true, name: true } },
         glpiGroups: { orderBy: { glpiGroupName: "asc" } },
         _count: { select: { amendments: true } }
       },
@@ -1028,24 +1488,281 @@ export class ContractsService {
     };
   }
 
+  /**
+   * Conferência administrativa da migração de identificação (código interno vs número formal).
+   * Não altera dados automaticamente — apenas lista pendências e divergências.
+   */
+  async identificationMigrationReview(): Promise<{
+    summary: {
+      total: number;
+      withIssues: number;
+      missingFormal: number;
+      missingType: number;
+      missingProcess: number;
+      missingHiringType: number;
+      yearMismatch: number;
+      missingStartDate: number;
+      organizationPending: number;
+      missingInternalCode: number;
+    };
+    contracts: Array<{
+      id: string;
+      name: string;
+      number: string;
+      status: ContractStatus;
+      internalCode: string | null;
+      formalNumber: string | null;
+      contractYear: number | null;
+      administrativeProcess: string | null;
+      hiringProcedureNumber: string | null;
+      startDate: string | null;
+      organizationPending: boolean;
+      organizationName: string | null;
+      contractTypeName: string | null;
+      hiringTypeName: string | null;
+      issues: IdentificationIssue[];
+    }>;
+  }> {
+    const contracts = await this.prisma.contract.findMany({
+      where: { deletedAt: null, ...this.organizationScope() },
+      select: {
+        id: true,
+        name: true,
+        number: true,
+        status: true,
+        internalCode: true,
+        formalNumber: true,
+        contractYear: true,
+        administrativeProcess: true,
+        hiringProcedureNumber: true,
+        startDate: true,
+        organizationPending: true,
+        organizationId: true,
+        contractTypeCatalogId: true,
+        hiringTypeId: true,
+        organization: { select: { name: true, acronym: true } },
+        contractTypeCatalog: { select: { name: true, acronym: true } },
+        hiringType: { select: { name: true } }
+      },
+      orderBy: [{ internalCode: "asc" }, { number: "asc" }]
+    });
+
+    const rows = contracts.map((contract) => {
+      const issues = collectIdentificationIssues({
+        formalNumber: contract.formalNumber,
+        contractTypeCatalogId: contract.contractTypeCatalogId,
+        administrativeProcess: contract.administrativeProcess,
+        hiringTypeId: contract.hiringTypeId,
+        startDate: contract.startDate,
+        contractYear: contract.contractYear,
+        internalCode: contract.internalCode,
+        organizationPending: contract.organizationPending
+      });
+      return {
+        id: contract.id,
+        name: contract.name,
+        number: contract.number,
+        status: contract.status,
+        internalCode: contract.internalCode,
+        formalNumber: contract.formalNumber,
+        contractYear: contract.contractYear,
+        administrativeProcess: contract.administrativeProcess,
+        hiringProcedureNumber: contract.hiringProcedureNumber,
+        startDate: contract.startDate ? contract.startDate.toISOString() : null,
+        organizationPending: contract.organizationPending,
+        organizationName: contract.organization
+          ? `${contract.organization.acronym} · ${contract.organization.name}`
+          : null,
+        contractTypeName: contract.contractTypeCatalog
+          ? `${contract.contractTypeCatalog.acronym} · ${contract.contractTypeCatalog.name}`
+          : null,
+        hiringTypeName: contract.hiringType?.name ?? null,
+        issues
+      };
+    });
+
+    const withIssues = rows.filter((row) => row.issues.length > 0);
+    const countIssue = (issue: IdentificationIssue) =>
+      withIssues.filter((row) => row.issues.includes(issue)).length;
+
+    return {
+      summary: {
+        total: rows.length,
+        withIssues: withIssues.length,
+        missingFormal: countIssue("MISSING_FORMAL_NUMBER"),
+        missingType: countIssue("MISSING_CONTRACT_TYPE"),
+        missingProcess: countIssue("MISSING_ADMIN_PROCESS"),
+        missingHiringType: countIssue("MISSING_HIRING_TYPE"),
+        yearMismatch: countIssue("YEAR_MISMATCH"),
+        missingStartDate: countIssue("MISSING_START_DATE"),
+        organizationPending: countIssue("ORGANIZATION_PENDING"),
+        missingInternalCode: countIssue("MISSING_INTERNAL_CODE")
+      },
+      contracts: withIssues
+    };
+  }
+
+  /**
+   * Reaplica a migração de identificação de forma segura (somente correspondências certas)
+   * e registra auditoria por contrato alterado. Não inventa número formal.
+   */
+  async repairIdentificationMigration(): Promise<{ scanned: number; updated: number }> {
+    const contracts = await this.prisma.contract.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        number: true,
+        internalCode: true,
+        formalNumber: true,
+        contractYear: true,
+        contractTypeCatalogId: true,
+        startDate: true
+      }
+    });
+
+    const typeByAcronym = new Map(
+      (
+        await this.prisma.contractTypeCatalog.findMany({
+          select: { id: true, acronym: true }
+        })
+      ).map((t) => [t.acronym.toUpperCase(), t.id] as const)
+    );
+
+    let updated = 0;
+    for (const contract of contracts) {
+      const before = { ...contract };
+      const data: Prisma.ContractUpdateInput = {};
+      const parsedFromNumber = parseInternalCode(contract.number);
+      const parsedInternal = parseInternalCode(contract.internalCode) ?? parsedFromNumber;
+
+      if (!contract.internalCode && parsedFromNumber) {
+        const clash = await this.prisma.contract.findFirst({
+          where: { internalCode: parsedFromNumber.raw, id: { not: contract.id }, deletedAt: null },
+          select: { id: true }
+        });
+        if (!clash) data.internalCode = parsedFromNumber.raw;
+      }
+
+      const internalLike = (typeof data.internalCode === "string" ? data.internalCode : null) ?? contract.internalCode ?? contract.number;
+      if (
+        contract.formalNumber &&
+        isFormalDerivedFromInternal(contract.formalNumber, internalLike)
+      ) {
+        data.formalNumber = null;
+      }
+
+      if (contract.contractYear == null && contract.startDate) {
+        data.contractYear = contract.startDate.getUTCFullYear();
+      }
+
+      if (!contract.contractTypeCatalogId && parsedInternal) {
+        const typeId = typeByAcronym.get(parsedInternal.acronym);
+        if (typeId) data.contractTypeCatalog = { connect: { id: typeId } };
+      }
+
+      if (Object.keys(data).length === 0) continue;
+
+      const next = await this.prisma.contract.update({
+        where: { id: contract.id },
+        data
+      });
+      await this.createAudit("Contract", contract.id, "IDENTIFICATION_MIGRATION", before, {
+        internalCode: next.internalCode,
+        formalNumber: next.formalNumber,
+        contractYear: next.contractYear,
+        contractTypeCatalogId: next.contractTypeCatalogId
+      });
+      updated += 1;
+    }
+
+    return { scanned: contracts.length, updated };
+  }
+
   async findOne(id: string): Promise<unknown> {
+    const accessible = await this.accessibleContractWhere(id);
     const contract = await this.prisma.contract.findFirst({
-      where: { id, deletedAt: null, ...this.organizationScope() },
+      where: accessible,
       include: {
         modules: {
           include: {
-            features: true,
-            validator: { select: { id: true, email: true, role: true } },
+            features: {
+              include: {
+                validationGroup: {
+                  select: {
+                    id: true,
+                    name: true,
+                    active: true,
+                    members: {
+                      include: { user: { select: LINKED_USER_SELECT } },
+                      orderBy: { createdAt: "asc" }
+                    }
+                  }
+                },
+                responsibles: {
+                  include: { user: { select: LINKED_USER_SELECT } },
+                  orderBy: { createdAt: "asc" }
+                }
+              }
+            },
+            fiscals: {
+              include: { user: { select: LINKED_USER_SELECT } },
+              orderBy: { createdAt: "asc" }
+            },
+            validator: { select: LINKED_USER_SELECT },
             glosaPricingItem: { include: { type: true } }
           }
+        },
+        validationGroups: {
+          include: {
+            members: {
+              include: { user: { select: LINKED_USER_SELECT } },
+              orderBy: { createdAt: "asc" }
+            },
+            _count: { select: { features: true } }
+          },
+          orderBy: [{ active: "desc" }, { name: "asc" }]
+        },
+        schedules: {
+          include: {
+            responsibles: {
+              include: { user: { select: LINKED_USER_SELECT } },
+              orderBy: { createdAt: "asc" }
+            },
+            milestones: {
+              include: {
+                responsibles: {
+                  include: { user: { select: LINKED_USER_SELECT } },
+                  orderBy: { createdAt: "asc" }
+                }
+              },
+              orderBy: { sequence: "asc" }
+            }
+          },
+          orderBy: [{ status: "asc" }, { name: "asc" }, { version: "desc" }]
+        },
+        occurrences: {
+          include: {
+            internalResponsible: { select: LINKED_USER_SELECT },
+            events: { orderBy: { createdAt: "desc" }, take: 50 },
+            controladoriaCases: { orderBy: { createdAt: "desc" } }
+          },
+          orderBy: [{ detectionDate: "desc" }, { createdAt: "desc" }]
+        },
+        controladoriaCases: {
+          include: {
+            occurrence: { select: { id: true, title: true, status: true, type: true } }
+          },
+          orderBy: [{ createdAt: "desc" }]
         },
         services: true,
         fiscal: true,
         manager: true,
         supplier: true,
         glpiGroups: { orderBy: { glpiGroupName: "asc" } },
-        amendments: { orderBy: { createdAt: "desc" } },
-        financialSnapshots: { orderBy: { recordedAt: "desc" }, take: 50 },
+        amendments: {
+          orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
+          include: { items: { orderBy: { createdAt: "asc" } } }
+        },
         itemChangeLogs: { orderBy: { changedAt: "desc" }, take: 100 },
         pricingItems: {
           include: { type: true, unit: true },
@@ -1054,13 +1771,40 @@ export class ContractsService {
       }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");
-    const modules = sortModuleListFeatures(contract.modules);
-    const { summarizePricingItems } = await import("./contract-pricing.helper");
-    const pricingTotals = summarizePricingItems(contract.pricingItems);
+    const modules = sortModuleListFeatures(this.enrichModulesWithPeople(contract.modules));
+    const validationGroups = contract.validationGroups.map((g) => {
+      const members = g.members.map((m) => serializeLinkedUser(m.user));
+      return {
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        active: g.active,
+        createdAt: g.createdAt,
+        updatedAt: g.updatedAt,
+        memberUserIds: members.map((u) => u.id),
+        members,
+        featuresCount: g._count.features
+      };
+    });
+    const pricingTotals = summarizePricingItemsAsOf(contract.pricingItems, new Date());
     const pricingLocked = await this.pricing.contractHasMovements(id);
+    const schedules = contract.schedules.map((s) => this.serializeSchedule(s));
+    const occurrences = contract.occurrences.map((o) => this.serializeOccurrence(o));
+    const controladoriaCases = contract.controladoriaCases.map((c) => this.serializeControladoriaCase(c));
+    const {
+      validationGroups: _vg,
+      schedules: _schedules,
+      occurrences: _occ,
+      controladoriaCases: _cc,
+      ...rest
+    } = contract;
     return {
-      ...contract,
+      ...rest,
       modules,
+      validationGroups,
+      schedules,
+      occurrences,
+      controladoriaCases,
       pricingTotals,
       pricingLocked,
       featureImplantationProportion: buildFeatureImplantationProportion({
@@ -1075,84 +1819,520 @@ export class ContractsService {
   }
 
   /**
-   * Registra um aditivo/reajuste (histórico) e aplica imediatamente valor total, valor mensal e data de término no contrato.
+   * Registra aditivo/reajuste: versiona itens afetados, recalcula valor global e atualiza o contrato
+   * quando os efeitos já vigem (ou mantém valores «vigentes hoje» se a data for futura).
    */
   async createAmendment(contractId: string, dto: CreateContractAmendmentDto): Promise<unknown> {
     const prev = await this.prisma.contract.findFirst({
       where: { id: contractId, deletedAt: null },
-      include: { modules: { include: { features: true } }, services: true, fiscal: true, manager: true, supplier: true }
+      include: {
+        pricingItems: { include: { type: true, unit: true }, orderBy: { sequence: "asc" } }
+      }
     });
     if (!prev) throw new NotFoundException("Contrato não encontrado");
     if (prev.status !== ContractStatus.ACTIVE) {
       throw new BadRequestException("Só é possível registrar aditivos para contratos em estado «Ativo».");
     }
 
-    const newEnd = new Date(dto.newEndDate);
-    const effectiveDate = new Date(dto.effectiveDate);
-    if (Number.isNaN(newEnd.getTime()) || Number.isNaN(effectiveDate.getTime())) {
-      throw new BadRequestException("Datas inválidas.");
-    }
-    if (newEnd < prev.startDate) {
-      throw new BadRequestException("A nova data de término não pode ser anterior à data de início do contrato.");
+    const idIssues = collectIdentificationIssues({
+      formalNumber: prev.formalNumber,
+      contractTypeCatalogId: prev.contractTypeCatalogId,
+      administrativeProcess: prev.administrativeProcess,
+      hiringTypeId: prev.hiringTypeId,
+      startDate: prev.startDate,
+      contractYear: prev.contractYear,
+      internalCode: prev.internalCode,
+      organizationPending: prev.organizationPending
+    });
+    if (idIssues.includes("MISSING_START_DATE")) {
+      throw new BadRequestException(
+        "Não é possível registrar aditivo: o contrato está incompleto (falta a data de início da vigência)."
+      );
     }
 
-    const newTotal = new Prisma.Decimal(dto.newTotalValue);
-    const newMonthly = new Prisma.Decimal(dto.newMonthlyValue);
-    if (newTotal.lt(0) || newMonthly.lt(0)) {
+    const effectsRaw = dto.effectsStartDate?.trim() || dto.effectiveDate?.trim();
+    if (!effectsRaw) {
+      throw new BadRequestException("Informe a data de início dos efeitos do aditivo.");
+    }
+    const description = dto.description?.trim();
+    if (!description) {
+      throw new BadRequestException("Informe a descrição/observação do aditivo.");
+    }
+
+    const effectiveDate = startOfUtcDay(new Date(effectsRaw));
+    if (Number.isNaN(effectiveDate.getTime())) {
+      throw new BadRequestException("Data de início dos efeitos inválida.");
+    }
+
+    let formalizationDate: Date | null = null;
+    if (dto.formalizationDate?.trim()) {
+      formalizationDate = startOfUtcDay(new Date(dto.formalizationDate));
+      if (Number.isNaN(formalizationDate.getTime())) {
+        throw new BadRequestException("Data de formalização inválida.");
+      }
+    }
+
+    let newEnd: Date | null = null;
+    if (dto.newEndDate?.trim()) {
+      newEnd = startOfUtcDay(new Date(dto.newEndDate));
+      if (Number.isNaN(newEnd.getTime())) {
+        throw new BadRequestException("Nova data de término inválida.");
+      }
+      if (newEnd < prev.startDate) {
+        throw new BadRequestException("A nova data de término não pode ser anterior à data de início do contrato.");
+      }
+    }
+
+    const itemDtos = dto.items ?? [];
+    if (itemDtos.length === 0 && dto.newTotalValue == null && dto.newMonthlyValue == null && !newEnd) {
+      throw new BadRequestException(
+        "Informe itens afetados e/ou novos valores/término para registrar o aditivo."
+      );
+    }
+
+    const today = startOfUtcDay(new Date());
+    const previousTotals = summarizePricingItemsAsOf(prev.pricingItems, today);
+    const previousGlobal =
+      prev.globalValueCurrent != null ? Number(prev.globalValueCurrent) : previousTotals.globalEstimated;
+
+    type ItemRow = (typeof prev.pricingItems)[number];
+    const working = new Map<string, ItemRow>(prev.pricingItems.map((i) => [i.id, { ...i }]));
+    const amendmentItemCreates: Array<{
+      action: ContractAmendmentItemAction;
+      pricingItemId: string | null;
+      resultPricingItemId: string | null;
+      adjustmentPercent: Prisma.Decimal | null;
+      beforeSnapshot: Prisma.InputJsonValue | typeof Prisma.JsonNull;
+      afterSnapshot: Prisma.InputJsonValue | typeof Prisma.JsonNull;
+    }> = [];
+    const txOps: Array<(tx: Prisma.TransactionClient) => Promise<void>> = [];
+
+    const nextSequence = () => {
+      let max = 0;
+      for (const i of working.values()) max = Math.max(max, i.sequence);
+      return max + 1;
+    };
+
+    const dayBeforeEffects = addUtcDays(effectiveDate, -1);
+
+    for (const row of itemDtos) {
+      if (row.action === ContractAmendmentItemAction.CREATE) {
+        const after = row.after;
+        if (!after?.typeId || !after.unitId || !after.description?.trim()) {
+          throw new BadRequestException("Para incluir item via aditivo, informe tipo, unidade e descrição.");
+        }
+        if (after.quantity == null || after.unitValue == null) {
+          throw new BadRequestException("Para incluir item via aditivo, informe quantidade e valor unitário.");
+        }
+        const billingKind = after.billingKind ?? ContractPricingBillingKind.RECURRING;
+        const periodicity =
+          billingKind === ContractPricingBillingKind.RECURRING
+            ? (after.periodicity ?? ContractPricingPeriodicity.MONTHLY)
+            : (after.periodicity ?? null);
+        const qty = Number(after.quantity);
+        const unitVal = Number(after.unitValue);
+        const totalManual = Boolean(after.totalManual);
+        const expected = Math.round(qty * unitVal * 100) / 100;
+        const totalVal = totalManual && after.totalValue != null ? Number(after.totalValue) : expected;
+        const newId = crypto.randomUUID();
+        const seq = nextSequence();
+        const periodStart = after.periodStart ? startOfUtcDay(new Date(after.periodStart)) : effectiveDate;
+        const periodEnd = after.periodEnd ? startOfUtcDay(new Date(after.periodEnd)) : null;
+        const snapshotAfter = serializePricingItemSnapshot({
+          id: newId,
+          sequence: seq,
+          typeId: after.typeId,
+          description: after.description.trim(),
+          unitId: after.unitId,
+          quantity: qty,
+          unitValue: unitVal,
+          totalValue: totalVal,
+          totalManual,
+          totalJustification: after.totalJustification ?? null,
+          billingKind,
+          periodicity,
+          periodStart,
+          periodEnd,
+          status: ContractPricingItemStatus.ACTIVE,
+          includeInGlosaBase: Boolean(after.includeInGlosaBase)
+        });
+        amendmentItemCreates.push({
+          action: ContractAmendmentItemAction.CREATE,
+          pricingItemId: null,
+          resultPricingItemId: newId,
+          adjustmentPercent:
+            row.adjustmentPercent != null ? new Prisma.Decimal(row.adjustmentPercent) : null,
+          beforeSnapshot: Prisma.JsonNull,
+          afterSnapshot: snapshotAfter as Prisma.InputJsonValue
+        });
+        txOps.push(async (tx) => {
+          await tx.contractPricingItem.create({
+            data: {
+              id: newId,
+              contractId,
+              sequence: seq,
+              typeId: after.typeId!,
+              description: after.description!.trim(),
+              unitId: after.unitId!,
+              quantity: new Prisma.Decimal(qty),
+              unitValue: new Prisma.Decimal(unitVal),
+              totalValue: new Prisma.Decimal(totalVal),
+              totalManual,
+              totalJustification: totalManual ? (after.totalJustification ?? "").trim() || null : null,
+              billingKind,
+              periodicity,
+              periodStart,
+              periodEnd,
+              status: ContractPricingItemStatus.ACTIVE,
+              includeInGlosaBase: Boolean(after.includeInGlosaBase)
+            }
+          });
+        });
+        working.set(newId, {
+          id: newId,
+          contractId,
+          sequence: seq,
+          typeId: after.typeId,
+          description: after.description.trim(),
+          unitId: after.unitId,
+          quantity: new Prisma.Decimal(qty),
+          unitValue: new Prisma.Decimal(unitVal),
+          totalValue: new Prisma.Decimal(totalVal),
+          totalManual,
+          totalJustification: totalManual ? (after.totalJustification ?? "").trim() || null : null,
+          billingKind,
+          periodicity,
+          periodStart,
+          periodEnd,
+          status: ContractPricingItemStatus.ACTIVE,
+          includeInGlosaBase: Boolean(after.includeInGlosaBase),
+          consumedQuantity: new Prisma.Decimal(0),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          type: null as never,
+          unit: null as never
+        } as ItemRow);
+        continue;
+      }
+
+      if (!row.pricingItemId) {
+        throw new BadRequestException("Informe o item contratual afetado.");
+      }
+      const source = working.get(row.pricingItemId);
+      if (!source) {
+        throw new BadRequestException("Item contratual informado no aditivo não foi encontrado.");
+      }
+      if (source.status !== ContractPricingItemStatus.ACTIVE) {
+        throw new BadRequestException(`O item «${source.description}» não está ativo para alteração.`);
+      }
+
+      const beforeSnap = serializePricingItemSnapshot(source);
+
+      if (row.action === ContractAmendmentItemAction.SUPPRESS) {
+        const afterSnap = {
+          ...beforeSnap,
+          periodEnd: dayBeforeEffects.toISOString().slice(0, 10),
+          status: ContractPricingItemStatus.CANCELLED
+        };
+        amendmentItemCreates.push({
+          action: ContractAmendmentItemAction.SUPPRESS,
+          pricingItemId: source.id,
+          resultPricingItemId: source.id,
+          adjustmentPercent:
+            row.adjustmentPercent != null ? new Prisma.Decimal(row.adjustmentPercent) : null,
+          beforeSnapshot: beforeSnap as Prisma.InputJsonValue,
+          afterSnapshot: afterSnap as Prisma.InputJsonValue
+        });
+        const sourceId = source.id;
+        txOps.push(async (tx) => {
+          await tx.contractPricingItem.update({
+            where: { id: sourceId },
+            data: {
+              periodEnd: dayBeforeEffects,
+              status: ContractPricingItemStatus.CANCELLED
+            }
+          });
+          await tx.contractModule.updateMany({
+            where: { contractId, glosaPricingItemId: sourceId },
+            data: { glosaPricingItemId: null }
+          });
+        });
+        working.set(source.id, {
+          ...source,
+          periodEnd: dayBeforeEffects,
+          status: ContractPricingItemStatus.CANCELLED
+        });
+        continue;
+      }
+
+      // UPDATE: fecha versão anterior e cria nova ACTIVE
+      const after = row.after ?? {};
+      const qty = after.quantity != null ? Number(after.quantity) : Number(source.quantity);
+      const unitVal = after.unitValue != null ? Number(after.unitValue) : Number(source.unitValue);
+      const billingKind = after.billingKind ?? source.billingKind;
+      const periodicity =
+        after.periodicity !== undefined
+          ? after.periodicity
+          : source.periodicity;
+      const totalManual = after.totalManual != null ? Boolean(after.totalManual) : source.totalManual;
+      const expected = Math.round(qty * unitVal * 100) / 100;
+      const totalVal =
+        totalManual && after.totalValue != null
+          ? Number(after.totalValue)
+          : after.totalValue != null
+            ? Number(after.totalValue)
+            : expected;
+      const newId = crypto.randomUUID();
+      const seq = nextSequence();
+      const periodEnd =
+        after.periodEnd !== undefined
+          ? after.periodEnd
+            ? startOfUtcDay(new Date(after.periodEnd))
+            : null
+          : source.periodEnd;
+      const snapshotAfter = serializePricingItemSnapshot({
+        id: newId,
+        sequence: seq,
+        typeId: after.typeId ?? source.typeId,
+        description: (after.description ?? source.description).trim(),
+        unitId: after.unitId ?? source.unitId,
+        quantity: qty,
+        unitValue: unitVal,
+        totalValue: totalVal,
+        totalManual,
+        totalJustification:
+          after.totalJustification !== undefined ? after.totalJustification : source.totalJustification,
+        billingKind,
+        periodicity: periodicity ?? null,
+        periodStart: effectiveDate,
+        periodEnd,
+        status: ContractPricingItemStatus.ACTIVE,
+        includeInGlosaBase:
+          after.includeInGlosaBase != null ? Boolean(after.includeInGlosaBase) : source.includeInGlosaBase
+      });
+      amendmentItemCreates.push({
+        action: ContractAmendmentItemAction.UPDATE,
+        pricingItemId: source.id,
+        resultPricingItemId: newId,
+        adjustmentPercent:
+          row.adjustmentPercent != null ? new Prisma.Decimal(row.adjustmentPercent) : null,
+        beforeSnapshot: beforeSnap as Prisma.InputJsonValue,
+        afterSnapshot: snapshotAfter as Prisma.InputJsonValue
+      });
+      const sourceId = source.id;
+      const includeGlosa = snapshotAfter.includeInGlosaBase;
+      txOps.push(async (tx) => {
+        await tx.contractPricingItem.update({
+          where: { id: sourceId },
+          data: {
+            periodEnd: dayBeforeEffects,
+            // Mantém ACTIVE com periodEnd no passado até effectsStart; o filtro por data evita dupla contagem.
+            status: ContractPricingItemStatus.ACTIVE
+          }
+        });
+        await tx.contractPricingItem.create({
+          data: {
+            id: newId,
+            contractId,
+            sequence: seq,
+            typeId: snapshotAfter.typeId,
+            description: snapshotAfter.description,
+            unitId: snapshotAfter.unitId,
+            quantity: new Prisma.Decimal(qty),
+            unitValue: new Prisma.Decimal(unitVal),
+            totalValue: new Prisma.Decimal(totalVal),
+            totalManual,
+            totalJustification: snapshotAfter.totalJustification,
+            billingKind,
+            periodicity: periodicity ?? null,
+            periodStart: effectiveDate,
+            periodEnd,
+            status: ContractPricingItemStatus.ACTIVE,
+            includeInGlosaBase: includeGlosa,
+            consumedQuantity: source.consumedQuantity
+          }
+        });
+        // Transfere vínculo de base de glosa para a nova versão.
+        await tx.contractModule.updateMany({
+          where: { contractId, glosaPricingItemId: sourceId },
+          data: { glosaPricingItemId: newId }
+        });
+      });
+      working.set(source.id, { ...source, periodEnd: dayBeforeEffects });
+      working.set(newId, {
+        ...source,
+        id: newId,
+        sequence: seq,
+        typeId: snapshotAfter.typeId,
+        description: snapshotAfter.description,
+        unitId: snapshotAfter.unitId,
+        quantity: new Prisma.Decimal(qty),
+        unitValue: new Prisma.Decimal(unitVal),
+        totalValue: new Prisma.Decimal(totalVal),
+        totalManual,
+        totalJustification: snapshotAfter.totalJustification,
+        billingKind,
+        periodicity: periodicity ?? null,
+        periodStart: effectiveDate,
+        periodEnd,
+        status: ContractPricingItemStatus.ACTIVE,
+        includeInGlosaBase: includeGlosa
+      } as ItemRow);
+    }
+
+    const workingList = [...working.values()];
+    const totalsAtEffects = summarizePricingItemsAsOf(workingList, effectiveDate);
+    const totalsToday = summarizePricingItemsAsOf(workingList, today);
+
+    const newMonthly =
+      itemDtos.length > 0
+        ? totalsAtEffects.monthlyValue
+        : dto.newMonthlyValue != null
+          ? Number(dto.newMonthlyValue)
+          : Number(prev.monthlyValue);
+    const newTotal =
+      itemDtos.length > 0
+        ? totalsAtEffects.globalEstimated
+        : dto.newTotalValue != null
+          ? Number(dto.newTotalValue)
+          : Number(prev.totalValue);
+    const newGlobal =
+      itemDtos.length > 0
+        ? totalsAtEffects.globalEstimated
+        : dto.newTotalValue != null
+          ? Number(dto.newTotalValue)
+          : previousGlobal;
+
+    if (newMonthly < 0 || newTotal < 0 || newGlobal < 0) {
       throw new BadRequestException("Valores não podem ser negativos.");
     }
 
+    const effectsAlreadyStarted = effectiveDate.getTime() <= today.getTime();
+    const applyContractValues = effectsAlreadyStarted || itemDtos.length === 0;
+    // Valores «vigentes hoje» quando há itens com effects futuros.
+    const contractMonthly = itemDtos.length > 0 ? totalsToday.monthlyValue : newMonthly;
+    const contractTotal = itemDtos.length > 0 ? Math.max(totalsToday.globalEstimated, totalsToday.monthlyValue, 0) : newTotal;
+    const contractGlobal = itemDtos.length > 0 ? totalsToday.globalEstimated : newGlobal;
+    const contractInstallation =
+      itemDtos.length > 0 ? totalsToday.installationValue : undefined;
+
+    let computedAdjustment = dto.adjustmentPercent ?? null;
+    if (computedAdjustment == null && previousGlobal > 0) {
+      computedAdjustment = Math.round(((newGlobal - previousGlobal) / previousGlobal) * 10000) / 100;
+    }
+
     const { created, updatedContract } = await this.prisma.$transaction(async (tx) => {
+      for (const op of txOps) await op(tx);
+
       const ref = dto.referenceCode?.trim();
       const createdAmendment = await tx.contractAmendment.create({
         data: {
           contractId,
+          type: dto.type ?? ContractAmendmentType.OUTRO,
+          status: ContractAmendmentStatus.ACTIVE,
           referenceCode: ref ? ref : null,
+          formalizationDate,
           effectiveDate,
-          description: dto.description.trim(),
+          description,
           previousTotalValue: prev.totalValue,
           previousMonthlyValue: prev.monthlyValue,
           previousEndDate: prev.endDate,
-          newTotalValue: newTotal,
-          newMonthlyValue: newMonthly,
-          newEndDate: newEnd
-        }
+          previousGlobalValue: new Prisma.Decimal(previousGlobal),
+          newTotalValue: new Prisma.Decimal(newTotal),
+          newMonthlyValue: new Prisma.Decimal(newMonthly),
+          newEndDate: newEnd ?? prev.endDate,
+          newGlobalValue: new Prisma.Decimal(newGlobal),
+          adjustmentPercent: computedAdjustment != null ? new Prisma.Decimal(computedAdjustment) : null,
+          indexReference: dto.indexReference?.trim() || null,
+          actorId: getAuditActorId() === "system" ? null : getAuditActorId(),
+          actorLabel: getAuditActorLabel() || null,
+          items: {
+            create: amendmentItemCreates.map((i) => ({
+              action: i.action,
+              pricingItemId: i.pricingItemId,
+              resultPricingItemId: i.resultPricingItemId,
+              adjustmentPercent: i.adjustmentPercent,
+              beforeSnapshot: i.beforeSnapshot,
+              afterSnapshot: i.afterSnapshot
+            }))
+          }
+        },
+        include: { items: true }
       });
+
       const updated = await tx.contract.update({
         where: { id: contractId },
         data: {
-          totalValue: newTotal,
-          monthlyValue: newMonthly,
-          endDate: newEnd
-        },
-        include: { modules: { include: { features: true } }, services: true, fiscal: true, manager: true, supplier: true }
+          ...(newEnd ? { endDate: newEnd } : {}),
+          ...(applyContractValues || itemDtos.length > 0
+            ? {
+                monthlyValue: new Prisma.Decimal(Math.max(contractMonthly, 0)),
+                totalValue: new Prisma.Decimal(Math.max(contractTotal, 0)),
+                ...(contractInstallation !== undefined
+                  ? {
+                      installationValue:
+                        contractInstallation != null ? new Prisma.Decimal(contractInstallation) : null
+                    }
+                  : {}),
+                ...(prev.globalValueManual
+                  ? {}
+                  : { globalValueCurrent: new Prisma.Decimal(Math.max(contractGlobal, 0)) })
+              }
+            : {})
+        }
       });
       return { created: createdAmendment, updatedContract: updated };
     });
 
     await this.createAudit("ContractAmendment", created.id, "CREATE", null, created);
     await this.createAudit("Contract", contractId, "AMEND", prev, updatedContract);
+    for (const item of created.items ?? []) {
+      await this.createAudit("ContractAmendmentItem", item.id, "CREATE", null, item);
+    }
     return this.findOne(contractId);
   }
 
   /**
-   * Grava na memória os valores financeiros atuais do contrato (mensal, total, implantação),
-   * para comparar depois de uma renovação ou reajuste manual.
+   * Cancelamento formal do aditivo (não reverte automaticamente os itens; use um aditivo corretivo).
    */
-  async createFinancialSnapshot(contractId: string, dto: CreateContractFinancialSnapshotDto): Promise<unknown> {
-    const prev = await this.prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } });
-    if (!prev) throw new NotFoundException("Contrato não encontrado");
-    const note = dto.note?.trim();
-    const created = await this.prisma.contractFinancialSnapshot.create({
-      data: {
-        contractId,
-        monthlyValue: prev.monthlyValue,
-        totalValue: prev.totalValue,
-        installationValue: prev.installationValue,
-        note: note ? note : null
-      }
+  async cancelAmendment(
+    contractId: string,
+    amendmentId: string,
+    dto: CancelContractAmendmentDto
+  ): Promise<unknown> {
+    const justification = dto.justification?.trim();
+    if (!justification || justification.length < 3) {
+      throw new BadRequestException("Informe a justificativa do cancelamento (mínimo 3 caracteres).");
+    }
+    const amendment = await this.prisma.contractAmendment.findFirst({
+      where: { id: amendmentId, contractId },
+      include: { items: true }
     });
-    await this.createAudit("ContractFinancialSnapshot", created.id, "CREATE", null, created);
+    if (!amendment) throw new NotFoundException("Aditivo não encontrado.");
+    if (amendment.status === ContractAmendmentStatus.CANCELLED) {
+      throw new BadRequestException("Este aditivo já está cancelado.");
+    }
+
+    const contract = await this.prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } });
+    if (!contract) throw new NotFoundException("Contrato não encontrado");
+
+    const updated = await this.prisma.contractAmendment.update({
+      where: { id: amendmentId },
+      data: {
+        status: ContractAmendmentStatus.CANCELLED,
+        cancelJustification: justification,
+        cancelledAt: new Date(),
+        actorId: getAuditActorId() === "system" ? null : getAuditActorId(),
+        actorLabel: getAuditActorLabel() || null
+      },
+      include: { items: true }
+    });
+
+    await this.createAudit("ContractAmendment", amendmentId, "CANCEL", amendment, updated);
+    await this.createAudit("Contract", contractId, "AMEND_CANCEL", null, {
+      amendmentId,
+      justification
+    });
     return this.findOne(contractId);
   }
 
@@ -1398,7 +2578,6 @@ export class ContractsService {
     const [
       measurements,
       amendments,
-      snapshots,
       governance,
       evaluatedFeatures,
       statusChangeLogs,
@@ -1406,7 +2585,6 @@ export class ContractsService {
     ] = await Promise.all([
       this.prisma.measurement.count({ where: { contractId, deletedAt: null } }),
       this.prisma.contractAmendment.count({ where: { contractId } }),
-      this.prisma.contractFinancialSnapshot.count({ where: { contractId } }),
       this.prisma.ticketGovernance.count({ where: { contractId } }),
       this.prisma.contractFeature.count({
         where: {
@@ -1431,7 +2609,6 @@ export class ContractsService {
     const blockers: string[] = [];
     if (measurements > 0) blockers.push(`medições (${measurements})`);
     if (amendments > 0) blockers.push(`aditivos (${amendments})`);
-    if (snapshots > 0) blockers.push(`memória financeira (${snapshots})`);
     if (governance > 0) blockers.push(`chamados de governança (${governance})`);
     if (evaluatedFeatures > 0) blockers.push(`funcionalidades avaliadas (${evaluatedFeatures})`);
     if (statusChangeLogs > 0) blockers.push(`histórico de alterações de itens (${statusChangeLogs})`);
@@ -1627,23 +2804,29 @@ export class ContractsService {
 
   async createModule(contractId: string, dto: CreateContractModuleDto): Promise<unknown> {
     await this.ensureContract(contractId);
-    if (dto.validatorId?.trim()) {
-      await this.ensureUser(dto.validatorId.trim());
-    }
+    const fiscalUserIds = this.resolveFiscalUserIdsInput(dto.fiscalUserIds, dto.validatorId);
+    await this.ensureUsersExist(fiscalUserIds);
     const glosaPricingItemId = await this.resolveModuleGlosaPricingItemId(contractId, dto.glosaPricingItemId);
     const created = await this.prisma.contractModule.create({
       data: {
         contractId,
         name: dto.name,
         criticality: dto.criticality ?? ContractItemCriticality.MEDIA,
-        validatorId: dto.validatorId?.trim() || null,
+        validatorId: fiscalUserIds[0] ?? null,
         glosaPricingItemId,
         weight: new Prisma.Decimal(dto.weight ?? 0)
       }
     });
+    if (fiscalUserIds.length > 0) {
+      await this.prisma.contractModuleFiscal.createMany({
+        data: fiscalUserIds.map((userId) => ({ moduleId: created.id, userId })),
+        skipDuplicates: true
+      });
+    }
     await this.recalculateContractModuleWeights(contractId);
     const recalculated = await this.prisma.contractModule.findUnique({ where: { id: created.id } });
-    await this.createAudit("ContractModule", created.id, "CREATE", null, created);
+    const auditNew = { ...(recalculated ?? created), fiscalUserIds, fiscalUsersAdded: fiscalUserIds };
+    await this.createAudit("ContractModule", created.id, "CREATE", null, auditNew);
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.MODULE,
@@ -1651,34 +2834,65 @@ export class ContractsService {
       itemName: recalculated?.name ?? created.name,
       action: ContractItemChangeAction.CREATED,
       criticalityAfter: recalculated?.criticality ?? created.criticality,
-      newData: recalculated ?? created
+      newData: auditNew
     });
     return this.findOne(contractId);
   }
 
   async updateModule(contractId: string, moduleId: string, dto: UpdateContractModuleDto): Promise<unknown> {
     await this.ensureModule(contractId, moduleId);
-    if (dto.validatorId?.trim()) {
-      await this.ensureUser(dto.validatorId.trim());
-    }
     const glosaPricingItemId =
       dto.glosaPricingItemId === undefined
         ? undefined
         : await this.resolveModuleGlosaPricingItemId(contractId, dto.glosaPricingItemId);
+    const prevFiscals = await this.prisma.contractModuleFiscal.findMany({
+      where: { moduleId },
+      select: { userId: true },
+      orderBy: { createdAt: "asc" }
+    });
+    const prevFiscalIds = prevFiscals.map((f) => f.userId);
     const prev = await this.prisma.contractModule.findUnique({ where: { id: moduleId } });
+    const nextFiscalIds =
+      dto.fiscalUserIds !== undefined || dto.validatorId !== undefined
+        ? this.resolveFiscalUserIdsInput(dto.fiscalUserIds, dto.validatorId)
+        : null;
+    if (nextFiscalIds) {
+      await this.ensureUsersExist(nextFiscalIds);
+    }
     const updated = await this.prisma.contractModule.update({
       where: { id: moduleId },
       data: {
         name: dto.name ?? undefined,
         criticality: dto.criticality ?? undefined,
-        validatorId: dto.validatorId === undefined ? undefined : dto.validatorId?.trim() || null,
+        validatorId:
+          nextFiscalIds !== null ? nextFiscalIds[0] ?? null : dto.validatorId === undefined ? undefined : dto.validatorId?.trim() || null,
         glosaPricingItemId,
         weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : undefined
       }
     });
+    let fiscalDiff: { added: string[]; removed: string[]; fiscalUserIds: string[] } | null = null;
+    if (nextFiscalIds !== null) {
+      fiscalDiff = await this.syncModuleFiscals(moduleId, nextFiscalIds, prevFiscalIds);
+    }
     await this.recalculateContractModuleWeights(contractId);
     const recalculated = await this.prisma.contractModule.findUnique({ where: { id: moduleId } });
-    await this.createAudit("ContractModule", moduleId, "UPDATE", prev, recalculated ?? updated);
+    const auditOld = { ...prev, fiscalUserIds: prevFiscalIds };
+    const auditNew = {
+      ...(recalculated ?? updated),
+      fiscalUserIds: fiscalDiff?.fiscalUserIds ?? prevFiscalIds,
+      fiscalUsersAdded: fiscalDiff?.added ?? [],
+      fiscalUsersRemoved: fiscalDiff?.removed ?? []
+    };
+    await this.createAudit("ContractModule", moduleId, "UPDATE", auditOld, auditNew);
+    if (fiscalDiff && (fiscalDiff.added.length > 0 || fiscalDiff.removed.length > 0)) {
+      await this.createAudit("ContractModuleFiscal", moduleId, "UPDATE", {
+        fiscalUserIds: prevFiscalIds,
+        removed: fiscalDiff.removed
+      }, {
+        fiscalUserIds: fiscalDiff.fiscalUserIds,
+        added: fiscalDiff.added
+      });
+    }
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.MODULE,
@@ -1687,8 +2901,8 @@ export class ContractsService {
       action: ContractItemChangeAction.UPDATED,
       criticalityBefore: prev?.criticality ?? null,
       criticalityAfter: recalculated?.criticality ?? updated.criticality,
-      oldData: prev,
-      newData: recalculated ?? updated
+      oldData: auditOld,
+      newData: auditNew
     });
     return this.findOne(contractId);
   }
@@ -1730,6 +2944,14 @@ export class ContractsService {
     if (!itemCode) {
       throw new BadRequestException("O campo obrigatório Código do Item deve ser preenchido antes de gravar a informação.");
     }
+    const validationGroupId = dto.validationGroupId?.trim();
+    if (!validationGroupId) {
+      throw new BadRequestException("Selecione o grupo de validação da funcionalidade.");
+    }
+    await this.ensureValidationGroup(contractId, validationGroupId, { requireActive: true });
+    const responsibleUserIds =
+      dto.responsibleUserIds !== undefined ? normalizeUserIds(dto.responsibleUserIds) : [];
+    await this.ensureUsersExist(responsibleUserIds);
     const created = await this.prisma.contractFeature.create({
       data: {
         moduleId,
@@ -1738,12 +2960,25 @@ export class ContractsService {
         criticality: dto.criticality ?? ContractItemCriticality.MEDIA,
         weight: new Prisma.Decimal(dto.weight ?? 0),
         status: dto.status ?? ContractFeatureStatus.NOT_STARTED,
-        deliveryStatus: dto.deliveryStatus ?? ContractItemDeliveryStatus.NOT_DELIVERED
+        deliveryStatus: dto.deliveryStatus ?? ContractItemDeliveryStatus.NOT_DELIVERED,
+        validationGroupId
       }
     });
+    if (responsibleUserIds.length > 0) {
+      await this.prisma.contractFeatureResponsible.createMany({
+        data: responsibleUserIds.map((userId) => ({ featureId: created.id, userId })),
+        skipDuplicates: true
+      });
+    }
     await this.recalculateModuleFeatureWeights(moduleId);
     const recalculated = await this.prisma.contractFeature.findUnique({ where: { id: created.id } });
-    await this.createAudit("ContractFeature", created.id, "CREATE", null, recalculated ?? created);
+    const auditNew = {
+      ...(recalculated ?? created),
+      responsibleUserIds,
+      validationGroupId,
+      responsibilitySource: "GROUP_AND_FEATURE"
+    };
+    await this.createAudit("ContractFeature", created.id, "CREATE", null, auditNew);
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.FEATURE,
@@ -1753,7 +2988,7 @@ export class ContractsService {
       criticalityAfter: recalculated?.criticality ?? created.criticality,
       statusAfter: recalculated?.status ?? created.status,
       deliveryStatusAfter: recalculated?.deliveryStatus ?? created.deliveryStatus,
-      newData: recalculated ?? created
+      newData: auditNew
     });
     return this.findOne(contractId);
   }
@@ -1768,7 +3003,26 @@ export class ContractsService {
     if (dto.itemCode !== undefined && !dto.itemCode.trim()) {
       throw new BadRequestException("O campo obrigatório Código do Item deve ser preenchido antes de gravar a informação.");
     }
+    const prevResponsibles = await this.prisma.contractFeatureResponsible.findMany({
+      where: { featureId },
+      select: { userId: true },
+      orderBy: { createdAt: "asc" }
+    });
+    const prevResponsibleIds = prevResponsibles.map((r) => r.userId);
     const prev = await this.prisma.contractFeature.findUnique({ where: { id: featureId } });
+    const nextResponsibleIds =
+      dto.responsibleUserIds !== undefined ? normalizeUserIds(dto.responsibleUserIds) : null;
+    if (nextResponsibleIds) {
+      await this.ensureUsersExist(nextResponsibleIds);
+    }
+    let nextValidationGroupId: string | null | undefined = undefined;
+    if (dto.validationGroupId !== undefined) {
+      const raw = dto.validationGroupId?.trim() || null;
+      if (raw) {
+        await this.ensureValidationGroup(contractId, raw, { requireActive: true });
+      }
+      nextValidationGroupId = raw;
+    }
     const updated = await this.prisma.contractFeature.update({
       where: { id: featureId },
       data: {
@@ -1777,13 +3031,48 @@ export class ContractsService {
         weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : undefined,
         criticality: dto.criticality ?? undefined,
         status: dto.status ?? undefined,
-        deliveryStatus: dto.deliveryStatus ?? undefined
+        deliveryStatus: dto.deliveryStatus ?? undefined,
+        validationGroupId: nextValidationGroupId
       }
     });
+    let responsibleDiff: { added: string[]; removed: string[]; responsibleUserIds: string[] } | null = null;
+    if (nextResponsibleIds !== null) {
+      responsibleDiff = await this.syncFeatureResponsibles(featureId, nextResponsibleIds, prevResponsibleIds);
+    }
     await this.recalculateModuleFeatureWeights(moduleId);
     const recalculated = await this.prisma.contractFeature.findUnique({ where: { id: featureId } });
     const next = recalculated ?? updated;
-    await this.createAudit("ContractFeature", featureId, "UPDATE", prev, next);
+    const finalResponsibleIds = responsibleDiff?.responsibleUserIds ?? prevResponsibleIds;
+    const auditOld = {
+      ...prev,
+      responsibleUserIds: prevResponsibleIds,
+      validationGroupId: prev?.validationGroupId ?? null
+    };
+    const auditNew = {
+      ...(next as object),
+      responsibleUserIds: finalResponsibleIds,
+      responsibleUsersAdded: responsibleDiff?.added ?? [],
+      responsibleUsersRemoved: responsibleDiff?.removed ?? [],
+      validationGroupId: next.validationGroupId,
+      responsibilitySource: next.validationGroupId
+        ? finalResponsibleIds.length > 0
+          ? "GROUP_AND_FEATURE"
+          : "GROUP"
+        : finalResponsibleIds.length > 0
+          ? "FEATURE"
+          : "UNDEFINED_GROUP",
+      changeSource: dto.changeSource?.trim() || "CONTRACT_DETAIL"
+    };
+    await this.createAudit("ContractFeature", featureId, "UPDATE", auditOld, auditNew);
+    if (responsibleDiff && (responsibleDiff.added.length > 0 || responsibleDiff.removed.length > 0)) {
+      await this.createAudit("ContractFeatureResponsible", featureId, "UPDATE", {
+        responsibleUserIds: prevResponsibleIds,
+        removed: responsibleDiff.removed
+      }, {
+        responsibleUserIds: responsibleDiff.responsibleUserIds,
+        added: responsibleDiff.added
+      });
+    }
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.FEATURE,
@@ -1799,11 +3088,8 @@ export class ContractsService {
       statusAfter: next.status,
       deliveryStatusBefore: prev?.deliveryStatus ?? null,
       deliveryStatusAfter: next.deliveryStatus,
-      oldData: prev,
-      newData: {
-        ...(next as object),
-        changeSource: dto.changeSource?.trim() || "CONTRACT_DETAIL"
-      }
+      oldData: auditOld,
+      newData: auditNew
     });
     return this.findOne(contractId);
   }
@@ -1905,20 +3191,1072 @@ export class ContractsService {
   }
 
   private async ensureContract(contractId: string): Promise<void> {
-    const c = await this.prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } });
+    const c = await this.prisma.contract.findFirst({
+      where: await this.accessibleContractWhere(contractId)
+    });
     if (!c) throw new NotFoundException("Contrato não encontrado");
   }
 
   /**
-   * Restringe consultas ao órgão do usuário, sem bloquear contas legadas
-   * que ainda não tenham órgão definido.
+   * Escopo pelo órgão do contexto ativo.
+   * ADMIN com órgão específico NÃO bypassa o filtro; «Todos os órgãos» (org null) não filtra.
    */
   private organizationScope(): Prisma.ContractWhereInput {
     const actor = requestActorStore.getStore();
-    if (actor?.role !== "ADMIN" && actor?.organizationId) {
-      return { organizationId: actor.organizationId };
+    if (actor?.allOrganizationsActive || !actor?.organizationId) {
+      return {};
     }
-    return {};
+    return { organizationId: actor.organizationId };
+  }
+
+  /** Contratos do órgão + contratos de outros órgãos onde o ator tem atribuição. */
+  private assignmentExpandedContractOr(actorUserId: string): Prisma.ContractWhereInput[] {
+    return [
+      {
+        validationGroups: { some: { members: { some: { userId: actorUserId } } } }
+      },
+      {
+        modules: {
+          some: {
+            OR: [
+              { fiscals: { some: { userId: actorUserId } } },
+              { validatorId: actorUserId },
+              {
+                features: {
+                  some: {
+                    OR: [
+                      { responsibles: { some: { userId: actorUserId } } },
+                      { validationGroup: { members: { some: { userId: actorUserId } } } }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    ];
+  }
+
+  private async accessibleContractWhere(contractId: string): Promise<Prisma.ContractWhereInput> {
+    const actor = requestActorStore.getStore();
+    const base: Prisma.ContractWhereInput = { id: contractId, deletedAt: null };
+    if (!actor?.userId || actor.allOrganizationsActive || !actor.organizationId) {
+      return { ...base, ...this.organizationScope() };
+    }
+    return {
+      ...base,
+      OR: [{ organizationId: actor.organizationId }, ...this.assignmentExpandedContractOr(actor.userId)]
+    };
+  }
+
+  private async modulesDeliveryContractWhere(): Promise<Prisma.ContractWhereInput> {
+    const actor = requestActorStore.getStore();
+    const typeFilter: Prisma.ContractWhereInput = {
+      deletedAt: null,
+      contractType: { in: [ContractType.SOFTWARE, ContractType.INFRA, ContractType.SERVICO] }
+    };
+    if (!actor?.userId || actor.allOrganizationsActive || !actor.organizationId) {
+      return { ...typeFilter, ...this.organizationScope() };
+    }
+    return {
+      ...typeFilter,
+      OR: [{ organizationId: actor.organizationId }, ...this.assignmentExpandedContractOr(actor.userId)]
+    };
+  }
+
+  private featureAssignmentWhere(
+    assignment: AssignmentFilter,
+    actorUserId: string
+  ): Prisma.ContractFeatureWhereInput {
+    switch (assignment) {
+      case "ASSIGNED_TO_ME":
+        return {
+          OR: [
+            { responsibles: { some: { userId: actorUserId } } },
+            { validationGroup: { members: { some: { userId: actorUserId } } } }
+          ]
+        };
+      case "GROUP_MEMBER":
+        return { validationGroup: { members: { some: { userId: actorUserId } } } };
+      case "MODULE_FISCAL":
+        return {
+          module: {
+            OR: [{ fiscals: { some: { userId: actorUserId } } }, { validatorId: actorUserId }]
+          }
+        };
+      case "NO_RESPONSIBLE":
+        return {
+          AND: [
+            { validationGroupId: null },
+            { responsibles: { none: {} } }
+          ]
+        };
+      default:
+        return {};
+    }
+  }
+
+  private async filterContractIdsByAssignment(
+    contractIds: string[],
+    assignment: AssignmentFilter,
+    actorUserId: string
+  ): Promise<string[]> {
+    if (contractIds.length === 0 || assignment === "ALL") return contractIds;
+    const featureWhere = this.featureAssignmentWhere(assignment, actorUserId);
+    const rows = await this.prisma.contractFeature.findMany({
+      where: {
+        ...featureWhere,
+        module: { contractId: { in: contractIds } }
+      },
+      select: { module: { select: { contractId: true } } },
+      distinct: ["moduleId"]
+    });
+    const matched = new Set(rows.map((r) => r.module.contractId));
+    if (assignment === "MODULE_FISCAL") {
+      const mods = await this.prisma.contractModule.findMany({
+        where: {
+          contractId: { in: contractIds },
+          OR: [{ fiscals: { some: { userId: actorUserId } } }, { validatorId: actorUserId }]
+        },
+        select: { contractId: true }
+      });
+      for (const m of mods) matched.add(m.contractId);
+    }
+    return contractIds.filter((id) => matched.has(id));
+  }
+
+  private scheduleInclude() {
+    return {
+      responsibles: {
+        include: { user: { select: LINKED_USER_SELECT } },
+        orderBy: { createdAt: "asc" as const }
+      },
+      milestones: {
+        include: {
+          responsibles: {
+            include: { user: { select: LINKED_USER_SELECT } },
+            orderBy: { createdAt: "asc" as const }
+          }
+        },
+        orderBy: { sequence: "asc" as const }
+      }
+    };
+  }
+
+  private serializeSchedule(schedule: {
+    id: string;
+    contractId: string;
+    name: string;
+    type: ContractScheduleType;
+    purpose: string | null;
+    origin: ContractScheduleOrigin;
+    description: string | null;
+    plannedStartDate: Date | null;
+    plannedEndDate: Date | null;
+    companyResponsibles: string | null;
+    status: ContractScheduleStatus;
+    version: number;
+    lineageId: string;
+    replacedById: string | null;
+    impactaFinanceiro: boolean;
+    pricingItemId: string | null;
+    observations: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    responsibles?: Array<{ userId: string; user: LinkedUserRow }>;
+    milestones?: Array<{
+      id: string;
+      sequence: number;
+      activity: string;
+      description: string | null;
+      pricingItemId: string | null;
+      featureId: string | null;
+      plannedStartDate: Date | null;
+      plannedEndDate: Date | null;
+      actualStartDate: Date | null;
+      actualEndDate: Date | null;
+      percentComplete: Prisma.Decimal | null;
+      status: ContractScheduleMilestoneStatus;
+      dependencies: string | null;
+      observations: string | null;
+      responsibles?: Array<{ userId: string; user: LinkedUserRow }>;
+    }>;
+  }) {
+    const responsibleUsers = (schedule.responsibles ?? []).map((r) => serializeLinkedUser(r.user));
+    const milestones = (schedule.milestones ?? []).map((m) => {
+      const msUsers = (m.responsibles ?? []).map((r) => serializeLinkedUser(r.user));
+      return {
+        id: m.id,
+        sequence: m.sequence,
+        activity: m.activity,
+        description: m.description,
+        pricingItemId: m.pricingItemId,
+        featureId: m.featureId,
+        plannedStartDate: m.plannedStartDate,
+        plannedEndDate: m.plannedEndDate,
+        actualStartDate: m.actualStartDate,
+        actualEndDate: m.actualEndDate,
+        percentComplete: m.percentComplete != null ? Number(m.percentComplete) : null,
+        status: m.status,
+        dependencies: m.dependencies,
+        observations: m.observations,
+        responsibleUserIds: msUsers.map((u) => u.id),
+        responsibleUsers: msUsers
+      };
+    });
+    return {
+      id: schedule.id,
+      contractId: schedule.contractId,
+      name: schedule.name,
+      type: schedule.type,
+      purpose: schedule.purpose,
+      origin: schedule.origin,
+      description: schedule.description,
+      plannedStartDate: schedule.plannedStartDate,
+      plannedEndDate: schedule.plannedEndDate,
+      companyResponsibles: schedule.companyResponsibles,
+      status: schedule.status,
+      version: schedule.version,
+      lineageId: schedule.lineageId,
+      replacedById: schedule.replacedById,
+      impactaFinanceiro: schedule.impactaFinanceiro,
+      pricingItemId: schedule.pricingItemId,
+      observations: schedule.observations,
+      createdAt: schedule.createdAt,
+      updatedAt: schedule.updatedAt,
+      responsibleUserIds: responsibleUsers.map((u) => u.id),
+      responsibleUsers,
+      milestones
+    };
+  }
+
+  private parseOptionalDate(value: string | null | undefined): Date | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value.trim() === "") return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) {
+      throw new BadRequestException("Data inválida no cronograma.");
+    }
+    return d;
+  }
+
+  private async ensureSchedulePricingItem(contractId: string, pricingItemId: string | null | undefined): Promise<string | null | undefined> {
+    if (pricingItemId === undefined) return undefined;
+    if (pricingItemId === null || !pricingItemId.trim()) return null;
+    const item = await this.prisma.contractPricingItem.findFirst({
+      where: { id: pricingItemId.trim(), contractId },
+      select: { id: true }
+    });
+    if (!item) throw new BadRequestException("Item contratual informado não pertence a este contrato.");
+    return item.id;
+  }
+
+  private async ensureScheduleFeature(contractId: string, featureId: string | null | undefined): Promise<string | null> {
+    if (featureId === undefined || featureId === null || !featureId.trim()) return null;
+    const feature = await this.prisma.contractFeature.findFirst({
+      where: { id: featureId.trim(), module: { contractId } },
+      select: { id: true }
+    });
+    if (!feature) throw new BadRequestException("Funcionalidade informada não pertence a este contrato.");
+    return feature.id;
+  }
+
+  private async normalizeMilestonesInput(
+    contractId: string,
+    milestones: ContractScheduleMilestoneDto[] | undefined
+  ): Promise<
+    Array<{
+      sequence: number;
+      activity: string;
+      description: string | null;
+      pricingItemId: string | null;
+      featureId: string | null;
+      plannedStartDate: Date | null;
+      plannedEndDate: Date | null;
+      actualStartDate: Date | null;
+      actualEndDate: Date | null;
+      percentComplete: number | null;
+      status: ContractScheduleMilestoneStatus;
+      dependencies: string | null;
+      observations: string | null;
+      responsibleUserIds: string[];
+    }>
+  > {
+    if (!milestones) return [];
+    const allUserIds = new Set<string>();
+    const normalized = [];
+    for (const m of milestones) {
+      const activity = m.activity?.trim();
+      if (!activity) throw new BadRequestException("Informe a atividade de cada etapa/marco.");
+      const pricingItemId = await this.ensureSchedulePricingItem(contractId, m.pricingItemId ?? null);
+      const featureId = await this.ensureScheduleFeature(contractId, m.featureId ?? null);
+      const responsibleUserIds = normalizeUserIds(m.responsibleUserIds);
+      for (const id of responsibleUserIds) allUserIds.add(id);
+      const percent =
+        m.percentComplete === undefined || m.percentComplete === null
+          ? null
+          : Number(m.percentComplete);
+      if (percent != null && (!Number.isFinite(percent) || percent < 0 || percent > 100)) {
+        throw new BadRequestException("Percentual da etapa deve estar entre 0 e 100.");
+      }
+      normalized.push({
+        sequence: m.sequence,
+        activity,
+        description: m.description?.trim() || null,
+        pricingItemId: pricingItemId ?? null,
+        featureId,
+        plannedStartDate: this.parseOptionalDate(m.plannedStartDate) ?? null,
+        plannedEndDate: this.parseOptionalDate(m.plannedEndDate) ?? null,
+        actualStartDate: this.parseOptionalDate(m.actualStartDate) ?? null,
+        actualEndDate: this.parseOptionalDate(m.actualEndDate) ?? null,
+        percentComplete: percent,
+        status: m.status ?? ContractScheduleMilestoneStatus.NAO_INICIADA,
+        dependencies: m.dependencies?.trim() || null,
+        observations: m.observations?.trim() || null,
+        responsibleUserIds
+      });
+    }
+    await this.ensureUsersExist([...allUserIds]);
+    return normalized.sort((a, b) => a.sequence - b.sequence);
+  }
+
+  private isScheduleLockedForDirectEdit(status: ContractScheduleStatus): boolean {
+    return (
+      status === ContractScheduleStatus.APROVADO ||
+      status === ContractScheduleStatus.EM_EXECUCAO ||
+      status === ContractScheduleStatus.SUSPENSO
+    );
+  }
+
+  private scheduleVersionSensitiveChanged(
+    prev: {
+      plannedStartDate: Date | null;
+      plannedEndDate: Date | null;
+      companyResponsibles: string | null;
+      responsibles: Array<{ userId: string }>;
+      milestones: Array<{
+        sequence: number;
+        activity: string;
+        description: string | null;
+        pricingItemId: string | null;
+        featureId: string | null;
+        plannedStartDate: Date | null;
+        plannedEndDate: Date | null;
+        actualStartDate: Date | null;
+        actualEndDate: Date | null;
+        percentComplete: Prisma.Decimal | null;
+        status: ContractScheduleMilestoneStatus;
+        dependencies: string | null;
+        observations: string | null;
+        responsibles: Array<{ userId: string }>;
+      }>;
+    },
+    dto: UpdateContractScheduleDto,
+    nextResponsibleIds: string[] | null,
+    nextMilestones: Awaited<ReturnType<ContractsService["normalizeMilestonesInput"]>> | null
+  ): boolean {
+    if (dto.plannedStartDate !== undefined) {
+      const next = this.parseOptionalDate(dto.plannedStartDate) ?? null;
+      if ((prev.plannedStartDate?.toISOString() ?? null) !== (next?.toISOString() ?? null)) return true;
+    }
+    if (dto.plannedEndDate !== undefined) {
+      const next = this.parseOptionalDate(dto.plannedEndDate) ?? null;
+      if ((prev.plannedEndDate?.toISOString() ?? null) !== (next?.toISOString() ?? null)) return true;
+    }
+    if (nextResponsibleIds !== null) {
+      const prevIds = [...prev.responsibles.map((r) => r.userId)].sort();
+      const nextIds = [...nextResponsibleIds].sort();
+      if (prevIds.join("|") !== nextIds.join("|")) return true;
+    }
+    if (dto.companyResponsibles !== undefined) {
+      const next = dto.companyResponsibles?.trim() || null;
+      if ((prev.companyResponsibles ?? null) !== next) return true;
+    }
+    if (nextMilestones !== null) {
+      const prevKey = JSON.stringify(
+        prev.milestones.map((m) => ({
+          sequence: m.sequence,
+          activity: m.activity,
+          description: m.description,
+          pricingItemId: m.pricingItemId,
+          featureId: m.featureId,
+          plannedStartDate: m.plannedStartDate?.toISOString() ?? null,
+          plannedEndDate: m.plannedEndDate?.toISOString() ?? null,
+          actualStartDate: m.actualStartDate?.toISOString() ?? null,
+          actualEndDate: m.actualEndDate?.toISOString() ?? null,
+          percentComplete: m.percentComplete != null ? Number(m.percentComplete) : null,
+          status: m.status,
+          dependencies: m.dependencies,
+          observations: m.observations,
+          responsibleUserIds: [...m.responsibles.map((r) => r.userId)].sort()
+        }))
+      );
+      const nextKey = JSON.stringify(
+        nextMilestones.map((m) => ({
+          sequence: m.sequence,
+          activity: m.activity,
+          description: m.description,
+          pricingItemId: m.pricingItemId,
+          featureId: m.featureId,
+          plannedStartDate: m.plannedStartDate?.toISOString() ?? null,
+          plannedEndDate: m.plannedEndDate?.toISOString() ?? null,
+          actualStartDate: m.actualStartDate?.toISOString() ?? null,
+          actualEndDate: m.actualEndDate?.toISOString() ?? null,
+          percentComplete: m.percentComplete,
+          status: m.status,
+          dependencies: m.dependencies,
+          observations: m.observations,
+          responsibleUserIds: [...m.responsibleUserIds].sort()
+        }))
+      );
+      if (prevKey !== nextKey) return true;
+    }
+    return false;
+  }
+
+  private async replaceScheduleMilestones(
+    scheduleId: string,
+    milestones: Awaited<ReturnType<ContractsService["normalizeMilestonesInput"]>>
+  ): Promise<void> {
+    await this.prisma.contractScheduleMilestone.deleteMany({ where: { scheduleId } });
+    for (const m of milestones) {
+      await this.prisma.contractScheduleMilestone.create({
+        data: {
+          scheduleId,
+          sequence: m.sequence,
+          activity: m.activity,
+          description: m.description,
+          pricingItemId: m.pricingItemId,
+          featureId: m.featureId,
+          plannedStartDate: m.plannedStartDate,
+          plannedEndDate: m.plannedEndDate,
+          actualStartDate: m.actualStartDate,
+          actualEndDate: m.actualEndDate,
+          percentComplete: m.percentComplete,
+          status: m.status,
+          dependencies: m.dependencies,
+          observations: m.observations,
+          responsibles:
+            m.responsibleUserIds.length > 0
+              ? { create: m.responsibleUserIds.map((userId) => ({ userId })) }
+              : undefined
+        }
+      });
+    }
+  }
+
+  async listSchedules(contractId: string): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const rows = await this.prisma.contractSchedule.findMany({
+      where: { contractId },
+      include: this.scheduleInclude(),
+      orderBy: [{ status: "asc" }, { name: "asc" }, { version: "desc" }]
+    });
+    return rows.map((s) => this.serializeSchedule(s));
+  }
+
+  async createSchedule(contractId: string, dto: CreateContractScheduleDto): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException("Informe o nome do cronograma.");
+    const status = dto.status ?? ContractScheduleStatus.RASCUNHO;
+    if (
+      status === ContractScheduleStatus.SUBSTITUIDO ||
+      status === ContractScheduleStatus.APROVADO ||
+      status === ContractScheduleStatus.CONCLUIDO
+    ) {
+      throw new BadRequestException(
+        "Novo cronograma deve nascer como rascunho (ou em análise/ajustes). Use a ação de aprovar quando estiver pronto."
+      );
+    }
+    const responsibleUserIds = normalizeUserIds(dto.responsibleUserIds);
+    await this.ensureUsersExist(responsibleUserIds);
+    const pricingItemId = (await this.ensureSchedulePricingItem(contractId, dto.pricingItemId ?? null)) ?? null;
+    const milestones = await this.normalizeMilestonesInput(contractId, dto.milestones);
+    const created = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.contractSchedule.create({
+        data: {
+          contractId,
+          name,
+          type: dto.type,
+          purpose: dto.purpose?.trim() || null,
+          origin: dto.origin ?? ContractScheduleOrigin.OUTRO,
+          description: dto.description?.trim() || null,
+          plannedStartDate: this.parseOptionalDate(dto.plannedStartDate) ?? null,
+          plannedEndDate: this.parseOptionalDate(dto.plannedEndDate) ?? null,
+          companyResponsibles: dto.companyResponsibles?.trim() || null,
+          status,
+          version: 1,
+          lineageId: "pending",
+          impactaFinanceiro: dto.impactaFinanceiro ?? false,
+          pricingItemId,
+          observations: dto.observations?.trim() || null,
+          responsibles:
+            responsibleUserIds.length > 0
+              ? { create: responsibleUserIds.map((userId) => ({ userId })) }
+              : undefined
+        }
+      });
+      await tx.contractSchedule.update({
+        where: { id: row.id },
+        data: { lineageId: row.id }
+      });
+      for (const m of milestones) {
+        await tx.contractScheduleMilestone.create({
+          data: {
+            scheduleId: row.id,
+            sequence: m.sequence,
+            activity: m.activity,
+            description: m.description,
+            pricingItemId: m.pricingItemId,
+            featureId: m.featureId,
+            plannedStartDate: m.plannedStartDate,
+            plannedEndDate: m.plannedEndDate,
+            actualStartDate: m.actualStartDate,
+            actualEndDate: m.actualEndDate,
+            percentComplete: m.percentComplete,
+            status: m.status,
+            dependencies: m.dependencies,
+            observations: m.observations,
+            responsibles:
+              m.responsibleUserIds.length > 0
+                ? { create: m.responsibleUserIds.map((userId) => ({ userId })) }
+                : undefined
+          }
+        });
+      }
+      return tx.contractSchedule.findUniqueOrThrow({
+        where: { id: row.id },
+        include: this.scheduleInclude()
+      });
+    });
+    const serialized = this.serializeSchedule(created);
+    await this.createAudit("ContractSchedule", created.id, "CREATE", null, serialized);
+    return this.findOne(contractId);
+  }
+
+  async updateSchedule(
+    contractId: string,
+    scheduleId: string,
+    dto: UpdateContractScheduleDto
+  ): Promise<unknown> {
+    const prev = await this.prisma.contractSchedule.findFirst({
+      where: { id: scheduleId, contractId },
+      include: this.scheduleInclude()
+    });
+    if (!prev) throw new NotFoundException("Cronograma não encontrado neste contrato.");
+    if (
+      prev.status === ContractScheduleStatus.SUBSTITUIDO ||
+      prev.status === ContractScheduleStatus.CANCELADO
+    ) {
+      throw new BadRequestException("Cronograma substituído ou cancelado não pode ser editado.");
+    }
+    if (prev.status === ContractScheduleStatus.CONCLUIDO) {
+      throw new BadRequestException("Cronograma concluído não pode ser editado. Crie um novo se necessário.");
+    }
+
+    const nextResponsibleIds =
+      dto.responsibleUserIds !== undefined ? normalizeUserIds(dto.responsibleUserIds) : null;
+    if (nextResponsibleIds) await this.ensureUsersExist(nextResponsibleIds);
+    const nextPricingItemId = await this.ensureSchedulePricingItem(contractId, dto.pricingItemId);
+    const nextMilestones =
+      dto.milestones !== undefined
+        ? await this.normalizeMilestonesInput(contractId, dto.milestones)
+        : null;
+
+    if (dto.status === ContractScheduleStatus.APROVADO) {
+      throw new BadRequestException("Use a ação «Aprovar cronograma» para aprovar formalmente.");
+    }
+    if (dto.status === ContractScheduleStatus.SUBSTITUIDO) {
+      throw new BadRequestException("Situação SUBSTITUIDO é reservada ao versionamento automático.");
+    }
+
+    const needsVersion =
+      this.isScheduleLockedForDirectEdit(prev.status) &&
+      this.scheduleVersionSensitiveChanged(prev, dto, nextResponsibleIds, nextMilestones);
+
+    if (needsVersion) {
+      const created = await this.prisma.$transaction(async (tx) => {
+        const baseName = dto.name !== undefined ? dto.name.trim() : prev.name;
+        if (!baseName) throw new BadRequestException("Informe o nome do cronograma.");
+        const newRow = await tx.contractSchedule.create({
+          data: {
+            contractId,
+            name: baseName,
+            type: dto.type ?? prev.type,
+            purpose: dto.purpose !== undefined ? dto.purpose?.trim() || null : prev.purpose,
+            origin: dto.origin ?? prev.origin,
+            description:
+              dto.description !== undefined ? dto.description?.trim() || null : prev.description,
+            plannedStartDate:
+              dto.plannedStartDate !== undefined
+                ? this.parseOptionalDate(dto.plannedStartDate) ?? null
+                : prev.plannedStartDate,
+            plannedEndDate:
+              dto.plannedEndDate !== undefined
+                ? this.parseOptionalDate(dto.plannedEndDate) ?? null
+                : prev.plannedEndDate,
+            companyResponsibles:
+              dto.companyResponsibles !== undefined
+                ? dto.companyResponsibles?.trim() || null
+                : prev.companyResponsibles,
+            status: ContractScheduleStatus.RASCUNHO,
+            version: prev.version + 1,
+            lineageId: prev.lineageId,
+            impactaFinanceiro:
+              dto.impactaFinanceiro !== undefined ? dto.impactaFinanceiro : prev.impactaFinanceiro,
+            pricingItemId:
+              nextPricingItemId !== undefined ? nextPricingItemId : prev.pricingItemId,
+            observations:
+              dto.observations !== undefined ? dto.observations?.trim() || null : prev.observations,
+            responsibles: {
+              create: (nextResponsibleIds ?? prev.responsibles.map((r) => r.userId)).map(
+                (userId) => ({ userId })
+              )
+            }
+          }
+        });
+        const milestonesSource =
+          nextMilestones ??
+          prev.milestones.map((m) => ({
+            sequence: m.sequence,
+            activity: m.activity,
+            description: m.description,
+            pricingItemId: m.pricingItemId,
+            featureId: m.featureId,
+            plannedStartDate: m.plannedStartDate,
+            plannedEndDate: m.plannedEndDate,
+            actualStartDate: m.actualStartDate,
+            actualEndDate: m.actualEndDate,
+            percentComplete: m.percentComplete != null ? Number(m.percentComplete) : null,
+            status: m.status,
+            dependencies: m.dependencies,
+            observations: m.observations,
+            responsibleUserIds: m.responsibles.map((r) => r.userId)
+          }));
+        for (const m of milestonesSource) {
+          await tx.contractScheduleMilestone.create({
+            data: {
+              scheduleId: newRow.id,
+              sequence: m.sequence,
+              activity: m.activity,
+              description: m.description,
+              pricingItemId: m.pricingItemId,
+              featureId: m.featureId,
+              plannedStartDate: m.plannedStartDate,
+              plannedEndDate: m.plannedEndDate,
+              actualStartDate: m.actualStartDate,
+              actualEndDate: m.actualEndDate,
+              percentComplete: m.percentComplete,
+              status: m.status,
+              dependencies: m.dependencies,
+              observations: m.observations,
+              responsibles:
+                m.responsibleUserIds.length > 0
+                  ? { create: m.responsibleUserIds.map((userId) => ({ userId })) }
+                  : undefined
+            }
+          });
+        }
+        await tx.contractSchedule.update({
+          where: { id: prev.id },
+          data: {
+            status: ContractScheduleStatus.SUBSTITUIDO,
+            replacedById: newRow.id
+          }
+        });
+        return tx.contractSchedule.findUniqueOrThrow({
+          where: { id: newRow.id },
+          include: this.scheduleInclude()
+        });
+      });
+      await this.createAudit("ContractSchedule", prev.id, "VERSION", this.serializeSchedule(prev), {
+        replacedById: created.id,
+        newVersion: created.version
+      });
+      await this.createAudit("ContractSchedule", created.id, "CREATE", null, {
+        ...this.serializeSchedule(created),
+        versionedFromId: prev.id
+      });
+      return this.findOne(contractId);
+    }
+
+    // Edição direta (rascunho / análise / ajustes) ou alteração não sensível em aprovado.
+    if (
+      this.isScheduleLockedForDirectEdit(prev.status) &&
+      dto.status !== undefined &&
+      dto.status !== prev.status &&
+      dto.status !== ContractScheduleStatus.EM_EXECUCAO &&
+      dto.status !== ContractScheduleStatus.SUSPENSO &&
+      dto.status !== ContractScheduleStatus.CONCLUIDO &&
+      dto.status !== ContractScheduleStatus.CANCELADO
+    ) {
+      throw new BadRequestException(
+        "Após aprovado, só é possível avançar para Em execução, Suspenso, Concluído ou Cancelado — ou gerar nova versão ao alterar datas/etapas/responsáveis."
+      );
+    }
+
+    await this.prisma.contractSchedule.update({
+      where: { id: scheduleId },
+      data: {
+        name: dto.name !== undefined ? dto.name.trim() : undefined,
+        type: dto.type,
+        purpose: dto.purpose !== undefined ? dto.purpose?.trim() || null : undefined,
+        origin: dto.origin,
+        description: dto.description !== undefined ? dto.description?.trim() || null : undefined,
+        plannedStartDate:
+          dto.plannedStartDate !== undefined
+            ? this.parseOptionalDate(dto.plannedStartDate) ?? null
+            : undefined,
+        plannedEndDate:
+          dto.plannedEndDate !== undefined
+            ? this.parseOptionalDate(dto.plannedEndDate) ?? null
+            : undefined,
+        companyResponsibles:
+          dto.companyResponsibles !== undefined
+            ? dto.companyResponsibles?.trim() || null
+            : undefined,
+        status: dto.status,
+        impactaFinanceiro: dto.impactaFinanceiro,
+        pricingItemId: nextPricingItemId === undefined ? undefined : nextPricingItemId,
+        observations:
+          dto.observations !== undefined ? dto.observations?.trim() || null : undefined
+      }
+    });
+
+    if (nextResponsibleIds !== null) {
+      const prevIds = prev.responsibles.map((r) => r.userId);
+      const prevSet = new Set(prevIds);
+      const nextSet = new Set(nextResponsibleIds);
+      const added = nextResponsibleIds.filter((id) => !prevSet.has(id));
+      const removed = prevIds.filter((id) => !nextSet.has(id));
+      if (removed.length > 0) {
+        await this.prisma.contractScheduleInternalResponsible.deleteMany({
+          where: { scheduleId, userId: { in: removed } }
+        });
+      }
+      if (added.length > 0) {
+        await this.prisma.contractScheduleInternalResponsible.createMany({
+          data: added.map((userId) => ({ scheduleId, userId })),
+          skipDuplicates: true
+        });
+      }
+    }
+
+    if (nextMilestones !== null) {
+      await this.replaceScheduleMilestones(scheduleId, nextMilestones);
+    }
+
+    const next = await this.prisma.contractSchedule.findUniqueOrThrow({
+      where: { id: scheduleId },
+      include: this.scheduleInclude()
+    });
+    await this.createAudit(
+      "ContractSchedule",
+      scheduleId,
+      "UPDATE",
+      this.serializeSchedule(prev),
+      this.serializeSchedule(next)
+    );
+    return this.findOne(contractId);
+  }
+
+  async approveSchedule(contractId: string, scheduleId: string): Promise<unknown> {
+    const prev = await this.prisma.contractSchedule.findFirst({
+      where: { id: scheduleId, contractId },
+      include: this.scheduleInclude()
+    });
+    if (!prev) throw new NotFoundException("Cronograma não encontrado neste contrato.");
+    if (
+      prev.status !== ContractScheduleStatus.RASCUNHO &&
+      prev.status !== ContractScheduleStatus.ENVIADO_ANALISE &&
+      prev.status !== ContractScheduleStatus.AJUSTES_SOLICITADOS
+    ) {
+      throw new BadRequestException(
+        "Só é possível aprovar cronogramas em rascunho, enviados para análise ou com ajustes solicitados."
+      );
+    }
+    const updated = await this.prisma.contractSchedule.update({
+      where: { id: scheduleId },
+      data: { status: ContractScheduleStatus.APROVADO },
+      include: this.scheduleInclude()
+    });
+    await this.createAudit(
+      "ContractSchedule",
+      scheduleId,
+      "APPROVE",
+      this.serializeSchedule(prev),
+      this.serializeSchedule(updated)
+    );
+    return this.findOne(contractId);
+  }
+
+  async deleteSchedule(contractId: string, scheduleId: string): Promise<unknown> {
+    const prev = await this.prisma.contractSchedule.findFirst({
+      where: { id: scheduleId, contractId },
+      include: this.scheduleInclude()
+    });
+    if (!prev) throw new NotFoundException("Cronograma não encontrado neste contrato.");
+    if (
+      prev.status !== ContractScheduleStatus.RASCUNHO &&
+      prev.status !== ContractScheduleStatus.CANCELADO
+    ) {
+      throw new BadRequestException(
+        "Só é possível excluir cronogramas em rascunho ou cancelados. Demais situações devem ser canceladas ou substituídas por nova versão."
+      );
+    }
+    await this.prisma.contractSchedule.delete({ where: { id: scheduleId } });
+    await this.createAudit("ContractSchedule", scheduleId, "DELETE", this.serializeSchedule(prev), null);
+    return this.findOne(contractId);
+  }
+
+  private async ensureValidationGroup(
+    contractId: string,
+    groupId: string,
+    opts?: { requireActive?: boolean }
+  ): Promise<void> {
+    const group = await this.prisma.contractValidationGroup.findFirst({
+      where: { id: groupId, contractId },
+      select: { id: true, active: true }
+    });
+    if (!group) throw new NotFoundException("Grupo de validação não encontrado neste contrato.");
+    if (opts?.requireActive && !group.active) {
+      throw new BadRequestException("O grupo de validação selecionado está inativo.");
+    }
+  }
+
+  private serializeValidationGroup(group: {
+    id: string;
+    name: string;
+    description: string | null;
+    active: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    members: Array<{ user: LinkedUserRow }>;
+    _count?: { features: number };
+  }) {
+    const members = group.members.map((m) => serializeLinkedUser(m.user));
+    return {
+      id: group.id,
+      name: group.name,
+      description: group.description,
+      active: group.active,
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
+      memberUserIds: members.map((u) => u.id),
+      members,
+      featuresCount: group._count?.features ?? 0
+    };
+  }
+
+  async listValidationGroups(contractId: string): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const groups = await this.prisma.contractValidationGroup.findMany({
+      where: { contractId },
+      include: {
+        members: {
+          include: { user: { select: LINKED_USER_SELECT } },
+          orderBy: { createdAt: "asc" }
+        },
+        _count: { select: { features: true } }
+      },
+      orderBy: [{ active: "desc" }, { name: "asc" }]
+    });
+    return groups.map((g) => this.serializeValidationGroup(g));
+  }
+
+  async createValidationGroup(contractId: string, dto: CreateContractValidationGroupDto): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException("Informe o nome do grupo de validação.");
+    const memberUserIds = normalizeUserIds(dto.memberUserIds);
+    await this.ensureUsersExist(memberUserIds);
+    const created = await this.prisma.contractValidationGroup.create({
+      data: {
+        contractId,
+        name,
+        description: dto.description?.trim() || null,
+        active: dto.active ?? true,
+        members:
+          memberUserIds.length > 0
+            ? { create: memberUserIds.map((userId) => ({ userId })) }
+            : undefined
+      },
+      include: {
+        members: {
+          include: { user: { select: LINKED_USER_SELECT } },
+          orderBy: { createdAt: "asc" }
+        },
+        _count: { select: { features: true } }
+      }
+    });
+    const serialized = this.serializeValidationGroup(created);
+    await this.createAudit("ContractValidationGroup", created.id, "CREATE", null, serialized);
+    return this.findOne(contractId);
+  }
+
+  async updateValidationGroup(
+    contractId: string,
+    groupId: string,
+    dto: UpdateContractValidationGroupDto
+  ): Promise<unknown> {
+    await this.ensureValidationGroup(contractId, groupId);
+    const prev = await this.prisma.contractValidationGroup.findUnique({
+      where: { id: groupId },
+      include: {
+        members: {
+          include: { user: { select: LINKED_USER_SELECT } },
+          orderBy: { createdAt: "asc" }
+        },
+        _count: { select: { features: true } }
+      }
+    });
+    if (!prev) throw new NotFoundException("Grupo de validação não encontrado.");
+    const nextMemberIds =
+      dto.memberUserIds !== undefined ? normalizeUserIds(dto.memberUserIds) : null;
+    if (nextMemberIds) await this.ensureUsersExist(nextMemberIds);
+
+    const updated = await this.prisma.contractValidationGroup.update({
+      where: { id: groupId },
+      data: {
+        name: dto.name !== undefined ? dto.name.trim() : undefined,
+        description: dto.description !== undefined ? dto.description?.trim() || null : undefined,
+        active: dto.active ?? undefined
+      }
+    });
+
+    let memberDiff: { added: string[]; removed: string[] } | null = null;
+    if (nextMemberIds !== null) {
+      const prevIds = prev.members.map((m) => m.userId);
+      const prevSet = new Set(prevIds);
+      const nextSet = new Set(nextMemberIds);
+      const added = nextMemberIds.filter((id) => !prevSet.has(id));
+      const removed = prevIds.filter((id) => !nextSet.has(id));
+      if (removed.length > 0) {
+        await this.prisma.contractValidationGroupMember.deleteMany({
+          where: { groupId, userId: { in: removed } }
+        });
+      }
+      if (added.length > 0) {
+        await this.prisma.contractValidationGroupMember.createMany({
+          data: added.map((userId) => ({ groupId, userId })),
+          skipDuplicates: true
+        });
+      }
+      memberDiff = { added, removed };
+    }
+
+    const next = await this.prisma.contractValidationGroup.findUnique({
+      where: { id: groupId },
+      include: {
+        members: {
+          include: { user: { select: LINKED_USER_SELECT } },
+          orderBy: { createdAt: "asc" }
+        },
+        _count: { select: { features: true } }
+      }
+    });
+    const auditOld = this.serializeValidationGroup(prev);
+    const auditNew = {
+      ...this.serializeValidationGroup(next!),
+      membersAdded: memberDiff?.added ?? [],
+      membersRemoved: memberDiff?.removed ?? []
+    };
+    await this.createAudit("ContractValidationGroup", groupId, "UPDATE", auditOld, auditNew);
+    if (memberDiff && (memberDiff.added.length > 0 || memberDiff.removed.length > 0)) {
+      await this.createAudit(
+        "ContractValidationGroupMember",
+        groupId,
+        "UPDATE",
+        { memberUserIds: prev.members.map((m) => m.userId), removed: memberDiff.removed },
+        { memberUserIds: next!.members.map((m) => m.userId), added: memberDiff.added }
+      );
+    }
+    void updated;
+    return this.findOne(contractId);
+  }
+
+  /**
+   * Não exclui fisicamente se houver funcionalidades vinculadas — apenas inativa.
+   * Sem vínculos, permite exclusão definitiva.
+   */
+  async deleteValidationGroup(contractId: string, groupId: string): Promise<unknown> {
+    await this.ensureValidationGroup(contractId, groupId);
+    const prev = await this.prisma.contractValidationGroup.findUnique({
+      where: { id: groupId },
+      include: {
+        members: {
+          include: { user: { select: LINKED_USER_SELECT } },
+          orderBy: { createdAt: "asc" }
+        },
+        _count: { select: { features: true } }
+      }
+    });
+    if (!prev) throw new NotFoundException("Grupo de validação não encontrado.");
+    if (prev._count.features > 0) {
+      if (!prev.active) {
+        throw new BadRequestException(
+          "Este grupo possui funcionalidades vinculadas e já está inativo. Remova o vínculo das funcionalidades antes de excluir."
+        );
+      }
+      const inactivated = await this.prisma.contractValidationGroup.update({
+        where: { id: groupId },
+        data: { active: false },
+        include: {
+          members: {
+            include: { user: { select: LINKED_USER_SELECT } },
+            orderBy: { createdAt: "asc" }
+          },
+          _count: { select: { features: true } }
+        }
+      });
+      await this.createAudit(
+        "ContractValidationGroup",
+        groupId,
+        "UPDATE",
+        this.serializeValidationGroup(prev),
+        { ...this.serializeValidationGroup(inactivated), inactivatedBecauseLinkedFeatures: true }
+      );
+      return this.findOne(contractId);
+    }
+    await this.prisma.contractValidationGroup.delete({ where: { id: groupId } });
+    await this.createAudit("ContractValidationGroup", groupId, "DELETE", this.serializeValidationGroup(prev), null);
+    return this.findOne(contractId);
+  }
+
+  async bulkUpdateFeatureValidationGroup(
+    contractId: string,
+    dto: BulkUpdateFeatureValidationGroupDto
+  ): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const featureIds = normalizeUserIds(dto.featureIds);
+    if (featureIds.length === 0) {
+      throw new BadRequestException("Informe ao menos uma funcionalidade.");
+    }
+    const validationGroupId = dto.validationGroupId?.trim() || null;
+    if (validationGroupId) {
+      await this.ensureValidationGroup(contractId, validationGroupId, { requireActive: true });
+    }
+    const features = await this.prisma.contractFeature.findMany({
+      where: { id: { in: featureIds }, module: { contractId } },
+      select: { id: true, validationGroupId: true, name: true, itemCode: true }
+    });
+    if (features.length !== featureIds.length) {
+      throw new BadRequestException("Uma ou mais funcionalidades não pertencem a este contrato.");
+    }
+    await this.prisma.contractFeature.updateMany({
+      where: { id: { in: featureIds } },
+      data: { validationGroupId }
+    });
+    await this.createAudit("ContractFeature", contractId, "BULK_VALIDATION_GROUP", {
+      featureIds,
+      previous: features.map((f) => ({ id: f.id, validationGroupId: f.validationGroupId }))
+    }, {
+      featureIds,
+      validationGroupId
+    });
+    return this.findOne(contractId);
   }
 
   private async assertFormalNumberAvailable(
@@ -1944,6 +4282,148 @@ export class ContractsService {
   private async ensureUser(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!user) throw new NotFoundException("Usuário responsável não encontrado");
+  }
+
+  private async ensureUsersExist(userIds: string[]): Promise<void> {
+    if (userIds.length === 0) return;
+    const found = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true }
+    });
+    if (found.length !== userIds.length) {
+      throw new NotFoundException("Um ou mais usuários selecionados não foram encontrados.");
+    }
+  }
+
+  /** Aceita `fiscalUserIds` (preferido) ou o legado `validatorId`. */
+  private resolveFiscalUserIdsInput(
+    fiscalUserIds: string[] | undefined,
+    validatorId: string | null | undefined
+  ): string[] {
+    if (fiscalUserIds !== undefined) {
+      return normalizeUserIds(fiscalUserIds);
+    }
+    const single = validatorId?.trim();
+    return single ? [single] : [];
+  }
+
+  private async syncModuleFiscals(
+    moduleId: string,
+    nextIds: string[],
+    prevIds: string[]
+  ): Promise<{ added: string[]; removed: string[]; fiscalUserIds: string[] }> {
+    const prevSet = new Set(prevIds);
+    const nextSet = new Set(nextIds);
+    const added = nextIds.filter((id) => !prevSet.has(id));
+    const removed = prevIds.filter((id) => !nextSet.has(id));
+    if (removed.length > 0) {
+      await this.prisma.contractModuleFiscal.deleteMany({
+        where: { moduleId, userId: { in: removed } }
+      });
+    }
+    if (added.length > 0) {
+      await this.prisma.contractModuleFiscal.createMany({
+        data: added.map((userId) => ({ moduleId, userId })),
+        skipDuplicates: true
+      });
+    }
+    return { added, removed, fiscalUserIds: nextIds };
+  }
+
+  private async syncFeatureResponsibles(
+    featureId: string,
+    nextIds: string[],
+    prevIds: string[]
+  ): Promise<{ added: string[]; removed: string[]; responsibleUserIds: string[] }> {
+    const prevSet = new Set(prevIds);
+    const nextSet = new Set(nextIds);
+    const added = nextIds.filter((id) => !prevSet.has(id));
+    const removed = prevIds.filter((id) => !nextSet.has(id));
+    if (removed.length > 0) {
+      await this.prisma.contractFeatureResponsible.deleteMany({
+        where: { featureId, userId: { in: removed } }
+      });
+    }
+    if (added.length > 0) {
+      await this.prisma.contractFeatureResponsible.createMany({
+        data: added.map((userId) => ({ featureId, userId })),
+        skipDuplicates: true
+      });
+    }
+    return { added, removed, responsibleUserIds: nextIds };
+  }
+
+  private resolveModuleFiscalUsers(mod: {
+    fiscals?: Array<{ user: LinkedUserRow }>;
+    validator?: LinkedUserRow | null;
+  }): ContractLinkedUser[] {
+    const fromLinks = (mod.fiscals ?? []).map((f) => serializeLinkedUser(f.user));
+    if (fromLinks.length > 0) return fromLinks;
+    return mod.validator ? [serializeLinkedUser(mod.validator)] : [];
+  }
+
+  private enrichModulesWithPeople<T extends {
+    fiscals?: Array<{ user: LinkedUserRow }>;
+    validator?: LinkedUserRow | null;
+    features: Array<{
+      validationGroupId?: string | null;
+      validationGroup?: {
+        id: string;
+        name: string;
+        active: boolean;
+        members?: Array<{ user: LinkedUserRow }>;
+      } | null;
+      responsibles?: Array<{ user: LinkedUserRow }>;
+    }>;
+  }>(modules: T[]): T[] {
+    return modules.map((mod) => {
+      const fiscalUsers = this.resolveModuleFiscalUsers(mod);
+      const features = mod.features.map((feat) => {
+        const responsibleUsers = (feat.responsibles ?? []).map((r) => serializeLinkedUser(r.user));
+        const groupMembers = (feat.validationGroup?.members ?? []).map((m) => serializeLinkedUser(m.user));
+        const responsibility = resolveFeatureResponsibility({
+          validationGroupId: feat.validationGroupId,
+          validationGroup: feat.validationGroup
+            ? {
+                id: feat.validationGroup.id,
+                name: feat.validationGroup.name,
+                active: feat.validationGroup.active,
+                members: groupMembers
+              }
+            : null,
+          responsibleUsers
+        });
+        const { responsibles: _responsibles, validationGroup: _vg, ...featRest } = feat;
+        return {
+          ...featRest,
+          ...responsibility,
+          responsibilitySource: responsibility.groupUndefined
+            ? responsibleUsers.length > 0
+              ? ("FEATURE" as const)
+              : ("UNDEFINED_GROUP" as const)
+            : responsibleUsers.length > 0
+              ? ("GROUP_AND_FEATURE" as const)
+              : ("GROUP" as const),
+          moduleFollowers: fiscalUsers
+        };
+      });
+      const { fiscals: _fiscals, ...modRest } = mod;
+      return {
+        ...modRest,
+        fiscalUsers,
+        fiscalUserIds: fiscalUsers.map((u) => u.id),
+        moduleFollowers: fiscalUsers,
+        validator: mod.validator
+          ? {
+              id: mod.validator.id,
+              email: mod.validator.email,
+              role: mod.validator.role,
+              name: resolveUserDisplayName(mod.validator)
+            }
+          : null,
+        features
+      } as unknown as T;
+    });
   }
 
   private async resolveModuleGlosaPricingItemId(contractId: string, pricingItemId: string | null | undefined): Promise<string | null> {
@@ -2016,15 +4496,633 @@ export class ContractsService {
     if (!s) throw new NotFoundException("Serviço não encontrado neste contrato");
   }
 
+
+  private occurrenceInclude() {
+    return {
+      internalResponsible: { select: LINKED_USER_SELECT },
+      events: { orderBy: { createdAt: "desc" as const }, take: 50 },
+      controladoriaCases: { orderBy: { createdAt: "desc" as const } }
+    };
+  }
+
+  private normalizeIdList(ids: string[] | undefined | null): string[] {
+    return Array.from(new Set((ids ?? []).map((id) => id.trim()).filter(Boolean)));
+  }
+
+  private asIdList(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+  }
+
+  private serializeOccurrenceEvent(event: {
+    id: string;
+    eventType: string;
+    fromStatus: ContractOccurrenceStatus | null;
+    toStatus: ContractOccurrenceStatus | null;
+    justification: string | null;
+    actorId: string | null;
+    actorLabel: string | null;
+    payload: unknown;
+    createdAt: Date;
+  }) {
+    return {
+      id: event.id,
+      eventType: event.eventType,
+      fromStatus: event.fromStatus,
+      toStatus: event.toStatus,
+      justification: event.justification,
+      actorId: event.actorId,
+      actorLabel: event.actorLabel,
+      payload: event.payload,
+      createdAt: event.createdAt
+    };
+  }
+
+  private serializeControladoriaCase(row: {
+    id: string;
+    contractId: string;
+    occurrenceId: string;
+    status: ContractControladoriaCaseStatus;
+    justification: string;
+    summary: string;
+    suggestedActions: string | null;
+    snapshotJson: unknown;
+    processNumber: string | null;
+    originSystem: string | null;
+    processLink: string | null;
+    openedAt: Date | null;
+    subject: string | null;
+    unit: string | null;
+    responsiblesText: string | null;
+    phase: string | null;
+    deadlinesText: string | null;
+    decisionsText: string | null;
+    penaltiesText: string | null;
+    resultText: string | null;
+    seiNumber: string | null;
+    seiLink: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    occurrence?: { id: string; title: string; status: ContractOccurrenceStatus; type: ContractOccurrenceType } | null;
+  }) {
+    return {
+      id: row.id,
+      contractId: row.contractId,
+      occurrenceId: row.occurrenceId,
+      status: row.status,
+      justification: row.justification,
+      summary: row.summary,
+      suggestedActions: row.suggestedActions,
+      snapshotJson: row.snapshotJson,
+      processNumber: row.processNumber,
+      originSystem: row.originSystem,
+      processLink: row.processLink,
+      openedAt: row.openedAt,
+      subject: row.subject,
+      unit: row.unit,
+      responsiblesText: row.responsiblesText,
+      phase: row.phase,
+      deadlinesText: row.deadlinesText,
+      decisionsText: row.decisionsText,
+      penaltiesText: row.penaltiesText,
+      resultText: row.resultText,
+      seiNumber: row.seiNumber,
+      seiLink: row.seiLink,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      occurrence: row.occurrence
+        ? {
+            id: row.occurrence.id,
+            title: row.occurrence.title,
+            status: row.occurrence.status,
+            type: row.occurrence.type
+          }
+        : undefined
+    };
+  }
+
+  private serializeOccurrence(row: {
+    id: string;
+    contractId: string;
+    type: ContractOccurrenceType;
+    origin: ContractOccurrenceOrigin;
+    title: string;
+    description: string | null;
+    detectionDate: Date;
+    linkedPricingItemIds: unknown;
+    linkedFeatureIds: unknown;
+    linkedMeasurementIds: unknown;
+    linkedGlosaIds: unknown;
+    linkedScheduleIds: unknown;
+    severity: ContractOccurrenceSeverity;
+    internalResponsibleUserId: string | null;
+    regularizationDeadline: Date | null;
+    status: ContractOccurrenceStatus;
+    conclusion: string | null;
+    evidenceNotes: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    internalResponsible?: LinkedUserRow | null;
+    events?: Array<{
+      id: string;
+      eventType: string;
+      fromStatus: ContractOccurrenceStatus | null;
+      toStatus: ContractOccurrenceStatus | null;
+      justification: string | null;
+      actorId: string | null;
+      actorLabel: string | null;
+      payload: unknown;
+      createdAt: Date;
+    }>;
+    controladoriaCases?: Array<{
+      id: string;
+      contractId: string;
+      occurrenceId: string;
+      status: ContractControladoriaCaseStatus;
+      justification: string;
+      summary: string;
+      suggestedActions: string | null;
+      snapshotJson: unknown;
+      processNumber: string | null;
+      originSystem: string | null;
+      processLink: string | null;
+      openedAt: Date | null;
+      subject: string | null;
+      unit: string | null;
+      responsiblesText: string | null;
+      phase: string | null;
+      deadlinesText: string | null;
+      decisionsText: string | null;
+      penaltiesText: string | null;
+      resultText: string | null;
+      seiNumber: string | null;
+      seiLink: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
+  }) {
+    const internalResponsible = row.internalResponsible
+      ? serializeLinkedUser(row.internalResponsible)
+      : null;
+    return {
+      id: row.id,
+      contractId: row.contractId,
+      type: row.type,
+      origin: row.origin,
+      title: row.title,
+      description: row.description,
+      detectionDate: row.detectionDate,
+      linkedPricingItemIds: this.asIdList(row.linkedPricingItemIds),
+      linkedFeatureIds: this.asIdList(row.linkedFeatureIds),
+      linkedMeasurementIds: this.asIdList(row.linkedMeasurementIds),
+      linkedGlosaIds: this.asIdList(row.linkedGlosaIds),
+      linkedScheduleIds: this.asIdList(row.linkedScheduleIds),
+      severity: row.severity,
+      internalResponsibleUserId: row.internalResponsibleUserId,
+      internalResponsible,
+      regularizationDeadline: row.regularizationDeadline,
+      status: row.status,
+      conclusion: row.conclusion,
+      evidenceNotes: row.evidenceNotes,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      events: (row.events ?? []).map((e) => this.serializeOccurrenceEvent(e)),
+      controladoriaCases: (row.controladoriaCases ?? []).map((c) => this.serializeControladoriaCase(c))
+    };
+  }
+
+  private parseOccurrenceDate(value: string | null | undefined, fieldLabel: string): Date | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value.trim() === "") return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) {
+      throw new BadRequestException(`Data inválida em ${fieldLabel}.`);
+    }
+    return d;
+  }
+
+  private async recordOccurrenceEvent(
+    tx: Prisma.TransactionClient | PrismaService,
+    data: {
+      occurrenceId: string;
+      eventType: string;
+      fromStatus?: ContractOccurrenceStatus | null;
+      toStatus?: ContractOccurrenceStatus | null;
+      justification?: string | null;
+      payload?: unknown;
+    }
+  ): Promise<void> {
+    await tx.contractOccurrenceEvent.create({
+      data: {
+        occurrenceId: data.occurrenceId,
+        eventType: data.eventType,
+        fromStatus: data.fromStatus ?? null,
+        toStatus: data.toStatus ?? null,
+        justification: data.justification?.trim() || null,
+        actorId: getAuditActorId() === "system" ? null : getAuditActorId(),
+        actorLabel: getAuditActorLabel(),
+        payload: data.payload != null ? (data.payload as Prisma.InputJsonValue) : undefined
+      }
+    });
+  }
+
+  async listOccurrences(contractId: string): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const rows = await this.prisma.contractOccurrence.findMany({
+      where: { contractId },
+      include: this.occurrenceInclude(),
+      orderBy: [{ detectionDate: "desc" }, { createdAt: "desc" }]
+    });
+    return rows.map((r) => this.serializeOccurrence(r));
+  }
+
+  async createOccurrence(contractId: string, dto: CreateContractOccurrenceDto): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const title = dto.title.trim();
+    if (!title) throw new BadRequestException("Informe o título da ocorrência.");
+    const detectionDate = this.parseOccurrenceDate(dto.detectionDate, "data da constatação");
+    if (!detectionDate) throw new BadRequestException("Informe a data da constatação.");
+    const responsibleId = dto.internalResponsibleUserId?.trim() || null;
+    if (responsibleId) await this.ensureUsersExist([responsibleId]);
+    const status = dto.status ?? ContractOccurrenceStatus.EM_ANALISE;
+    const created = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.contractOccurrence.create({
+        data: {
+          contractId,
+          type: dto.type,
+          origin: dto.origin,
+          title,
+          description: dto.description?.trim() || null,
+          detectionDate,
+          linkedPricingItemIds: this.normalizeIdList(dto.linkedPricingItemIds),
+          linkedFeatureIds: this.normalizeIdList(dto.linkedFeatureIds),
+          linkedMeasurementIds: this.normalizeIdList(dto.linkedMeasurementIds),
+          linkedGlosaIds: this.normalizeIdList(dto.linkedGlosaIds),
+          linkedScheduleIds: this.normalizeIdList(dto.linkedScheduleIds),
+          severity: dto.severity ?? ContractOccurrenceSeverity.MEDIA,
+          internalResponsibleUserId: responsibleId,
+          regularizationDeadline:
+            this.parseOccurrenceDate(dto.regularizationDeadline, "prazo de regularização") ?? null,
+          status,
+          conclusion: dto.conclusion?.trim() || null,
+          evidenceNotes: dto.evidenceNotes?.trim() || null
+        }
+      });
+      await this.recordOccurrenceEvent(tx, {
+        occurrenceId: row.id,
+        eventType: "CREATE",
+        toStatus: status,
+        payload: { title }
+      });
+      return tx.contractOccurrence.findUniqueOrThrow({
+        where: { id: row.id },
+        include: this.occurrenceInclude()
+      });
+    });
+    const serialized = this.serializeOccurrence(created);
+    await this.createAudit("ContractOccurrence", created.id, "CREATE", null, serialized);
+    return this.findOne(contractId);
+  }
+
+  async updateOccurrence(
+    contractId: string,
+    occurrenceId: string,
+    dto: UpdateContractOccurrenceDto
+  ): Promise<unknown> {
+    const prev = await this.prisma.contractOccurrence.findFirst({
+      where: { id: occurrenceId, contractId },
+      include: this.occurrenceInclude()
+    });
+    if (!prev) throw new NotFoundException("Ocorrência não encontrada neste contrato.");
+    if (
+      prev.status === ContractOccurrenceStatus.ARQUIVADA ||
+      prev.status === ContractOccurrenceStatus.CONCLUIDA
+    ) {
+      throw new BadRequestException("Ocorrência concluída ou arquivada não pode ser editada. Altere a situação antes.");
+    }
+    const nextResponsible =
+      dto.internalResponsibleUserId !== undefined
+        ? dto.internalResponsibleUserId?.trim() || null
+        : undefined;
+    if (nextResponsible) await this.ensureUsersExist([nextResponsible]);
+    const title = dto.title !== undefined ? dto.title.trim() : undefined;
+    if (title !== undefined && !title) throw new BadRequestException("Informe o título da ocorrência.");
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.contractOccurrence.update({
+        where: { id: occurrenceId },
+        data: {
+          type: dto.type ?? undefined,
+          origin: dto.origin ?? undefined,
+          title,
+          description: dto.description !== undefined ? dto.description?.trim() || null : undefined,
+          detectionDate:
+            dto.detectionDate !== undefined
+              ? this.parseOccurrenceDate(dto.detectionDate, "data da constatação") ?? undefined
+              : undefined,
+          linkedPricingItemIds:
+            dto.linkedPricingItemIds !== undefined
+              ? this.normalizeIdList(dto.linkedPricingItemIds)
+              : undefined,
+          linkedFeatureIds:
+            dto.linkedFeatureIds !== undefined ? this.normalizeIdList(dto.linkedFeatureIds) : undefined,
+          linkedMeasurementIds:
+            dto.linkedMeasurementIds !== undefined
+              ? this.normalizeIdList(dto.linkedMeasurementIds)
+              : undefined,
+          linkedGlosaIds:
+            dto.linkedGlosaIds !== undefined ? this.normalizeIdList(dto.linkedGlosaIds) : undefined,
+          linkedScheduleIds:
+            dto.linkedScheduleIds !== undefined ? this.normalizeIdList(dto.linkedScheduleIds) : undefined,
+          severity: dto.severity ?? undefined,
+          internalResponsibleUserId: nextResponsible,
+          regularizationDeadline:
+            dto.regularizationDeadline !== undefined
+              ? this.parseOccurrenceDate(dto.regularizationDeadline, "prazo de regularização") ?? null
+              : undefined,
+          conclusion: dto.conclusion !== undefined ? dto.conclusion?.trim() || null : undefined,
+          evidenceNotes: dto.evidenceNotes !== undefined ? dto.evidenceNotes?.trim() || null : undefined
+        }
+      });
+      await this.recordOccurrenceEvent(tx, {
+        occurrenceId,
+        eventType: "UPDATE",
+        fromStatus: prev.status,
+        toStatus: prev.status,
+        payload: { fields: Object.keys(dto) }
+      });
+      return tx.contractOccurrence.findUniqueOrThrow({
+        where: { id: occurrenceId },
+        include: this.occurrenceInclude()
+      });
+    });
+    await this.createAudit(
+      "ContractOccurrence",
+      occurrenceId,
+      "UPDATE",
+      this.serializeOccurrence(prev),
+      this.serializeOccurrence(updated)
+    );
+    return this.findOne(contractId);
+  }
+
+  async changeOccurrenceStatus(
+    contractId: string,
+    occurrenceId: string,
+    dto: ChangeContractOccurrenceStatusDto
+  ): Promise<unknown> {
+    const prev = await this.prisma.contractOccurrence.findFirst({
+      where: { id: occurrenceId, contractId },
+      include: this.occurrenceInclude()
+    });
+    if (!prev) throw new NotFoundException("Ocorrência não encontrada neste contrato.");
+    const justification = dto.justification.trim();
+    if (justification.length < 3) {
+      throw new BadRequestException("Informe a justificativa da mudança de situação (mínimo 3 caracteres).");
+    }
+    if (dto.status === prev.status) {
+      throw new BadRequestException("A nova situação é igual à atual.");
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.contractOccurrence.update({
+        where: { id: occurrenceId },
+        data: { status: dto.status }
+      });
+      await this.recordOccurrenceEvent(tx, {
+        occurrenceId,
+        eventType: "STATUS_CHANGE",
+        fromStatus: prev.status,
+        toStatus: dto.status,
+        justification
+      });
+      return tx.contractOccurrence.findUniqueOrThrow({
+        where: { id: occurrenceId },
+        include: this.occurrenceInclude()
+      });
+    });
+    await this.createAudit(
+      "ContractOccurrence",
+      occurrenceId,
+      "STATUS_CHANGE",
+      { status: prev.status },
+      { status: updated.status, justification }
+    );
+    return this.findOne(contractId);
+  }
+
+  async deleteOccurrence(contractId: string, occurrenceId: string): Promise<unknown> {
+    const prev = await this.prisma.contractOccurrence.findFirst({
+      where: { id: occurrenceId, contractId },
+      include: this.occurrenceInclude()
+    });
+    if (!prev) throw new NotFoundException("Ocorrência não encontrada neste contrato.");
+    const caseCount = await this.prisma.contractControladoriaCase.count({
+      where: { occurrenceId }
+    });
+    if (caseCount > 0) {
+      throw new BadRequestException(
+        "Não é possível excluir ocorrência com dossiê na Controladoria. Arquive a ocorrência ou atualize o caso."
+      );
+    }
+    await this.prisma.contractOccurrence.delete({ where: { id: occurrenceId } });
+    await this.createAudit("ContractOccurrence", occurrenceId, "DELETE", this.serializeOccurrence(prev), null);
+    return this.findOne(contractId);
+  }
+
+  async listControladoriaCases(contractId: string): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const rows = await this.prisma.contractControladoriaCase.findMany({
+      where: { contractId },
+      include: {
+        occurrence: { select: { id: true, title: true, status: true, type: true } }
+      },
+      orderBy: [{ createdAt: "desc" }]
+    });
+    return rows.map((r) => this.serializeControladoriaCase(r));
+  }
+
+  async listAllControladoriaCases(take = 100): Promise<unknown> {
+    const limit = Number.isFinite(take) ? Math.min(Math.max(Math.trunc(take), 1), 500) : 100;
+    const rows = await this.prisma.contractControladoriaCase.findMany({
+      where: { contract: await this.accessibleContractWhereList() },
+      include: {
+        occurrence: { select: { id: true, title: true, status: true, type: true } },
+        contract: {
+          select: {
+            id: true,
+            number: true,
+            name: true,
+            internalCode: true,
+            companyName: true
+          }
+        }
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: limit
+    });
+    return rows.map((r) => ({
+      ...this.serializeControladoriaCase(r),
+      contract: r.contract
+    }));
+  }
+
+  private async accessibleContractWhereList(): Promise<Prisma.ContractWhereInput> {
+    return { deletedAt: null, ...this.organizationScope() };
+  }
+
+  async forwardOccurrenceToControladoria(
+    contractId: string,
+    occurrenceId: string,
+    dto: ForwardOccurrenceToControladoriaDto
+  ): Promise<unknown> {
+    const occurrence = await this.prisma.contractOccurrence.findFirst({
+      where: { id: occurrenceId, contractId },
+      include: this.occurrenceInclude()
+    });
+    if (!occurrence) throw new NotFoundException("Ocorrência não encontrada neste contrato.");
+    const justification = dto.justification.trim();
+    const summary = dto.summary.trim();
+    if (justification.length < 3 || summary.length < 3) {
+      throw new BadRequestException("Justificativa e resumo são obrigatórios (mínimo 3 caracteres).");
+    }
+    const contract = await this.prisma.contract.findFirst({
+      where: await this.accessibleContractWhere(contractId),
+      select: {
+        id: true,
+        number: true,
+        formalNumber: true,
+        contractYear: true,
+        internalCode: true,
+        administrativeProcess: true,
+        name: true,
+        companyName: true,
+        cnpj: true,
+        status: true,
+        organizationId: true,
+        managingUnit: true,
+        startDate: true,
+        endDate: true,
+        totalValue: true,
+        monthlyValue: true
+      }
+    });
+    if (!contract) throw new NotFoundException("Contrato não encontrado");
+    const snapshot = {
+      generatedAt: new Date().toISOString(),
+      contract,
+      occurrence: this.serializeOccurrence(occurrence),
+      forward: {
+        justification,
+        summary,
+        suggestedActions: dto.suggestedActions?.trim() || null
+      }
+    };
+    const created = await this.prisma.$transaction(async (tx) => {
+      const caseRow = await tx.contractControladoriaCase.create({
+        data: {
+          contractId,
+          occurrenceId,
+          status: ContractControladoriaCaseStatus.ENCAMINHADO,
+          justification,
+          summary,
+          suggestedActions: dto.suggestedActions?.trim() || null,
+          snapshotJson: snapshot as Prisma.InputJsonValue,
+          openedAt: new Date()
+        },
+        include: {
+          occurrence: { select: { id: true, title: true, status: true, type: true } }
+        }
+      });
+      const nextStatus =
+        occurrence.status === ContractOccurrenceStatus.ENCAMINHADA_CONTROLADORIA ||
+        occurrence.status === ContractOccurrenceStatus.EM_PROCESSO_ADMINISTRATIVO
+          ? occurrence.status
+          : ContractOccurrenceStatus.ENCAMINHADA_CONTROLADORIA;
+      if (nextStatus !== occurrence.status) {
+        await tx.contractOccurrence.update({
+          where: { id: occurrenceId },
+          data: { status: nextStatus }
+        });
+      }
+      await this.recordOccurrenceEvent(tx, {
+        occurrenceId,
+        eventType: "FORWARD_CONTROLADORIA",
+        fromStatus: occurrence.status,
+        toStatus: nextStatus,
+        justification,
+        payload: { caseId: caseRow.id, summary }
+      });
+      return caseRow;
+    });
+    const serialized = this.serializeControladoriaCase(created);
+    await this.createAudit("ContractControladoriaCase", created.id, "FORWARD_CONTROLADORIA", null, {
+      ...serialized,
+      snapshotJson: undefined
+    });
+    return this.findOne(contractId);
+  }
+
+  async updateControladoriaCase(
+    contractId: string,
+    caseId: string,
+    dto: UpdateContractControladoriaCaseDto
+  ): Promise<unknown> {
+    const prev = await this.prisma.contractControladoriaCase.findFirst({
+      where: { id: caseId, contractId },
+      include: {
+        occurrence: { select: { id: true, title: true, status: true, type: true } }
+      }
+    });
+    if (!prev) throw new NotFoundException("Caso da Controladoria não encontrado neste contrato.");
+    const updated = await this.prisma.contractControladoriaCase.update({
+      where: { id: caseId },
+      data: {
+        status: dto.status ?? undefined,
+        processNumber: dto.processNumber !== undefined ? dto.processNumber?.trim() || null : undefined,
+        originSystem: dto.originSystem !== undefined ? dto.originSystem?.trim() || null : undefined,
+        processLink: dto.processLink !== undefined ? dto.processLink?.trim() || null : undefined,
+        openedAt:
+          dto.openedAt !== undefined
+            ? this.parseOccurrenceDate(dto.openedAt, "data de abertura") ?? null
+            : undefined,
+        subject: dto.subject !== undefined ? dto.subject?.trim() || null : undefined,
+        unit: dto.unit !== undefined ? dto.unit?.trim() || null : undefined,
+        responsiblesText:
+          dto.responsiblesText !== undefined ? dto.responsiblesText?.trim() || null : undefined,
+        phase: dto.phase !== undefined ? dto.phase?.trim() || null : undefined,
+        deadlinesText: dto.deadlinesText !== undefined ? dto.deadlinesText?.trim() || null : undefined,
+        decisionsText: dto.decisionsText !== undefined ? dto.decisionsText?.trim() || null : undefined,
+        penaltiesText: dto.penaltiesText !== undefined ? dto.penaltiesText?.trim() || null : undefined,
+        resultText: dto.resultText !== undefined ? dto.resultText?.trim() || null : undefined,
+        seiNumber: dto.seiNumber !== undefined ? dto.seiNumber?.trim() || null : undefined,
+        seiLink: dto.seiLink !== undefined ? dto.seiLink?.trim() || null : undefined
+      },
+      include: {
+        occurrence: { select: { id: true, title: true, status: true, type: true } }
+      }
+    });
+    await this.createAudit(
+      "ContractControladoriaCase",
+      caseId,
+      "UPDATE",
+      this.serializeControladoriaCase(prev),
+      this.serializeControladoriaCase(updated)
+    );
+    return this.findOne(contractId);
+  }
+
   private async createAudit(entity: string, entityId: string, action: string, oldData: unknown, newData: unknown): Promise<void> {
+    const gate = await resolveAuditGate(this.prisma, entity, action);
+    if (!gate.enabled) return;
+    const trimmedOld = applyAuditDetailLevel(gate.detailLevel, oldData);
+    const trimmedNew = applyAuditDetailLevel(gate.detailLevel, newData);
     await this.prisma.auditLog.create({
       data: {
         entity,
         entityId,
         action,
         userId: getAuditActorId(),
-        oldData: oldData ? (oldData as Prisma.InputJsonValue) : undefined,
-        newData: newData ? (newData as Prisma.InputJsonValue) : undefined
+        oldData: trimmedOld != null ? (trimmedOld as Prisma.InputJsonValue) : undefined,
+        newData: trimmedNew != null ? (trimmedNew as Prisma.InputJsonValue) : undefined
       }
     });
     await this.createOperationalEvent(entity, entityId, action, oldData, newData);

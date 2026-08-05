@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { UserRecord } from "@/lib/api";
-import { getOrganizations, getUsers, updateUser } from "@/lib/api";
+import { getAccessProfiles, getOrganizations, getUsers, updateUser } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import {
   editUserFormSchema,
@@ -20,16 +20,11 @@ import { UserForm } from "@/components/actions/user-form";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable } from "@/components/tables/data-table";
-
-const roleLabel: Record<string, string> = {
-  ADMIN: "Administrador",
-  EDITOR: "Editor",
-  VIEWER: "Leitura"
-};
 
 const columnHelper = createColumnHelper<UserRecord>();
 
@@ -49,7 +44,17 @@ function userDisplayName(user: UserRecord): string {
 }
 
 function userIsIncomplete(user: UserRecord): boolean {
-  return ((!user.cpfDigits && !user.cpfMasked) || !user.organizationId);
+  const hasOrg =
+    Boolean(user.allOrganizations) ||
+    Boolean(user.organizationId) ||
+    (user.organizations?.length ?? 0) > 0;
+  const hasProfile = (user.profiles?.length ?? 0) > 0 || Boolean(user.role);
+  return (!user.cpfDigits && !user.cpfMasked) || !hasOrg || !hasProfile;
+}
+
+function toggleId(list: string[], id: string, checked: boolean): string[] {
+  if (checked) return list.includes(id) ? list : [...list, id];
+  return list.filter((x) => x !== id);
 }
 
 function EditUserPanel({
@@ -61,12 +66,15 @@ function EditUserPanel({
 }): JSX.Element {
   const qc = useQueryClient();
   const qOrganizations = useQuery({ queryKey: queryKeys.organizations, queryFn: getOrganizations });
+  const qProfiles = useQuery({ queryKey: queryKeys.accessProfiles, queryFn: () => getAccessProfiles(false) });
   const activeOrganizations = useMemo(
     () => (qOrganizations.data ?? []).filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [qOrganizations.data]
   );
-  const roleDefault: EditUserFormValues["role"] =
-    user.role === "ADMIN" || user.role === "EDITOR" || user.role === "VIEWER" ? user.role : "EDITOR";
+  const activeProfiles = useMemo(
+    () => (qProfiles.data ?? []).filter((p) => p.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    [qProfiles.data]
+  );
   const approvalDefault: EditUserFormValues["approvalStatus"] =
     user.approvalStatus === "PENDING" || user.approvalStatus === "REJECTED" ? user.approvalStatus : "APPROVED";
 
@@ -75,20 +83,26 @@ function EditUserPanel({
     defaultValues: {
       fullName: userDisplayName(user),
       cpf: user.cpfDigits ?? "",
-      organizationId: user.organizationId ?? "",
-      role: roleDefault,
+      profileIds: user.profiles?.map((p) => p.id) ?? [],
+      organizationIds: user.organizations?.map((o) => o.id) ?? (user.organizationId ? [user.organizationId] : []),
+      allOrganizations: Boolean(user.allOrganizations),
       approvalStatus: approvalDefault,
       password: ""
     }
   });
+
+  const allOrganizations = form.watch("allOrganizations");
 
   const mutation = useMutation({
     mutationFn: (values: EditUserFormValues) =>
       updateUser(user.id, {
         fullName: values.fullName.trim(),
         cpf: values.cpf ? values.cpf : null,
-        organizationId: values.organizationId,
-        role: values.role,
+        profileIds: values.profileIds,
+        organizationIds: values.organizationIds,
+        allOrganizations: values.allOrganizations,
+        defaultProfileId: values.profileIds[0],
+        defaultOrganizationId: values.allOrganizations ? null : values.organizationIds[0] ?? null,
         approvalStatus: values.approvalStatus,
         ...(values.password !== "" ? { password: values.password.trim() } : {})
       }),
@@ -139,46 +153,62 @@ function EditUserPanel({
         />
         <FormField
           control={form.control}
-          name="organizationId"
+          name="profileIds"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Órgão</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value || undefined} disabled={qOrganizations.isPending}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder={qOrganizations.isPending ? "Carregando…" : "Selecione o órgão"} />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {activeOrganizations.map((org) => (
-                    <SelectItem key={org.id} value={org.id}>
-                      {org.acronym ? `${org.acronym} — ${org.name}` : org.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormLabel>Perfis de acesso</FormLabel>
+              <div className="max-h-36 space-y-2 overflow-y-auto rounded-md border p-3">
+                {activeProfiles.map((p) => (
+                  <label key={p.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={field.value.includes(p.id)}
+                      onCheckedChange={(v) => field.onChange(toggleId(field.value, p.id, v === true))}
+                    />
+                    <span>
+                      {p.name}
+                      {p.systemKey ? <span className="text-muted-foreground"> · {p.systemKey}</span> : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
               <FormMessage />
             </FormItem>
           )}
         />
         <FormField
           control={form.control}
-          name="role"
+          name="allOrganizations"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center gap-2 space-y-0">
+              <FormControl>
+                <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} />
+              </FormControl>
+              <FormLabel className="font-normal">Todos os órgãos</FormLabel>
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="organizationIds"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Papel</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="VIEWER">Leitura (VIEWER)</SelectItem>
-                  <SelectItem value="EDITOR">Edição (EDITOR)</SelectItem>
-                  <SelectItem value="ADMIN">Administrador (ADMIN)</SelectItem>
-                </SelectContent>
-              </Select>
+              <FormLabel>{allOrganizations ? "Órgãos vinculados (opcional)" : "Órgãos"}</FormLabel>
+              <div className="max-h-36 space-y-2 overflow-y-auto rounded-md border p-3">
+                {activeOrganizations.map((org) => (
+                  <label key={org.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={field.value.includes(org.id)}
+                      onCheckedChange={(v) => field.onChange(toggleId(field.value, org.id, v === true))}
+                    />
+                    <span>{org.acronym ? `${org.acronym} · ${org.name}` : org.name}</span>
+                  </label>
+                ))}
+              </div>
+              <FormDescription>
+                {allOrganizations
+                  ? "Abrangência global; vínculos opcionais para atalho no seletor."
+                  : "Selecione um ou mais órgãos."}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -273,7 +303,10 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
               />
               <span>{info.getValue() || "Não informado"}</span>
               {incomplete ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800" title="Cadastro incompleto (CPF ou órgão ausente)">
+                <span
+                  className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                  title="Cadastro incompleto (CPF, perfil ou órgão ausente)"
+                >
                   Incompleto
                 </span>
               ) : null}
@@ -285,27 +318,35 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
         header: "E-mail",
         cell: (info) => <span className="font-medium text-foreground">{info.getValue()}</span>
       }),
-      columnHelper.accessor((row) => row.organization?.acronym ?? row.organization?.name ?? "—", {
+      columnHelper.accessor((row) => row.organizationSummary ?? row.organization?.acronym ?? "-", {
         id: "organization",
-        header: "Órgão",
+        header: "Órgãos",
         cell: (info) => {
           const user = info.row.original;
-          const label = user.organization
-            ? user.organization.acronym
-              ? `${user.organization.acronym} — ${user.organization.name}`
-              : user.organization.name
-            : "—";
+          const label =
+            user.organizationSummary ??
+            (user.allOrganizations
+              ? "Todos os órgãos"
+              : user.organization
+                ? user.organization.acronym
+                  ? `${user.organization.acronym} · ${user.organization.name}`
+                  : user.organization.name
+                : "-");
           return <span className="text-muted-foreground">{label}</span>;
         }
       }),
-      columnHelper.accessor((row) => row.cpfMasked ?? "—", {
+      columnHelper.accessor((row) => row.cpfMasked ?? "-", {
         id: "cpfMasked",
         header: "CPF",
         cell: (info) => <span className="whitespace-nowrap text-muted-foreground">{info.getValue()}</span>
       }),
-      columnHelper.accessor("role", {
-        header: "Papel",
-        cell: (info) => <span>{roleLabel[info.getValue()] ?? info.getValue()}</span>
+      columnHelper.accessor((row) => row.profileSummary ?? row.role, {
+        id: "profiles",
+        header: "Perfis",
+        cell: (info) => {
+          const user = info.row.original;
+          return <span>{user.profileSummary ?? user.profiles?.[0]?.name ?? user.role}</span>;
+        }
       }),
       columnHelper.accessor((row) => row.approvalStatus ?? "APPROVED", {
         id: "approvalStatus",
@@ -401,7 +442,8 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">Usuários</h1>
             <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Gestão de contas, papéis, aprovação de novos cadastros e troca obrigatória de senha no primeiro acesso.
+              Gestão de contas, perfis, órgãos, aprovação de novos cadastros e troca obrigatória de senha no primeiro
+              acesso.
             </p>
             {pendingCount > 0 ? (
               <p className="mt-2 text-sm font-medium text-amber-700">
@@ -421,7 +463,7 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
               {pendingCount} cadastro{pendingCount === 1 ? "" : "s"} aguardando aprovação.
             </p>
           ) : (
-            <p className="text-sm text-muted-foreground">Gestão de contas, papéis e aprovação de cadastros.</p>
+            <p className="text-sm text-muted-foreground">Gestão de contas, perfis, órgãos e aprovação de cadastros.</p>
           )}
           <Button type="button" className="shrink-0 gap-2" onClick={() => setCreateOpen(true)}>
             <UserPlus className="h-4 w-4" />
@@ -434,7 +476,12 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
         <DataTable columns={columns} data={users} searchPlaceholder="Pesquisar por nome, e-mail, órgão…" />
       </section>
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Novo usuário" description="Contas criadas pela administração já ficam aprovadas. No primeiro acesso, o usuário será obrigado a trocar a senha inicial.">
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Novo usuário"
+        description="Contas criadas pela administração já ficam aprovadas. No primeiro acesso, o usuário será obrigado a trocar a senha inicial."
+      >
         <UserForm
           onSuccess={() => {
             setCreateOpen(false);

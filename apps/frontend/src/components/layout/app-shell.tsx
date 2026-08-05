@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PropsWithChildren, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { getAuthMe, getMyPermissions, trackUserAccessEvent } from "@/lib/api";
+import { AccessContextSelector } from "@/components/layout/access-context-selector";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
 import { filterMainNavGroups, MAIN_NAV_GROUPS } from "./main-nav-data";
@@ -238,6 +239,7 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
                 Notas de versão
               </Link>
               <span className="hidden sm:inline">Área autenticada</span>
+              <AccessContextSelector />
               <Link
                 href="/perfil"
                 className="inline-flex items-center gap-1.5 font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"

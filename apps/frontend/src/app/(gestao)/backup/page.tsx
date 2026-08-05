@@ -88,7 +88,7 @@ function formFromStatus(status: S3BackupStatus): S3Form {
 }
 
 function formatBytes(bytes: number | null | undefined): string {
-  if (bytes == null || Number.isNaN(bytes)) return "—";
+  if (bytes == null || Number.isNaN(bytes)) return "-";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -357,7 +357,7 @@ export default function BackupPage(): JSX.Element {
           <h2 className="text-base font-semibold text-slate-900">Backup automático (S3)</h2>
           <p className="mt-1 text-sm text-slate-600">
             Envio diário do pacote completo (base + anexos), com retenção diária / semanal (domingo) / mensal (dia 1).
-            Configure pela interface — não é necessário editar ficheiros no servidor.
+            Configure pela interface: não é necessário editar ficheiros no servidor.
           </p>
         </div>
 
@@ -517,7 +517,7 @@ export default function BackupPage(): JSX.Element {
               </summary>
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 <label className="block text-xs font-medium text-slate-600 sm:col-span-2">
-                  Endpoint (MinIO / R2 — opcional)
+                  Endpoint (MinIO / R2, opcional)
                   <input
                     className={`${inputClass} font-mono`}
                     value={s3Form.endpoint}
@@ -556,7 +556,7 @@ export default function BackupPage(): JSX.Element {
                   Última execução: {new Date(s3Status.lastRun.at).toLocaleString("pt-BR")} ·{" "}
                   {s3Status.lastRun.ok ? "sucesso" : "erro"} ({s3Status.lastRun.triggeredBy})
                   {s3Status.lastRun.bytes != null ? ` · ${formatBytes(s3Status.lastRun.bytes)}` : ""}
-                  {s3Status.lastRun.error ? ` — ${s3Status.lastRun.error}` : ""}
+                  {s3Status.lastRun.error ? `: ${s3Status.lastRun.error}` : ""}
                 </p>
               ) : (
                 <p>Ainda não houve execução registada.</p>

@@ -279,7 +279,7 @@ export function buildTicketHistoryBundle(
       waitingOn: "cliente",
       waitingLabel: "Aguardando retorno do cliente",
       waitingDetail:
-        "A última interação visível não é do solicitante identificado; em geral é técnico/equipe — espera-se retorno do cliente."
+        "A última interação visível não é do solicitante identificado; em geral é técnico/equipe: espera-se retorno do cliente."
     };
   }
 

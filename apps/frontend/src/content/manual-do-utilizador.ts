@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-07-30";
+export const MANUAL_LAST_UPDATED = "2026-08-05"; // ocorrências + Controladoria (47/48)
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -30,7 +30,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "p",
         parts: [
-          "O SIGTI — Sistema Integrado de Gestão de Tecnologia da Informação — reúne a gestão contratual, medições financeiras, glosas, ligação a chamados GLPI, governança de SLA, metas, projetos e relatórios. O objetivo é dar visibilidade à operação e ao cumprimento contratual em um único painel."
+          "O SIGTI · Sistema Integrado de Gestão de Tecnologia da Informação reúne a gestão contratual, medições financeiras, glosas, prazos e pendências, ligação a chamados GLPI, governança de SLA, metas, projetos e relatórios. O objetivo é dar visibilidade à operação e ao cumprimento contratual em um único painel."
         ]
       },
       {
@@ -70,14 +70,12 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "p",
         parts: [
-          "Existem três papéis: administrador, editor e leitor. O administrador acessa a área ",
-          { href: "/administracao", label: "Administração" },
-          " (usuários, órgãos, permissões, catálogos e backup) e tem acesso total. O editor registra e altera dados operacionais (contratos, medições, etc.). O leitor consulta informação sem alterar registros sensíveis. Quando editor ou leitor estiver vinculado a um órgão, as listas e os detalhes de contratos, medições e glosas mostram somente registros desse órgão; administradores mantêm a visão global. As permissões marcadas na Administração são aplicadas tanto aos menus quanto às operações: permissões adicionais por usuário somam-se às do papel."
+          "O acesso é definido por perfis (Administrador, Editor, Leitor e perfis customizados) e por órgãos. Um usuário pode ter vários perfis e vários órgãos, ou a abrangência «Todos os órgãos». No topo da área autenticada, o seletor de contexto (ao lado de «Meu perfil») mostra o perfil e o órgão ativos e permite trocar; menus, operações e o filtro de contratos/medições/glosas seguem esse contexto. Com um órgão específico ativo, mesmo o perfil Administrador vê só dados daquele órgão; com «Todos os órgãos», não há filtro de órgão. As permissões efetivas são as do perfil ativo somadas às permissões adicionais daquele perfil para o usuário."
         ]
       },
       {
         kind: "roles",
-        text: "A página de exportações CSV e algumas ações de escrita podem estar restritas a administrador e editor; o leitor não vê a opção de exportações no menu."
+        text: "A página de exportações CSV e algumas ações de escrita dependem das permissões do perfil ativo; perfis só de leitura não alteram dados sensíveis."
       }
     ]
   },
@@ -89,10 +87,36 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/dashboard", label: "Painel executivo" },
-          " — Indicadores resumidos (financeiros, chamados, alertas) para acompanhamento rápido da situação global. Os mesmos dados aparecem também na área de ",
+          " · Indicadores resumidos (financeiros, chamados, alertas) para acompanhamento rápido da situação global. Os mesmos dados aparecem também na área de ",
           { href: "/reports", label: "Relatórios" },
           ", com contexto de exportações."
         ]
+      }
+    ]
+  },
+  {
+    id: "prazos-pendencias",
+    title: "Prazos e pendências",
+    blocks: [
+      {
+        kind: "p",
+        parts: [
+          { href: "/prazos-pendencias", label: "Prazos e pendências" },
+          " · Painel consolidado de prazos e alertas materializados a partir de vigências de contratos, marcos de cronograma, ocorrências com prazo de regularização, medições do mês ainda não aprovadas e funcionalidades pendentes de validação. Use os cartões do topo para ver totais e a lista abaixo para filtrar por tipo, situação, nível de atenção ou texto."
+        ]
+      },
+      {
+        kind: "ul",
+        items: [
+          "Cada linha mostra o prazo, a situação (futuro, próximo, vence hoje, atrasado etc.), o tipo de origem e o responsável, com atalho para abrir o contrato, a medição ou as funcionalidades relacionadas.",
+          "Funcionalidades não entregues ou parciais geram alertas para os membros do grupo de validação e para responsáveis específicos do item. Quem acompanha o módulo recebe um único alerta consolidado por módulo, não um por funcionalidade.",
+          "A listagem respeita o órgão do contexto ativo (seletor no topo). Com «Todos os órgãos», vê o conjunto completo ao qual tem acesso.",
+          "Administradores podem usar «Recalcular prazos» para atualizar a materialização a partir das fontes atuais. Nesta versão não há envio automático de e-mail de alerta."
+        ]
+      },
+      {
+        kind: "roles",
+        text: "Visualização exige a permissão «Visualizar prazos e pendências». O recálculo exige «Recalcular prazos e alertas» (perfil Administrador por padrão)."
       }
     ]
   },
@@ -104,7 +128,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/chamados", label: "Chamados (GLPI)" },
-          " — Quadro tipo Kanban com chamados sincronizados a partir do GLPI. É mostrada uma faixa com **quando foi a última sincronização** bem-sucedida (ou última tentativa); administradores e editores podem **sincronizar agora**, pedindo atualização imediata do cache. No topo há dois painéis sobre o stock aberto com os filtros atuais: idade desde a abertura e tempo desde a última alteração vista no GLPI (proxy de «última interação» no ticket); em cada faixa pode clicar para filtrar o quadro. Também pode filtrar por texto, estado, grupo, pendência inferida, técnico atribuído e outras opções. Serve à operação diária (quem trata o quê) e complementa a visão por contrato nas ligações GLPI do detalhe do contrato."
+          " · Quadro tipo Kanban com chamados sincronizados a partir do GLPI. É mostrada uma faixa com **quando foi a última sincronização** bem-sucedida (ou última tentativa); administradores e editores podem **sincronizar agora**, pedindo atualização imediata do cache. No topo há dois painéis sobre o stock aberto com os filtros atuais: idade desde a abertura e tempo desde a última alteração vista no GLPI (proxy de «última interação» no ticket); em cada faixa pode clicar para filtrar o quadro. Também pode filtrar por texto, estado, grupo, pendência inferida, técnico atribuído e outras opções. Serve à operação diária (quem trata o quê) e complementa a visão por contrato nas ligações GLPI do detalhe do contrato."
         ]
       },
       {
@@ -121,7 +145,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/resumo-operacional", label: "Resumo operacional" },
-          " — Visão diária, semanal ou mensal da produção da equipe, reunindo chamados GLPI abertos e fechados, tarefas de projetos concluídas, mudanças relevantes em contratos e o acesso ao relatório administrativo de uso do sistema por usuário."
+          " · Visão diária, semanal ou mensal da produção da equipe, reunindo chamados GLPI abertos e fechados, tarefas de projetos concluídas, mudanças relevantes em contratos e o acesso ao relatório administrativo de uso do sistema por usuário."
         ]
       },
       {
@@ -142,13 +166,15 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/minhas-atribuicoes", label: "Minhas atribuições" },
-          " — Janela única para o usuário logado acompanhar chamados GLPI, tarefas de projetos, projetos supervisionados, contratos como fiscal ou gestor, módulos sob sua validação e chamados de governança vinculados ao seu usuário."
+          " · Janela única para o usuário logado acompanhar chamados GLPI, tarefas de projetos, projetos supervisionados, contratos como fiscal ou gestor, funcionalidades pendentes sob sua responsabilidade, módulos sob seu acompanhamento e chamados de governança vinculados ao seu usuário."
         ]
       },
       {
         kind: "ul",
         items: [
-          "Os números do resumo no topo são clicáveis e levam à secção correspondente na mesma página.",
+          "Os números do resumo no topo são clicáveis e levam à secção correspondente na mesma página. Há totais separados para funcionalidades pendentes e módulos sob acompanhamento.",
+          "«Funcionalidades pendentes sob minha responsabilidade» lista itens não entregues ou parciais em que você é membro do grupo de validação ou responsável específico (acompanhamento de módulo sozinho não conta neste total).",
+          "«Módulos sob seu acompanhamento» lista módulos em que você é fiscal/responsável de acompanhamento.",
           "Use «Ocultar secções sem itens» para esconder blocos vazios e reduzir rolagem.",
           "O ícone de ajuda «Como apareço aqui?» resume os critérios de inclusão de cada tipo de item.",
           "Se alguma lista tiver mais entradas do que o limite exibido na página (100 por tipo), aparece um aviso de truncagem.",
@@ -171,7 +197,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/contracts", label: "Contratos" },
-          " — Lista dos contratos. Abra um contrato para ver dados cadastrais (vigência, valores, fornecedor, fiscal, gestor, legislação, tipo), alterar estado quando permitido, e gerenciar blocos específicos."
+          " · Lista dos contratos. Abra um contrato para ver dados cadastrais (vigência, valores, fornecedor, fiscal, gestor, legislação, tipo), alterar estado quando permitido, e gerenciar blocos específicos."
         ]
       },
       {
@@ -181,16 +207,21 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Vigência: datas de início e fim; período de implantação opcional para o painel de proporcionalidade.",
           "Número formal: a identificação é formada pelo número e pelo ano da data de início (por exemplo, 0156/2026). O mesmo número formal não pode ser cadastrado mais de uma vez no mesmo ano.",
           "Código interno: administradores com a permissão específica podem usar «Regenerar código interno» no topo do detalhe apenas em situações excepcionais. É obrigatório justificar a emissão; o código anterior permanece no histórico e o novo código recebe outro sequencial.",
-          "Excluir contrato: disponível apenas para administradores, no topo do detalhe. Exige digitar EXCLUIR ou o número do contrato e uma justificativa. Só funciona para cadastros sem medições, aditivos, memória financeira, chamados de governança ou funcionalidades já avaliadas; nos demais casos, altere o status para Suspenso ou Encerrado.",
-          "Itens contratuais: na criação e na edição, registre quantos itens forem necessários (mensalidade, implantação, horas de desenvolvimento ou suporte, treinamentos, UST, equipamentos, licenças, locações, infraestrutura, materiais e outros). Cada item tem sequência, tipo padronizado (lista da Administração), descrição contratual livre (texto do edital/TR/proposta), unidade de medida, quantidade, valor unitário e valor total (calculado automaticamente; valor manual exige justificativa se divergir). Itens recorrentes pedem periodicidade e período de incidência; marque «Base de glosa» nas mensalidades que devem compor a referência das medições de funcionalidades. Sob demanda registram o teto contratado (consumo controlado depois); valores únicos não exigem periodicidade. Ao final da seção aparecem os totais recorrente, único, sob demanda e global estimado. Com medições ou memória financeira, o item não é excluído — apenas cancelado.",
+          "Excluir contrato: disponível apenas para administradores, no topo do detalhe. Exige digitar EXCLUIR ou o número do contrato e uma justificativa. Só funciona para cadastros sem medições, aditivos, chamados de governança ou funcionalidades já avaliadas; nos demais casos, altere o status para Suspenso ou Encerrado.",
+          "Itens contratuais: na criação e na edição, registre quantos itens forem necessários (mensalidade, implantação, horas de desenvolvimento ou suporte, treinamentos, UST, equipamentos, licenças, locações, infraestrutura, materiais e outros). Cada item tem sequência, tipo padronizado (lista da Administração), descrição contratual livre (texto do edital/TR/proposta), unidade de medida, quantidade, valor unitário e valor total (calculado automaticamente; valor manual exige justificativa se divergir). Itens recorrentes pedem periodicidade e período de incidência; marque «Base de glosa» nas mensalidades que devem compor a referência das medições de funcionalidades. Sob demanda registram o teto contratado (consumo controlado depois); valores únicos não exigem periodicidade. Ao final da seção aparecem os totais recorrente, único, sob demanda e global estimado. Com medições ou aditivos, o item não é excluído - apenas cancelado.",
           "Valor global: a seção própria mostra a estimativa calculada pelos itens. Em caso excepcional, marque «Ajuste manual excepcional», informe o valor global e justifique a divergência. O detalhe do contrato identifica esse ajuste e preserva o valor global original para conferência.",
-          "Snapshots financeiros: histórico de valores acordados ao longo do tempo, para leitura e conferência.",
           "Proporção de implantação por funcionalidade: repartição do valor de implantação alinhada às funcionalidades do contrato.",
-          "Grupos GLPI: associação de grupos do GLPI ao contrato, para contagem de chamados nos relatórios.",
-          "Aditivos: registro de alterações contratuais.",
-          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir. Cada módulo tem uma sanfona para mostrar ou ocultar suas funcionalidades, facilitando a navegação em contratos extensos. Use os filtros por status de entrega, criticidade e texto para localizar itens por Código do Item ou descrição dentro dos respectivos módulos. No topo do módulo aparecem total de itens, entregues, parciais, não entregues e fiscal responsável. Em contratos de software e serviço, selecione também a «Base de glosa (item contratual)» para cada módulo quando as mensalidades precisarem ser calculadas separadamente; ao existir pelo menos um vínculo, somente os módulos vinculados entram nesse cálculo, evitando duplicidade. O campo Código do Item é obrigatório e deve guardar a numeração do item no Termo de Referência, mantendo o nome/descrição sem o número embutido; se ficar vazio, o campo é destacado e o sistema mostra um aviso antes de salvar. A criticidade de módulos e funcionalidades define automaticamente os pesos proporcionais usados nos reflexos financeiros: Crítica = 5, Alta = 4, Média = 3, Baixa = 2 e Apoio = 1.",
-          "Fiscal responsável pelo módulo: selecione um usuário do sistema para acompanhar e validar a entrega daquele módulo.",
-          "Histórico auditável dos itens: registra quem inseriu, excluiu ou alterou módulos, funcionalidades e serviços, incluindo antes e depois de Código do Item, descrição/nome, criticidade, estado e entrega quando esses campos mudam."
+          "Grupos GLPI: associação de grupos do GLPI ao contrato, para cruzar chamados e métricas.",
+          "Chamados GLPI: no detalhe do contrato, lista somente leitura dos chamados em cache vinculados aos grupos associados. Filtre por situação, prioridade, período de abertura e, quando o dado existir no cache, por SLA atrasado. A faixa indica a última sincronização com o GLPI; o botão «Abrir» leva ao chamado no GLPI quando a URL pública estiver configurada. Não altera dados no GLPI; classificação contratual complementar local ainda não está nesta tela.",
+          "Aditivos, reajustes e histórico: na ficha do contrato, registre termos aditivos, reajustes, repactuações e demais alterações com tipo, referência do instrumento, data de formalização, início dos efeitos, novo término (opcional) e descrição/observação obrigatória. Selecione os itens contratuais afetados para informar novos valores, percentual de reajuste/acréscimo/supressão ou incluir um item novo; a supressão encerra a vigência do item (não o apaga). Antes de confirmar, confira o resumo comparativo (antes/depois, diferença em R$ e %). Os valores passam a valer a partir da data de início dos efeitos e o valor global vigente é recalculado pela composição dos itens (o valor global original é preservado). A mesma seção mostra o histórico automático (contratação original + cada aditivo), com detalhe expansível dos itens; não há edição/exclusão comum — apenas cancelamento formal com justificativa. Com medições ou aditivos, a edição direta dos itens de precificação fica bloqueada: alterações financeiras devem seguir por aditivo.",
+          "Cronogramas e marcos: na ficha do contrato, registre cronogramas operacionais (implantação, migração, treinamento, plano de ação etc.) com tipo, origem, finalidade, datas previstas, responsáveis internos, responsáveis da empresa (texto livre), situação, versão e observações. Inclua etapas/marcos com sequência, atividade, datas previstas e efetivas, percentual e dependências; dá para vincular opcionalmente a um item contratual ou a uma funcionalidade. Rascunho edita livremente; depois de aprovado, mudanças de datas, etapas ou responsáveis geram nova versão (a anterior fica «Substituído»). A aprovação é operacional e não substitui aditivo. Anexos ainda não entram nesta versão.",
+          "Ocorrências: na ficha do contrato, registre fatos como não conformidade, atraso ou descumprimento de SLA, com tipo, origem, título, descrição, data da constatação, gravidade, responsável interno, prazo de regularização, situação, conclusão e evidências em texto. Dá para informar vínculos opcionais (IDs) a itens, funcionalidades, medições, glosas ou cronogramas. A mudança de situação pede justificativa e entra na linha do tempo. Não há notificação automática nesta versão.",
+          "Controladoria: quem tiver a permissão «Encaminhar e acompanhar casos na Controladoria» (ou administrador com edição de contratos) pode, a partir de uma ocorrência, abrir um dossiê com justificativa, resumo e providências sugeridas. A ocorrência permanece no contrato; o caso guarda um snapshot consolidado e campos de acompanhamento do processo (incluindo número e link SEI para uso futuro). Há também uma listagem simples na Administração → Controladoria.",
+          "Grupos de validação: na ficha do contrato, cadastre grupos com nome, descrição opcional e responsáveis (usuários do sistema, inclusive de outros órgãos). Cada funcionalidade nova deve estar vinculada a um grupo ativo. Grupos com funcionalidades vinculadas não são excluídos — apenas inativados.",
+          "Estrutura do contrato (funcionalidades / entregáveis): edição da composição do contrato quando a sua função o permitir. Cada módulo tem uma sanfona para mostrar ou ocultar suas funcionalidades, facilitando a navegação em contratos extensos. Use os filtros por status de entrega, criticidade e texto para localizar itens por Código do Item ou descrição dentro dos respectivos módulos. No topo do módulo aparecem total de itens, entregues, parciais, não entregues e responsáveis pelo acompanhamento. Em contratos de software e serviço, selecione também a «Base de glosa (item contratual)» para cada módulo quando as mensalidades precisarem ser calculadas separadamente; ao existir pelo menos um vínculo, somente os módulos vinculados entram nesse cálculo, evitando duplicidade. O campo Código do Item é obrigatório e deve guardar a numeração do item no Termo de Referência, mantendo o nome/descrição sem o número embutido; se ficar vazio, o campo é destacado e o sistema mostra um aviso antes de salvar. A criticidade de módulos e funcionalidades define automaticamente os pesos proporcionais usados nos reflexos financeiros: Crítica = 5, Alta = 4, Média = 3, Baixa = 2 e Apoio = 1.",
+          "Fiscais / responsáveis pelo acompanhamento do módulo: acompanham o módulo, mas não são automaticamente responsáveis diretos de cada funcionalidade. Podem validar itens do módulo quando tiverem permissão de edição de entrega.",
+          "Grupo de validação na funcionalidade: obrigatório em novos itens. Itens legados sem grupo aparecem como «Grupo não definido». Os membros do grupo são os responsáveis efetivos; responsáveis específicos do item complementam (não substituem) o grupo.",
+          "Histórico auditável dos itens: registra quem inseriu, excluiu ou alterou módulos, funcionalidades, grupos de validação e serviços, incluindo antes e depois de Código do Item, descrição/nome, criticidade, estado, entrega e mudanças de fiscais/responsáveis quando esses campos mudam."
         ]
       },
       {
@@ -211,7 +242,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/modulos", label: "Funcionalidades" },
-          " — Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. A lista começa só com resumos: expandir o contrato carrega os módulos; expandir o módulo carrega a primeira página de itens (use «Carregar mais» se houver continuidade). Os filtros por texto, status de entrega e criticidade pesquisam no servidor e mostram os contratos correspondentes já abertos. Cada funcionalidade deve ter Código do Item separado do nome, para guardar a numeração do Termo de Referência; se o código obrigatório não for preenchido, o campo fica vermelho e o sistema mostra um aviso antes de salvar. A criticidade aparece em um seletor colorido na linha do item, do nível 1 (Apoio, verde) ao nível 5 (Crítica, vermelho), e recalcula automaticamente os pesos de todas as funcionalidades do módulo sempre que um item é incluído, excluído ou alterado. No cabeçalho do contrato aparecem o mini gráfico de requisitos cumpridos, o gestor e o fiscal; no cabeçalho do módulo, as contagens de entregues / parciais / não entregues. Os seletores de entrega e criticidade só aparecem para quem possui a permissão específica de cada ação; editar a estrutura exige permissão de edição de contratos e «Abrir contrato» exige permissão de visualização. Quem não tiver essas permissões apenas consulta."
+          " · Visão das funcionalidades contratuais e respectivos estados de entrega / acompanhamento, alinhadas à estrutura definida nos contratos. A lista começa só com resumos: expandir o contrato carrega os módulos; expandir o módulo carrega a primeira página de itens (use «Carregar mais» se houver continuidade). Os filtros por texto, status de entrega, criticidade e atribuição (todos, atribuídos a mim, sou responsável pelo grupo, sou responsável pelo módulo, sem responsável) pesquisam no servidor e mostram os contratos correspondentes já abertos. Cada item indica visualmente o motivo da atribuição (grupo, específico ou acompanhamento de módulo). Se você for membro de grupo/item/módulo de outro órgão, esses contratos também entram na listagem. Cada funcionalidade deve ter Código do Item separado do nome, para guardar a numeração do Termo de Referência; se o código obrigatório não for preenchido, o campo fica vermelho e o sistema mostra um aviso antes de salvar. A criticidade aparece em um seletor colorido na linha do item, do nível 1 (Apoio, verde) ao nível 5 (Crítica, vermelho), e recalcula automaticamente os pesos de todas as funcionalidades do módulo sempre que um item é incluído, excluído ou alterado. No cabeçalho do contrato aparecem o mini gráfico de requisitos cumpridos, o gestor e o fiscal; no cabeçalho do módulo, as contagens de entregues / parciais / não entregues. Os seletores de entrega e criticidade só aparecem para quem possui a permissão específica de cada ação; editar a estrutura exige permissão de edição de contratos e «Abrir contrato» exige permissão de visualização. Quem não tiver essas permissões apenas consulta."
         ]
       }
     ]
@@ -224,16 +255,18 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/measurements", label: "Medições" },
-          " — Uma medição por contrato e por competência (mês/ano). Cada registro percorre estados: Aberta → Em revisão ou Glosada → Aprovada. O valor aprovado consolida o que conta como medição aprovada para relatórios."
+          " · Uma medição por contrato e por competência (mês/ano). Cada registro percorre estados: Aberta → Em revisão ou Glosada → Aprovada. O valor aprovado consolida o que conta como medição aprovada para relatórios."
         ]
       },
       {
         kind: "ul",
         items: [
-          "Utilize «Nova medição» para abrir o mês seguinte ou a competência ausente.",
-          "Em contratos de datacenter ou infraestrutura, adicione as linhas de consumo escolhendo o serviço, a quantidade e, quando aplicável, o item contratual de precificação. Para itens sob demanda, o sistema não permite medir ou aprovar quantidade acima do saldo disponível.",
-          "Na página da medição, calcule e finalize o fluxo conforme o processo interno (revisão, glosa, aprovação).",
-          "Os anexos da medição permitem clicar no nome do ficheiro para abrir um modal: PDF e imagens podem ser pré-visualizados; outros tipos mostram apenas a opção de descarregar. Administradores e editores podem eliminar um anexo (com confirmação)."
+          "Utilize «Nova medição» para abrir a competência (mês/ano). Só pode existir uma medição ativa por contrato e competência.",
+          "Ao criar, o sistema monta automaticamente as linhas a partir dos itens contratuais vigentes (total ou parcialmente) na competência. Se um aditivo mudar o item no meio do mês, surgem linhas separadas com o período de cada versão. Contratos sem itens vigentes e sem valor mensal legado não permitem criar a medição.",
+          "Itens recorrentes entram com valor proporcional aos dias de vigência no mês; sob demanda e pagamento único pedem quantidade (ou percentual) informada antes ou depois do primeiro cálculo. Use «Calcular medição» para preencher valores e gerar glosas automáticas por funcionalidades não validadas, quando aplicável.",
+          "Na seção «Glosas e descontos» da medição, registre glosas manuais com justificativa obrigatória. Glosas automáticas não têm valor editável. O resumo mostra bruto, glosas automáticas, manuais e líquido (≥ 0). Após aprovar, a medição fica congelada.",
+          "Em contratos de datacenter ou infraestrutura, ainda é possível acrescentar linhas de consumo por serviço enquanto a medição estiver aberta. Para itens sob demanda, o sistema não permite medir ou aprovar quantidade acima do saldo disponível.",
+          "Os anexos da medição permitem pré-visualizar PDF e imagens; administradores e editores podem eliminar um anexo (com confirmação)."
         ]
       },
       {
@@ -256,7 +289,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/glosas", label: "Glosas" },
-          " — Gestão de glosas associadas ao acompanhamento financeiro e contratual. Consulte a lista e abra cada registro para ver detalhe, histórico e ações disponíveis para o seu papel.",
+          " · Consulta consolidada das glosas geradas nas medições (automáticas e manuais). Novas glosas adicionais são registradas na própria tela da medição, na seção «Glosas e descontos».",
           " Os anexos da glosa seguem o mesmo padrão que na medição: pré-visualização de PDF/imagem num modal quando aplicável e possibilidade de remover (papéis com permissão de edição)."
         ]
       }
@@ -270,7 +303,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/governance/tickets", label: "Governança SLA" },
-          " — Chamados com foco em cumprimento de SLA e papéis de governança (gestor, controladoria, observador). Utilize filtros e o detalhe de cada chamado para acompanhar prazos e responsabilidades."
+          " · Chamados com foco em cumprimento de SLA e papéis de governança (gestor, controladoria, observador). Utilize filtros e o detalhe de cada chamado para acompanhar prazos e responsabilidades."
         ]
       }
     ]
@@ -283,7 +316,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/goals", label: "Metas" },
-          " — Definição e acompanhamento de metas. No detalhe da meta, registre em texto exatamente o que ela representa e escolha se ela fica vinculada a um projeto inteiro ou a tarefas específicas. As tarefas vinculadas podem pertencer a projetos diferentes; use os filtros por projeto, responsável e texto para localizar as tarefas antes de vinculá-las."
+          " · Definição e acompanhamento de metas. No detalhe da meta, registre em texto exatamente o que ela representa e escolha se ela fica vinculada a um projeto inteiro ou a tarefas específicas. As tarefas vinculadas podem pertencer a projetos diferentes; use os filtros por projeto, responsável e texto para localizar as tarefas antes de vinculá-las."
         ]
       }
     ]
@@ -296,7 +329,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/projetos", label: "Projetos" },
-          " — Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor, data de início, fim planejado e grupo dos projetos existentes, criar, editar e excluir tarefas manualmente, adicionar comentários no histórico de cada tarefa, anexos às tarefas (através do ícone de clipe na linha ou no quadro) — com o mesmo comportamento de modal de pré-visualização e remoção de ficheiros — ou importar tarefas por Excel do Monday.com. O detalhe do projeto mostra as metas vinculadas ao projeto inteiro; nas tarefas, além de Pessoa e Responsável PMF, é possível selecionar uma meta e informar o número do chamado GLPI quando aquela tarefa estiver ligada a um atendimento. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios e atrasos; na linha de cada projeto aparecem as datas de início e fim planejado. A lista agrupada por sanfonas ajuda a acompanhar os projetos por grupo. Pode existir uma vista de ",
+          " · Projetos e iniciativas. Administradores e editores podem criar grupos de projetos, cadastrar projetos vazios, editar nome, contexto, supervisor, data de início, fim planejado e grupo dos projetos existentes, criar, editar e excluir tarefas manualmente, adicionar comentários no histórico de cada tarefa, anexos às tarefas (através do ícone de clipe na linha ou no quadro), com o mesmo comportamento de modal de pré-visualização e remoção de ficheiros, ou importar tarefas por Excel do Monday.com. O detalhe do projeto mostra as metas vinculadas ao projeto inteiro; nas tarefas, além de Pessoa e Responsável PMF, é possível selecionar uma meta e informar o número do chamado GLPI quando aquela tarefa estiver ligada a um atendimento. O supervisor é a pessoa responsável por acompanhar os status das tarefas e conferir se elas foram executadas. O contexto funciona como apresentação do projeto: explica o que ele faz, por que existe e quais pontos são importantes para acompanhar. A lista de projetos e os grupos mostram um mini resumo de execução com percentual concluído, andamento, bloqueios e atrasos; na linha de cada projeto aparecem as datas de início e fim planejado. A lista agrupada por sanfonas ajuda a acompanhar os projetos por grupo. Pode existir uma vista de ",
           { href: "/projetos/tarefas", label: "tarefas" },
           " para trabalho transversal. Abra um projeto para ver contexto, fases, tarefas e informação associada."
         ]
@@ -311,10 +344,10 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/suppliers", label: "Fornecedores" },
-          " — Cadastro de empresas fornecedoras utilizadas nos contratos. A lista mostra os contratos vinculados a cada fornecedor; clique em um contrato para abrir o detalhe.",
+          " · Cadastro de empresas fornecedoras utilizadas nos contratos. A lista mostra os contratos vinculados a cada fornecedor; clique em um contrato para abrir o detalhe.",
           " ",
           { href: "/fiscais", label: "Fiscais" },
-          " — Cadastro e edição de fiscais e gestores do contrato. Ambos alimentam campos de seleção no detalhe do contrato e podem, opcionalmente, ser vinculados a uma conta de usuário do sistema."
+          " · Cadastro e edição de fiscais e gestores do contrato. Ambos alimentam campos de seleção no detalhe do contrato e podem, opcionalmente, ser vinculados a uma conta de usuário do sistema."
         ]
       }
     ]
@@ -327,7 +360,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/exports", label: "Exportações" },
-          " — Download de arquivos CSV (contratos, medições, glosas, aditivos) em UTF-8, para arquivo ou análise externa."
+          " · Download de arquivos CSV (contratos, medições, glosas, aditivos) em UTF-8, para arquivo ou análise externa."
         ]
       },
       {
@@ -344,7 +377,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/reports", label: "Relatórios" },
-          " — Hub com o painel resumido e link para o fechamento mensal. O botão foi removido temporariamente do menu principal, mas a rota pode ser acessada diretamente quando necessário. O fechamento mensal mostra, por contrato e mês selecionado, referência da medição anterior, estado da medição da competência, valores aprovados quando aplicável, e contagens GLPI incluindo ordens represadas de meses anteriores."
+          " · Hub com o painel resumido e link para o fechamento mensal. O botão foi removido temporariamente do menu principal, mas a rota pode ser acessada diretamente quando necessário. O fechamento mensal mostra, por contrato e mês selecionado, referência da medição anterior, estado da medição da competência, valores aprovados quando aplicável, e contagens GLPI incluindo ordens represadas de meses anteriores."
         ]
       }
     ]
@@ -357,7 +390,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/administracao", label: "Administração" },
-          " — Área unificada para administradores, com abas para usuários, órgãos, permissões por papel ou usuário, tipos de itens contratuais, tipos de contrato, tipos de contratação, conferência de precificação e atalho para backup. A rota antiga ",
+          " · Área unificada para administradores, com abas para usuários, órgãos, permissões por perfil ou usuário, tipos de itens contratuais, tipos de contrato, tipos de contratação, conferência de precificação, Controladoria (listagem de dossiês), configuração de e-mail, auditoria e logs, e atalho para backup. A rota antiga ",
           { href: "/administracao?tab=usuarios", label: "/users" },
           " redireciona para a aba Usuários."
         ]
@@ -365,12 +398,15 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "ul",
         items: [
-          "Usuários: gestão de contas, papéis, aprovação de cadastros e senha inicial.",
+          "Usuários: gestão de contas, perfis, órgãos (ou «Todos os órgãos»), aprovação de cadastros e senha inicial.",
           "Órgãos: cadastro de secretarias/unidades com nome, sigla, código e status ativo/inativo.",
-          "Permissões: marque ou desmarque permissões granulares por papel (ADMIN, EDITOR, VIEWER) ou por usuário (somam-se ao papel). As permissões de gerir usuários e gerir permissões permanecem obrigatoriamente no papel Administrador. Abaixo dos controles, consulte o histórico das últimas alterações, com data e permissões adicionadas ou removidas.",
-          "Usuários: o sistema não permite alterar o papel ou a aprovação de modo a remover o último administrador aprovado.",
+          "Permissões: cadastre perfis, edite a matriz por perfil e, no modo por usuário, escolha o perfil vinculado para ver herdadas e adicionais. As permissões de gerir usuários e gerir permissões permanecem obrigatórias no perfil Administrador. Consulte o histórico das últimas alterações.",
+          "Usuários: o sistema não permite remover o último administrador aprovado capaz de gerir usuários e permissões.",
           "Tipos de itens, contrato e contratação: catálogos usados nos formulários de contrato.",
           "Conferência precificação: valida os contratos ativos migrados dos campos antigos de mensalidade e implantação para itens contratuais. Use os filtros para localizar pendências, duplicidade de mensalidades, quantidades ou períodos a revisar e divergências de valores; cada linha abre o contrato para correção.",
+          "Controladoria: listagem simples dos dossiês encaminhados a partir de ocorrências contratuais, com atalho para o contrato. O acompanhamento detalhado do processo fica na ficha do contrato.",
+          "Configuração de e-mail: defina o servidor SMTP de saída, remetente, cópias e padrões; teste o envio e consulte o histórico mínimo. A senha é guardada criptografada e não é exibida depois de salva. A caixa de entrada (IMAP) ainda não está disponível. Enquanto o SMTP ativo não estiver integrado aos fluxos do sistema, recuperação de senha e boas-vindas podem continuar pelo Resend.",
+          "Auditoria e logs: na mesma aba, configure quais eventos gravar (por módulo, com pesquisa e restauração do padrão) e consulte os registros paginados com filtros, detalhe e exportação CSV. Sem edição nem exclusão de logs. A retenção/descarte de armazenamento virá em versão futura.",
           "Backup: botão que abre a tela completa de exportação, restauração e S3 em /backup."
         ]
       },
@@ -388,14 +424,15 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/administracao?tab=usuarios", label: "Usuários" },
-          " — Gestão de contas, papéis, aprovação de cadastros e senha inicial. Disponível na aba Usuários da Administração."
+          " · Gestão de contas, perfis, órgãos, aprovação de cadastros e senha inicial. Disponível na aba Usuários da Administração."
         ]
       },
       {
         kind: "ul",
         items: [
+          "Ao criar ou editar, vincule ao menos um perfil e (ao menos um órgão ou a opção «Todos os órgãos»). A listagem resume perfis e órgãos extras com «+N».",
           "Ao criar uma conta ou redefinir a senha de um usuário pela administração, o sistema exige que a pessoa troque a senha no primeiro acesso antes de usar as demais telas.",
-          "Na tela de login, qualquer pessoa pode solicitar acesso informando e-mail e senha. Esse cadastro fica pendente até um administrador aprovar ou recusar na tela de Usuários.",
+          "Na tela de login, qualquer pessoa pode solicitar acesso informando e-mail e senha. Esse cadastro fica pendente até um administrador aprovar ou recusar na tela de Usuários (e completar órgão/perfil conforme a política interna).",
           "Ao criar uma conta, o sistema pode enviar um e-mail de boas-vindas com link para definição de senha, quando o envio por Resend estiver configurado. Se a senha for definida por esse link, a troca obrigatória é considerada concluída.",
           "Na tela de login, a opção «Esqueci a minha senha» envia um link de redefinição para o e-mail cadastrado. O link expira em 60 minutos."
         ]
@@ -414,7 +451,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "p",
         parts: [
           { href: "/backup", label: "Backup e migração" },
-          " — Permite a administradores exportar e restaurar a base de dados PostgreSQL, preferências guardadas no sistema e, opcionalmente, os anexos em disco. Também acessível pela aba Backup em ",
+          " · Permite a administradores exportar e restaurar a base de dados PostgreSQL, preferências guardadas no sistema e, opcionalmente, os anexos em disco. Também acessível pela aba Backup em ",
           { href: "/administracao?tab=backup", label: "Administração" },
           ". Serve para migrar a aplicação para outro servidor (por exemplo Railway → Coolify)."
         ]

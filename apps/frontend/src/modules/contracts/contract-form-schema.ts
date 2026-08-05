@@ -29,8 +29,10 @@ export const contractPageSchema = z
     /** Número completo legado (preenchido na edição quando já existir). */
     number: z.string().optional().default(""),
     administrativeProcess: z.string().optional().default(""),
-    organizationId: z.string().min(1, "Selecione o órgão gestor."),
-    contractTypeCatalogId: z.string().min(1, "Selecione o tipo de contrato."),
+    /** Pode ficar vazio em contratos antigos pendentes de regularização. */
+    organizationId: z.string().optional().default(""),
+    /** Pode ficar vazio em contratos antigos pendentes de regularização. */
+    contractTypeCatalogId: z.string().optional().default(""),
     contractType: contractTypeSchema,
     hiringTypeId: z.string().optional().default(""),
     hiringProcedureNumber: z
@@ -60,7 +62,8 @@ export const contractPageSchema = z
     globalValueJustification: z.string().optional().default(""),
     implementationPeriodStart: z.string().optional().default(""),
     implementationPeriodEnd: z.string().optional().default(""),
-    fiscalId: z.string().min(1, "Selecione ou cadastre o fiscal."),
+    /** Obrigatório na criação; na edição pode estar pendente em contratos antigos. */
+    fiscalId: z.string().optional().default(""),
     managerId: z.string(),
     supplierId: z.string(),
     quickFiscalName: z.string(),
@@ -102,11 +105,24 @@ export const contractPageSchema = z
     path: ["globalValueJustification"]
   });
 
-/** Exige número formal na criação (modo edição valida no componente). */
-export const createContractPageSchema = contractPageSchema.refine((d) => d.formalNumber.length >= 1, {
-  message: "Informe o número formal do contrato (somente dígitos).",
-  path: ["formalNumber"]
-});
+/** Exige número formal e catálogos na criação (edição permite pendências de migração). */
+export const createContractPageSchema = contractPageSchema
+  .refine((d) => d.formalNumber.length >= 1, {
+    message: "Informe o número formal do contrato (somente dígitos).",
+    path: ["formalNumber"]
+  })
+  .refine((d) => d.organizationId.trim().length >= 1, {
+    message: "Selecione o órgão gestor.",
+    path: ["organizationId"]
+  })
+  .refine((d) => d.contractTypeCatalogId.trim().length >= 1, {
+    message: "Selecione o tipo de contrato.",
+    path: ["contractTypeCatalogId"]
+  })
+  .refine((d) => d.fiscalId.trim().length >= 1, {
+    message: "Selecione ou cadastre o fiscal.",
+    path: ["fiscalId"]
+  });
 
 export type ContractPageFormInput = z.input<typeof contractPageSchema>;
 export type ContractPageParsed = z.output<typeof contractPageSchema>;
@@ -164,7 +180,7 @@ export const CONTRACT_FORM_DEFAULT_VALUES: ContractPageFormInput = {
 /** Pré-visualização do número completo número/ano a partir do formal e da vigência. */
 export function formatFormalNumberPreview(formalNumber: string, startDate: string): string {
   const digits = onlyDigits(formalNumber);
-  if (!digits) return "—";
+  if (!digits) return "-";
   if (!startDate || startDate.length < 4) return `${digits}/????`;
   const year = new Date(`${startDate}T12:00:00`).getFullYear();
   if (!Number.isFinite(year)) return `${digits}/????`;

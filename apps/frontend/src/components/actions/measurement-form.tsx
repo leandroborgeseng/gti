@@ -56,7 +56,7 @@ export function MeasurementForm({ onSuccess, contractOptions, defaultContractId 
   const contractLabel = useMemo(() => {
     if (!hasSelect || !watchedContractId) return "";
     const c = contractOptions!.find((x) => x.id === watchedContractId);
-    return c ? `${c.number} — ${c.name}` : "";
+    return c ? `${c.number} · ${c.name}` : "";
   }, [hasSelect, watchedContractId, contractOptions]);
 
   const mutation = useMutation({
@@ -67,7 +67,7 @@ export function MeasurementForm({ onSuccess, contractOptions, defaultContractId 
         referenceYear: parseInt(values.referenceYear, 10)
       }),
     onSuccess: () => {
-      toast.success("Medição criada.");
+      toast.success("Medição criada com as linhas dos itens vigentes na competência.");
       void qc.invalidateQueries({ queryKey: queryKeys.measurements });
       form.reset({
         contractId: hasSelect ? resolvedInitialContract : "",
@@ -104,7 +104,7 @@ export function MeasurementForm({ onSuccess, contractOptions, defaultContractId 
                     <SelectContent>
                       {contractOptions!.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
-                          {c.number} — {c.name}
+                          {c.number} · {c.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -106,7 +106,7 @@ function KanbanSyncIcon({ syncStale }: { syncStale: boolean }): JSX.Element {
 
 function formatDateTimePtBr(iso: string | null): string {
   if (!iso?.trim()) {
-    return "—";
+    return "-";
   }
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) {
@@ -569,19 +569,19 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
       </span>
     );
     return [
-      pill("Busca", initial.q || "—", !initial.q),
+      pill("Busca", initial.q || "-", !initial.q),
       pill("Status", statusPill, !initial.statusFilter),
       pill("Grupo", initial.groupFilter || "Todos", !initial.groupFilter),
       pill("Abertos", openLabel, !initial.onlyOpen),
       pill("Pendência", pendenciaLabelForSummary(initial.pendenciaParam), initial.pendenciaParam === ""),
-      pill("Solicitante", solicitante || "—", !solicitante),
+      pill("Solicitante", solicitante || "-", !solicitante),
       pill("Atribuído", assigneePill || "Todos", !assigneePill && !initial.noAssignee),
-      pill("Coorte idade", cohortPill || "—", !cohortPill),
-      pill("Faixa de idade", ageBucketPill || "—", !ageBucketPill),
-      pill("Faixa desde última interação", idleBucketPill || "—", !idleBucketPill),
-      pill("Inatividade (mín. dias)", idleMinPill || "—", !idleMinPill),
-      pill("Grupos (IN)", groupInPill || "—", !groupInPill),
-      pill("Sem grupo", groupNullPill || "—", !groupNullPill),
+      pill("Coorte idade", cohortPill || "-", !cohortPill),
+      pill("Faixa de idade", ageBucketPill || "-", !ageBucketPill),
+      pill("Faixa desde última interação", idleBucketPill || "-", !idleBucketPill),
+      pill("Inatividade (mín. dias)", idleMinPill || "-", !idleMinPill),
+      pill("Grupos (IN)", groupInPill || "-", !groupInPill),
+      pill("Sem grupo", groupNullPill || "-", !groupNullPill),
       pill(
         "Sync cache",
         initial.ticketSyncScope === "all" ? "Todos os tickets" : "Só abertos (cache reduzido)",
@@ -802,7 +802,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                 onChange={(e) => setSyncScopeDraft(e.target.value === "all" ? "all" : "open")}
               >
                 <option value="all">
-                  Todos os tickets — recomendado (abertos a cada ciclo do cron; fechados na passagem diária)
+                  Todos os tickets (recomendado) (abertos a cada ciclo do cron; fechados na passagem diária)
                 </option>
                 <option value="open">Só abertos (cache menor; sem fechados / sem gráfico de fechamentos)</option>
               </select>
@@ -957,7 +957,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                         </div>
                         <div className="card-title">{card.title || "(sem título)"}</div>
                         <span className={pendBadgeClass(card.pendClass)}>{card.pendLabel}</span>
-                        <div className="card-meta">Grupo: {card.contractGroupName || "—"}</div>
+                        <div className="card-meta">Grupo: {card.contractGroupName || "-"}</div>
                         {card.assigneeLabel ? (
                           <div className="card-meta">
                             Atribuído: <strong>{card.assigneeLabel}</strong>
@@ -1068,7 +1068,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                             </div>
                             <div className="glpi-message-card__actors-line">
                               <strong>Solicitante:</strong>{" "}
-                              <span className="glpi-chip glpi-chip--requester">{detail.requesterName || "—"}</span>
+                              <span className="glpi-chip glpi-chip--requester">{detail.requesterName || "-"}</span>
                               {detail.requesterEmail ? (
                                 <span className="glpi-message-card__email">{detail.requesterEmail}</span>
                               ) : null}
@@ -1180,7 +1180,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                             </p>
                             <div className="history-list" id="ticket-history-list">
                               {(detail.history.items || []).map((item: HistoryTimelineItemDto, i: number) => {
-                                const metaLine = `${item.title || item.kind || ""} · ${item.date || "—"} · ${
+                                const metaLine = `${item.title || item.kind || ""} · ${item.date || "-"} · ${
                                   item.authorLabel || (item.usersId ? `User #${item.usersId}` : "Autor nao identificado")
                                 }${item.isPrivate ? " [Privado]" : ""}`;
                                 const html = historyHtmlByItem.get(i) ?? "";
@@ -1217,7 +1217,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                         ))}
                       </select>
                     </label>
-                    <p className="glpi-aside-current">Atual: {detail.statusLabel || "—"}</p>
+                    <p className="glpi-aside-current">Atual: {detail.statusLabel || "-"}</p>
 
                     <label className="modal-field glpi-aside-field">
                       Prioridade
@@ -1230,7 +1230,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                         ))}
                       </select>
                     </label>
-                    <p className="glpi-aside-current">Atual: {detail.priorityLabel || "—"}</p>
+                    <p className="glpi-aside-current">Atual: {detail.priorityLabel || "-"}</p>
 
                     {detail.sidebar?.typeLabel ? (
                       <div className="glpi-aside-kv">
@@ -1271,15 +1271,15 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
 
                     <div className="glpi-aside-kv">
                       <span className="glpi-aside-kv__k">Entidade</span>
-                      <span className="glpi-aside-kv__v">{detail.context.entity || "—"}</span>
+                      <span className="glpi-aside-kv__v">{detail.context.entity || "-"}</span>
                     </div>
                     <div className="glpi-aside-kv">
                       <span className="glpi-aside-kv__k">Categoria</span>
-                      <span className="glpi-aside-kv__v">{detail.context.category || "—"}</span>
+                      <span className="glpi-aside-kv__v">{detail.context.category || "-"}</span>
                     </div>
                     <div className="glpi-aside-kv">
                       <span className="glpi-aside-kv__k">Grupo (cache)</span>
-                      <span className="glpi-aside-kv__v">{detail.contractGroupName || "—"}</span>
+                      <span className="glpi-aside-kv__v">{detail.contractGroupName || "-"}</span>
                     </div>
 
                     <div className="glpi-governance-card" aria-label="Governança de chamados (sistema)">
@@ -1301,7 +1301,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                               href={`/contracts/${detail.governance.contractId}` as Route}
                               className="glpi-governance-card__link"
                             >
-                              {detail.governance.contractNumber} — {detail.governance.contractName}
+                              {detail.governance.contractNumber} · {detail.governance.contractName}
                             </Link>
                           </p>
                           <Link
@@ -1324,7 +1324,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                     <div className="glpi-aside-actors">
                       <div className="glpi-aside-actors__row">
                         <span className="glpi-aside-actors__label">Solicitante</span>
-                        <span className="glpi-chip glpi-chip--requester">{detail.requesterName || "—"}</span>
+                        <span className="glpi-chip glpi-chip--requester">{detail.requesterName || "-"}</span>
                       </div>
                       {detail.requesterUserId != null && detail.requesterUserId > 0 ? (
                         <p className="glpi-aside-actors__hint">Usuário #{detail.requesterUserId}</p>
@@ -1335,11 +1335,11 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                           {detail.observers?.length ? (
                             detail.observers.map((o, idx) => (
                               <span key={`${o.userId ?? "o"}-${idx}`} className="glpi-chip">
-                                {o.displayName || "—"}
+                                {o.displayName || "-"}
                               </span>
                             ))
                           ) : (
-                            <span className="glpi-aside-muted">—</span>
+                            <span className="glpi-aside-muted">-</span>
                           )}
                         </div>
                       </div>
@@ -1353,7 +1353,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                               </span>
                             ))
                           ) : (
-                            <span className="glpi-aside-muted">—</span>
+                            <span className="glpi-aside-muted">-</span>
                           )}
                         </div>
                       </div>
@@ -1367,7 +1367,7 @@ export function ChamadosBoard({ initial }: { initial: KanbanBoardPayload }): JSX
                               </span>
                             ))
                           ) : (
-                            <span className="glpi-aside-muted">—</span>
+                            <span className="glpi-aside-muted">-</span>
                           )}
                         </div>
                       </div>

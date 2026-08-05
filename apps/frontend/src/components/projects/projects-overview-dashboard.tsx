@@ -23,7 +23,7 @@ function tasksListHref(params: Record<string, string>): string {
 
 function formatPct(count: number, total: number): string {
   if (total <= 0) {
-    return "—";
+    return "-";
   }
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 0 }).format(
     (100 * count) / total
@@ -172,7 +172,7 @@ function ProjectMetricCard({
         {formatPct(value, totalForPct)}%
       </span>
     ) : null;
-  const pctLabel = totalForPct !== null && totalForPct > 0 ? formatPct(value, totalForPct) : "—";
+  const pctLabel = totalForPct !== null && totalForPct > 0 ? formatPct(value, totalForPct) : "-";
   const ariaLabel =
     totalForPct !== null && totalForPct > 0 ? `${title}: ${value}, ${pctLabel} por cento das tarefas` : `${title}: ${value}`;
   const inner = (

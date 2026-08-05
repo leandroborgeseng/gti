@@ -133,7 +133,7 @@ export function ListTruncationFooter({
   if (!truncated) return null;
   return (
     <p className="mt-3 text-xs text-muted-foreground" role="status">
-      Lista «{label}» limitada a {maxItems} registos no servidor — pode haver mais itens não mostrados.
+      Lista «{label}» limitada a {maxItems} registos no servidor: pode haver mais itens não mostrados.
     </p>
   );
 }

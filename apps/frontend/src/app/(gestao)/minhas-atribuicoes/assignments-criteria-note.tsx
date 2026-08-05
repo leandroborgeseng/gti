@@ -23,6 +23,14 @@ export function AssignmentsCriteriaNote(): JSX.Element {
         <p className="text-muted-foreground leading-relaxed">
           Entram se estiver como responsável principal na base (utilizador do sistema), nas responsabilidades PMF ligadas ao seu utilizador, ou quando o seu e-mail (ou parte antes do @), nome ou dados do fiscal aparecem nos campos de responsável interno ou externo da tarefa.
         </p>
+        <p className="font-semibold leading-tight">Funcionalidades pendentes</p>
+        <p className="text-muted-foreground leading-relaxed">
+          Contam itens não entregues ou parcialmente entregues em que você é membro do grupo de validação ou responsável específico do item. O acompanhamento de módulo sozinho não entra neste total.
+        </p>
+        <p className="font-semibold leading-tight">Módulos sob acompanhamento</p>
+        <p className="text-muted-foreground leading-relaxed">
+          Módulos em que você está como fiscal/responsável de acompanhamento. Isso não o torna automaticamente responsável direto de cada funcionalidade.
+        </p>
         <p className="text-xs text-muted-foreground leading-relaxed">
           Os limites de cada lista vêm do servidor; quando vir aviso de lista truncada, pode haver mais registos do que os mostrados.
         </p>

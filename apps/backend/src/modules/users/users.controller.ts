@@ -14,6 +14,12 @@ export class UsersController {
     return this.service.findAll();
   }
 
+  /** Opções leves para selects (id, nome, e-mail, órgão, ativo). */
+  @Get("options")
+  findOptions(): Promise<unknown> {
+    return this.service.findOptions();
+  }
+
   @Post()
   @Roles(UserRole.ADMIN)
   create(@Body() dto: CreateUserDto): Promise<unknown> {

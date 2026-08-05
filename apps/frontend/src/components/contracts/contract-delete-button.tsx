@@ -82,7 +82,7 @@ export function ContractDeleteButton({ contractId, contractNumber, contractName 
           <p className="text-sm text-slate-700">
             Você está prestes a excluir o contrato{" "}
             <strong className="font-semibold text-slate-900">
-              {contractNumber} — {contractName}
+              {contractNumber} · {contractName}
             </strong>
             .
           </p>

@@ -57,10 +57,10 @@ export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = []
                   <Link
                     href={`/contracts/${contract.id}` as Route}
                     className="inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-sm font-medium text-primary underline-offset-2 hover:bg-primary/5 hover:underline"
-                    title={`${contract.number} — ${contract.name}`}
+                    title={`${contract.number} · ${contract.name}`}
                   >
                     <span className="shrink-0 tabular-nums">{contract.number}</span>
-                    <span className="truncate">— {contract.name}</span>
+                    <span className="truncate">· {contract.name}</span>
                   </Link>
                 </li>
               ))}

@@ -159,10 +159,10 @@ export default async function FechamentoMensalPage({
                     <td className="whitespace-nowrap px-3 py-2 tabular-nums">{formatBrl(r.contractMonthlyValue)}</td>
                     <td className="whitespace-nowrap px-3 py-2 tabular-nums">{formatBrl(r.contractInstallationValue)}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {r.implementationPeriodStart ?? "—"} → {r.implementationPeriodEnd ?? "—"}
+                      {r.implementationPeriodStart ?? "-"} → {r.implementationPeriodEnd ?? "-"}
                     </td>
                     <td className="px-3 py-2 text-xs">
-                      {r.measurementStatus ? measurementStatusPt[r.measurementStatus] ?? r.measurementStatus : "—"}
+                      {r.measurementStatus ? measurementStatusPt[r.measurementStatus] ?? r.measurementStatus : "-"}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatBrl(r.previousMonthApprovedPayment)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatBrl(r.monthApprovedPayment)}</td>

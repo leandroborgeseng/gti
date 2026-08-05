@@ -173,7 +173,7 @@ export default async function ItensContratuaisReportPage({
                       {row.internalCode ? <div className="text-xs text-muted-foreground">{row.internalCode}</div> : null}
                     </td>
                     <td className="px-3 py-2 text-xs">
-                      <div>{row.organizationName ?? "—"}</div>
+                      <div>{row.organizationName ?? "-"}</div>
                       <div className="text-muted-foreground">{row.supplierName}</div>
                     </td>
                     <td className="px-3 py-2">

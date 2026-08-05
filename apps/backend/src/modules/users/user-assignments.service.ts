@@ -87,7 +87,7 @@ export class UserAssignmentsService {
       ticketMatches.push({ assignedUserName: { contains: fiscalProfile.name, mode: insensitive } });
     }
 
-    const [contracts, modules, projects, tasks, governanceTickets, glpiTicketRows] = await Promise.all([
+    const [contracts, modules, pendingFeatures, projects, tasks, governanceTickets, glpiTicketRows] = await Promise.all([
       fiscalProfile
         ? this.prisma.contract.findMany({
             where: {
@@ -107,7 +107,9 @@ export class UserAssignmentsService {
           })
         : Promise.resolve([]),
       this.prisma.contractModule.findMany({
-        where: { validatorId: actor.userId },
+        where: {
+          OR: [{ validatorId: actor.userId }, { fiscals: { some: { userId: actor.userId } } }]
+        },
         orderBy: { name: "asc" },
         select: {
           id: true,
@@ -116,6 +118,35 @@ export class UserAssignmentsService {
           weight: true,
           contract: { select: { id: true, number: true, name: true, status: true } },
           features: { select: { deliveryStatus: true } }
+        }
+      }),
+      /** Pendentes sob responsabilidade direta (grupo ou específico) — não inclui só acompanhamento de módulo. */
+      this.prisma.contractFeature.findMany({
+        where: {
+          deliveryStatus: { in: ["NOT_DELIVERED", "PARTIALLY_DELIVERED"] },
+          OR: [
+            { responsibles: { some: { userId: actor.userId } } },
+            { validationGroup: { active: true, members: { some: { userId: actor.userId } } } }
+          ]
+        },
+        orderBy: [{ itemCode: "asc" }, { name: "asc" }],
+        take: ASSIGNMENTS_LIST_CAP,
+        select: {
+          id: true,
+          itemCode: true,
+          name: true,
+          deliveryStatus: true,
+          criticality: true,
+          validationGroupId: true,
+          validationGroup: { select: { id: true, name: true } },
+          responsibles: { where: { userId: actor.userId }, select: { userId: true } },
+          module: {
+            select: {
+              id: true,
+              name: true,
+              contract: { select: { id: true, number: true, name: true, status: true } }
+            }
+          }
         }
       }),
       this.prisma.project.findMany({
@@ -180,6 +211,7 @@ export class UserAssignmentsService {
     const tasksTruncated = tasks.length >= ASSIGNMENTS_LIST_CAP;
     const governanceTruncated = governanceTickets.length >= ASSIGNMENTS_LIST_CAP;
     const glpiTruncated = glpiTicketRows.length >= ASSIGNMENTS_LIST_CAP;
+    const pendingFeaturesTruncated = pendingFeatures.length >= ASSIGNMENTS_LIST_CAP;
 
     const tasksPending = tasks.filter((t) => !projectTaskCompleted(t.status)).sort(compareTaskDueAsc);
     const tasksDone = tasks.filter((t) => projectTaskCompleted(t.status)).sort(compareTaskDueDesc);
@@ -204,11 +236,13 @@ export class UserAssignmentsService {
         maxItemsPerList: ASSIGNMENTS_LIST_CAP,
         tasksTruncated,
         governanceTruncated,
-        glpiTruncated
+        glpiTruncated,
+        pendingFeaturesTruncated
       },
       totals: {
         contracts: contracts.length,
         modules: modules.length,
+        pendingFeatures: pendingFeatures.length,
         projects: projects.length,
         tasks: tasksPending.length,
         governanceTickets: governanceTickets.length,
@@ -236,7 +270,26 @@ export class UserAssignmentsService {
           status: `${delivered}/${total} entregues${partial > 0 ? `, ${partial} parciais` : ""}`,
           delivered,
           partial,
-          total
+          total,
+          role: "acompanhamento" as const
+        };
+      }),
+      pendingFeatures: pendingFeatures.map((feat) => {
+        const fromGroup = Boolean(feat.validationGroupId);
+        const fromSpecific = feat.responsibles.length > 0;
+        const reasons: Array<"GROUP" | "FEATURE"> = [];
+        if (fromGroup) reasons.push("GROUP");
+        if (fromSpecific) reasons.push("FEATURE");
+        return {
+          id: feat.id,
+          itemCode: feat.itemCode,
+          name: feat.name,
+          deliveryStatus: feat.deliveryStatus,
+          criticality: feat.criticality,
+          validationGroup: feat.validationGroup,
+          assignmentReasons: reasons,
+          module: { id: feat.module.id, name: feat.module.name },
+          contract: feat.module.contract
         };
       }),
       projects: projects.map((project) => {

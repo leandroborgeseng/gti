@@ -131,7 +131,7 @@ export function HiringTypesAdminPanel(): JSX.Element {
       }),
       columnHelper.accessor("description", {
         header: "Descrição",
-        cell: (info) => info.getValue() ?? "—"
+        cell: (info) => info.getValue() ?? "-"
       }),
       columnHelper.accessor("active", {
         header: "Status",

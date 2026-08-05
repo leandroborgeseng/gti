@@ -142,7 +142,7 @@ function AssigneeWorkloadTable({
         fechado (heurística de estado). <strong>Fechados</strong> = estado fechado no cache.{" "}
         {ticketSyncScope === "open" ? (
           <span>
-            O escopo de cache está <strong>«só abertos»</strong> — a coluna Fechados fica 0; use escopo «todos os
+            O escopo de cache está <strong>«só abertos»</strong>: a coluna Fechados fica 0; use escopo «todos os
             tickets» e espere a sincronização de fechados.
           </span>
         ) : null}{" "}
@@ -328,7 +328,7 @@ function AberturasFechamentosChart({
       <h3 className="chamados-ops__block-title">Abertos e fechados ao longo do tempo</h3>
       {ticketSyncScope === "open" ? (
         <p className="chamados-ops__scope-hint">
-          O cache está em modo <strong>só abertos</strong>: não há tickets fechados salvos — as barras verdes e o
+          O cache está em modo <strong>só abertos</strong>: não há tickets fechados salvos: as barras verdes e o
           acumulado não refletem fechamentos reais. O predefinido da aplicativo é <strong>todos os tickets</strong>; no
           quadro, em Cache, escolha «Todos os tickets» e clique em <strong>Salvar escopo</strong>, depois deixe o sync
           correr.
@@ -474,7 +474,7 @@ export function ChamadosOperationsPanel({
   const conc =
     summary.concentrationTop3GroupsPct != null
       ? `${summary.concentrationTop3GroupsPct}%`
-      : "—";
+      : "-";
 
   return (
     <section className="chamados-ops" aria-labelledby="chamados-ops-title">
@@ -684,10 +684,10 @@ export function ChamadosOperationsPanel({
                       {summary.oldestTickets.map((t) => (
                         <tr key={t.glpiTicketId}>
                           <td className="chamados-ops__mono">{t.glpiTicketId}</td>
-                          <td className="chamados-ops__clip">{t.title?.trim() || "—"}</td>
+                          <td className="chamados-ops__clip">{t.title?.trim() || "-"}</td>
                           <td className="chamados-ops__td-num">{t.daysOpen}</td>
-                          <td className="chamados-ops__clip">{t.status ?? "—"}</td>
-                          <td className="chamados-ops__clip">{t.contractGroupName ?? "—"}</td>
+                          <td className="chamados-ops__clip">{t.status ?? "-"}</td>
+                          <td className="chamados-ops__clip">{t.contractGroupName ?? "-"}</td>
                           <td className="chamados-ops__clip">{t.requesterLabel}</td>
                           <td>
                             <Link
