@@ -129,7 +129,7 @@ FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASC
 
 ALTER TABLE "user_organization"
 ADD CONSTRAINT "user_organization_organization_id_fkey"
-FOREIGN KEY ("organization_id") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "role_permission"
 ADD CONSTRAINT "role_permission_profile_id_fkey"
@@ -145,7 +145,7 @@ FOREIGN KEY ("last_active_profile_id") REFERENCES "access_profile"("id") ON DELE
 
 ALTER TABLE "User"
 ADD CONSTRAINT "User_last_active_organization_id_fkey"
-FOREIGN KEY ("last_active_organization_id") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+FOREIGN KEY ("last_active_organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 ALTER TABLE "User"
 ADD CONSTRAINT "User_default_profile_id_fkey"
@@ -153,7 +153,7 @@ FOREIGN KEY ("default_profile_id") REFERENCES "access_profile"("id") ON DELETE S
 
 ALTER TABLE "User"
 ADD CONSTRAINT "User_default_organization_id_fkey"
-FOREIGN KEY ("default_organization_id") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+FOREIGN KEY ("default_organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 CREATE INDEX "User_last_active_profile_id_idx" ON "User"("last_active_profile_id");
 CREATE INDEX "User_last_active_organization_id_idx" ON "User"("last_active_organization_id");
