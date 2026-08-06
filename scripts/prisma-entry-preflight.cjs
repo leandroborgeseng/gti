@@ -82,13 +82,33 @@ async function main() {
   }
 
   if (failedInRepo.length > 0) {
-    const n = failedInRepo[0].migration_name;
-    console.error(
-      `[prisma-preflight] Migração falhada ainda registrada no banco de dados: ${n} (finished_at nulo).\n` +
-        `Define PRISMA_RESOLVE_ROLLED_BACK=${n} ou PRISMA_RESOLVE_APPLIED=${n} conforme o estado real do DDL, ou PRISMA_FRESH_PUBLIC_SCHEMA_ON_BOOT=1 para recomeçar.`
-    );
-    await prisma.$disconnect();
-    process.exit(1);
+    const names = failedInRepo.map((r) => r.migration_name);
+    /**
+     * No PostgreSQL o Prisma aplica cada migração numa transação: se falhou a meio,
+     * o DDL foi revertido. Marcamos como rolled-back para o `migrate deploy` reaplicar
+     * o SQL corrigido. Opt-out: PRISMA_NO_AUTO_RESOLVE_FAILED=1.
+     */
+    if (process.env.PRISMA_NO_AUTO_RESOLVE_FAILED === "1") {
+      console.error(
+        `[prisma-preflight] Migração falhada ainda registrada: ${names.join(", ")} (finished_at nulo).\n` +
+          `Define PRISMA_RESOLVE_ROLLED_BACK=${names[0]} ou PRISMA_RESOLVE_APPLIED=${names[0]}, ou PRISMA_FRESH_PUBLIC_SCHEMA_ON_BOOT=1.`
+      );
+      await prisma.$disconnect();
+      process.exit(1);
+    }
+
+    const { execFileSync } = require("child_process");
+    const schema = path.join(__dirname, "..", "apps", "backend", "prisma", "schema.prisma");
+    for (const n of names) {
+      console.warn(
+        `[prisma-preflight] Migração falhada ${n} → migrate resolve --rolled-back (DDL em transação PostgreSQL foi revertido).`
+      );
+      execFileSync(
+        "npx",
+        ["prisma", "migrate", "resolve", "--rolled-back", n, "--schema", schema],
+        { stdio: "inherit", env: process.env }
+      );
+    }
   }
 
   await prisma.$disconnect();

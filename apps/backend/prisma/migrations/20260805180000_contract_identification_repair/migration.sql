@@ -45,18 +45,27 @@ WHERE c."deletedAt" IS NULL
   AND upper(split_part(c."internal_code", '-', 1)) = upper(t.acronym);
 
 -- 5) Atualiza sequenciadores a partir dos códigos internos já existentes.
+-- Subquery evita erro P3018/42803 (GROUP BY com split_part em expressões distintas).
 INSERT INTO "contract_internal_code_sequence" ("id", "contract_type_catalog_id", "year", "last_sequential")
 SELECT
-  md5(c."contract_type_catalog_id" || ':' || split_part(c."internal_code", '-', 2)),
-  c."contract_type_catalog_id",
-  (split_part(c."internal_code", '-', 2))::integer AS year,
-  MAX((split_part(c."internal_code", '-', 3))::integer) AS last_seq
-FROM "Contract" c
-WHERE c."deletedAt" IS NULL
-  AND c."internal_code" IS NOT NULL
-  AND c."contract_type_catalog_id" IS NOT NULL
-  AND c."internal_code" ~ '^[A-Za-z]{1,16}-[0-9]{4}-[0-9]{1,8}$'
-GROUP BY c."contract_type_catalog_id", (split_part(c."internal_code", '-', 2))::integer
+  md5(sub.catalog_id || ':' || sub.year::text),
+  sub.catalog_id,
+  sub.year,
+  sub.last_seq
+FROM (
+  SELECT
+    c."contract_type_catalog_id" AS catalog_id,
+    (split_part(c."internal_code", '-', 2))::integer AS year,
+    MAX((split_part(c."internal_code", '-', 3))::integer) AS last_seq
+  FROM "Contract" c
+  WHERE c."deletedAt" IS NULL
+    AND c."internal_code" IS NOT NULL
+    AND c."contract_type_catalog_id" IS NOT NULL
+    AND c."internal_code" ~ '^[A-Za-z]{1,16}-[0-9]{4}-[0-9]{1,8}$'
+  GROUP BY
+    c."contract_type_catalog_id",
+    (split_part(c."internal_code", '-', 2))::integer
+) AS sub
 ON CONFLICT ("contract_type_catalog_id", "year")
 DO UPDATE SET
   "last_sequential" = GREATEST(
