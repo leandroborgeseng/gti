@@ -9,6 +9,7 @@ import {
   createContractSchedule,
   deleteContractSchedule,
   updateContractSchedule,
+  uploadScheduleAttachment,
   type Contract,
   type ContractSchedule,
   type ContractScheduleMilestone,
@@ -19,6 +20,7 @@ import {
   type ContractScheduleType,
   type CreateContractSchedulePayload
 } from "@/lib/api";
+import { GestaoAttachmentsList } from "@/components/attachments/attachment-preview-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -654,7 +656,7 @@ function ScheduleFormFields({
             value={draft.observations}
             disabled={disabled}
             onChange={(e) => onChange({ ...draft, observations: e.target.value })}
-            placeholder="Observações gerais (anexos nesta onda ficam fora do escopo)"
+            placeholder="Observações gerais do cronograma"
           />
         </Label>
       </div>
@@ -673,6 +675,66 @@ function ScheduleFormFields({
         featureOptions={featureOptions}
         disabled={disabled}
       />
+    </div>
+  );
+}
+
+function ScheduleAttachmentsBlock(props: {
+  contractId: string;
+  schedule: ContractSchedule;
+  canMutate: boolean;
+}): JSX.Element {
+  const router = useRouter();
+  const [uploading, setUploading] = useState(false);
+  const attachments = props.schedule.attachments ?? [];
+
+  async function onFileChange(event: React.ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !props.canMutate) return;
+    setUploading(true);
+    try {
+      await uploadScheduleAttachment(props.contractId, props.schedule.id, file);
+      toast.success("Anexo enviado.");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha no envio do anexo.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 border-t border-slate-200 pt-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Anexos</p>
+      {props.canMutate ? (
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs text-slate-500">
+            PDF, imagens, DOCX, XLSX, ZIP ou TXT. Limite padrão 10 MB.
+          </span>
+          <input
+            type="file"
+            disabled={uploading}
+            onChange={(e) => void onFileChange(e)}
+            className="max-w-md text-sm file:mr-2 file:rounded file:border-0 file:bg-slate-200 file:px-3 file:py-1"
+          />
+        </label>
+      ) : null}
+      {uploading ? <p className="text-xs text-slate-500">A enviar…</p> : null}
+      {attachments.length === 0 && !uploading ? (
+        <p className="text-sm text-slate-500">Nenhum anexo neste cronograma.</p>
+      ) : attachments.length > 0 ? (
+        <GestaoAttachmentsList
+          attachments={attachments}
+          canMutate={props.canMutate}
+          gestaoCtx={{
+            scope: "schedule",
+            contractId: props.contractId,
+            scheduleId: props.schedule.id
+          }}
+          onDeleted={() => router.refresh()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -797,7 +859,7 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
           <h2 className="text-lg font-semibold text-slate-900">Cronogramas e marcos</h2>
           <p className="mt-1 text-sm text-slate-600">
             Planejamento operacional do contrato (implantação, migração, planos de ação etc.), com etapas, responsáveis e
-            versionamento após aprovação. Independente de notificações.
+            versionamento após aprovação. Anexos podem ser enviados em cada cronograma expandido.
           </p>
         </div>
         <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => setShowCreate((v) => !v)}>
@@ -1035,6 +1097,11 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
                             {schedule.observations}
                           </p>
                         ) : null}
+                        <ScheduleAttachmentsBlock
+                          contractId={contract.id}
+                          schedule={schedule}
+                          canMutate={schedule.status !== "SUBSTITUIDO" && schedule.status !== "CONCLUIDO"}
+                        />
                       </div>
                     ) : null}
                   </div>

@@ -50,6 +50,38 @@ export class AuditLogsController {
     return this.service.restoreEventConfigDefaults();
   }
 
+  @Get("retention/indicators")
+  retentionIndicators(): Promise<unknown> {
+    return this.service.getStorageIndicators();
+  }
+
+  @Get("retention")
+  listRetention(): Promise<unknown> {
+    return this.service.listRetentionPolicies();
+  }
+
+  @Put("retention")
+  saveRetention(
+    @Body() body: { items?: Array<{ id: string; retentionDays: number; active: boolean }> }
+  ): Promise<unknown> {
+    return this.service.saveRetentionPolicies({ items: body?.items ?? [] });
+  }
+
+  @Get("retention/runs")
+  listRetentionRuns(@Query("limit") limit?: string): Promise<unknown> {
+    return this.service.listRetentionRuns(limit ? Number(limit) : undefined);
+  }
+
+  @Post("retention/dry-run")
+  retentionDryRun(): Promise<unknown> {
+    return this.service.runRetentionDiscard({ dryRun: true });
+  }
+
+  @Post("retention/execute")
+  retentionExecute(@Body() body: { confirmed?: boolean }): Promise<unknown> {
+    return this.service.runRetentionDiscard({ dryRun: false, confirmed: body?.confirmed === true });
+  }
+
   @Get("export.csv")
   @Header("Content-Type", "text/csv; charset=utf-8")
   @Header("Content-Disposition", 'attachment; filename="auditoria-logs.csv"')

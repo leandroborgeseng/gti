@@ -34,9 +34,18 @@ export class RequestActorInterceptor implements NestInterceptor {
         } else {
           try {
             const ctx = buildActiveContext(accessUser);
-            store = toRequestActor({ id: accessUser.id, email: accessUser.email }, ctx);
+            store = toRequestActor(
+              {
+                id: accessUser.id,
+                email: accessUser.email,
+                userKind: accessUser.userKind ?? "INTERNAL",
+                supplierId: accessUser.supplierId ?? null,
+                authorizedContractIds: (accessUser.externalContracts ?? []).map((c) => c.contractId)
+              },
+              ctx
+            );
           } catch {
-            store = { userId: u.sub, email: u.email, role: u.role };
+            store = { userId: u.sub, email: u.email, role: u.role, userKind: "INTERNAL" };
           }
         }
         return new Observable((observer) => {

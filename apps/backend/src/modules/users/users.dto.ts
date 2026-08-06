@@ -1,4 +1,4 @@
-import { UserApprovalStatus, UserRole } from "@prisma/client";
+import { ExternalUserFunction, UserApprovalStatus, UserKind, UserRole } from "@prisma/client";
 import {
   IsArray,
   IsBoolean,
@@ -68,6 +68,24 @@ export class CreateUserDto {
   @ValidateIf((_, v) => v !== null)
   @IsString()
   defaultOrganizationId?: string | null;
+
+  @IsOptional()
+  @IsEnum(UserKind, { message: "Tipo de usuário inválido" })
+  userKind?: UserKind;
+
+  @IsOptional()
+  @IsString()
+  supplierId?: string;
+
+  @IsOptional()
+  @IsEnum(ExternalUserFunction, { message: "Função externa inválida" })
+  externalFunction?: ExternalUserFunction;
+
+  /** Contratos autorizados (somente EXTERNAL; devem pertencer ao mesmo fornecedor). */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  authorizedContractIds?: string[];
 }
 
 export class UpdateUserDto {
@@ -128,6 +146,25 @@ export class UpdateUserDto {
   @IsString()
   @MinLength(8, { message: "A senha deve ter pelo menos 8 caracteres" })
   password?: string;
+
+  @IsOptional()
+  @IsEnum(UserKind, { message: "Tipo de usuário inválido" })
+  userKind?: UserKind;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  supplierId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsEnum(ExternalUserFunction, { message: "Função externa inválida" })
+  externalFunction?: ExternalUserFunction | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  authorizedContractIds?: string[];
 }
 
 export class UpdateMyProfileDto {

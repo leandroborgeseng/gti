@@ -7,6 +7,13 @@ import {
   type AuditDetailLevel,
   type AuditEventCatalogItem
 } from "./audit-event-catalog";
+import {
+  DEFAULT_AUDIT_RETENTION_POLICIES,
+  PRESERVED_AUDIT_ENTITIES,
+  accessEventsRetentionCategory,
+  resolveAuditRetentionCategory,
+  type AuditRetentionCategoryKey
+} from "./audit-retention";
 
 export type AuditLogSource = "AUDIT" | "ACCESS";
 
@@ -704,6 +711,417 @@ export class AuditLogsService {
       data: DEFAULT_AUDIT_EVENT_CATALOG.map(catalogItemToCreate),
       skipDuplicates: true
     });
+  }
+
+  private async ensureRetentionPoliciesSeeded(): Promise<void> {
+    const count = await this.prisma.auditRetentionPolicy.count();
+    if (count > 0) return;
+    await this.prisma.auditRetentionPolicy.createMany({
+      data: DEFAULT_AUDIT_RETENTION_POLICIES.map((p) => ({
+        categoryKey: p.categoryKey,
+        label: p.label,
+        retentionDays: p.retentionDays,
+        minRetentionDays: p.minRetentionDays,
+        active: false,
+        sortOrder: p.sortOrder
+      })),
+      skipDuplicates: true
+    });
+  }
+
+  async getStorageIndicators(): Promise<{
+    totalAuditLogs: number;
+    totalAccessEvents: number;
+    generatedThisMonth: number;
+    oldestAuditAt: string | null;
+    oldestAccessAt: string | null;
+    topEntities: Array<{ entity: string; count: number }>;
+    discardEnabled: boolean;
+  }> {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [totalAuditLogs, totalAccessEvents, auditMonth, accessMonth, oldestAudit, oldestAccess, entityGroups, activePolicies] =
+      await Promise.all([
+        this.prisma.auditLog.count(),
+        this.prisma.userAccessEvent.count(),
+        this.prisma.auditLog.count({ where: { timestamp: { gte: monthStart } } }),
+        this.prisma.userAccessEvent.count({ where: { occurredAt: { gte: monthStart } } }),
+        this.prisma.auditLog.findFirst({ orderBy: { timestamp: "asc" }, select: { timestamp: true } }),
+        this.prisma.userAccessEvent.findFirst({
+          orderBy: { occurredAt: "asc" },
+          select: { occurredAt: true }
+        }),
+        this.prisma.auditLog.groupBy({
+          by: ["entity"],
+          _count: { _all: true },
+          orderBy: { _count: { entity: "desc" } },
+          take: 8
+        }),
+        this.prisma.auditRetentionPolicy.count({ where: { active: true } })
+      ]);
+
+    return {
+      totalAuditLogs,
+      totalAccessEvents,
+      generatedThisMonth: auditMonth + accessMonth,
+      oldestAuditAt: oldestAudit?.timestamp.toISOString() ?? null,
+      oldestAccessAt: oldestAccess?.occurredAt.toISOString() ?? null,
+      topEntities: entityGroups.map((g) => ({ entity: g.entity, count: g._count._all })),
+      discardEnabled: activePolicies > 0
+    };
+  }
+
+  async listRetentionPolicies(): Promise<{
+    policies: Array<{
+      id: string;
+      categoryKey: string;
+      label: string;
+      retentionDays: number;
+      minRetentionDays: number;
+      active: boolean;
+      sortOrder: number;
+      updatedAt: string;
+    }>;
+    discardGloballyOff: boolean;
+    validationAlert: string;
+  }> {
+    await this.ensureRetentionPoliciesSeeded();
+    const rows = await this.prisma.auditRetentionPolicy.findMany({
+      orderBy: { sortOrder: "asc" }
+    });
+    const anyActive = rows.some((r) => r.active);
+    return {
+      policies: rows.map((r) => ({
+        id: r.id,
+        categoryKey: r.categoryKey,
+        label: r.label,
+        retentionDays: r.retentionDays,
+        minRetentionDays: r.minRetentionDays,
+        active: r.active,
+        sortOrder: r.sortOrder,
+        updatedAt: r.updatedAt.toISOString()
+      })),
+      discardGloballyOff: !anyActive,
+      validationAlert:
+        "Antes de ativar o descarte, valide com a área jurídica/competente os prazos legais aplicáveis. " +
+        "O descarte remove apenas por categoria e idade — nunca de forma seletiva por conteúdo. " +
+        "Logs de notificações, ocorrências e dossiês de Controladoria são preservados. " +
+        "Categorias AUTH, SECURITY e PERMISSIONS exigem retenção mínima elevada."
+    };
+  }
+
+  async saveRetentionPolicies(input: {
+    items: Array<{ id: string; retentionDays: number; active: boolean }>;
+  }): Promise<{ ok: true; changed: number }> {
+    await this.ensureRetentionPoliciesSeeded();
+    if (!Array.isArray(input.items) || input.items.length === 0) {
+      throw new BadRequestException("Informe ao menos uma política para salvar.");
+    }
+
+    const ids = input.items.map((i) => i.id);
+    const existing = await this.prisma.auditRetentionPolicy.findMany({ where: { id: { in: ids } } });
+    const byId = new Map(existing.map((r) => [r.id, r]));
+    const before: Array<Record<string, unknown>> = [];
+    const after: Array<Record<string, unknown>> = [];
+    let changed = 0;
+
+    for (const item of input.items) {
+      const row = byId.get(item.id);
+      if (!row) continue;
+      const retentionDays = Math.max(
+        row.minRetentionDays,
+        Math.min(36500, Math.floor(Number(item.retentionDays) || row.retentionDays))
+      );
+      const active = Boolean(item.active);
+      if (row.retentionDays === retentionDays && row.active === active) continue;
+      before.push({
+        id: row.id,
+        categoryKey: row.categoryKey,
+        retentionDays: row.retentionDays,
+        active: row.active
+      });
+      after.push({
+        id: row.id,
+        categoryKey: row.categoryKey,
+        retentionDays,
+        active
+      });
+      await this.prisma.auditRetentionPolicy.update({
+        where: { id: row.id },
+        data: { retentionDays, active }
+      });
+      changed += 1;
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        entity: "AuditRetentionPolicy",
+        entityId: "policies",
+        action: "UPDATE",
+        userId: getAuditActorId(),
+        oldData: { changed: before } as Prisma.InputJsonValue,
+        newData: { changed: after } as Prisma.InputJsonValue
+      }
+    });
+
+    return { ok: true, changed };
+  }
+
+  async listRetentionRuns(limit = 20): Promise<
+    Array<{
+      id: string;
+      mode: string;
+      status: string;
+      categories: unknown;
+      deletedCount: number;
+      previewCount: number;
+      periodFrom: string | null;
+      periodTo: string | null;
+      actorUserId: string | null;
+      summary: unknown;
+      errorSummary: string | null;
+      createdAt: string;
+    }>
+  > {
+    const take = clampInt(limit, 1, 100, 20);
+    const rows = await this.prisma.auditRetentionRun.findMany({
+      orderBy: { createdAt: "desc" },
+      take
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      mode: r.mode,
+      status: r.status,
+      categories: r.categories,
+      deletedCount: r.deletedCount,
+      previewCount: r.previewCount,
+      periodFrom: r.periodFrom?.toISOString() ?? null,
+      periodTo: r.periodTo?.toISOString() ?? null,
+      actorUserId: r.actorUserId,
+      summary: r.summary,
+      errorSummary: r.errorSummary,
+      createdAt: r.createdAt.toISOString()
+    }));
+  }
+
+  /**
+   * Dry-run ou execução de descarte por política ativa.
+   * Nunca exclusão seletiva por conteúdo; preserva entidades sensíveis.
+   */
+  async runRetentionDiscard(input: {
+    dryRun: boolean;
+    confirmed?: boolean;
+  }): Promise<{
+    ok: boolean;
+    mode: "DRY_RUN" | "EXECUTE";
+    status: string;
+    previewCount: number;
+    deletedCount: number;
+    byCategory: Array<{ categoryKey: string; count: number; cutoffAt: string }>;
+    preservedNote: string;
+    runId: string;
+    message: string;
+  }> {
+    await this.ensureRetentionPoliciesSeeded();
+    const dryRun = input.dryRun !== false;
+    const mode = dryRun ? ("DRY_RUN" as const) : ("EXECUTE" as const);
+
+    if (!dryRun && input.confirmed !== true) {
+      throw new BadRequestException(
+        "Para executar o descarte, envie confirmed=true após validar o dry-run com a área competente."
+      );
+    }
+
+    const policies = await this.prisma.auditRetentionPolicy.findMany({
+      where: { active: true },
+      orderBy: { sortOrder: "asc" }
+    });
+
+    if (policies.length === 0) {
+      const run = await this.prisma.auditRetentionRun.create({
+        data: {
+          mode,
+          status: "BLOCKED",
+          categories: [],
+          deletedCount: 0,
+          previewCount: 0,
+          actorUserId: getAuditActorId(),
+          summary: {
+            reason: "Nenhuma política ativa. O descarte permanece desligado por padrão."
+          } as Prisma.InputJsonValue,
+          errorSummary: "Descarte desligado: ative ao menos uma política de retenção."
+        }
+      });
+      return {
+        ok: false,
+        mode,
+        status: "BLOCKED",
+        previewCount: 0,
+        deletedCount: 0,
+        byCategory: [],
+        preservedNote:
+          "Logs de ContractNotification, ContractOccurrence e ContractControladoriaCase nunca são descartados.",
+        runId: run.id,
+        message: "Descarte desligado. Ative políticas (com validação da área competente) antes de executar."
+      };
+    }
+
+    const now = new Date();
+    const byCategory: Array<{ categoryKey: string; count: number; cutoffAt: string }> = [];
+    let totalPreview = 0;
+    let totalDeleted = 0;
+    let periodFrom: Date | null = null;
+    let periodTo: Date | null = null;
+
+    // Cutoff mais antigo entre políticas ativas (busca única + filtro em memória por categoria).
+    const maxDays = Math.max(
+      ...policies.map((p) => Math.max(p.minRetentionDays, p.retentionDays))
+    );
+    const widestCutoff = new Date(now.getTime() - maxDays * 24 * 60 * 60 * 1000);
+
+    try {
+      const [auditCandidates, accessCandidates] = await Promise.all([
+        this.prisma.auditLog.findMany({
+          where: { timestamp: { lt: widestCutoff } },
+          select: { id: true, entity: true, timestamp: true },
+          take: 100_000
+        }),
+        policies.some((p) => p.categoryKey === accessEventsRetentionCategory())
+          ? this.prisma.userAccessEvent.findMany({
+              where: { occurredAt: { lt: widestCutoff } },
+              select: { id: true, occurredAt: true },
+              take: 100_000
+            })
+          : Promise.resolve([] as Array<{ id: string; occurredAt: Date }>)
+      ]);
+
+      const auditIdsToDelete: string[] = [];
+      const accessIdsToDelete: string[] = [];
+
+      for (const policy of policies) {
+        const days = Math.max(policy.minRetentionDays, policy.retentionDays);
+        const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+        const categoryKey = policy.categoryKey as AuditRetentionCategoryKey;
+
+        const matchingAudit = auditCandidates.filter((row) => {
+          if (row.timestamp >= cutoff) return false;
+          if (PRESERVED_AUDIT_ENTITIES.has(row.entity)) return false;
+          return resolveAuditRetentionCategory(row.entity) === categoryKey;
+        });
+
+        let accessCount = 0;
+        if (categoryKey === accessEventsRetentionCategory()) {
+          const matchingAccess = accessCandidates.filter((row) => row.occurredAt < cutoff);
+          accessCount = matchingAccess.length;
+          for (const r of matchingAccess) {
+            accessIdsToDelete.push(r.id);
+            if (!periodFrom || r.occurredAt < periodFrom) periodFrom = r.occurredAt;
+            if (!periodTo || r.occurredAt > periodTo) periodTo = r.occurredAt;
+          }
+        }
+
+        for (const row of matchingAudit) {
+          auditIdsToDelete.push(row.id);
+          if (!periodFrom || row.timestamp < periodFrom) periodFrom = row.timestamp;
+          if (!periodTo || row.timestamp > periodTo) periodTo = row.timestamp;
+        }
+
+        const count = matchingAudit.length + accessCount;
+        byCategory.push({
+          categoryKey: policy.categoryKey,
+          count,
+          cutoffAt: cutoff.toISOString()
+        });
+        totalPreview += count;
+      }
+
+      if (!dryRun) {
+        const uniqueAuditIds = [...new Set(auditIdsToDelete)];
+        const uniqueAccessIds = [...new Set(accessIdsToDelete)];
+        const chunk = 2000;
+        for (let i = 0; i < uniqueAuditIds.length; i += chunk) {
+          const slice = uniqueAuditIds.slice(i, i + chunk);
+          const del = await this.prisma.auditLog.deleteMany({ where: { id: { in: slice } } });
+          totalDeleted += del.count;
+        }
+        for (let i = 0; i < uniqueAccessIds.length; i += chunk) {
+          const slice = uniqueAccessIds.slice(i, i + chunk);
+          const delAccess = await this.prisma.userAccessEvent.deleteMany({
+            where: { id: { in: slice } }
+          });
+          totalDeleted += delAccess.count;
+        }
+      }
+
+      const run = await this.prisma.auditRetentionRun.create({
+        data: {
+          mode,
+          status: "OK",
+          categories: policies.map((p) => p.categoryKey) as Prisma.InputJsonValue,
+          deletedCount: dryRun ? 0 : totalDeleted,
+          previewCount: totalPreview,
+          periodFrom,
+          periodTo,
+          actorUserId: getAuditActorId(),
+          summary: {
+            byCategory,
+            preservedEntities: [...PRESERVED_AUDIT_ENTITIES],
+            note: "Conteúdo dos logs eliminados não é regravado neste registro."
+          } as Prisma.InputJsonValue
+        }
+      });
+
+      if (!dryRun) {
+        await this.prisma.auditLog.create({
+          data: {
+            entity: "AuditRetentionRun",
+            entityId: run.id,
+            action: "DISCARD",
+            userId: getAuditActorId(),
+            newData: {
+              deletedCount: totalDeleted,
+              previewCount: totalPreview,
+              categories: policies.map((p) => p.categoryKey),
+              periodFrom: periodFrom?.toISOString() ?? null,
+              periodTo: periodTo?.toISOString() ?? null
+            } as Prisma.InputJsonValue
+          }
+        });
+      }
+
+      return {
+        ok: true,
+        mode,
+        status: "OK",
+        previewCount: totalPreview,
+        deletedCount: dryRun ? 0 : totalDeleted,
+        byCategory,
+        preservedNote:
+          "Logs de ContractNotification, ContractOccurrence e ContractControladoriaCase nunca são descartados.",
+        runId: run.id,
+        message: dryRun
+          ? `Simulação: ${totalPreview} registro(s) elegíveis para descarte (nenhum removido).`
+          : `Descarte concluído: ${totalDeleted} registro(s) removido(s).`
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const run = await this.prisma.auditRetentionRun.create({
+        data: {
+          mode,
+          status: "FAILED",
+          categories: policies.map((p) => p.categoryKey) as Prisma.InputJsonValue,
+          deletedCount: totalDeleted,
+          previewCount: totalPreview,
+          periodFrom,
+          periodTo,
+          actorUserId: getAuditActorId(),
+          summary: { byCategory } as Prisma.InputJsonValue,
+          errorSummary: msg.slice(0, 500)
+        }
+      });
+      throw new BadRequestException(`Falha no descarte de auditoria: ${msg} (run ${run.id})`);
+    }
   }
 }
 

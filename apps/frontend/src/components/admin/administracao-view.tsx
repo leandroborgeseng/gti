@@ -15,6 +15,7 @@ import { AuditLogsAdminPanel } from "@/components/admin/audit-logs-admin-panel";
 import { ControladoriaCasesAdminPanel } from "@/components/admin/controladoria-cases-admin-panel";
 import { EmailOutboundAdminPanel } from "@/components/admin/email-outbound-admin-panel";
 import { IdentificationMigrationReviewPanel } from "@/components/admin/identification-migration-review-panel";
+import { NotificationTemplatesAdminPanel } from "@/components/admin/notification-templates-admin-panel";
 import { PricingMigrationReviewPanel } from "@/components/admin/pricing-migration-review-panel";
 import { UsersView } from "@/components/users/users-view";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ export const ADMIN_TABS = [
   { id: "tipos-itens", label: "Tipos de itens" },
   { id: "tipos-contrato", label: "Tipos de contrato" },
   { id: "tipos-contratacao", label: "Tipos de contratação" },
+  { id: "modelos-notificacao", label: "Modelos de notificação" },
   { id: "conferencia-identificacao", label: "Conferência identificação" },
   { id: "conferencia-precificacao", label: "Conferência precificação" },
   { id: "controladoria", label: "Controladoria" },
@@ -110,6 +112,10 @@ export function AdministracaoView({ users, usersLoadErrors = [] }: Props): JSX.E
 
         <TabsContent value="tipos-contratacao" className="mt-4">
           <HiringTypesAdminPanel />
+        </TabsContent>
+
+        <TabsContent value="modelos-notificacao" className="mt-4">
+          <NotificationTemplatesAdminPanel />
         </TabsContent>
 
         <TabsContent value="conferencia-identificacao" className="mt-4">

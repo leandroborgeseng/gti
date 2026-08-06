@@ -25,6 +25,12 @@ export type ActiveAccessContext = {
   allOrganizationsActive: boolean;
 };
 
+export type AuthMeSupplierSummary = {
+  id: string;
+  name: string;
+  cnpj: string;
+};
+
 export type AuthMeAccessPayload = {
   id: string;
   email: string;
@@ -41,6 +47,10 @@ export type AuthMeAccessPayload = {
   profiles: AccessProfileSummary[];
   organizations: AccessOrganizationSummary[];
   activeContext: ActiveAccessContext;
+  userKind: "INTERNAL" | "EXTERNAL";
+  supplier: AuthMeSupplierSummary | null;
+  authorizedContractIds: string[];
+  externalFunction: string | null;
 };
 
 type UserAccessRow = {
@@ -61,6 +71,11 @@ type UserAccessRow = {
   lastActiveOrganizationId: string | null;
   defaultProfileId: string | null;
   defaultOrganizationId: string | null;
+  userKind: "INTERNAL" | "EXTERNAL";
+  externalFunction: string | null;
+  supplierId: string | null;
+  supplier: { id: string; name: string; cnpj: string } | null;
+  externalContracts: Array<{ contractId: string }>;
   accessProfiles: Array<{
     isDefault: boolean;
     profile: { id: string; name: string; systemKey: string | null; active: boolean };
@@ -89,6 +104,11 @@ const USER_ACCESS_SELECT = {
   lastActiveOrganizationId: true,
   defaultProfileId: true,
   defaultOrganizationId: true,
+  userKind: true,
+  externalFunction: true,
+  supplierId: true,
+  supplier: { select: { id: true, name: true, cnpj: true } },
+  externalContracts: { select: { contractId: true } },
   accessProfiles: {
     select: {
       isDefault: true,
@@ -106,6 +126,10 @@ const USER_ACCESS_SELECT = {
 function systemKeyToRole(systemKey: string | null | undefined, fallback: UserRole): UserRole {
   if (systemKey === "ADMIN" || systemKey === "EDITOR" || systemKey === "VIEWER") {
     return systemKey;
+  }
+  // EXTERNAL e perfis custom: JWT/RolesGuard usam VIEWER (sem privilégios internos).
+  if (systemKey === "EXTERNAL") {
+    return "VIEWER";
   }
   return fallback;
 }
@@ -184,6 +208,21 @@ export function buildActiveContext(user: UserAccessRow, opts?: { profileId?: str
     profile = linked.profile;
   }
 
+  const role = systemKeyToRole(profile.systemKey, user.role);
+
+  // Externos: sem órgãos internos; isolamento é por contratos autorizados.
+  if (user.userKind === "EXTERNAL" || profile.systemKey === "EXTERNAL") {
+    return {
+      profileId: profile.id,
+      profileName: profile.name,
+      systemKey: profile.systemKey ?? "EXTERNAL",
+      role,
+      organizationId: null,
+      organizationLabel: "Portal externo",
+      allOrganizationsActive: false
+    };
+  }
+
   const preferredOrg =
     opts && "organizationId" in opts
       ? opts.organizationId
@@ -191,14 +230,8 @@ export function buildActiveContext(user: UserAccessRow, opts?: { profileId?: str
         ? user.lastActiveOrganizationId
         : user.defaultOrganizationId;
 
-  let org = resolveOrganization(user, preferredOrg ?? null);
+  const org = resolveOrganization(user, preferredOrg ?? null);
 
-  // Se allOrganizations pediu org específica sem nome (só id), enriquecer depois no switch.
-  if (org.organizationId && org.organizationLabel === org.organizationId) {
-    // placeholder; caller may enrich
-  }
-
-  const role = systemKeyToRole(profile.systemKey, user.role);
   return {
     profileId: profile.id,
     profileName: profile.name,
@@ -211,20 +244,28 @@ export function buildActiveContext(user: UserAccessRow, opts?: { profileId?: str
 }
 
 export function toRequestActor(
-  user: { id: string; email: string },
+  user: { id: string; email: string; userKind?: "INTERNAL" | "EXTERNAL"; supplierId?: string | null; authorizedContractIds?: string[] },
   ctx: ActiveAccessContext
 ): RequestActor {
+  const userKind = user.userKind ?? "INTERNAL";
   return {
     userId: user.id,
     email: user.email,
     role: ctx.systemKey ?? ctx.role,
     profileId: ctx.profileId,
-    organizationId: ctx.organizationId,
-    allOrganizationsActive: ctx.allOrganizationsActive
+    organizationId: userKind === "EXTERNAL" ? null : ctx.organizationId,
+    allOrganizationsActive: userKind === "EXTERNAL" ? false : ctx.allOrganizationsActive,
+    userKind,
+    supplierId: user.supplierId ?? null,
+    authorizedContractIds: user.authorizedContractIds ?? []
   };
 }
 
 export function toAuthMePayload(user: UserAccessRow, ctx: ActiveAccessContext): AuthMeAccessPayload {
+  const userKind = user.userKind ?? "INTERNAL";
+  const authorizedContractIds = (user.externalContracts ?? []).map((c) => c.contractId);
+  // Para EXTERNAL, o "role" efetivo no frontend usa systemKey EXTERNAL quando presente.
+  const roleForClient = ctx.systemKey === "EXTERNAL" ? ("VIEWER" as UserRole) : ctx.role;
   return {
     id: user.id,
     email: user.email,
@@ -235,20 +276,35 @@ export function toAuthMePayload(user: UserAccessRow, ctx: ActiveAccessContext): 
     jobTitle: user.jobTitle,
     department: user.department,
     phone: user.phone,
-    role: ctx.role,
+    role: roleForClient,
     mustChangePassword: user.mustChangePassword,
-    allOrganizations: user.allOrganizations,
+    allOrganizations: userKind === "EXTERNAL" ? false : user.allOrganizations,
     profiles: user.accessProfiles
       .filter((l) => l.profile.active)
       .map((l) => ({ id: l.profile.id, name: l.profile.name, systemKey: l.profile.systemKey })),
-    organizations: user.organizations
-      .filter((l) => l.organization.active)
-      .map((l) => ({
-        id: l.organization.id,
-        name: l.organization.name,
-        acronym: l.organization.acronym
-      })),
-    activeContext: ctx
+    organizations:
+      userKind === "EXTERNAL"
+        ? []
+        : user.organizations
+            .filter((l) => l.organization.active)
+            .map((l) => ({
+              id: l.organization.id,
+              name: l.organization.name,
+              acronym: l.organization.acronym
+            })),
+    activeContext: {
+      ...ctx,
+      systemKey: ctx.systemKey,
+      organizationId: userKind === "EXTERNAL" ? null : ctx.organizationId,
+      organizationLabel: userKind === "EXTERNAL" ? "Portal externo" : ctx.organizationLabel,
+      allOrganizationsActive: userKind === "EXTERNAL" ? false : ctx.allOrganizationsActive
+    },
+    userKind,
+    supplier: user.supplier
+      ? { id: user.supplier.id, name: user.supplier.name, cnpj: user.supplier.cnpj }
+      : null,
+    authorizedContractIds,
+    externalFunction: user.externalFunction
   };
 }
 

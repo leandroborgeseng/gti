@@ -10,6 +10,7 @@ import { ContractPricingItemsPanel } from "@/components/contracts/contract-prici
 import { ContractStatusControl } from "@/components/contracts/contract-status-control";
 import { ContractImplantationProportionPanel } from "@/components/contracts/contract-implantation-proportion-panel";
 import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
+import { ContractNotificationsPanel } from "@/components/contracts/contract-notifications-panel";
 import { ContractOccurrencesPanel } from "@/components/contracts/contract-occurrences-panel";
 import { ContractSchedulesPanel } from "@/components/contracts/contract-schedules-panel";
 import { ContractValidationGroupsPanel } from "@/components/contracts/contract-validation-groups-panel";
@@ -288,11 +289,13 @@ export default async function ContractDetailPage({ params }: { params: { id: str
 
       <ContractGlpiGroupsPanel contractId={contract.id} initialGroups={contract.glpiGroups ?? []} />
 
-      <ContractGlpiTicketsPanel contractId={contract.id} glpiGroups={contract.glpiGroups ?? []} />
+      <ContractGlpiTicketsPanel contractId={contract.id} glpiGroups={contract.glpiGroups ?? []} canEdit />
 
       <ContractAmendmentsPanel contract={contract} />
 
       <ContractSchedulesPanel contract={contract} />
+
+      <ContractNotificationsPanel contractId={contract.id} />
 
       <ContractOccurrencesPanel contract={contract} />
 

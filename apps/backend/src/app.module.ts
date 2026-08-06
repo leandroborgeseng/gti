@@ -24,6 +24,8 @@ import { ContractTypeCatalogModule } from "./modules/contract-type-catalog/contr
 import { HiringTypesModule } from "./modules/hiring-types/hiring-types.module";
 import { AuditLogsModule } from "./modules/audit-logs/audit-logs.module";
 import { DeadlinesModule } from "./modules/deadlines/deadlines.module";
+import { NotificationTemplatesModule } from "./modules/notification-templates/notification-templates.module";
+import { ContractNotificationsModule } from "./modules/contract-notifications/contract-notifications.module";
 
 @Module({
   imports: [
@@ -46,7 +48,9 @@ import { DeadlinesModule } from "./modules/deadlines/deadlines.module";
     ContractTypeCatalogModule,
     HiringTypesModule,
     AuditLogsModule,
-    DeadlinesModule
+    DeadlinesModule,
+    NotificationTemplatesModule,
+    ContractNotificationsModule
   ],
   providers: [
     PrismaService,

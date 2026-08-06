@@ -49,6 +49,9 @@ export const queryKeys = {
   /** Consulta central de auditoria e logs (admin). */
   auditLogs: (filterKey: string) => ["gestao", "admin", "audit-logs", filterKey] as const,
   auditEventConfig: ["gestao", "admin", "audit-event-config"] as const,
+  auditRetention: ["gestao", "admin", "audit-retention"] as const,
+  auditRetentionIndicators: ["gestao", "admin", "audit-retention-indicators"] as const,
+  auditRetentionRuns: ["gestao", "admin", "audit-retention-runs"] as const,
   emailOutboundConfig: ["gestao", "admin", "email-outbound"] as const,
   emailOutboundLogs: ["gestao", "admin", "email-outbound-logs"] as const
 } as const;

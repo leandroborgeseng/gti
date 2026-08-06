@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PackagePlus } from "lucide-react";
+import { PackagePlus, Pencil } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Supplier } from "@/lib/api";
@@ -14,6 +14,7 @@ import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
+import { contactsToText } from "@/modules/suppliers/supplier-schema";
 
 const columnHelper = createColumnHelper<Supplier>();
 
@@ -25,6 +26,7 @@ type Props = {
 export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = [] }: Props): JSX.Element {
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
 
   const { data: suppliers = initialSuppliers } = useQuery({
     queryKey: queryKeys.suppliers,
@@ -41,6 +43,20 @@ export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = []
       columnHelper.accessor("cnpj", {
         header: "CNPJ",
         cell: (info) => <span className="whitespace-nowrap text-muted-foreground">{info.getValue()}</span>
+      }),
+      columnHelper.display({
+        id: "contacts",
+        header: "Contatos",
+        cell: (info) => {
+          const text = contactsToText(info.row.original.contacts);
+          if (!text) return <span className="text-sm text-muted-foreground">—</span>;
+          const emails = text.split("\n");
+          return (
+            <span className="text-sm text-muted-foreground" title={emails.join(", ")}>
+              {emails.length === 1 ? emails[0] : `${emails.length} e-mails`}
+            </span>
+          );
+        }
       }),
       columnHelper.display({
         id: "contracts",
@@ -67,6 +83,22 @@ export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = []
             </ul>
           );
         }
+      }),
+      columnHelper.display({
+        id: "actions",
+        header: "",
+        cell: (info) => (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="gap-1"
+            onClick={() => setEditSupplier(info.row.original)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Editar
+          </Button>
+        )
       })
     ],
     []
@@ -80,7 +112,7 @@ export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = []
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Fornecedores</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Fornecedores cadastrados no sistema. Use <strong className="font-medium text-foreground">Novo fornecedor</strong> para incluir
-            dados sem sair desta lista.
+            dados sem sair desta lista. Contatos de e-mail entram no envio de notificações.
           </p>
         </div>
         <Button type="button" className="shrink-0 gap-2" onClick={() => setModalOpen(true)}>
@@ -102,7 +134,7 @@ export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = []
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title="Novo fornecedor"
-        description="Nome e CNPJ são obrigatórios. O registro passa a aparecer na lista após salvar."
+        description="Nome e CNPJ são obrigatórios. Contatos de e-mail são opcionais e usados no envio de notificações."
       >
         <SupplierForm
           onSuccess={() => {
@@ -110,6 +142,24 @@ export function SuppliersView({ suppliers: initialSuppliers, dataLoadErrors = []
             void qc.invalidateQueries({ queryKey: queryKeys.suppliers });
           }}
         />
+      </Modal>
+
+      <Modal
+        open={Boolean(editSupplier)}
+        onClose={() => setEditSupplier(null)}
+        title="Editar fornecedor"
+        description="Atualize razão social, CNPJ e contatos de e-mail para notificações."
+      >
+        {editSupplier ? (
+          <SupplierForm
+            key={editSupplier.id}
+            supplier={editSupplier}
+            onSuccess={() => {
+              setEditSupplier(null);
+              void qc.invalidateQueries({ queryKey: queryKeys.suppliers });
+            }}
+          />
+        ) : null}
       </Modal>
     </div>
   );

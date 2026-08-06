@@ -392,6 +392,7 @@ export type ContractSchedule = {
   responsibleUserIds?: string[];
   responsibleUsers?: ContractLinkedUser[];
   milestones?: ContractScheduleMilestone[];
+  attachments?: AttachmentRecord[];
 };
 
 export type ContractScheduleMilestonePayload = {
@@ -659,6 +660,7 @@ export type Contract = {
   endDate: string;
   slaTarget?: string | null;
   updatedAt?: string;
+  supplierId?: string | null;
   supplier?: { id: string; name: string; cnpj: string } | null;
   fiscal?: { id: string; name: string; email: string } | null;
   manager?: { id: string; name: string; email: string } | null;
@@ -830,6 +832,15 @@ export async function getGlpiAssignedGroupsCatalog(): Promise<GlpiAssignedGroupO
 }
 
 /** Chamado GLPI em cache vinculado a um grupo do contrato (somente leitura). */
+export type ContractGlpiTicketCategory =
+  | "CORRETIVO"
+  | "EVOLUTIVO"
+  | "SUPORTE"
+  | "DESENVOLVIMENTO"
+  | "DUVIDA"
+  | "INDISPONIBILIDADE"
+  | "OUTRO";
+
 export type ContractGlpiTicketRow = {
   glpiTicketId: number;
   title: string | null;
@@ -845,6 +856,10 @@ export type ContractGlpiTicketRow = {
   slaDeadline: string | null;
   slaOverdue: boolean | null;
   updatedAt: string;
+  localClassification?: {
+    category: ContractGlpiTicketCategory;
+    notes: string | null;
+  } | null;
 };
 
 export type ContractGlpiTicketsResponse = {
@@ -882,6 +897,22 @@ export async function getContractGlpiTickets(
   if (params.take != null) query.set("take", String(params.take));
   const suffix = query.toString();
   return request(`/contracts/${contractId}/glpi-tickets${suffix ? `?${suffix}` : ""}`);
+}
+
+export async function upsertContractGlpiTicketClassification(
+  contractId: string,
+  glpiTicketId: number,
+  payload: { category: ContractGlpiTicketCategory; notes?: string | null }
+): Promise<{
+  contractId: string;
+  glpiTicketId: number;
+  category: ContractGlpiTicketCategory;
+  notes: string | null;
+}> {
+  return request(`/contracts/${contractId}/glpi-tickets/${glpiTicketId}/classification`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
 }
 
 /** Totais agregados de entrega (sem listar funcionalidades). */
@@ -1169,10 +1200,17 @@ export type Goal = {
   }>;
 };
 
+export type SupplierContact = {
+  name?: string;
+  email: string;
+  role?: string;
+};
+
 export type Supplier = {
   id: string;
   name: string;
   cnpj: string;
+  contacts?: SupplierContact[] | null;
   contracts?: Array<{ id: string; number: string; name: string; status: string }>;
 };
 
@@ -1937,6 +1975,42 @@ export async function deleteGlosaAttachment(glosaId: string, attachmentId: strin
   return request(`/glosas/${glosaId}/attachments/${attachmentId}`, { method: "DELETE" });
 }
 
+export async function uploadScheduleAttachment(
+  contractId: string,
+  scheduleId: string,
+  file: File
+): Promise<AttachmentRecord> {
+  const form = new FormData();
+  form.append("file", file);
+  const t = readBrowserAuthToken();
+  const headers: HeadersInit = t ? { Authorization: `Bearer ${t}` } : {};
+  const apiBase = await resolveRequestApiBase();
+  const response = await fetch(
+    `${apiBase}/contracts/${contractId}/schedules/${scheduleId}/attachments`,
+    {
+      method: "POST",
+      headers,
+      body: form,
+      cache: "no-store"
+    }
+  );
+  if (!response.ok) {
+    throw new Error(await parseUploadError(response));
+  }
+  return (await response.json()) as AttachmentRecord;
+}
+
+export async function deleteScheduleAttachment(
+  contractId: string,
+  scheduleId: string,
+  attachmentId: string
+): Promise<{ ok: true }> {
+  return request(
+    `/contracts/${contractId}/schedules/${scheduleId}/attachments/${attachmentId}`,
+    { method: "DELETE" }
+  );
+}
+
 export async function getMeasurements(): Promise<Measurement[]> {
   return request("/measurements");
 }
@@ -2020,8 +2094,23 @@ export async function getSuppliers(): Promise<Supplier[]> {
   return request("/suppliers");
 }
 
-export async function createSupplier(payload: { name: string; cnpj: string }): Promise<Supplier> {
+export async function createSupplier(payload: {
+  name: string;
+  cnpj: string;
+  contacts?: SupplierContact[];
+}): Promise<Supplier> {
   return request("/suppliers", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateSupplier(
+  id: string,
+  payload: {
+    name?: string;
+    cnpj?: string;
+    contacts?: SupplierContact[] | null;
+  }
+): Promise<Supplier> {
+  return request(`/suppliers/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
 export async function getFiscais(): Promise<Fiscal[]> {
@@ -2103,6 +2192,10 @@ export type AuthMe = {
   profiles?: AuthMeProfile[];
   organizations?: AuthMeOrganization[];
   activeContext?: AuthMeActiveContext;
+  userKind?: "INTERNAL" | "EXTERNAL";
+  supplier?: { id: string; name: string; cnpj: string } | null;
+  authorizedContractIds?: string[];
+  externalFunction?: string | null;
 };
 
 export async function getAuthMe(): Promise<AuthMe> {
@@ -2312,6 +2405,12 @@ export type UserRecord = {
   role: string;
   approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
   mustChangePassword?: boolean;
+  userKind?: "INTERNAL" | "EXTERNAL";
+  supplierId?: string | null;
+  supplier?: { id: string; name: string; cnpj: string } | null;
+  externalFunction?: string | null;
+  authorizedContractIds?: string[];
+  authorizedContracts?: Array<{ id: string; number: string; name: string; internalCode?: string | null }>;
   createdAt: string;
   updatedAt: string;
 };
@@ -2442,6 +2541,92 @@ export async function saveAuditEventConfig(payload: {
 
 export async function restoreAuditEventConfigDefaults(): Promise<AuditEventConfigRestoreResult> {
   return request("/admin/audit-logs/event-config/restore-defaults", { method: "POST" });
+}
+
+export type AuditStorageIndicators = {
+  totalAuditLogs: number;
+  totalAccessEvents: number;
+  generatedThisMonth: number;
+  oldestAuditAt: string | null;
+  oldestAccessAt: string | null;
+  topEntities: Array<{ entity: string; count: number }>;
+  discardEnabled: boolean;
+};
+
+export type AuditRetentionPolicyItem = {
+  id: string;
+  categoryKey: string;
+  label: string;
+  retentionDays: number;
+  minRetentionDays: number;
+  active: boolean;
+  sortOrder: number;
+  updatedAt: string;
+};
+
+export type AuditRetentionPoliciesResponse = {
+  policies: AuditRetentionPolicyItem[];
+  discardGloballyOff: boolean;
+  validationAlert: string;
+};
+
+export type AuditRetentionRunItem = {
+  id: string;
+  mode: string;
+  status: string;
+  categories: unknown;
+  deletedCount: number;
+  previewCount: number;
+  periodFrom: string | null;
+  periodTo: string | null;
+  actorUserId: string | null;
+  summary: unknown;
+  errorSummary: string | null;
+  createdAt: string;
+};
+
+export type AuditRetentionDiscardResult = {
+  ok: boolean;
+  mode: "DRY_RUN" | "EXECUTE";
+  status: string;
+  previewCount: number;
+  deletedCount: number;
+  byCategory: Array<{ categoryKey: string; count: number; cutoffAt: string }>;
+  preservedNote: string;
+  runId: string;
+  message: string;
+};
+
+export async function getAuditStorageIndicators(): Promise<AuditStorageIndicators> {
+  return request("/admin/audit-logs/retention/indicators");
+}
+
+export async function getAuditRetentionPolicies(): Promise<AuditRetentionPoliciesResponse> {
+  return request("/admin/audit-logs/retention");
+}
+
+export async function saveAuditRetentionPolicies(payload: {
+  items: Array<{ id: string; retentionDays: number; active: boolean }>;
+}): Promise<{ ok: true; changed: number }> {
+  return request("/admin/audit-logs/retention", {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getAuditRetentionRuns(limit = 20): Promise<AuditRetentionRunItem[]> {
+  return request(`/admin/audit-logs/retention/runs?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export async function dryRunAuditRetention(): Promise<AuditRetentionDiscardResult> {
+  return request("/admin/audit-logs/retention/dry-run", { method: "POST" });
+}
+
+export async function executeAuditRetentionDiscard(): Promise<AuditRetentionDiscardResult> {
+  return request("/admin/audit-logs/retention/execute", {
+    method: "POST",
+    body: JSON.stringify({ confirmed: true })
+  });
 }
 
 export type EmailOutboundPublicConfig = {
@@ -2619,6 +2804,10 @@ export async function createUser(payload: {
   allOrganizations?: boolean;
   defaultProfileId?: string;
   defaultOrganizationId?: string | null;
+  userKind?: "INTERNAL" | "EXTERNAL";
+  supplierId?: string;
+  externalFunction?: string;
+  authorizedContractIds?: string[];
 }): Promise<UserRecord> {
   return request("/users", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -2639,6 +2828,10 @@ export async function updateUser(
     defaultOrganizationId?: string | null;
     password?: string;
     approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
+    userKind?: "INTERNAL" | "EXTERNAL";
+    supplierId?: string | null;
+    externalFunction?: string | null;
+    authorizedContractIds?: string[];
   }
 ): Promise<UserRecord> {
   return request(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
@@ -2937,12 +3130,20 @@ export async function fetchContractStructureTemplateBlob(contractId: string): Pr
   return res.blob();
 }
 
+export type ContractStructureImportResult = Contract & {
+  importSummary?: {
+    rows: number;
+    undefinedGroupCount: number;
+    message: string;
+  };
+};
+
 /** Importa módulos e funcionalidades a partir de arquivo .xlsx (campo file + opcional replace). */
 export async function importContractStructureFromXlsx(
   contractId: string,
   file: File,
   replace: boolean
-): Promise<Contract> {
+): Promise<ContractStructureImportResult> {
   const apiBase = await resolveRequestApiBase();
   const auth = await authHeadersForApi();
   const form = new FormData();
@@ -2964,7 +3165,7 @@ export async function importContractStructureFromXlsx(
     }
     throw new Error(detail || `Falha na importação (${res.status})`);
   }
-  return (await res.json()) as Contract;
+  return (await res.json()) as ContractStructureImportResult;
 }
 
 export async function getGovernanceTickets(): Promise<GovernanceTicket[]> {
@@ -3744,4 +3945,235 @@ export async function updateHiringType(
   payload: { name?: string; description?: string | null; active?: boolean; sortOrder?: number }
 ): Promise<HiringTypeRecord> {
   return request(`/hiring-types/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+// —— Notificações contratuais / modelos (tickets 41–46) ——
+
+export type NotificationTemplateRecord = {
+  id: string;
+  name: string;
+  documentTitle: string;
+  emailSubject: string;
+  purpose: string;
+  notificationType: string;
+  severity: string;
+  defaultResponseDays: number;
+  requiresAck: boolean;
+  requiresResponse: boolean;
+  requiresSchedule: boolean;
+  requiresActionPlan: boolean;
+  reviewFlow?: string | null;
+  active: boolean;
+  version: number;
+  bodyHtml: string;
+  headerHtml?: string | null;
+  footerHtml?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function getNotificationTemplates(includeInactive = false): Promise<NotificationTemplateRecord[]> {
+  const q = includeInactive ? "?includeInactive=1" : "";
+  return request(`/notification-templates${q}`);
+}
+
+export async function getNotificationMailMergeFields(): Promise<string[]> {
+  const res = await request<{ fields: string[] }>("/notification-templates/mail-merge-fields");
+  return res.fields ?? [];
+}
+
+export async function createNotificationTemplate(
+  payload: Partial<NotificationTemplateRecord> & {
+    name: string;
+    documentTitle: string;
+    emailSubject: string;
+    bodyHtml: string;
+  }
+): Promise<NotificationTemplateRecord> {
+  return request("/notification-templates", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateNotificationTemplate(
+  id: string,
+  payload: Partial<NotificationTemplateRecord>
+): Promise<NotificationTemplateRecord> {
+  return request(`/notification-templates/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export async function deactivateNotificationTemplate(id: string): Promise<NotificationTemplateRecord> {
+  return request(`/notification-templates/${id}/deactivate`, { method: "POST", body: "{}" });
+}
+
+export type ContractNotificationRecord = {
+  id: string;
+  contractId: string;
+  number: string;
+  status: string;
+  subject: string;
+  bodyHtml: string;
+  headerHtml?: string | null;
+  footerHtml?: string | null;
+  contentLocked?: boolean;
+  requiresAck?: boolean;
+  requiresResponse?: boolean;
+  ackAt?: string | null;
+  sentAt?: string | null;
+  responseDeadline?: string | null;
+  related?: unknown;
+  signers?: Array<{
+    id: string;
+    userId: string;
+    order: number;
+    required: boolean;
+    signedAt?: string | null;
+    signerName?: string | null;
+    user?: { id: string; email: string; displayName?: string | null };
+  }>;
+  events?: Array<{
+    id: string;
+    eventType: string;
+    note?: string | null;
+    createdAt: string;
+    fromStatus?: string | null;
+    toStatus?: string | null;
+  }>;
+  responses?: Array<{
+    id: string;
+    bodyText: string;
+    draft: boolean;
+    submittedAt?: string | null;
+    analysisStatus?: string | null;
+    analysisNote?: string | null;
+    itemStatuses?: unknown;
+  }>;
+  contract?: {
+    id: string;
+    number: string;
+    name: string;
+    internalCode?: string | null;
+    companyName?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function getContractNotifications(contractId: string): Promise<ContractNotificationRecord[]> {
+  return request(`/contract-notifications/by-contract/${contractId}`);
+}
+
+export async function getMyContractNotifications(): Promise<ContractNotificationRecord[]> {
+  return request("/contract-notifications");
+}
+
+export async function getContractNotification(id: string): Promise<ContractNotificationRecord> {
+  return request(`/contract-notifications/${id}`);
+}
+
+export async function createNotificationFromTemplate(payload: {
+  contractId: string;
+  templateId: string;
+  subject?: string;
+}): Promise<ContractNotificationRecord> {
+  return request("/contract-notifications/from-template", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateNotificationDraft(
+  id: string,
+  payload: { subject?: string; bodyHtml?: string }
+): Promise<ContractNotificationRecord> {
+  return request(`/contract-notifications/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export async function transitionContractNotification(
+  id: string,
+  payload: { toStatus: string; note?: string }
+): Promise<ContractNotificationRecord> {
+  return request(`/contract-notifications/${id}/transition`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function setNotificationSigners(
+  id: string,
+  payload: { signers: Array<{ userId: string; order?: number; required?: boolean }> }
+): Promise<ContractNotificationRecord> {
+  return request(`/contract-notifications/${id}/signers`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function signContractNotification(
+  id: string,
+  payload: { password: string }
+): Promise<ContractNotificationRecord> {
+  return request(`/contract-notifications/${id}/sign`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function prepareAndSendNotification(
+  id: string,
+  payload?: { extraEmails?: string[] }
+): Promise<{ ok: boolean; send?: { errorSummary?: string; channel?: string }; notification?: ContractNotificationRecord }> {
+  const auth = await authHeadersForApi();
+  const url =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/notifications/send`
+      : `${(await resolveRequestApiBase()).replace(/\/api\/?$/, "")}/api/notifications/send`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify({ notificationId: id, extraEmails: payload?.extraEmails ?? [] }),
+    cache: "no-store"
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new Error(err.message || "Falha ao enviar notificação");
+  }
+  return (await res.json()) as {
+    ok: boolean;
+    send?: { errorSummary?: string; channel?: string };
+    notification?: ContractNotificationRecord;
+  };
+}
+
+export async function acknowledgeContractNotification(id: string): Promise<ContractNotificationRecord> {
+  return request(`/contract-notifications/${id}/acknowledge`, { method: "POST", body: "{}" });
+}
+
+export async function saveNotificationResponse(
+  id: string,
+  payload: { bodyText: string; itemStatuses?: unknown; submit?: boolean }
+): Promise<{ response: unknown; notification: ContractNotificationRecord }> {
+  return request(`/contract-notifications/${id}/response`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function analyzeNotificationResponse(
+  notificationId: string,
+  responseId: string,
+  payload: { analysisStatus: string; analysisNote: string }
+): Promise<ContractNotificationRecord> {
+  return request(`/contract-notifications/${notificationId}/responses/${responseId}/analyze`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function cancelContractNotification(
+  id: string,
+  payload: { reason: string }
+): Promise<ContractNotificationRecord> {
+  return request(`/contract-notifications/${id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }

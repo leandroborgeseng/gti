@@ -4,36 +4,63 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { createSupplier } from "@/lib/api";
+import type { Supplier } from "@/lib/api";
+import { createSupplier, updateSupplier } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import type { z } from "zod";
-import { supplierFormSchema } from "@/modules/suppliers/supplier-schema";
+import {
+  contactsToText,
+  parseContactsText,
+  supplierFormSchema,
+  type SupplierFormValues
+} from "@/modules/suppliers/supplier-schema";
 import { Button } from "@/components/ui/button";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { FormSection } from "@/components/ui/form-primitives";
 
 type Props = {
   onSuccess?: () => void;
+  /** Se informado, o formulário edita o fornecedor; caso contrário, cria. */
+  supplier?: Supplier;
 };
 
-export function SupplierForm({ onSuccess }: Props): JSX.Element {
+export function SupplierForm({ onSuccess, supplier }: Props): JSX.Element {
   const qc = useQueryClient();
-  const form = useForm<z.input<typeof supplierFormSchema>>({
+  const editing = Boolean(supplier);
+  const form = useForm<SupplierFormValues>({
     resolver: zodResolver(supplierFormSchema),
-    defaultValues: { name: "", cnpj: "" }
+    defaultValues: {
+      name: supplier?.name ?? "",
+      cnpj: supplier?.cnpj ?? "",
+      contactsText: contactsToText(supplier?.contacts)
+    }
   });
 
   const mutation = useMutation({
-    mutationFn: (values: z.infer<typeof supplierFormSchema>) => createSupplier(values),
+    mutationFn: (values: SupplierFormValues) => {
+      const contacts = parseContactsText(values.contactsText ?? "");
+      if (supplier) {
+        return updateSupplier(supplier.id, {
+          name: values.name,
+          cnpj: values.cnpj,
+          contacts
+        });
+      }
+      return createSupplier({
+        name: values.name,
+        cnpj: values.cnpj,
+        contacts: contacts.length > 0 ? contacts : undefined
+      });
+    },
     onSuccess: () => {
-      toast.success("Fornecedor cadastrado.");
+      toast.success(editing ? "Fornecedor atualizado." : "Fornecedor cadastrado.");
       void qc.invalidateQueries({ queryKey: queryKeys.suppliers });
-      form.reset({ name: "", cnpj: "" });
+      if (!editing) form.reset({ name: "", cnpj: "", contactsText: "" });
       onSuccess?.();
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : "Erro ao cadastrar");
+      toast.error(e instanceof Error ? e.message : editing ? "Erro ao atualizar" : "Erro ao cadastrar");
     }
   });
 
@@ -67,9 +94,29 @@ export function SupplierForm({ onSuccess }: Props): JSX.Element {
               </FormItem>
             )}
           />
+          <FormField
+            control={form.control}
+            name="contactsText"
+            render={({ field }) => (
+              <FormItem className="sm:col-span-2">
+                <FormLabel>Contatos para e-mail (opcional)</FormLabel>
+                <FormControl>
+                  <Textarea
+                    rows={3}
+                    placeholder={"email1@empresa.com\nemail2@empresa.com"}
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  Um e-mail por linha ou separados por vírgula. Usados no envio de notificações contratuais.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </FormSection>
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "Salvando…" : "Cadastrar fornecedor"}
+          {mutation.isPending ? "Salvando…" : editing ? "Salvar alterações" : "Cadastrar fornecedor"}
         </Button>
       </form>
     </Form>

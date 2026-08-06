@@ -343,6 +343,13 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                       setImportFile(null);
                       setReplaceOnImport(false);
                       if (fileImportRef.current) fileImportRef.current.value = "";
+                      if (next.importSummary?.message) {
+                        if (next.importSummary.undefinedGroupCount > 0) {
+                          toast.message(next.importSummary.message);
+                        } else {
+                          toast.success(next.importSummary.message);
+                        }
+                      }
                       return next;
                     });
                   }}

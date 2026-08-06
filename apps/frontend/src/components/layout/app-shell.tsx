@@ -42,7 +42,12 @@ const titles: Record<string, string> = {
   "/users": "Usuários",
   "/administracao": "Administração",
   "/backup": "Backup e migração",
-  "/exports": "Exportações"
+  "/exports": "Exportações",
+  "/externo/contratos": "Meus contratos",
+  "/externo/notificacoes": "Notificações",
+  "/externo/cronogramas": "Cronogramas",
+  "/externo/documentos": "Documentos",
+  "/prazos-pendencias": "Prazos e pendências"
 };
 
 function usageSessionId(): string {
@@ -64,6 +69,8 @@ type AppShellProps = PropsWithChildren<{
 export function AppShell({ children, initialRole }: AppShellProps): JSX.Element {
   const pathname = usePathname();
   const [role, setRole] = useState<string | null | undefined>(initialRole);
+  const [userKind, setUserKind] = useState<"INTERNAL" | "EXTERNAL" | null>(null);
+  const [systemKey, setSystemKey] = useState<string | null>(null);
   const [permissionKeys, setPermissionKeys] = useState<string[] | null | undefined>(undefined);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [availableVersion, setAvailableVersion] = useState<string | null>(null);
@@ -81,11 +88,15 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
   const expandSidebar = useCallback(() => persistSidebarCollapsed(false), [persistSidebarCollapsed]);
 
   useEffect(() => {
-    if (initialRole === undefined) {
-      void getAuthMe()
-        .then((m) => setRole(m.role))
-        .catch(() => setRole(null));
-    }
+    void getAuthMe()
+      .then((m) => {
+        if (initialRole === undefined) setRole(m.role);
+        setUserKind(m.userKind ?? "INTERNAL");
+        setSystemKey(m.activeContext?.systemKey ?? null);
+      })
+      .catch(() => {
+        if (initialRole === undefined) setRole(null);
+      });
     void getMyPermissions()
       .then((permissions) => {
         setRole(permissions.role);
@@ -148,27 +159,29 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
   }, [availableVersion]);
 
   const visibleNavGroups = useMemo(
-    () => filterMainNavGroups(MAIN_NAV_GROUPS, role, permissionKeys),
-    [permissionKeys, role]
+    () => filterMainNavGroups(MAIN_NAV_GROUPS, role, permissionKeys, { userKind, systemKey }),
+    [permissionKeys, role, userKind, systemKey]
   );
 
   const title =
     titles[pathname ?? ""] ||
-    (pathname?.startsWith("/contracts/")
-      ? "Detalhe do contrato"
-      : pathname?.startsWith("/measurements/")
-        ? "Detalhe da medição"
-        : pathname?.startsWith("/glosas/")
-          ? "Detalhe da glosa"
-          : pathname?.startsWith("/governance/tickets/")
-            ? "Detalhe do chamado (governança)"
-            : pathname?.startsWith("/projetos/")
-              ? "Detalhe do projeto"
-              : pathname?.startsWith("/goals/")
-                ? "Detalhe da meta"
-                : pathname?.startsWith("/reports/")
-                  ? "Relatórios"
-                  : BRAND.shortName);
+    (pathname?.startsWith("/externo/notificacoes/")
+      ? "Detalhe da notificação"
+      : pathname?.startsWith("/contracts/")
+        ? "Detalhe do contrato"
+        : pathname?.startsWith("/measurements/")
+          ? "Detalhe da medição"
+          : pathname?.startsWith("/glosas/")
+            ? "Detalhe da glosa"
+            : pathname?.startsWith("/governance/tickets/")
+              ? "Detalhe do chamado (governança)"
+              : pathname?.startsWith("/projetos/")
+                ? "Detalhe do projeto"
+                : pathname?.startsWith("/goals/")
+                  ? "Detalhe da meta"
+                  : pathname?.startsWith("/reports/")
+                    ? "Relatórios"
+                    : BRAND.shortName);
 
   useEffect(() => {
     if (!pathname || pathname.startsWith("/trocar-senha")) return;
@@ -239,7 +252,7 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
                 Notas de versão
               </Link>
               <span className="hidden sm:inline">Área autenticada</span>
-              <AccessContextSelector />
+              {userKind !== "EXTERNAL" && systemKey !== "EXTERNAL" ? <AccessContextSelector /> : null}
               <Link
                 href="/perfil"
                 className="inline-flex items-center gap-1.5 font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"

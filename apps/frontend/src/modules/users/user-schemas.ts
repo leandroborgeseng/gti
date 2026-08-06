@@ -52,11 +52,46 @@ export const createUserFormSchema = z
     cpf: cpfFieldSchema,
     email: z.string().min(1, "Obrigatório").email("E-mail inválido"),
     password: z.string().min(8, "Mínimo 8 caracteres"),
-    profileIds: z.array(z.string()).min(1, "Selecione ao menos um perfil."),
+    userKind: z.enum(["INTERNAL", "EXTERNAL"]).default("INTERNAL"),
+    profileIds: z.array(z.string()),
     organizationIds: z.array(z.string()),
-    allOrganizations: z.boolean().default(false)
+    allOrganizations: z.boolean().default(false),
+    supplierId: z.string().optional(),
+    externalFunction: z
+      .enum([
+        "REPRESENTANTE_LEGAL",
+        "RESPONSAVEL_CONTRATUAL",
+        "RESPONSAVEL_TECNICO",
+        "USUARIO_AUXILIAR"
+      ])
+      .optional(),
+    authorizedContractIds: z.array(z.string()).default([])
   })
   .superRefine((val, ctx) => {
+    if (val.userKind === "EXTERNAL") {
+      if (!val.supplierId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Selecione o fornecedor (CNPJ).",
+          path: ["supplierId"]
+        });
+      }
+      if (!val.externalFunction) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Informe a função do usuário externo.",
+          path: ["externalFunction"]
+        });
+      }
+      return;
+    }
+    if (val.profileIds.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selecione ao menos um perfil.",
+        path: ["profileIds"]
+      });
+    }
     if (!val.allOrganizations && val.organizationIds.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -72,14 +107,49 @@ export const editUserFormSchema = z
   .object({
     fullName: z.string().min(1, "Informe o nome completo."),
     cpf: cpfFieldOptionalSchema,
-    profileIds: z.array(z.string()).min(1, "Selecione ao menos um perfil."),
-    organizationIds: z.array(z.string()),
+    userKind: z.enum(["INTERNAL", "EXTERNAL"]).default("INTERNAL"),
+    profileIds: z.array(z.string()).default([]),
+    organizationIds: z.array(z.string()).default([]),
     allOrganizations: z.boolean().default(false),
     approvalStatus: userApprovalStatusSchema,
     /** Vazio mantém a senha atual; caso contrário mínimo 8 caracteres. */
-    password: z.union([z.literal(""), z.string().min(8, "Mínimo 8 caracteres")])
+    password: z.union([z.literal(""), z.string().min(8, "Mínimo 8 caracteres")]),
+    supplierId: z.string().optional(),
+    externalFunction: z
+      .enum([
+        "REPRESENTANTE_LEGAL",
+        "RESPONSAVEL_CONTRATUAL",
+        "RESPONSAVEL_TECNICO",
+        "USUARIO_AUXILIAR"
+      ])
+      .optional(),
+    authorizedContractIds: z.array(z.string()).default([])
   })
   .superRefine((val, ctx) => {
+    if (val.userKind === "EXTERNAL") {
+      if (!val.supplierId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Selecione o fornecedor (CNPJ).",
+          path: ["supplierId"]
+        });
+      }
+      if (!val.externalFunction) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Informe a função do usuário externo.",
+          path: ["externalFunction"]
+        });
+      }
+      return;
+    }
+    if (val.profileIds.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selecione ao menos um perfil.",
+        path: ["profileIds"]
+      });
+    }
     if (!val.allOrganizations && val.organizationIds.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

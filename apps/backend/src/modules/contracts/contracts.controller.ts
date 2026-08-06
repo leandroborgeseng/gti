@@ -1,5 +1,21 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  MaxFileSizeValidator,
+  Param,
+  ParseFilePipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+  UploadedFile,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { UserRole } from "@prisma/client";
+import { memoryStorage } from "multer";
 import { Roles } from "../../auth/roles-required.decorator";
 import { ContractsService } from "./contracts.service";
 import {
@@ -29,6 +45,11 @@ import {
   UpdateContractServiceDto,
   UpdateContractValidationGroupDto
 } from "./contracts.dto";
+
+function uploadMaxBytes(): number {
+  const n = Number(process.env.UPLOAD_MAX_MB ?? "10");
+  return (Number.isFinite(n) && n > 0 ? n : 10) * 1024 * 1024;
+}
 
 @Controller("contracts")
 export class ContractsController {
@@ -246,6 +267,45 @@ export class ContractsController {
     @Param("scheduleId") scheduleId: string
   ): Promise<unknown> {
     return this.service.deleteSchedule(contractId, scheduleId);
+  }
+
+  @Post(":id/schedules/:scheduleId/attachments")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: uploadMaxBytes() + 1024 }
+    })
+  )
+  addScheduleAttachment(
+    @Param("id") contractId: string,
+    @Param("scheduleId") scheduleId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [new MaxFileSizeValidator({ maxSize: uploadMaxBytes() })]
+      })
+    )
+    file: Express.Multer.File
+  ): Promise<unknown> {
+    return this.service.addScheduleAttachmentUpload(contractId, scheduleId, file);
+  }
+
+  @Delete(":id/schedules/:scheduleId/attachments/:attachmentId")
+  removeScheduleAttachment(
+    @Param("id") contractId: string,
+    @Param("scheduleId") scheduleId: string,
+    @Param("attachmentId") attachmentId: string
+  ): Promise<{ ok: true }> {
+    return this.service.removeScheduleAttachment(contractId, scheduleId, attachmentId);
+  }
+
+  @Put(":id/glpi-tickets/:glpiTicketId/classification")
+  upsertGlpiTicketClassification(
+    @Param("id") contractId: string,
+    @Param("glpiTicketId") glpiTicketId: string,
+    @Body() body: { category?: string; notes?: string | null }
+  ): Promise<unknown> {
+    return this.service.upsertContractGlpiTicketClass(contractId, Number(glpiTicketId), body);
   }
 
   @Get(":id/occurrences")

@@ -131,6 +131,85 @@ enum UserApprovalStatus {
   REJECTED
 }
 
+/// Tipo de conta: interna (servidores) ou externa (empresa contratada).
+enum UserKind {
+  INTERNAL
+  EXTERNAL
+}
+
+/// Função do usuário externo junto ao fornecedor/contrato.
+enum ExternalUserFunction {
+  REPRESENTANTE_LEGAL
+  RESPONSAVEL_CONTRATUAL
+  RESPONSAVEL_TECNICO
+  USUARIO_AUXILIAR
+}
+
+/// Gravidade da notificação contratual.
+enum NotificationSeverity {
+  INFORMATIVA
+  ADVERTENCIA
+  URGENTE
+  CRITICA
+}
+
+/// Finalidade do modelo/notificação.
+enum NotificationPurpose {
+  CIENCIA
+  PROVIDENCIA
+  MANIFESTACAO
+  PLANO_ACAO
+  CRONOGRAMA
+  OUTRO
+}
+
+/// Tipo genérico da notificação (catálogo livre tipado).
+enum NotificationType {
+  COMUNICADO
+  NOTIFICACAO_FORMAL
+  ADVERTENCIA
+  SOLICITACAO_PROVIDENCIA
+  COBRANCA_PRAZO
+  OUTRO
+}
+
+/// Ciclo de vida da notificação contratual.
+enum ContractNotificationStatus {
+  RASCUNHO
+  EM_ELABORACAO
+  EM_REVISAO
+  DEVOLVIDA_CORRECAO
+  APROVADA_ASSINATURA
+  AGUARDANDO_ASSINATURA
+  ASSINADA
+  ENVIADA
+  RECEBIDA
+  AGUARDANDO_RESPOSTA
+  RESPONDIDA
+  EM_ANALISE
+  ATENDIDA
+  NAO_ATENDIDA
+  ENCAMINHADA_CONTROLADORIA
+  CANCELADA
+  RETIFICADA
+  ENCERRADA
+}
+
+/// Modalidade de assinatura da notificação.
+enum NotificationSignModality {
+  PASSWORD
+  CERTIFICATE_READY
+}
+
+/// Resultado da análise interna da manifestação da empresa.
+enum NotificationManifestationAnalysis {
+  ACEITA
+  PARCIAL
+  REJEITADA
+  PENDENTE
+  ATENDIDA
+}
+
 enum ContractItemChangeAction {
   CREATED
   DELETED
@@ -347,6 +426,17 @@ enum DeadlineAttentionLevel {
   CRITICAL
 }
 
+/// Classificação contratual local de chamado GLPI (além dos campos sincronizados).
+enum ContractGlpiTicketCategory {
+  CORRETIVO
+  EVOLUTIVO
+  SUPORTE
+  DESENVOLVIMENTO
+  DUVIDA
+  INDISPONIBILIDADE
+  OUTRO
+}
+
 model User {
   id                  String               @id @default(uuid())
   email               String               @unique
@@ -376,6 +466,12 @@ model User {
   approvalStatus      UserApprovalStatus   @default(APPROVED)
   /// Papel legado; sincronizado com o systemKey do perfil padrão.
   role                UserRole             @default(EDITOR)
+  /// Conta interna (servidor) ou externa (empresa).
+  userKind            UserKind             @default(INTERNAL) @map("user_kind")
+  /// Fornecedor ao qual o usuário externo pertence.
+  supplierId          String?              @map("supplier_id")
+  /// Função do usuário externo.
+  externalFunction    ExternalUserFunction? @map("external_function")
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   organization        Organization?        @relation("UserPrimaryOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
@@ -383,8 +479,10 @@ model User {
   lastActiveOrganization Organization?     @relation("UserLastActiveOrganization", fields: [lastActiveOrganizationId], references: [id], onDelete: SetNull)
   defaultProfile      AccessProfile?       @relation("UserDefaultProfile", fields: [defaultProfileId], references: [id], onDelete: SetNull)
   defaultOrganization Organization?        @relation("UserDefaultOrganization", fields: [defaultOrganizationId], references: [id], onDelete: SetNull)
+  supplier            Supplier?            @relation("UserExternalSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
   accessProfiles      UserAccessProfile[]
   organizations       UserOrganization[]
+  externalContracts   UserExternalContract[]
   passwordResetTokens PasswordResetToken[]
   supervisedProjects  Project[]            @relation("ProjectSupervisor")
   validatedContractModules ContractModule[] @relation("ContractModuleValidator")
@@ -401,12 +499,17 @@ model User {
   assignedProjectTasks ProjectTask[]         @relation("ProjectTaskAssignee")
   responsibleProjectTasks ProjectTaskResponsible[]
   extraPermissions    UserPermission[]
+  createdNotifications ContractNotification[] @relation("ContractNotificationCreatedBy")
+  notificationSignatures ContractNotificationSigner[] @relation("ContractNotificationSignerUser")
+  notificationResponses ContractNotificationResponse[] @relation("ContractNotificationResponseAuthor")
 
   @@index([organizationId])
   @@index([lastActiveProfileId])
   @@index([lastActiveOrganizationId])
   @@index([defaultProfileId])
   @@index([defaultOrganizationId])
+  @@index([userKind])
+  @@index([supplierId])
 }
 
 /// Perfil de acesso dinâmico (Administrador/Editor/Leitor do sistema + perfis customizados).
@@ -496,7 +599,23 @@ model Supplier {
   id        String     @id @default(uuid())
   name      String
   cnpj      String     @unique
+  /// Contatos adicionais para envio de notificações (JSON: [{name,email,role?}]).
+  contacts  Json?
   contracts Contract[]
+  externalUsers User[] @relation("UserExternalSupplier")
+}
+
+/// Contratos autorizados para um usuário externo (mesmo fornecedor).
+model UserExternalContract {
+  userId     String   @map("user_id")
+  contractId String   @map("contract_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@id([userId, contractId])
+  @@index([contractId])
+  @@map("user_external_contract")
 }
 
 model Fiscal {
@@ -593,6 +712,12 @@ model Contract {
   controladoriaCases ContractControladoriaCase[]
   /** Prazos e alertas materializados (tickets 49/51/58). */
   deadlines    Deadline[]
+  /** Usuários externos autorizados neste contrato. */
+  externalUserLinks UserExternalContract[]
+  /** Notificações formais do contrato. */
+  notifications ContractNotification[]
+  /** Classificação contratual local de chamados GLPI. */
+  glpiTicketClasses ContractGlpiTicketClass[]
 
   @@index([status, endDate])
   @@index([deletedAt])
@@ -991,12 +1116,21 @@ model Attachment {
   measurementId   String?
   glosaId         String?
   projectTaskId   String?
+  scheduleId      String?      @map("schedule_id")
+  notificationId  String?      @map("notification_id")
+  notificationResponseId String? @map("notification_response_id")
   createdAt       DateTime     @default(now())
   measurement     Measurement? @relation(fields: [measurementId], references: [id], onDelete: Restrict)
   glosa           Glosa?       @relation(fields: [glosaId], references: [id], onDelete: Restrict)
   projectTask     ProjectTask? @relation(fields: [projectTaskId], references: [id], onDelete: Cascade)
+  schedule        ContractSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  notification    ContractNotification? @relation("NotificationAttachments", fields: [notificationId], references: [id], onDelete: Cascade)
+  notificationResponse ContractNotificationResponse? @relation("NotificationResponseAttachments", fields: [notificationResponseId], references: [id], onDelete: Cascade)
 
   @@index([projectTaskId])
+  @@index([scheduleId])
+  @@index([notificationId])
+  @@index([notificationResponseId])
 }
 
 // ---------------------------------------------------------------------------
@@ -1376,6 +1510,7 @@ model ContractSchedule {
   replaces      ContractSchedule[]                  @relation("ContractScheduleReplacement")
   responsibles  ContractScheduleInternalResponsible[]
   milestones    ContractScheduleMilestone[]
+  attachments   Attachment[]
 
   @@index([contractId, status])
   @@index([contractId, lineageId, version])
@@ -1708,4 +1843,237 @@ model AuditEventConfig {
   @@unique([moduleKey, screenKey, actionKey])
   @@index([moduleKey, sortOrder])
   @@map("audit_event_config")
+}
+
+/// Política de retenção por categoria (ticket 69). Descarte desligado por padrão (active=false).
+model AuditRetentionPolicy {
+  id               String   @id @default(uuid())
+  categoryKey      String   @unique @map("category_key")
+  label            String   @default("")
+  /// Dias de retenção após os quais o descarte (se ativo) pode remover logs.
+  retentionDays    Int      @map("retention_days")
+  /// Piso mínimo (AUTH/SECURITY/PERMISSIONS); a UI e o job não permitem menos.
+  minRetentionDays Int      @default(90) @map("min_retention_days")
+  /// Se false, o descarte automático/manual desta categoria fica desligado.
+  active           Boolean  @default(false)
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([active, categoryKey])
+  @@map("audit_retention_policy")
+}
+
+/// Log de execução de descarte/dry-run (sem regravar conteúdo eliminado).
+model AuditRetentionRun {
+  id            String   @id @default(uuid())
+  /// DRY_RUN | EXECUTE
+  mode          String
+  /// OK | BLOCKED | FAILED
+  status        String
+  /// Categorias consideradas (JSON string[]).
+  categories    Json
+  deletedCount  Int      @default(0) @map("deleted_count")
+  previewCount  Int      @default(0) @map("preview_count")
+  periodFrom    DateTime? @map("period_from")
+  periodTo      DateTime? @map("period_to")
+  actorUserId   String?  @map("actor_user_id")
+  /// Resumo operacional (contagens por categoria, avisos) — sem oldData/newData dos logs.
+  summary       Json?
+  errorSummary  String?  @map("error_summary") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("audit_retention_run")
+}
+
+/// Classificação contratual local de chamado GLPI (por contrato + ticket).
+model ContractGlpiTicketClass {
+  id           String                     @id @default(uuid())
+  contractId   String                     @map("contract_id")
+  glpiTicketId Int                        @map("glpi_ticket_id")
+  category     ContractGlpiTicketCategory @default(OUTRO)
+  notes        String?                    @db.Text
+  createdAt    DateTime                   @default(now()) @map("created_at")
+  updatedAt    DateTime                   @updatedAt @map("updated_at")
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, glpiTicketId])
+  @@index([contractId])
+  @@map("contract_glpi_ticket_class")
+}
+
+// ---------------------------------------------------------------------------
+// Notificações contratuais (tickets 41–46) e área externa
+// ---------------------------------------------------------------------------
+
+/// Modelo reutilizável de notificação (Administração).
+model NotificationTemplate {
+  id                  String               @id @default(uuid())
+  name                String
+  documentTitle       String               @map("document_title")
+  emailSubject        String               @map("email_subject")
+  purpose             NotificationPurpose  @default(OUTRO)
+  notificationType    NotificationType     @default(NOTIFICACAO_FORMAL) @map("notification_type")
+  severity            NotificationSeverity @default(INFORMATIVA)
+  defaultResponseDays Int                  @default(5) @map("default_response_days")
+  requiresAck         Boolean              @default(true) @map("requires_ack")
+  requiresResponse    Boolean              @default(false) @map("requires_response")
+  requiresSchedule    Boolean              @default(false) @map("requires_schedule")
+  requiresActionPlan  Boolean              @default(false) @map("requires_action_plan")
+  reviewFlow          String?              @map("review_flow")
+  active              Boolean              @default(true)
+  version             Int                  @default(1)
+  bodyHtml            String               @map("body_html") @db.Text
+  headerHtml          String?              @map("header_html") @db.Text
+  footerHtml          String?              @map("footer_html") @db.Text
+  mailMergeFields     Json?                @map("mail_merge_fields")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  versions            NotificationTemplateVersion[]
+  notifications       ContractNotification[]
+
+  @@index([active, name])
+  @@map("notification_template")
+}
+
+/// Snapshot de versão do modelo (quando já usado em notificação).
+model NotificationTemplateVersion {
+  id           String   @id @default(uuid())
+  templateId   String   @map("template_id")
+  version      Int
+  snapshot     Json
+  createdAt    DateTime @default(now()) @map("created_at")
+  template     NotificationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, version])
+  @@index([templateId])
+  @@map("notification_template_version")
+}
+
+/// Sequência anual para numeração NOT-SIGTI-####/AAAA.
+model ContractNotificationSequence {
+  year       Int @id
+  lastNumber Int @default(0) @map("last_number")
+
+  @@map("contract_notification_sequence")
+}
+
+/// Notificação formal vinculada a um contrato.
+model ContractNotification {
+  id                 String                     @id @default(uuid())
+  contractId         String                     @map("contract_id")
+  templateId         String?                    @map("template_id")
+  templateVersion    Int                        @default(1) @map("template_version")
+  number             String                     @unique
+  status             ContractNotificationStatus @default(RASCUNHO)
+  subject            String
+  bodyHtml           String                     @map("body_html") @db.Text
+  headerHtml         String?                    @map("header_html") @db.Text
+  footerHtml         String?                    @map("footer_html") @db.Text
+  signedDocumentHtml String?                    @map("signed_document_html") @db.Text
+  purpose            NotificationPurpose        @default(OUTRO)
+  notificationType   NotificationType           @default(NOTIFICACAO_FORMAL) @map("notification_type")
+  severity           NotificationSeverity       @default(INFORMATIVA)
+  requiresAck        Boolean                    @default(true) @map("requires_ack")
+  requiresResponse   Boolean                    @default(false) @map("requires_response")
+  requiresSchedule   Boolean                    @default(false) @map("requires_schedule")
+  requiresActionPlan Boolean                    @default(false) @map("requires_action_plan")
+  /// Referências de formalização (processo, SEI, etc.) em JSON.
+  formalizationRefs  Json?                      @map("formalization_refs")
+  ackDeadline        DateTime?                  @map("ack_deadline")
+  responseDeadline   DateTime?                  @map("response_deadline")
+  effectsStartRule   String?                    @map("effects_start_rule")
+  /// Vínculos opcionais: itemIds, featureIds, measurementIds, occurrenceIds, scheduleIds.
+  related            Json?
+  contentLocked      Boolean                    @default(false) @map("content_locked")
+  cancelReason       String?                    @map("cancel_reason") @db.Text
+  rectifyReason      String?                    @map("rectify_reason") @db.Text
+  parentNotificationId String?                  @map("parent_notification_id")
+  ackAt              DateTime?                  @map("ack_at")
+  ackByUserId        String?                    @map("ack_by_user_id")
+  sentAt             DateTime?                  @map("sent_at")
+  createdById        String                     @map("created_by_id")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+
+  contract   Contract              @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  template   NotificationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdBy  User                  @relation("ContractNotificationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  parent     ContractNotification? @relation("NotificationRectification", fields: [parentNotificationId], references: [id], onDelete: SetNull)
+  children   ContractNotification[] @relation("NotificationRectification")
+  events     ContractNotificationEvent[]
+  signers    ContractNotificationSigner[]
+  responses  ContractNotificationResponse[]
+  attachments Attachment[] @relation("NotificationAttachments")
+
+  @@index([contractId, status])
+  @@index([status, createdAt])
+  @@index([createdById])
+  @@map("contract_notification")
+}
+
+model ContractNotificationEvent {
+  id             String   @id @default(uuid())
+  notificationId String   @map("notification_id")
+  eventType      String   @map("event_type")
+  fromStatus     String?  @map("from_status")
+  toStatus       String?  @map("to_status")
+  note           String?  @db.Text
+  actorId        String?  @map("actor_id")
+  actorLabel     String?  @map("actor_label")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  notification   ContractNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId, createdAt])
+  @@map("contract_notification_event")
+}
+
+model ContractNotificationSigner {
+  id               String                   @id @default(uuid())
+  notificationId   String                   @map("notification_id")
+  userId           String                   @map("user_id")
+  order            Int                      @default(1)
+  required         Boolean                  @default(true)
+  modality         NotificationSignModality @default(PASSWORD)
+  signedAt         DateTime?                @map("signed_at")
+  signerName       String?                  @map("signer_name")
+  signerCpf        String?                  @map("signer_cpf")
+  signerJobTitle   String?                  @map("signer_job_title")
+  signerOrgLabel   String?                  @map("signer_org_label")
+  verificationCode String?                  @map("verification_code")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  notification     ContractNotification     @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user             User                     @relation("ContractNotificationSignerUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([notificationId, userId])
+  @@index([notificationId, order])
+  @@map("contract_notification_signer")
+}
+
+/// Manifestação / resposta da empresa (área externa).
+model ContractNotificationResponse {
+  id               String   @id @default(uuid())
+  notificationId   String   @map("notification_id")
+  authorUserId     String   @map("author_user_id")
+  bodyText         String   @map("body_text") @db.Text
+  /// Status por item relacionado (MVP JSON).
+  itemStatuses     Json?    @map("item_statuses")
+  draft            Boolean  @default(true)
+  submittedAt      DateTime? @map("submitted_at")
+  /// Análise interna — NÃO expor a usuários externos.
+  analysisStatus   NotificationManifestationAnalysis? @map("analysis_status")
+  analysisNote     String?  @map("analysis_note") @db.Text
+  analyzedAt       DateTime? @map("analyzed_at")
+  analyzedById     String?  @map("analyzed_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  notification     ContractNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  author           User     @relation("ContractNotificationResponseAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  attachments      Attachment[] @relation("NotificationResponseAttachments")
+
+  @@index([notificationId, draft])
+  @@map("contract_notification_response")
 }

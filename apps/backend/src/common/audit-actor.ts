@@ -4,13 +4,18 @@ import { AsyncLocalStorage } from "node:async_hooks";
 export type RequestActor = {
   userId: string;
   email?: string;
-  /** systemKey do perfil ativo (ADMIN|EDITOR|VIEWER) ou role legado. */
+  /** systemKey do perfil ativo (ADMIN|EDITOR|VIEWER|EXTERNAL) ou role legado. */
   role: string;
   profileId?: string | null;
   /** Órgão ativo; null quando «Todos os órgãos». */
   organizationId?: string | null;
   /** true quando o contexto ativo é visão global de órgãos. */
   allOrganizationsActive?: boolean;
+  /** INTERNAL (padrão) ou EXTERNAL. */
+  userKind?: "INTERNAL" | "EXTERNAL";
+  supplierId?: string | null;
+  /** Contratos autorizados (somente EXTERNAL). */
+  authorizedContractIds?: string[];
 };
 
 export const requestActorStore = new AsyncLocalStorage<RequestActor>();

@@ -6,6 +6,7 @@ import {
   ContractAmendmentStatus,
   ContractAmendmentType,
   ContractFeatureStatus,
+  ContractGlpiTicketCategory,
   ContractItemChangeAction,
   ContractItemChangeType,
   ContractItemCriticality,
@@ -79,6 +80,7 @@ import {
   parseInternalCode,
   type IdentificationIssue
 } from "./contract-identification";
+import { StorageService } from "../../storage/storage.service";
 
 function moduleGroupKey(name: string): string {
   return name.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
@@ -460,7 +462,10 @@ async function allocateInternalCode(
 export class ContractsService {
   private readonly pricing: ContractPricingHelper;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService
+  ) {
     this.pricing = new ContractPricingHelper(prisma);
   }
 
@@ -657,6 +662,10 @@ export class ContractsService {
       slaDeadline: string | null;
       slaOverdue: boolean | null;
       updatedAt: string;
+      localClassification: {
+        category: ContractGlpiTicketCategory;
+        notes: string | null;
+      } | null;
     }>;
     total: number;
     facets: {
@@ -698,6 +707,10 @@ export class ContractsService {
         slaDeadline: string | null;
         slaOverdue: boolean | null;
         updatedAt: string;
+        localClassification: {
+          category: ContractGlpiTicketCategory;
+          notes: string | null;
+        } | null;
       }>,
       total: 0,
       facets: { statuses: [] as string[], priorities: [] as string[], slaOverdueAvailable: false }
@@ -781,6 +794,16 @@ export class ContractsService {
       }
     });
 
+    const ticketIds = rows.map((r) => r.glpiTicketId);
+    const classRows =
+      ticketIds.length > 0
+        ? await this.prisma.contractGlpiTicketClass.findMany({
+            where: { contractId: contract.id, glpiTicketId: { in: ticketIds } },
+            select: { glpiTicketId: true, category: true, notes: true }
+          })
+        : [];
+    const classByTicket = new Map(classRows.map((c) => [c.glpiTicketId, c]));
+
     const now = Date.now();
     let mapped = rows.map((row) => {
       const slaDeadline = extractGlpiSlaDeadline(row.rawJson);
@@ -792,6 +815,7 @@ export class ContractsService {
           slaOverdue = !closed && t < now;
         }
       }
+      const local = classByTicket.get(row.glpiTicketId);
       return {
         glpiTicketId: row.glpiTicketId,
         title: row.title,
@@ -806,7 +830,10 @@ export class ContractsService {
         waitingParty: row.waitingParty,
         slaDeadline,
         slaOverdue,
-        updatedAt: row.updatedAt.toISOString()
+        updatedAt: row.updatedAt.toISOString(),
+        localClassification: local
+          ? { category: local.category, notes: local.notes }
+          : null
       };
     });
 
@@ -825,6 +852,54 @@ export class ContractsService {
         priorities,
         slaOverdueAvailable
       }
+    };
+  }
+
+  async upsertContractGlpiTicketClass(
+    contractId: string,
+    glpiTicketId: number,
+    body: { category?: string; notes?: string | null }
+  ): Promise<{
+    contractId: string;
+    glpiTicketId: number;
+    category: ContractGlpiTicketCategory;
+    notes: string | null;
+  }> {
+    await this.ensureContract(contractId);
+    if (!Number.isFinite(glpiTicketId) || glpiTicketId <= 0) {
+      throw new BadRequestException("Identificador do chamado GLPI inválido.");
+    }
+    const allowed = Object.values(ContractGlpiTicketCategory);
+    const rawCat = String(body.category ?? "OUTRO").trim().toUpperCase();
+    if (!allowed.includes(rawCat as ContractGlpiTicketCategory)) {
+      throw new BadRequestException(
+        `Categoria inválida. Use: ${allowed.join(", ")}.`
+      );
+    }
+    const category = rawCat as ContractGlpiTicketCategory;
+    const notes =
+      body.notes === undefined || body.notes === null
+        ? null
+        : String(body.notes).trim() || null;
+
+    const row = await this.prisma.contractGlpiTicketClass.upsert({
+      where: {
+        contractId_glpiTicketId: { contractId, glpiTicketId }
+      },
+      create: { contractId, glpiTicketId, category, notes },
+      update: { category, notes }
+    });
+    await this.createAudit("ContractGlpiTicketClass", row.id, "UPDATE", null, {
+      contractId,
+      glpiTicketId,
+      category,
+      notes
+    });
+    return {
+      contractId,
+      glpiTicketId: row.glpiTicketId,
+      category: row.category,
+      notes: row.notes
     };
   }
 
@@ -1736,7 +1811,8 @@ export class ContractsService {
                 }
               },
               orderBy: { sequence: "asc" }
-            }
+            },
+            attachments: { orderBy: { createdAt: "desc" } }
           },
           orderBy: [{ status: "asc" }, { name: "asc" }, { version: "desc" }]
         },
@@ -2700,6 +2776,31 @@ export class ContractsService {
     }
     if (!rows.length) throw new BadRequestException("Nenhuma linha válida para importar.");
 
+    const validationGroups = await this.prisma.contractValidationGroup.findMany({
+      where: { contractId, active: true },
+      select: { id: true, name: true }
+    });
+    const groupByNormName = new Map(
+      validationGroups.map((g) => [g.name.trim().toLowerCase(), g.id] as const)
+    );
+    const hasActiveGroups = validationGroups.length > 0;
+
+    const unknownGroupRows: number[] = [];
+    for (const row of rows) {
+      const name = row.validationGroupName?.trim();
+      if (!name) continue;
+      if (!groupByNormName.has(name.toLowerCase())) {
+        unknownGroupRows.push(row.sourceRow);
+      }
+    }
+    if (unknownGroupRows.length > 0) {
+      const sample = unknownGroupRows.slice(0, 5).join(", ");
+      const more = unknownGroupRows.length > 5 ? ` (+${unknownGroupRows.length - 5})` : "";
+      throw new BadRequestException(
+        `Grupo de validação não encontrado no contrato (linhas ${sample}${more}). Cadastre o grupo antes ou deixe a coluna vazia para importar como «Grupo não definido».`
+      );
+    }
+
     const groups = new Map<
       string,
       { displayName: string; weight?: number; criticality: ContractItemCriticality; features: ContractStructureImportRow[] }
@@ -2728,6 +2829,8 @@ export class ContractsService {
         prev.features.push(row);
       }
     }
+
+    let undefinedGroupCount = 0;
 
     // Transacção interactiva: o timeout por padrão do Prisma (~5 s) é curto para planilhas grandes;
     // ultrapassar fecha a transação e as operações seguintes falham com «Transaction not found».
@@ -2767,15 +2870,21 @@ export class ContractsService {
             if (byCode !== 0) return byCode;
             return a.featureName.localeCompare(b.featureName, "pt-BR", { sensitivity: "base" });
           });
-          const featureRows = group.features.map((fr) => ({
-            moduleId: mid,
-            itemCode: fr.featureCode?.trim() || null,
-            name: fr.featureName.trim(),
-            criticality: fr.featureCriticality ?? ContractItemCriticality.MEDIA,
-            weight: new Prisma.Decimal(fr.featureWeight ?? 0),
-            status: fr.featureStatus ?? ContractFeatureStatus.NOT_STARTED,
-            deliveryStatus: fr.featureDelivery ?? ContractItemDeliveryStatus.NOT_DELIVERED
-          }));
+          const featureRows = group.features.map((fr) => {
+            const gName = fr.validationGroupName?.trim();
+            const validationGroupId = gName ? groupByNormName.get(gName.toLowerCase()) ?? null : null;
+            if (!validationGroupId) undefinedGroupCount += 1;
+            return {
+              moduleId: mid,
+              itemCode: fr.featureCode?.trim() || null,
+              name: fr.featureName.trim(),
+              criticality: fr.featureCriticality ?? ContractItemCriticality.MEDIA,
+              weight: new Prisma.Decimal(fr.featureWeight ?? 0),
+              status: fr.featureStatus ?? ContractFeatureStatus.NOT_STARTED,
+              deliveryStatus: fr.featureDelivery ?? ContractItemDeliveryStatus.NOT_DELIVERED,
+              validationGroupId
+            };
+          });
           if (featureRows.length > 0) {
             await tx.contractFeature.createMany({ data: featureRows });
           }
@@ -2790,16 +2899,44 @@ export class ContractsService {
       await this.recalculateModuleFeatureWeights(moduleId);
     }
 
-    await this.createAudit("Contract", contractId, "IMPORT_STRUCTURE", null, { rows: rows.length, replace: opts.replace });
+    await this.createAudit("Contract", contractId, "IMPORT_STRUCTURE", null, {
+      rows: rows.length,
+      replace: opts.replace,
+      undefinedGroupCount,
+      hadActiveValidationGroups: hasActiveGroups
+    });
     await this.createContractItemChangeLog({
       contractId,
       itemType: ContractItemChangeType.FEATURE,
       itemId: null,
       itemName: "Importação de módulos e funcionalidades",
       action: ContractItemChangeAction.BULK_IMPORTED,
-      newData: { rows: rows.length, replace: opts.replace }
+      newData: {
+        rows: rows.length,
+        replace: opts.replace,
+        undefinedGroupCount,
+        warning:
+          undefinedGroupCount > 0
+            ? `${undefinedGroupCount} funcionalidade(s) importada(s) sem grupo de validação («Grupo não definido»). Atribua na estrutura do contrato.`
+            : null
+      }
     });
-    return this.findOne(contractId);
+    const result = (await this.findOne(contractId)) as Record<string, unknown>;
+    return {
+      ...result,
+      importSummary: {
+        rows: rows.length,
+        undefinedGroupCount,
+        message:
+          undefinedGroupCount > 0
+            ? `Importação concluída. ${undefinedGroupCount} funcionalidade(s) ficaram como «Grupo não definido»${
+                hasActiveGroups
+                  ? " — o contrato possui grupos ativos; atribua o grupo na estrutura ou pela ação em massa."
+                  : "."
+              }`
+            : `Importação concluída (${rows.length} linha(s)).`
+      }
+    };
   }
 
   async createModule(contractId: string, dto: CreateContractModuleDto): Promise<unknown> {
@@ -3200,9 +3337,14 @@ export class ContractsService {
   /**
    * Escopo pelo órgão do contexto ativo.
    * ADMIN com órgão específico NÃO bypassa o filtro; «Todos os órgãos» (org null) não filtra.
+   * Usuário EXTERNAL: somente contratos autorizados (nunca visão global).
    */
   private organizationScope(): Prisma.ContractWhereInput {
     const actor = requestActorStore.getStore();
+    if (actor?.userKind === "EXTERNAL" || actor?.role === "EXTERNAL") {
+      const ids = actor.authorizedContractIds ?? [];
+      return { id: { in: ids } };
+    }
     if (actor?.allOrganizationsActive || !actor?.organizationId) {
       return {};
     }
@@ -3241,6 +3383,13 @@ export class ContractsService {
   private async accessibleContractWhere(contractId: string): Promise<Prisma.ContractWhereInput> {
     const actor = requestActorStore.getStore();
     const base: Prisma.ContractWhereInput = { id: contractId, deletedAt: null };
+    if (actor?.userKind === "EXTERNAL" || actor?.role === "EXTERNAL") {
+      const ids = actor.authorizedContractIds ?? [];
+      if (!ids.includes(contractId)) {
+        return { ...base, id: "__denied__" };
+      }
+      return base;
+    }
     if (!actor?.userId || actor.allOrganizationsActive || !actor.organizationId) {
       return { ...base, ...this.organizationScope() };
     }
@@ -3340,7 +3489,8 @@ export class ContractsService {
           }
         },
         orderBy: { sequence: "asc" as const }
-      }
+      },
+      attachments: { orderBy: { createdAt: "desc" as const } }
     };
   }
 
@@ -3364,7 +3514,7 @@ export class ContractsService {
     observations: string | null;
     createdAt: Date;
     updatedAt: Date;
-    responsibles?: Array<{ userId: string; user: LinkedUserRow }>;
+      responsibles?: Array<{ userId: string; user: LinkedUserRow }>;
     milestones?: Array<{
       id: string;
       sequence: number;
@@ -3381,6 +3531,13 @@ export class ContractsService {
       dependencies: string | null;
       observations: string | null;
       responsibles?: Array<{ userId: string; user: LinkedUserRow }>;
+    }>;
+    attachments?: Array<{
+      id: string;
+      fileName: string;
+      mimeType: string;
+      filePath: string;
+      createdAt: Date;
     }>;
   }) {
     const responsibleUsers = (schedule.responsibles ?? []).map((r) => serializeLinkedUser(r.user));
@@ -3405,6 +3562,13 @@ export class ContractsService {
         responsibleUsers: msUsers
       };
     });
+    const attachments = (schedule.attachments ?? []).map((a) => ({
+      id: a.id,
+      fileName: a.fileName,
+      mimeType: a.mimeType,
+      filePath: a.filePath,
+      createdAt: a.createdAt
+    }));
     return {
       id: schedule.id,
       contractId: schedule.contractId,
@@ -3427,7 +3591,8 @@ export class ContractsService {
       updatedAt: schedule.updatedAt,
       responsibleUserIds: responsibleUsers.map((u) => u.id),
       responsibleUsers,
-      milestones
+      milestones,
+      attachments
     };
   }
 
@@ -4009,6 +4174,57 @@ export class ContractsService {
     await this.prisma.contractSchedule.delete({ where: { id: scheduleId } });
     await this.createAudit("ContractSchedule", scheduleId, "DELETE", this.serializeSchedule(prev), null);
     return this.findOne(contractId);
+  }
+
+  async addScheduleAttachmentUpload(
+    contractId: string,
+    scheduleId: string,
+    file: Express.Multer.File
+  ): Promise<unknown> {
+    const schedule = await this.prisma.contractSchedule.findFirst({
+      where: { id: scheduleId, contractId },
+      select: { id: true }
+    });
+    if (!schedule) throw new NotFoundException("Cronograma não encontrado neste contrato.");
+    if (!file.buffer?.length) {
+      throw new BadRequestException("Arquivo vazio");
+    }
+    const { filePath } = await this.storage.saveScheduleFile(
+      scheduleId,
+      file.buffer,
+      file.originalname,
+      file.mimetype
+    );
+    const attachment = await this.prisma.attachment.create({
+      data: {
+        scheduleId,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        filePath
+      }
+    });
+    await this.createAudit("Attachment", attachment.id, "CREATE", null, attachment);
+    return attachment;
+  }
+
+  async removeScheduleAttachment(
+    contractId: string,
+    scheduleId: string,
+    attachmentId: string
+  ): Promise<{ ok: true }> {
+    const schedule = await this.prisma.contractSchedule.findFirst({
+      where: { id: scheduleId, contractId },
+      select: { id: true }
+    });
+    if (!schedule) throw new NotFoundException("Cronograma não encontrado neste contrato.");
+    const att = await this.prisma.attachment.findFirst({
+      where: { id: attachmentId, scheduleId }
+    });
+    if (!att) throw new NotFoundException("Anexo não encontrado neste cronograma");
+    await this.storage.unlinkStoredByRelativeSafe(att.filePath);
+    await this.prisma.attachment.delete({ where: { id: attachmentId } });
+    await this.createAudit("Attachment", attachmentId, "DELETE", att, null);
+    return { ok: true };
   }
 
   private async ensureValidationGroup(

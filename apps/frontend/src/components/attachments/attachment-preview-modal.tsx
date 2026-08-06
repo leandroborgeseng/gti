@@ -20,6 +20,7 @@ import {
   deleteGlosaAttachment,
   deleteMeasurementAttachment,
   deleteProjectTaskAttachment,
+  deleteScheduleAttachment,
   type AttachmentRecord
 } from "@/lib/api";
 import { attachmentPreviewKind } from "@/lib/attachment-preview-kind";
@@ -33,7 +34,8 @@ export type GestaoAttachmentListItem = Pick<AttachmentRecord, "id" | "fileName" 
 export type GestaoAttachmentsContext =
   | { scope: "measurement"; measurementId: string }
   | { scope: "glosa"; glosaId: string }
-  | { scope: "projectTask"; projectId: string; taskId: string };
+  | { scope: "projectTask"; projectId: string; taskId: string }
+  | { scope: "schedule"; contractId: string; scheduleId: string };
 
 type Props = {
   attachments: GestaoAttachmentListItem[];
@@ -66,6 +68,8 @@ export function GestaoAttachmentsList(props: Props): JSX.Element {
         await deleteMeasurementAttachment(gestaoCtx.measurementId, attId);
       } else if (gestaoCtx.scope === "glosa") {
         await deleteGlosaAttachment(gestaoCtx.glosaId, attId);
+      } else if (gestaoCtx.scope === "schedule") {
+        await deleteScheduleAttachment(gestaoCtx.contractId, gestaoCtx.scheduleId, attId);
       } else {
         await deleteProjectTaskAttachment(gestaoCtx.projectId, gestaoCtx.taskId, attId);
       }

@@ -36,7 +36,11 @@ export async function POST(req: Request): Promise<NextResponse> {
         userAgent: req.headers.get("user-agent")
       })
       .catch((err) => console.warn("[user-access] falha ao registrar login", err));
-    const redirectTo = user.mustChangePassword ? "/trocar-senha" : null;
+    const redirectTo = user.mustChangePassword
+      ? "/trocar-senha"
+      : user.userKind === "EXTERNAL"
+        ? "/externo/notificacoes"
+        : null;
     const res = NextResponse.json({ ok: true, expires_in, user, redirectTo });
     res.cookies.set(GTI_TOKEN_COOKIE, access_token, {
       path: "/",

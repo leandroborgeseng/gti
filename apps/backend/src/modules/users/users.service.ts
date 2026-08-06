@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { UserApprovalStatus, UserRole } from "@prisma/client";
+import { ExternalUserFunction, UserApprovalStatus, UserKind, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
+import { getAuditActorId } from "../../common/audit-actor";
+import { EXTERNAL_PROFILE_ID } from "../../common/external-access";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateUserDto, UpdateMyProfileDto, UpdateUserDto } from "./users.dto";
 
@@ -23,6 +25,16 @@ const USER_SELECT = {
   role: true,
   approvalStatus: true,
   mustChangePassword: true,
+  userKind: true,
+  externalFunction: true,
+  supplierId: true,
+  supplier: { select: { id: true, name: true, cnpj: true } },
+  externalContracts: {
+    select: {
+      contractId: true,
+      contract: { select: { id: true, number: true, name: true, internalCode: true, supplierId: true } }
+    }
+  },
   createdAt: true,
   updatedAt: true,
   accessProfiles: {
@@ -109,6 +121,14 @@ type UserSelectRow = {
   role: UserRole;
   approvalStatus: UserApprovalStatus;
   mustChangePassword: boolean;
+  userKind: UserKind;
+  externalFunction: ExternalUserFunction | null;
+  supplierId: string | null;
+  supplier: { id: string; name: string; cnpj: string } | null;
+  externalContracts: Array<{
+    contractId: string;
+    contract: { id: string; number: string; name: string; internalCode: string | null; supplierId: string | null };
+  }>;
   createdAt: Date;
   updatedAt: Date;
   accessProfiles: Array<{
@@ -122,7 +142,7 @@ type UserSelectRow = {
 };
 
 function mapUserRow(row: UserSelectRow) {
-  const { cpf, accessProfiles, organizations, ...rest } = row;
+  const { cpf, accessProfiles, organizations, externalContracts, ...rest } = row;
   const profiles = accessProfiles.map((l) => ({
     id: l.profile.id,
     name: l.profile.name,
@@ -137,24 +157,37 @@ function mapUserRow(row: UserSelectRow) {
     active: l.organization.active,
     isDefault: l.isDefault
   }));
+  const authorizedContracts = externalContracts.map((l) => ({
+    id: l.contract.id,
+    number: l.contract.number,
+    name: l.contract.name,
+    internalCode: l.contract.internalCode
+  }));
   return {
     ...rest,
     cpfMasked: maskCpf(cpf),
     cpfDigits: cpf,
     profiles,
     organizations: orgs,
+    authorizedContractIds: authorizedContracts.map((c) => c.id),
+    authorizedContracts,
     allOrganizations: row.allOrganizations,
     profileSummary:
       profiles.length <= 1
         ? profiles[0]?.name ?? null
         : `${profiles[0]?.name ?? "Perfil"} +${profiles.length - 1} perfis`,
-    organizationSummary: row.allOrganizations
-      ? orgs.length === 0
-        ? "Todos os órgãos"
-        : `Todos os órgãos · +${orgs.length} vínculos`
-      : orgs.length <= 1
-        ? orgs[0]?.acronym || orgs[0]?.name || null
-        : `${orgs[0]?.acronym || orgs[0]?.name} +${orgs.length - 1} órgãos`
+    organizationSummary:
+      row.userKind === "EXTERNAL"
+        ? row.supplier
+          ? `${row.supplier.name} · ${authorizedContracts.length} contrato(s)`
+          : "Externo"
+        : row.allOrganizations
+          ? orgs.length === 0
+            ? "Todos os órgãos"
+            : `Todos os órgãos · +${orgs.length} vínculos`
+          : orgs.length <= 1
+            ? orgs[0]?.acronym || orgs[0]?.name || null
+            : `${orgs[0]?.acronym || orgs[0]?.name} +${orgs.length - 1} órgãos`
   };
 }
 
@@ -226,10 +259,56 @@ export class UsersService {
       if (cpfTaken) throw new ConflictException("Já existe usuário com este CPF.");
     }
 
-    const access = await this.resolveAccessLinks(dto);
+    const userKind = dto.userKind ?? UserKind.INTERNAL;
     const names = resolveNameParts(dto);
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
+    if (userKind === UserKind.EXTERNAL) {
+      const external = await this.resolveExternalLinks(dto);
+      const created = await this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            email,
+            cpf,
+            ...names,
+            organizationId: null,
+            allOrganizations: false,
+            defaultProfileId: EXTERNAL_PROFILE_ID,
+            defaultOrganizationId: null,
+            lastActiveProfileId: EXTERNAL_PROFILE_ID,
+            lastActiveOrganizationId: null,
+            passwordHash,
+            mustChangePassword: true,
+            approvalStatus: UserApprovalStatus.APPROVED,
+            role: UserRole.VIEWER,
+            userKind: UserKind.EXTERNAL,
+            supplierId: external.supplierId,
+            externalFunction: external.externalFunction
+          }
+        });
+        await tx.userAccessProfile.create({
+          data: { userId: user.id, profileId: EXTERNAL_PROFILE_ID, isDefault: true }
+        });
+        if (external.contractIds.length > 0) {
+          await tx.userExternalContract.createMany({
+            data: external.contractIds.map((contractId) => ({ userId: user.id, contractId }))
+          });
+        }
+        await tx.auditLog.create({
+          data: {
+            entity: "User",
+            entityId: user.id,
+            action: "CREATE",
+            userId: getAuditActorId(),
+            newData: { userKind: "EXTERNAL", email, supplierId: external.supplierId, approvalStatus: "APPROVED" }
+          }
+        });
+        return tx.user.findUniqueOrThrow({ where: { id: user.id }, select: USER_SELECT });
+      });
+      return mapUserRow(created);
+    }
+
+    const access = await this.resolveAccessLinks(dto);
     const created = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -245,7 +324,8 @@ export class UsersService {
           passwordHash,
           mustChangePassword: true,
           approvalStatus: UserApprovalStatus.APPROVED,
-          role: access.legacyRole
+          role: access.legacyRole,
+          userKind: UserKind.INTERNAL
         }
       });
       await tx.userAccessProfile.createMany({
@@ -339,8 +419,37 @@ export class UsersService {
         ? resolveNameParts(dto)
         : null;
 
+    const nextKind = dto.userKind ?? prev.userKind;
+    const externalPatch =
+      nextKind === UserKind.EXTERNAL &&
+      (dto.supplierId !== undefined ||
+        dto.externalFunction !== undefined ||
+        dto.authorizedContractIds !== undefined ||
+        dto.userKind === UserKind.EXTERNAL)
+        ? await this.resolveExternalLinks({
+            supplierId: dto.supplierId ?? prev.supplierId ?? undefined,
+            externalFunction: dto.externalFunction ?? prev.externalFunction ?? undefined,
+            authorizedContractIds: dto.authorizedContractIds
+          })
+        : null;
+
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (access) {
+      if (nextKind === UserKind.EXTERNAL) {
+        await tx.userAccessProfile.deleteMany({ where: { userId: id } });
+        await tx.userAccessProfile.create({
+          data: { userId: id, profileId: EXTERNAL_PROFILE_ID, isDefault: true }
+        });
+        await tx.userOrganization.deleteMany({ where: { userId: id } });
+        if (externalPatch || dto.authorizedContractIds !== undefined) {
+          const contractIds = externalPatch?.contractIds ?? dto.authorizedContractIds ?? [];
+          await tx.userExternalContract.deleteMany({ where: { userId: id } });
+          if (contractIds.length > 0) {
+            await tx.userExternalContract.createMany({
+              data: contractIds.map((contractId) => ({ userId: id, contractId }))
+            });
+          }
+        }
+      } else if (access) {
         await tx.userAccessProfile.deleteMany({ where: { userId: id } });
         await tx.userAccessProfile.createMany({
           data: access.profileIds.map((profileId) => ({
@@ -359,40 +468,56 @@ export class UsersService {
             }))
           });
         }
-        // Remover extras de perfis desvinculados
         await tx.userPermission.deleteMany({
           where: { userId: id, profileId: { notIn: access.profileIds } }
         });
+        await tx.userExternalContract.deleteMany({ where: { userId: id } });
       }
 
-      return tx.user.update({
+      const row = await tx.user.update({
         where: { id },
         data: {
           approvalStatus: dto.approvalStatus ?? undefined,
           cpf: dto.cpf === undefined ? undefined : normalizeCpfDigits(dto.cpf),
-          ...(access
+          ...(nextKind === UserKind.EXTERNAL
             ? {
-                role: access.legacyRole,
-                organizationId: access.primaryOrganizationId,
-                allOrganizations: access.allOrganizations,
-                defaultProfileId: access.defaultProfileId,
-                defaultOrganizationId: access.defaultOrganizationId,
-                lastActiveProfileId: access.profileIds.includes(prev.lastActiveProfileId ?? "")
-                  ? prev.lastActiveProfileId
-                  : access.defaultProfileId,
-                lastActiveOrganizationId: access.allOrganizations
-                  ? prev.lastActiveOrganizationId &&
-                    (access.organizationIds.includes(prev.lastActiveOrganizationId) ||
-                      access.allOrganizations)
-                    ? prev.lastActiveOrganizationId
-                    : access.defaultOrganizationId
-                  : access.organizationIds.includes(prev.lastActiveOrganizationId ?? "")
-                    ? prev.lastActiveOrganizationId
-                    : access.defaultOrganizationId
+                userKind: UserKind.EXTERNAL,
+                role: UserRole.VIEWER,
+                organizationId: null,
+                allOrganizations: false,
+                defaultProfileId: EXTERNAL_PROFILE_ID,
+                defaultOrganizationId: null,
+                lastActiveProfileId: EXTERNAL_PROFILE_ID,
+                lastActiveOrganizationId: null,
+                supplierId: externalPatch?.supplierId ?? dto.supplierId ?? undefined,
+                externalFunction: externalPatch?.externalFunction ?? dto.externalFunction ?? undefined
               }
-            : dto.role !== undefined
-              ? { role: dto.role }
-              : {}),
+            : access
+              ? {
+                  userKind: UserKind.INTERNAL,
+                  supplierId: null,
+                  externalFunction: null,
+                  role: access.legacyRole,
+                  organizationId: access.primaryOrganizationId,
+                  allOrganizations: access.allOrganizations,
+                  defaultProfileId: access.defaultProfileId,
+                  defaultOrganizationId: access.defaultOrganizationId,
+                  lastActiveProfileId: access.profileIds.includes(prev.lastActiveProfileId ?? "")
+                    ? prev.lastActiveProfileId
+                    : access.defaultProfileId,
+                  lastActiveOrganizationId: access.allOrganizations
+                    ? prev.lastActiveOrganizationId &&
+                      (access.organizationIds.includes(prev.lastActiveOrganizationId) ||
+                        access.allOrganizations)
+                      ? prev.lastActiveOrganizationId
+                      : access.defaultOrganizationId
+                    : access.organizationIds.includes(prev.lastActiveOrganizationId ?? "")
+                      ? prev.lastActiveOrganizationId
+                      : access.defaultOrganizationId
+                }
+              : dto.role !== undefined
+                ? { role: dto.role }
+                : {}),
           ...(names
             ? {
                 firstName: names.firstName,
@@ -404,6 +529,21 @@ export class UsersService {
         },
         select: USER_SELECT
       });
+
+      if (dto.approvalStatus !== undefined && dto.approvalStatus !== prev.approvalStatus) {
+        await tx.auditLog.create({
+          data: {
+            entity: "User",
+            entityId: id,
+            action: "UPDATE",
+            userId: getAuditActorId(),
+            oldData: { approvalStatus: prev.approvalStatus },
+            newData: { approvalStatus: dto.approvalStatus, userKind: nextKind }
+          }
+        });
+      }
+
+      return row;
     });
 
     return mapUserRow(updated);
@@ -483,6 +623,46 @@ export class UsersService {
     });
   }
 
+  private async resolveExternalLinks(dto: {
+    supplierId?: string | null;
+    externalFunction?: ExternalUserFunction | null;
+    authorizedContractIds?: string[];
+  }): Promise<{
+    supplierId: string;
+    externalFunction: ExternalUserFunction;
+    contractIds: string[];
+  }> {
+    if (!dto.supplierId) {
+      throw new BadRequestException("Usuário externo exige fornecedor (CNPJ) obrigatório.");
+    }
+    if (!dto.externalFunction) {
+      throw new BadRequestException("Informe a função do usuário externo.");
+    }
+    const supplier = await this.prisma.supplier.findUnique({ where: { id: dto.supplierId } });
+    if (!supplier) throw new BadRequestException("Fornecedor inválido.");
+
+    const contractIds = [...new Set((dto.authorizedContractIds ?? []).filter(Boolean))];
+    if (contractIds.length > 0) {
+      const contracts = await this.prisma.contract.findMany({
+        where: { id: { in: contractIds }, deletedAt: null },
+        select: { id: true, supplierId: true, cnpj: true }
+      });
+      if (contracts.length !== contractIds.length) {
+        throw new BadRequestException("Um ou mais contratos autorizados são inválidos.");
+      }
+      for (const c of contracts) {
+        const sameSupplier =
+          c.supplierId === supplier.id || c.cnpj.replace(/\D/g, "") === supplier.cnpj.replace(/\D/g, "");
+        if (!sameSupplier) {
+          throw new BadRequestException(
+            "Todos os contratos autorizados devem pertencer ao mesmo fornecedor do usuário."
+          );
+        }
+      }
+    }
+    return { supplierId: supplier.id, externalFunction: dto.externalFunction, contractIds };
+  }
+
   private async resolveAccessLinks(dto: {
     profileIds?: string[];
     organizationIds?: string[];
@@ -532,6 +712,11 @@ export class UsersService {
       profileIds[0]!;
 
     const defaultProfile = profiles.find((p) => p.id === defaultProfileId)!;
+    if (profiles.some((p) => p.systemKey === "EXTERNAL")) {
+      throw new BadRequestException(
+        "O perfil «Usuário externo» não pode ser combinado com perfis internos. Cadastre a conta como tipo Externo."
+      );
+    }
     const legacyRole: UserRole =
       defaultProfile.systemKey === "ADMIN" ||
       defaultProfile.systemKey === "EDITOR" ||

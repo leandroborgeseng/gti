@@ -51,7 +51,11 @@ function LoginForm(): JSX.Element {
         body: JSON.stringify({ email: values.email.trim(), password: values.password })
       });
       const text = await r.text();
-      let payload: { error?: string; redirectTo?: string | null } = {};
+      let payload: {
+        error?: string;
+        redirectTo?: string | null;
+        user?: { userKind?: string; mustChangePassword?: boolean };
+      } = {};
       try {
         payload = text ? (JSON.parse(text) as typeof payload) : {};
       } catch {
@@ -64,9 +68,17 @@ function LoginForm(): JSX.Element {
     },
     onSuccess: (payload) => {
       toast.success("Login realizado.");
-      const raw = searchParams.get("returnUrl") ?? "/dashboard";
-      const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/dashboard";
-      router.replace(payload.redirectTo ? `${payload.redirectTo}?returnUrl=${encodeURIComponent(next)}` : next);
+      const defaultHome =
+        payload.user?.userKind === "EXTERNAL" ? "/externo/notificacoes" : "/dashboard";
+      const raw = searchParams.get("returnUrl") ?? defaultHome;
+      const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : defaultHome;
+      if (payload.redirectTo === "/trocar-senha") {
+        router.replace(`${payload.redirectTo}?returnUrl=${encodeURIComponent(next)}`);
+      } else if (payload.redirectTo) {
+        router.replace(payload.redirectTo);
+      } else {
+        router.replace(next);
+      }
       router.refresh();
     },
     onError: (e) => {

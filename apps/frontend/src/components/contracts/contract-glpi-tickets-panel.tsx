@@ -1,10 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   getContractGlpiTickets,
+  upsertContractGlpiTicketClassification,
   type ContractGlpiGroup,
+  type ContractGlpiTicketCategory,
   type ContractGlpiTicketsQuery
 } from "@/lib/api";
 import { buildGlpiTicketFrontUrl } from "@/lib/glpi-ticket-front-url";
@@ -17,6 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 type Props = {
   contractId: string;
   glpiGroups: ContractGlpiGroup[];
+  /** Quem pode alterar a classificação local (contracts.edit). */
+  canEdit?: boolean;
 };
 
 type SyncBanner = {
@@ -25,6 +30,16 @@ type SyncBanner = {
   isRunning: boolean;
   lastError: string | null;
 };
+
+const CATEGORY_OPTIONS: Array<{ value: ContractGlpiTicketCategory; label: string }> = [
+  { value: "CORRETIVO", label: "Corretivo" },
+  { value: "EVOLUTIVO", label: "Evolutivo" },
+  { value: "SUPORTE", label: "Suporte" },
+  { value: "DESENVOLVIMENTO", label: "Desenvolvimento" },
+  { value: "DUVIDA", label: "Dúvida" },
+  { value: "INDISPONIBILIDADE", label: "Indisponibilidade" },
+  { value: "OUTRO", label: "Outro" }
+];
 
 function formatDateTimePtBr(iso: string | null | undefined): string {
   if (!iso?.trim()) return "-";
@@ -66,7 +81,8 @@ async function fetchGlpiSyncBanner(): Promise<SyncBanner | null> {
   }
 }
 
-export function ContractGlpiTicketsPanel({ contractId, glpiGroups }: Props): JSX.Element {
+export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = false }: Props): JSX.Element {
+  const qc = useQueryClient();
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
   const [from, setFrom] = useState("");
@@ -101,6 +117,19 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups }: Props): JSX
     staleTime: 60_000
   });
 
+  const classifyMut = useMutation({
+    mutationFn: (input: { glpiTicketId: number; category: ContractGlpiTicketCategory }) =>
+      upsertContractGlpiTicketClassification(contractId, input.glpiTicketId, {
+        category: input.category
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.contractGlpiTickets(contractId, filterKey) });
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : "Não foi possível salvar a classificação.");
+    }
+  });
+
   const data = qTickets.data;
   const tickets = data?.tickets ?? [];
   const facets = data?.facets;
@@ -126,9 +155,9 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups }: Props): JSX
     <Card className="p-5">
       <h2 className="text-lg font-semibold text-slate-900">Chamados GLPI</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Lista somente leitura dos chamados sincronizados cujos grupos técnicos coincidem com os{" "}
-        <strong>Grupos GLPI</strong> vinculados a este contrato. A classificação contratual complementar
-        (campos locais além do GLPI) ainda não está disponível nesta tela.
+        Chamados sincronizados cujos grupos técnicos coincidem com os <strong>Grupos GLPI</strong>{" "}
+        vinculados a este contrato. A classificação contratual (coluna local) é gravada no SIGTI e não
+        altera o GLPI.
       </p>
 
       {syncText ? (
@@ -233,13 +262,14 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups }: Props): JSX
             <p className="mt-4 text-sm text-slate-600">Carregando chamados…</p>
           ) : (
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[820px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                     <th className="py-2 pr-3 font-semibold">Nº</th>
                     <th className="py-2 pr-3 font-semibold">Título</th>
                     <th className="py-2 pr-3 font-semibold">Situação</th>
                     <th className="py-2 pr-3 font-semibold">Prioridade</th>
+                    <th className="py-2 pr-3 font-semibold">Classificação</th>
                     <th className="py-2 pr-3 font-semibold">Grupo</th>
                     <th className="py-2 pr-3 font-semibold">Abertura</th>
                     <th className="py-2 pr-3 font-semibold">SLA</th>
@@ -249,13 +279,14 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups }: Props): JSX
                 <tbody>
                   {tickets.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-4 text-slate-600">
+                      <td colSpan={9} className="py-4 text-slate-600">
                         Nenhum chamado encontrado para os grupos e filtros atuais.
                       </td>
                     </tr>
                   ) : (
                     tickets.map((t) => {
                       const href = buildGlpiTicketFrontUrl(t.glpiTicketId);
+                      const currentCat = t.localClassification?.category ?? "";
                       return (
                         <tr key={t.glpiTicketId} className="border-b border-slate-100 align-top">
                           <td className="py-2 pr-3 font-medium text-slate-900">{t.glpiTicketId}</td>
@@ -269,6 +300,39 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups }: Props): JSX
                           </td>
                           <td className="py-2 pr-3 text-slate-700">{t.status?.trim() || "-"}</td>
                           <td className="py-2 pr-3 text-slate-700">{t.priority?.trim() || "-"}</td>
+                          <td className="py-2 pr-3">
+                            {canEdit ? (
+                              <Select
+                                value={currentCat || "__none__"}
+                                onValueChange={(v) => {
+                                  if (v === "__none__") return;
+                                  classifyMut.mutate({
+                                    glpiTicketId: t.glpiTicketId,
+                                    category: v as ContractGlpiTicketCategory
+                                  });
+                                }}
+                                disabled={classifyMut.isPending}
+                              >
+                                <SelectTrigger className="h-8 w-[160px]">
+                                  <SelectValue placeholder="Definir…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__" disabled>
+                                    Definir…
+                                  </SelectItem>
+                                  {CATEGORY_OPTIONS.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>
+                                      {o.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="text-slate-700">
+                                {CATEGORY_OPTIONS.find((o) => o.value === currentCat)?.label || "—"}
+                              </span>
+                            )}
+                          </td>
                           <td className="py-2 pr-3 text-slate-700">
                             {t.contractGroupName?.trim() ||
                               (t.contractGroupId != null ? `#${t.contractGroupId}` : "-")}

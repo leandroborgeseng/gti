@@ -11,6 +11,7 @@ import {
   saveAuditEventConfig
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import { AuditRetentionPanel } from "@/components/admin/audit-retention-panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -293,16 +294,7 @@ export function AuditEventConfigPanel(): JSX.Element {
         ) : null}
       </div>
 
-      <Card className="space-y-2 border-dashed p-4 opacity-70">
-        <h3 className="text-sm font-semibold text-foreground">Armazenamento e retenção (em breve)</h3>
-        <p className="text-sm text-muted-foreground">
-          Políticas legais de descarte e retenção de logs serão configuradas em uma evolução futura
-          (ticket 69). Nesta versão a seção permanece desabilitada.
-        </p>
-        <Button type="button" variant="outline" size="sm" disabled>
-          Configurar retenção
-        </Button>
-      </Card>
+      <AuditRetentionPanel />
 
       <Modal
         open={confirmOpen}

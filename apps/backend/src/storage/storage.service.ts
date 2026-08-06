@@ -101,6 +101,23 @@ export class StorageService {
     return { filePath: rel, storedFileName };
   }
 
+  async saveScheduleFile(
+    scheduleId: string,
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string
+  ): Promise<{ filePath: string; storedFileName: string }> {
+    this.assertMimeAllowed(mimeType);
+    this.assertSize(buffer.length);
+    const safe = basename(originalName).replace(/[^\w.\-()+ ]/g, "_").slice(0, 120);
+    const storedFileName = `${randomUUID()}_${safe || "anexo"}`;
+    const rel = join("schedules", scheduleId, storedFileName).replace(/\\/g, "/");
+    const abs = join(this.root, rel);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, buffer);
+    return { filePath: rel, storedFileName };
+  }
+
   /**
    * Remove o ficheiro em disco quando existir; ignora ENOENT (já não há ficheiro).
    * Usa o mesmo critério de caminho seguro que `resolveAbsoluteSafe`.

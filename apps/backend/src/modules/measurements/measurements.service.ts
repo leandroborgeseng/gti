@@ -414,21 +414,81 @@ export class MeasurementsService {
     }
 
     const autoGlosaValue = this.computeAutomaticFeatureGlosa(measurement, measured);
+
+    // Remove glosas automáticas anteriores e zera o rateio nas linhas (mantém manuais).
+    const previousAuto = await this.prisma.glosa.findMany({
+      where: { measurementId: id, origin: GlosaOrigin.AUTOMATIC },
+      select: { id: true, measurementItemId: true, value: true }
+    });
+    for (const g of previousAuto) {
+      if (g.measurementItemId) {
+        await this.prisma.measurementItem.update({
+          where: { id: g.measurementItemId },
+          data: { glosedValue: { decrement: g.value } }
+        });
+      }
+    }
     await this.prisma.glosa.deleteMany({
       where: { measurementId: id, origin: GlosaOrigin.AUTOMATIC }
     });
+
     if (autoGlosaValue.gt(0)) {
-      await this.prisma.glosa.create({
-        data: {
-          measurementId: id,
-          type: GlosaType.NAO_ENTREGA,
-          origin: GlosaOrigin.AUTOMATIC,
-          value: autoGlosaValue,
-          justification:
-            "Glosa automática pela proporção de funcionalidades não validadas sobre a base de glosa da competência.",
-          createdBy: "sistema"
-        }
+      const items = await this.prisma.measurementItem.findMany({
+        where: { measurementId: id },
+        select: { id: true, calculatedValue: true }
       });
+      const positive = items.filter((i) => i.calculatedValue.gt(0));
+      const totalGross = positive.reduce(
+        (sum, i) => sum.add(i.calculatedValue),
+        new Prisma.Decimal(0)
+      );
+
+      if (positive.length === 0 || totalGross.lte(0)) {
+        await this.prisma.glosa.create({
+          data: {
+            measurementId: id,
+            type: GlosaType.NAO_ENTREGA,
+            origin: GlosaOrigin.AUTOMATIC,
+            value: autoGlosaValue,
+            justification:
+              "Glosa automática pela proporção de funcionalidades não validadas sobre a base de glosa da competência (sem linhas de medição para rateio).",
+            createdBy: "sistema"
+          }
+        });
+      } else {
+        // Rateio proporcional ao bruto (calculatedValue); resto na última linha.
+        let allocated = new Prisma.Decimal(0);
+        for (let idx = 0; idx < positive.length; idx++) {
+          const item = positive[idx]!;
+          const isLast = idx === positive.length - 1;
+          const share = isLast
+            ? autoGlosaValue.sub(allocated)
+            : autoGlosaValue.mul(item.calculatedValue).div(totalGross);
+          const rounded = new Prisma.Decimal(share.toFixed(2));
+          if (rounded.lte(0) && !isLast) continue;
+          const value = isLast
+            ? new Prisma.Decimal(autoGlosaValue.sub(allocated).toFixed(2))
+            : rounded;
+          if (value.lte(0)) continue;
+          allocated = allocated.add(value);
+          await this.prisma.glosa.create({
+            data: {
+              measurementId: id,
+              measurementItemId: item.id,
+              type: GlosaType.NAO_ENTREGA,
+              origin: GlosaOrigin.AUTOMATIC,
+              value,
+              justification:
+                "Glosa automática rateada proporcionalmente ao valor bruto da linha (funcionalidades não validadas).",
+              createdBy: "sistema"
+            }
+          });
+          await this.prisma.measurementItem.update({
+            where: { id: item.id },
+            data: { glosedValue: { increment: value } }
+          });
+        }
+      }
     }
 
     const glosasAgg = await this.prisma.glosa.aggregate({

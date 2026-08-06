@@ -36,7 +36,9 @@ import {
   gestaoUserAssignments,
   gestaoUsers,
   gestaoAuditLogs,
-  gestaoDeadlines
+  gestaoDeadlines,
+  gestaoNotificationTemplates,
+  gestaoContractNotifications
 } from "./gestao-services";
 import { loadContractGlpiGroupCatalog } from "./contract-glpi-groups-catalog";
 
@@ -51,10 +53,15 @@ type JwtUser = {
   department: string | null;
   phone: string | null;
   role: UserRole;
+  /** systemKey do perfil ativo (ADMIN|EDITOR|VIEWER|EXTERNAL). */
+  systemKey: string | null;
   organizationId: string | null;
   profileId: string | null;
   allOrganizationsActive: boolean;
   mustChangePassword: boolean;
+  userKind: "INTERNAL" | "EXTERNAL";
+  supplierId: string | null;
+  authorizedContractIds: string[];
   effectivePermissionKeys: Set<string>;
   usingLegacyPermissionFallback: boolean;
 };
@@ -119,10 +126,14 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
       department: accessUser.department,
       phone: accessUser.phone,
       role: ctx.role,
+      systemKey: ctx.systemKey,
       organizationId: ctx.organizationId,
       profileId: ctx.profileId,
       allOrganizationsActive: ctx.allOrganizationsActive,
       mustChangePassword: accessUser.mustChangePassword,
+      userKind: accessUser.userKind ?? "INTERNAL",
+      supplierId: accessUser.supplierId ?? null,
+      authorizedContractIds: (accessUser.externalContracts ?? []).map((c) => c.contractId),
       effectivePermissionKeys: new Set(),
       usingLegacyPermissionFallback: false
     };
@@ -143,6 +154,8 @@ function assertRoles(user: JwtUser, roles: UserRole[]): void {
 function assertMutation(user: JwtUser, method: string): void {
   const m = method.toUpperCase();
   if (m === "GET" || m === "HEAD" || m === "OPTIONS") return;
+  // Externos usam role legado VIEWER; mutações próprias são liberadas por permissão na rota.
+  if (user.userKind === "EXTERNAL" || user.systemKey === "EXTERNAL") return;
   if (user.role === UserRole.VIEWER) {
     throw new HttpException("Perfil apenas de leitura não pode alterar dados", 403);
   }
@@ -165,7 +178,11 @@ const LEGACY_ROLE_PERMISSION_KEYS: Record<UserRole, readonly string[]> = {
     "suppliers.view",
     "fiscais.view",
     "reports.view",
-    "manual.view"
+    "manual.view",
+    "notifications.view",
+    "schedules.view",
+    "documents.view",
+    "profile.view"
   ],
   [UserRole.EDITOR]: [
     "dashboard.view",
@@ -189,7 +206,15 @@ const LEGACY_ROLE_PERMISSION_KEYS: Record<UserRole, readonly string[]> = {
     "measurements.edit",
     "glosas.create",
     "exports.run",
-    "projects.edit"
+    "projects.edit",
+    "notifications.view",
+    "notifications.manage",
+    "notifications.sign",
+    "notifications.send",
+    "notifications.analyze",
+    "schedules.view",
+    "documents.view",
+    "profile.view"
   ],
   [UserRole.ADMIN]: []
 };
@@ -214,7 +239,8 @@ const ADMIN_ONLY_PERMISSION_KEYS = [
   "admin.hiring_types.manage",
   "admin.backup.manage",
   "admin.email.manage",
-  "admin.audit.manage"
+  "admin.audit.manage",
+  "notification_templates.manage"
 ] as const;
 
 function legacyPermissionKeys(role: UserRole): Set<string> {
@@ -278,6 +304,19 @@ function requiredPermissionForRoute(method: string, seg: string[]): string | nul
   if (root === "deadlines") {
     if (method === "POST" && seg[1] === "recalculate") return "deadlines.recalculate";
     return isRead ? "deadlines.view" : null;
+  }
+  if (root === "notification-templates") {
+    // Leitura também para quem elabora notificações; escrita só admin (checada na rota).
+    if (isRead) return null;
+    return "notification_templates.manage";
+  }
+  if (root === "contract-notifications") {
+    if (isRead) return "notifications.view";
+    if (seg[2] === "acknowledge" || seg[2] === "response") return "notifications.respond";
+    if (seg[2] === "sign") return "notifications.sign";
+    if (seg[2] === "prepare-send" || seg[2] === "confirm-send") return "notifications.send";
+    if (seg[2] === "analyze" || (seg[3] === "analyze")) return "notifications.analyze";
+    return "notifications.manage";
   }
   if (root === "exports") return "exports.run";
   // Leituras de catálogo tratadas em assertCatalogRead (contratos também precisam listar).
@@ -430,11 +469,17 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
   user.usingLegacyPermissionFallback = effectivePermissions.keys.length === 0;
 
   const actor = toRequestActor(
-    { id: user.sub, email: user.email },
+    {
+      id: user.sub,
+      email: user.email,
+      userKind: user.userKind,
+      supplierId: user.supplierId,
+      authorizedContractIds: user.authorizedContractIds
+    },
     {
       profileId: user.profileId ?? "",
       profileName: "",
-      systemKey: user.role,
+      systemKey: user.systemKey ?? user.role,
       role: user.role,
       organizationId: user.organizationId,
       organizationLabel: "",
@@ -539,6 +584,35 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     }
     if (seg.length === 4 && seg[2] === "event-config" && seg[3] === "restore-defaults" && method === "POST") {
       return jsonOk(await gestaoAuditLogs.restoreEventConfigDefaults());
+    }
+    if (seg.length === 3 && seg[2] === "retention" && method === "GET") {
+      return jsonOk(await gestaoAuditLogs.listRetentionPolicies());
+    }
+    if (seg.length === 3 && seg[2] === "retention" && method === "PUT") {
+      const body = (await readJsonBody(req)) as {
+        items?: Array<{ id: string; retentionDays: number; active: boolean }>;
+      };
+      return jsonOk(await gestaoAuditLogs.saveRetentionPolicies({ items: body?.items ?? [] }));
+    }
+    if (seg.length === 4 && seg[2] === "retention" && seg[3] === "indicators" && method === "GET") {
+      return jsonOk(await gestaoAuditLogs.getStorageIndicators());
+    }
+    if (seg.length === 4 && seg[2] === "retention" && seg[3] === "runs" && method === "GET") {
+      const u = new URL(req.url);
+      return jsonOk(
+        await gestaoAuditLogs.listRetentionRuns(
+          u.searchParams.get("limit") ? Number(u.searchParams.get("limit")) : undefined
+        )
+      );
+    }
+    if (seg.length === 4 && seg[2] === "retention" && seg[3] === "dry-run" && method === "POST") {
+      return jsonOk(await gestaoAuditLogs.runRetentionDiscard({ dryRun: true }));
+    }
+    if (seg.length === 4 && seg[2] === "retention" && seg[3] === "execute" && method === "POST") {
+      const body = (await readJsonBody(req)) as { confirmed?: boolean };
+      return jsonOk(
+        await gestaoAuditLogs.runRetentionDiscard({ dryRun: false, confirmed: body?.confirmed === true })
+      );
     }
     if (seg.length === 3 && seg[2] === "export.csv" && method === "GET") {
       const u = new URL(req.url);
@@ -776,6 +850,44 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertPermission(user, "contracts.edit");
       return jsonOk(await gestaoContracts.deleteSchedule(seg[1], seg[3]));
     }
+    if (seg.length === 5 && seg[2] === "schedules" && seg[4] === "attachments" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      const form = await req.formData();
+      const file = form.get("file");
+      if (!(file instanceof File)) return jsonErr(400, "Arquivo obrigatório (campo file).");
+      const buf = Buffer.from(await file.arrayBuffer());
+      const multerLike = {
+        buffer: buf,
+        originalname: file.name || "anexo",
+        mimetype: file.type || "application/octet-stream",
+        size: buf.length
+      } as Express.Multer.File;
+      return jsonOk(await gestaoContracts.addScheduleAttachmentUpload(seg[1], seg[3], multerLike));
+    }
+    if (
+      seg.length === 6 &&
+      seg[2] === "schedules" &&
+      seg[4] === "attachments" &&
+      method === "DELETE"
+    ) {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(await gestaoContracts.removeScheduleAttachment(seg[1], seg[3], seg[5]));
+    }
+    if (
+      seg.length === 5 &&
+      seg[2] === "glpi-tickets" &&
+      seg[4] === "classification" &&
+      method === "PUT"
+    ) {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(
+        await gestaoContracts.upsertContractGlpiTicketClass(
+          seg[1],
+          Number(seg[3]),
+          (await readJsonBody(req)) as { category?: string; notes?: string | null }
+        )
+      );
+    }
     if (seg.length === 3 && seg[2] === "occurrences" && method === "GET") {
       return jsonOk(await gestaoContracts.listOccurrences(seg[1]));
     }
@@ -986,6 +1098,10 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 1 && method === "POST") {
       assertMutation(user, method);
       return jsonOk(await gestaoSuppliers.create((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoSuppliers.update(seg[1], (await readJsonBody(req)) as never));
     }
     return jsonErr(404, "Não encontrado");
   }
@@ -1338,6 +1454,119 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 4 && seg[2] === "manual-progress" && method === "POST") {
       assertMutation(user, method);
       return jsonOk(await gestaoGoals.setManualProgress(seg[1], (await readJsonBody(req)) as never));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "notification-templates") {
+    if (seg.length === 1 && method === "GET") {
+      assertAnyPermission(user, ["notification_templates.manage", "notifications.manage", "notifications.view"]);
+      const u = new URL(req.url);
+      return jsonOk(
+        await gestaoNotificationTemplates.findAll(
+          u.searchParams.get("includeInactive") === "1" || u.searchParams.get("includeInactive") === "true"
+        )
+      );
+    }
+    if (seg.length === 2 && seg[1] === "mail-merge-fields" && method === "GET") {
+      assertAnyPermission(user, ["notification_templates.manage", "notifications.manage"]);
+      return jsonOk({ fields: gestaoNotificationTemplates.mailMergeFields() });
+    }
+    if (seg.length === 1 && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN]);
+      return jsonOk(await gestaoNotificationTemplates.create((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "GET") {
+      assertAnyPermission(user, ["notification_templates.manage", "notifications.manage", "notifications.view"]);
+      return jsonOk(await gestaoNotificationTemplates.findOne(seg[1]));
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      assertRoles(user, [UserRole.ADMIN]);
+      return jsonOk(await gestaoNotificationTemplates.update(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "deactivate" && method === "POST") {
+      assertRoles(user, [UserRole.ADMIN]);
+      return jsonOk(await gestaoNotificationTemplates.deactivate(seg[1]));
+    }
+    if (seg.length === 2 && method === "DELETE") {
+      assertRoles(user, [UserRole.ADMIN]);
+      return jsonOk(await gestaoNotificationTemplates.remove(seg[1]));
+    }
+    return jsonErr(404, "Não encontrado");
+  }
+
+  if (root === "contract-notifications") {
+    if (seg.length === 1 && method === "GET") {
+      return jsonOk(await gestaoContractNotifications.listMine());
+    }
+    if (seg.length === 3 && seg[1] === "by-contract" && method === "GET") {
+      return jsonOk(await gestaoContractNotifications.listByContract(seg[2]));
+    }
+    if (seg.length === 2 && seg[1] === "from-template" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractNotifications.createFromTemplate((await readJsonBody(req)) as never));
+    }
+    if (seg.length === 2 && method === "GET") {
+      return jsonOk(await gestaoContractNotifications.findOne(seg[1]));
+    }
+    if (seg.length === 3 && seg[2] === "print" && method === "GET") {
+      return jsonOk(await gestaoContractNotifications.printableHtml(seg[1]));
+    }
+    if (seg.length === 3 && seg[2] === "pdf" && method === "GET") {
+      const pdf = await gestaoContractNotifications.printablePdf(seg[1]);
+      return new NextResponse(new Uint8Array(pdf.buffer), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${pdf.filename.replace(/"/g, "'")}"`
+        }
+      });
+    }
+    if (seg.length === 2 && method === "PATCH") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractNotifications.updateDraft(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "transition" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractNotifications.transition(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "signers" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractNotifications.setSigners(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "sign" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractNotifications.sign(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "prepare-send" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractNotifications.prepareSend(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "confirm-send" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractNotifications.confirmSend(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "acknowledge" && method === "POST") {
+      assertPermission(user, "notifications.respond");
+      return jsonOk(await gestaoContractNotifications.acknowledge(seg[1]));
+    }
+    if (seg.length === 3 && seg[2] === "response" && method === "POST") {
+      assertPermission(user, "notifications.respond");
+      return jsonOk(await gestaoContractNotifications.saveResponse(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 5 && seg[2] === "responses" && seg[4] === "analyze" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(
+        await gestaoContractNotifications.analyzeResponse(seg[1], seg[3], (await readJsonBody(req)) as never)
+      );
+    }
+    if (seg.length === 3 && seg[2] === "cancel" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractNotifications.cancel(seg[1], (await readJsonBody(req)) as never));
+    }
+    if (seg.length === 3 && seg[2] === "rectify" && method === "POST") {
+      assertMutation(user, method);
+      return jsonOk(await gestaoContractNotifications.rectify(seg[1], (await readJsonBody(req)) as never));
     }
     return jsonErr(404, "Não encontrado");
   }

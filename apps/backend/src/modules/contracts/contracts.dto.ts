@@ -32,6 +32,8 @@ export type ContractStructureImportRow = {
   featureCriticality?: ContractItemCriticality;
   featureStatus?: ContractFeatureStatus;
   featureDelivery?: ContractItemDeliveryStatus;
+  /** Nome do grupo de validação no contrato (opcional; resolvido no import). */
+  validationGroupName?: string | null;
   /** Número da linha na folha Excel (para mensagens de erro). */
   sourceRow: number;
 };

@@ -112,7 +112,11 @@ const HEADER_ALIASES: Record<string, string> = {
   status: "funcionalidade_status",
   funcionalidade_entrega: "funcionalidade_entrega",
   entrega: "funcionalidade_entrega",
-  estado_entrega: "funcionalidade_entrega"
+  estado_entrega: "funcionalidade_entrega",
+  grupo_validacao: "grupo_validacao",
+  validation_group: "grupo_validacao",
+  grupo: "grupo_validacao",
+  grupo_de_validacao: "grupo_validacao"
 };
 
 function canonicalHeader(cell: unknown): string | null {
@@ -144,21 +148,36 @@ export function buildContractStructureTemplateBuffer(_contractNumber: string): B
     [
       "funcionalidade_entrega · NOT_DELIVERED | PARTIALLY_DELIVERED | DELIVERED (ou: não entregue, parcialmente entregue, entregue)."
     ],
+    [
+      "grupo_validacao · nome exato de um grupo de validação já cadastrado no contrato (opcional). Se vazio, a funcionalidade fica como «Grupo não definido» e pode ser atribuída depois na tela."
+    ],
     [""],
     ["Importação"],
     [
       "Ao importar sem «substituir», o sistema acrescenta módulos novos e funcionalidades aos módulos já existentes (nome do módulo sem distinção de maiúsculas)."
     ],
     ["Com «substituir», remove todos os módulos e funcionalidades atuais do contrato antes de importar."],
+    [
+      "Se o contrato tiver grupos de validação ativos e a planilha omitir o grupo, as linhas importadas ficam sinalizadas como «Grupo não definido» — use a atribuição em massa na estrutura do contrato."
+    ],
     [""],
     ["No cadastro do contrato (página web) pode ainda definir as datas de início e fim do período de implantação e os valores de implantação e mensalidade: o sistema calcula os indicadores proporcionais por fase."]
   ];
 
   const dataSheet: (string | number)[][] = [
-    ["modulo_nome", "modulo_criticidade", "funcionalidade_codigo", "funcionalidade_nome", "funcionalidade_criticidade", "funcionalidade_status", "funcionalidade_entrega"],
-    ["Módulo A", "ALTA", "1.1", "Funcionalidade 1", "CRITICA", "NOT_STARTED", "NOT_DELIVERED"],
-    ["Módulo A", "ALTA", "1.2", "Funcionalidade 2", "MEDIA", "NOT_STARTED", "NOT_DELIVERED"],
-    ["Módulo B", "MEDIA", "2.1", "Funcionalidade X", "APOIO", "", ""]
+    [
+      "modulo_nome",
+      "modulo_criticidade",
+      "funcionalidade_codigo",
+      "funcionalidade_nome",
+      "funcionalidade_criticidade",
+      "funcionalidade_status",
+      "funcionalidade_entrega",
+      "grupo_validacao"
+    ],
+    ["Módulo A", "ALTA", "1.1", "Funcionalidade 1", "CRITICA", "NOT_STARTED", "NOT_DELIVERED", "Grupo Validação 1"],
+    ["Módulo A", "ALTA", "1.2", "Funcionalidade 2", "MEDIA", "NOT_STARTED", "NOT_DELIVERED", ""],
+    ["Módulo B", "MEDIA", "2.1", "Funcionalidade X", "APOIO", "", "", ""]
   ];
 
   const wb = XLSX.utils.book_new();
@@ -254,6 +273,8 @@ export function parseContractStructureExcel(buffer: Buffer): ContractStructureIm
       errors.push(`Linha ${excelRow}: funcionalidade_entrega não reconhecido.`);
       continue;
     }
+    const groupName =
+      col.grupo_validacao !== undefined ? String(r[col.grupo_validacao] ?? "").trim() : "";
     out.push({
       moduleName: modName,
       moduleWeight: mw ?? undefined,
@@ -264,6 +285,7 @@ export function parseContractStructureExcel(buffer: Buffer): ContractStructureIm
       featureCriticality: featCriticality,
       featureStatus: st,
       featureDelivery: dl,
+      validationGroupName: groupName || null,
       sourceRow: excelRow
     });
   }

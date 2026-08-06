@@ -7,7 +7,13 @@ import { jwtExpiresIn, jwtSecretBytes } from "@/lib/jwt-config";
 export type LoginSuccess = {
   access_token: string;
   expires_in: string;
-  user: { id: string; email: string; role: string; mustChangePassword: boolean };
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    mustChangePassword: boolean;
+    userKind?: "INTERNAL" | "EXTERNAL";
+  };
 };
 
 export async function issueAuthToken(user: {
@@ -82,6 +88,12 @@ export async function loginWithDatabase(email: string, password: string): Promis
   return {
     access_token,
     expires_in,
-    user: { id: user.id, email: user.email, role, mustChangePassword: user.mustChangePassword }
+    user: {
+      id: user.id,
+      email: user.email,
+      role,
+      mustChangePassword: user.mustChangePassword,
+      userKind: user.userKind ?? "INTERNAL"
+    }
   };
 }

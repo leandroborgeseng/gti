@@ -42,6 +42,32 @@ export const PERMISSION_CATALOG: PermissionModuleGroup[] = [
     ]
   },
   {
+    module: "Notificações",
+    moduleKey: "notifications",
+    permissions: [
+      { key: "notifications.view", label: "Visualizar notificações" },
+      { key: "notifications.manage", label: "Elaborar e gerir notificações" },
+      { key: "notifications.sign", label: "Assinar notificações" },
+      { key: "notifications.send", label: "Enviar notificações por e-mail" },
+      { key: "notifications.respond", label: "Responder notificações (empresa)" },
+      { key: "notifications.analyze", label: "Analisar manifestações da empresa" }
+    ]
+  },
+  {
+    module: "Cronogramas e documentos",
+    moduleKey: "schedules_documents",
+    permissions: [
+      { key: "schedules.view", label: "Visualizar cronogramas" },
+      { key: "documents.view", label: "Visualizar documentos" },
+      { key: "profile.view", label: "Visualizar próprio perfil" }
+    ]
+  },
+  {
+    module: "Administração · Modelos de notificação",
+    moduleKey: "admin.notification_templates",
+    permissions: [{ key: "notification_templates.manage", label: "Gerir modelos de notificação" }]
+  },
+  {
     module: "Medições",
     moduleKey: "measurements",
     permissions: [

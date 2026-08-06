@@ -2,7 +2,7 @@ import { randomBytes, createHash } from "node:crypto";
 import * as bcrypt from "bcrypt";
 import { prisma } from "@/glpi/config/prisma";
 import { publicSiteUrl } from "@/lib/site-url";
-import { sendEmail } from "@/lib/email/resend";
+import { sendMail } from "@/lib/email/send-mail";
 import { BRAND } from "@/lib/brand";
 
 const RESET_TOKEN_BYTES = 32;
@@ -54,7 +54,16 @@ async function sendPasswordResetEmail(input: { email: string; token: string; isW
       <p style="font-size: 13px; color: #4b5563;">Se não reconhece esta solicitação, ignore este e-mail.</p>
     </div>
   `;
-  await sendEmail({ to: input.email, subject, html, text });
+  const result = await sendMail({
+    to: input.email,
+    subject,
+    html,
+    text,
+    logType: input.isWelcome ? "WELCOME" : "PASSWORD_RESET"
+  });
+  if (!result.ok) {
+    throw new Error(result.errorSummary || "Não foi possível enviar o e-mail.");
+  }
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {

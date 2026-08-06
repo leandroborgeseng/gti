@@ -8,7 +8,14 @@ import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { UserRecord } from "@/lib/api";
-import { getAccessProfiles, getOrganizations, getUsers, updateUser } from "@/lib/api";
+import {
+  getAccessProfiles,
+  getContracts,
+  getOrganizations,
+  getSuppliers,
+  getUsers,
+  updateUser
+} from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import {
   editUserFormSchema,
@@ -28,6 +35,13 @@ import { DataTable } from "@/components/tables/data-table";
 
 const columnHelper = createColumnHelper<UserRecord>();
 
+const EXTERNAL_FUNCTION_LABELS: Record<string, string> = {
+  REPRESENTANTE_LEGAL: "Representante legal",
+  RESPONSAVEL_CONTRATUAL: "Responsável contratual",
+  RESPONSAVEL_TECNICO: "Responsável técnico",
+  USUARIO_AUXILIAR: "Usuário auxiliar"
+};
+
 type Props = {
   users: UserRecord[];
   dataLoadErrors?: string[];
@@ -44,6 +58,13 @@ function userDisplayName(user: UserRecord): string {
 }
 
 function userIsIncomplete(user: UserRecord): boolean {
+  if (user.userKind === "EXTERNAL") {
+    return (
+      (!user.cpfDigits && !user.cpfMasked) ||
+      !user.supplierId ||
+      !user.externalFunction
+    );
+  }
   const hasOrg =
     Boolean(user.allOrganizations) ||
     Boolean(user.organizationId) ||
@@ -67,12 +88,17 @@ function EditUserPanel({
   const qc = useQueryClient();
   const qOrganizations = useQuery({ queryKey: queryKeys.organizations, queryFn: getOrganizations });
   const qProfiles = useQuery({ queryKey: queryKeys.accessProfiles, queryFn: () => getAccessProfiles(false) });
+  const qSuppliers = useQuery({ queryKey: queryKeys.suppliers, queryFn: getSuppliers });
+  const qContracts = useQuery({ queryKey: ["contracts"], queryFn: getContracts });
   const activeOrganizations = useMemo(
     () => (qOrganizations.data ?? []).filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [qOrganizations.data]
   );
   const activeProfiles = useMemo(
-    () => (qProfiles.data ?? []).filter((p) => p.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    () =>
+      (qProfiles.data ?? [])
+        .filter((p) => p.active && p.systemKey !== "EXTERNAL")
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [qProfiles.data]
   );
   const approvalDefault: EditUserFormValues["approvalStatus"] =
@@ -83,21 +109,50 @@ function EditUserPanel({
     defaultValues: {
       fullName: userDisplayName(user),
       cpf: user.cpfDigits ?? "",
-      profileIds: user.profiles?.map((p) => p.id) ?? [],
+      userKind: user.userKind === "EXTERNAL" ? "EXTERNAL" : "INTERNAL",
+      profileIds: user.profiles?.filter((p) => p.systemKey !== "EXTERNAL").map((p) => p.id) ?? [],
       organizationIds: user.organizations?.map((o) => o.id) ?? (user.organizationId ? [user.organizationId] : []),
       allOrganizations: Boolean(user.allOrganizations),
       approvalStatus: approvalDefault,
-      password: ""
+      password: "",
+      supplierId: user.supplierId ?? "",
+      externalFunction:
+        (user.externalFunction as EditUserFormValues["externalFunction"]) ?? undefined,
+      authorizedContractIds: user.authorizedContractIds ?? []
     }
   });
 
   const allOrganizations = form.watch("allOrganizations");
+  const userKind = form.watch("userKind");
+  const supplierId = form.watch("supplierId");
+
+  const supplierContracts = useMemo(() => {
+    const supplier = (qSuppliers.data ?? []).find((s) => s.id === supplierId);
+    if (!supplier) return [];
+    const cnpjDigits = supplier.cnpj.replace(/\D/g, "");
+    return (qContracts.data ?? []).filter(
+      (c) => c.supplierId === supplier.id || (c.cnpj ?? "").replace(/\D/g, "") === cnpjDigits
+    );
+  }, [qContracts.data, qSuppliers.data, supplierId]);
 
   const mutation = useMutation({
-    mutationFn: (values: EditUserFormValues) =>
-      updateUser(user.id, {
+    mutationFn: (values: EditUserFormValues) => {
+      if (values.userKind === "EXTERNAL") {
+        return updateUser(user.id, {
+          fullName: values.fullName.trim(),
+          cpf: values.cpf ? values.cpf : null,
+          userKind: "EXTERNAL",
+          supplierId: values.supplierId,
+          externalFunction: values.externalFunction,
+          authorizedContractIds: values.authorizedContractIds,
+          approvalStatus: values.approvalStatus,
+          ...(values.password !== "" ? { password: values.password.trim() } : {})
+        });
+      }
+      return updateUser(user.id, {
         fullName: values.fullName.trim(),
         cpf: values.cpf ? values.cpf : null,
+        userKind: "INTERNAL",
         profileIds: values.profileIds,
         organizationIds: values.organizationIds,
         allOrganizations: values.allOrganizations,
@@ -105,7 +160,8 @@ function EditUserPanel({
         defaultOrganizationId: values.allOrganizations ? null : values.organizationIds[0] ?? null,
         approvalStatus: values.approvalStatus,
         ...(values.password !== "" ? { password: values.password.trim() } : {})
-      }),
+      });
+    },
     onSuccess: () => {
       toast.success("Usuário atualizado.");
       void qc.invalidateQueries({ queryKey: queryKeys.users });
@@ -119,6 +175,26 @@ function EditUserPanel({
   return (
     <Form {...form}>
       <form className="space-y-4" onSubmit={form.handleSubmit((v) => mutation.mutate(v))}>
+        <FormField
+          control={form.control}
+          name="userKind"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Tipo de conta</FormLabel>
+              <FormControl>
+                <select
+                  className="w-full rounded-md border px-2 py-2 text-sm"
+                  value={field.value}
+                  onChange={(e) => field.onChange(e.target.value)}
+                >
+                  <option value="INTERNAL">Interno</option>
+                  <option value="EXTERNAL">Externo (empresa)</option>
+                </select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <FormField
           control={form.control}
           name="fullName"
@@ -151,68 +227,158 @@ function EditUserPanel({
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="profileIds"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Perfis de acesso</FormLabel>
-              <div className="max-h-36 space-y-2 overflow-y-auto rounded-md border p-3">
-                {activeProfiles.map((p) => (
-                  <label key={p.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={field.value.includes(p.id)}
-                      onCheckedChange={(v) => field.onChange(toggleId(field.value, p.id, v === true))}
-                    />
-                    <span>
-                      {p.name}
-                      {p.systemKey ? <span className="text-muted-foreground"> · {p.systemKey}</span> : null}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="allOrganizations"
-          render={({ field }) => (
-            <FormItem className="flex flex-row items-center gap-2 space-y-0">
-              <FormControl>
-                <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} />
-              </FormControl>
-              <FormLabel className="font-normal">Todos os órgãos</FormLabel>
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="organizationIds"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{allOrganizations ? "Órgãos vinculados (opcional)" : "Órgãos"}</FormLabel>
-              <div className="max-h-36 space-y-2 overflow-y-auto rounded-md border p-3">
-                {activeOrganizations.map((org) => (
-                  <label key={org.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={field.value.includes(org.id)}
-                      onCheckedChange={(v) => field.onChange(toggleId(field.value, org.id, v === true))}
-                    />
-                    <span>{org.acronym ? `${org.acronym} · ${org.name}` : org.name}</span>
-                  </label>
-                ))}
-              </div>
-              <FormDescription>
-                {allOrganizations
-                  ? "Abrangência global; vínculos opcionais para atalho no seletor."
-                  : "Selecione um ou mais órgãos."}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {userKind === "EXTERNAL" ? (
+          <>
+            <FormField
+              control={form.control}
+              name="supplierId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Fornecedor</FormLabel>
+                  <FormControl>
+                    <select
+                      className="w-full rounded-md border px-2 py-2 text-sm"
+                      value={field.value ?? ""}
+                      onChange={(e) => {
+                        field.onChange(e.target.value);
+                        form.setValue("authorizedContractIds", []);
+                      }}
+                    >
+                      <option value="">Selecione…</option>
+                      {(qSuppliers.data ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} · {s.cnpj}
+                        </option>
+                      ))}
+                    </select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="externalFunction"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Função</FormLabel>
+                  <FormControl>
+                    <select
+                      className="w-full rounded-md border px-2 py-2 text-sm"
+                      value={field.value ?? ""}
+                      onChange={(e) => field.onChange(e.target.value || undefined)}
+                    >
+                      <option value="">Selecione…</option>
+                      {Object.entries(EXTERNAL_FUNCTION_LABELS).map(([k, label]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="authorizedContractIds"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Contratos autorizados</FormLabel>
+                  <div className="max-h-36 space-y-2 overflow-y-auto rounded-md border p-3">
+                    {supplierContracts.map((c) => {
+                      const checked = field.value.includes(c.id);
+                      return (
+                        <label key={c.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => field.onChange(toggleId(field.value, c.id, v === true))}
+                          />
+                          <span>
+                            {c.internalCode ?? c.number} — {c.name}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {supplierId && supplierContracts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhum contrato deste fornecedor.</p>
+                    ) : null}
+                    {!supplierId ? (
+                      <p className="text-sm text-muted-foreground">Selecione o fornecedor primeiro.</p>
+                    ) : null}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        ) : (
+          <>
+            <FormField
+              control={form.control}
+              name="profileIds"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Perfis de acesso</FormLabel>
+                  <div className="max-h-36 space-y-2 overflow-y-auto rounded-md border p-3">
+                    {activeProfiles.map((p) => (
+                      <label key={p.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={field.value.includes(p.id)}
+                          onCheckedChange={(v) => field.onChange(toggleId(field.value, p.id, v === true))}
+                        />
+                        <span>
+                          {p.name}
+                          {p.systemKey ? <span className="text-muted-foreground"> · {p.systemKey}</span> : null}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="allOrganizations"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} />
+                  </FormControl>
+                  <FormLabel className="font-normal">Todos os órgãos</FormLabel>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="organizationIds"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{allOrganizations ? "Órgãos vinculados (opcional)" : "Órgãos"}</FormLabel>
+                  <div className="max-h-36 space-y-2 overflow-y-auto rounded-md border p-3">
+                    {activeOrganizations.map((org) => (
+                      <label key={org.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={field.value.includes(org.id)}
+                          onCheckedChange={(v) => field.onChange(toggleId(field.value, org.id, v === true))}
+                        />
+                        <span>{org.acronym ? `${org.acronym} · ${org.name}` : org.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <FormDescription>
+                    {allOrganizations
+                      ? "Abrangência global; vínculos opcionais para atalho no seletor."
+                      : "Selecione um ou mais órgãos."}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
         <FormField
           control={form.control}
           name="approvalStatus"
