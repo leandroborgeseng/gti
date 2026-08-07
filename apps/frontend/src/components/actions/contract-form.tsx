@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -9,21 +9,13 @@ import {
   createContract,
   createFiscal,
   createSupplier,
-  getContractFormData,
-  getContractTypeCatalog,
-  getFiscais,
-  getGlpiAssignedGroupsCatalog,
-  getHiringTypes,
-  getMyPermissions,
-  getOrganizations,
-  getSuppliers,
-  reportContractFormLoadFailure,
   updateContract,
   type Contract,
   type ContractTypeCatalogRecord,
   type Fiscal,
   type Supplier
 } from "@/lib/api";
+import { ContractFormSectionBoundary } from "@/components/contracts/contract-form-section-boundary";
 import { ContractGlpiGroupsField } from "@/components/contracts/contract-glpi-groups-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -42,6 +34,7 @@ import {
   mergeCatalogOptionsWithLink,
   safeSelectValue
 } from "@/modules/contracts/contract-form-helpers";
+import { safeOptionId } from "@/modules/contracts/contract-form-load";
 import {
   CONTRACT_FORM_DEFAULT_VALUES,
   contractPageSchema,
@@ -60,10 +53,12 @@ import {
   isContractLifecycleStatus,
   type ContractLifecycleStatus
 } from "@/modules/contracts/contract-status";
+import { useContractFormDependencies } from "@/modules/contracts/use-contract-form-dependencies";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormSection } from "@/components/ui/form-primitives";
@@ -187,74 +182,42 @@ function formatCnpjHint(v: string): string {
 
 export function ContractForm({ onSuccess, onDismiss, initialContract = null }: Props): JSX.Element {
   const qc = useQueryClient();
-  const isEdit = Boolean(initialContract?.id);
-  const qPerms = useQuery({ queryKey: queryKeys.myPermissions, queryFn: getMyPermissions, staleTime: 60_000 });
-  const canAdminCatalogs =
-    qPerms.data?.role === "ADMIN" ||
-    (qPerms.data?.keys ?? []).some(
-      (k) =>
-        k === "admin.organs.manage" ||
-        k === "admin.organs.view" ||
-        k.startsWith("admin.")
-    );
-  const qFiscais = useQuery({
-    queryKey: queryKeys.fiscais,
-    queryFn: getFiscais,
-    retry: 1,
-    throwOnError: false
-  });
-  const qSuppliers = useQuery({
-    queryKey: queryKeys.suppliers,
-    queryFn: getSuppliers,
-    retry: 1,
-    throwOnError: false
-  });
-  const qGlpiGroups = useQuery({
-    queryKey: queryKeys.glpiAssignedGroups,
-    queryFn: getGlpiAssignedGroupsCatalog,
-    retry: 1,
-    throwOnError: false
-  });
-  const qOrganizations = useQuery({
-    queryKey: queryKeys.organizations,
-    queryFn: getOrganizations,
-    retry: 1,
-    throwOnError: false
-  });
-  const qContractTypes = useQuery({
-    queryKey: queryKeys.contractTypeCatalog,
-    queryFn: getContractTypeCatalog,
-    retry: 1,
-    throwOnError: false
-  });
-  const qHiringTypes = useQuery({
-    queryKey: queryKeys.hiringTypes,
-    queryFn: getHiringTypes,
-    retry: 1,
-    throwOnError: false
-  });
-  const qContractDetail = useQuery({
-    queryKey: queryKeys.contractFormData(initialContract?.id ?? ""),
-    queryFn: () => getContractFormData(initialContract!.id),
-    enabled: Boolean(initialContract?.id),
-    retry: 1,
-    throwOnError: false,
-    // Lista já traz identificação; itens vêm do form-data.
-    placeholderData: initialContract ?? undefined
-  });
-  const editContract = (qContractDetail.data ?? initialContract) as Contract | null;
-  const detailLoadFailed = isEdit && qContractDetail.isError;
-  const fiscais = qFiscais.data ?? [];
-  const suppliers = qSuppliers.data ?? [];
+  const deps = useContractFormDependencies({ initialContract });
+  const {
+    isEdit,
+    report: logFormFailure,
+    qFiscais,
+    qGlpiGroups,
+    qContractDetail,
+    canAdminCatalogs,
+    fiscais,
+    suppliers,
+    organizations,
+    contractTypes,
+    hiringTypes,
+    glpiGroups,
+    editContract,
+    detailLoadFailed,
+    catalogsLoading,
+    listsLoading,
+    dependencyErrors
+  } = deps;
+
   const organizationOptions = useMemo(
     () =>
       mergeCatalogOptionsWithLink(
-        (qOrganizations.data ?? []).map((o) => ({
-          id: o.id,
-          name: o.name,
-          acronym: o.acronym ?? "",
-          active: o.active
-        })),
+        organizations
+          .map((o) => {
+            const id = safeOptionId(o?.id);
+            if (!id) return null;
+            return {
+              id,
+              name: o.name ?? "Órgão",
+              acronym: o.acronym ?? "",
+              active: o.active
+            };
+          })
+          .filter((o): o is NonNullable<typeof o> => Boolean(o)),
         editContract?.organizationId,
         editContract?.organization
           ? {
@@ -266,20 +229,26 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
           : null,
         "Órgão vinculado (indisponível)"
       ),
-    [qOrganizations.data, editContract?.organizationId, editContract?.organization]
+    [organizations, editContract?.organizationId, editContract?.organization]
   );
 
   const contractTypeOptions = useMemo(
     () =>
       mergeCatalogOptionsWithLink(
-        (qContractTypes.data ?? []).map((t) => ({
-          id: t.id,
-          name: t.name,
-          acronym: t.acronym ?? "",
-          active: t.active,
-          legacyEnum: t.legacyEnum,
-          sortOrder: t.sortOrder
-        })),
+        contractTypes
+          .map((t) => {
+            const id = safeOptionId(t?.id);
+            if (!id) return null;
+            return {
+              id,
+              name: t.name ?? "Tipo",
+              acronym: t.acronym ?? "",
+              active: t.active,
+              legacyEnum: t.legacyEnum,
+              sortOrder: t.sortOrder
+            };
+          })
+          .filter((o): o is NonNullable<typeof o> => Boolean(o)),
         editContract?.contractTypeCatalogId,
         editContract?.contractTypeCatalog
           ? {
@@ -299,32 +268,35 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
           : null,
         "Tipo vinculado (indisponível)"
       ),
-    [qContractTypes.data, editContract?.contractTypeCatalogId, editContract?.contractTypeCatalog]
+    [contractTypes, editContract?.contractTypeCatalogId, editContract?.contractTypeCatalog]
   );
 
   const hiringTypeOptions = useMemo(
     () =>
       mergeCatalogOptionsWithLink(
-        (qHiringTypes.data ?? []).map((t) => ({
-          id: t.id,
-          name: t.name,
-          active: t.active,
-          sortOrder: t.sortOrder
-        })),
+        hiringTypes
+          .map((t) => {
+            const id = safeOptionId(t?.id);
+            if (!id) return null;
+            return {
+              id,
+              name: t.name ?? "Modalidade",
+              active: t.active,
+              sortOrder: t.sortOrder
+            };
+          })
+          .filter((o): o is NonNullable<typeof o> => Boolean(o)),
         editContract?.hiringTypeId,
         editContract?.hiringType
           ? { id: editContract.hiringType.id, name: editContract.hiringType.name, active: false, sortOrder: 0 }
           : null,
         "Modalidade vinculada (indisponível)"
       ),
-    [qHiringTypes.data, editContract?.hiringTypeId, editContract?.hiringType]
+    [hiringTypes, editContract?.hiringTypeId, editContract?.hiringType]
   );
   const orgOptionIds = useMemo(() => new Set(organizationOptions.map((o) => o.id)), [organizationOptions]);
   const typeOptionIds = useMemo(() => new Set(contractTypeOptions.map((t) => t.id)), [contractTypeOptions]);
   const hiringOptionIds = useMemo(() => new Set(hiringTypeOptions.map((t) => t.id)), [hiringTypeOptions]);
-  const catalogsLoading =
-    qOrganizations.isPending || qContractTypes.isPending || qHiringTypes.isPending;
-  const listsLoading = qFiscais.isPending || qSuppliers.isPending || catalogsLoading;
 
   const [fiscalModalRole, setFiscalModalRole] = useState<FiscalModalRole | null>(null);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
@@ -386,20 +358,6 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
     watchManagingUnit
   ]);
 
-  const logFormFailure = useCallback(
-    (stage: string, message: string) => {
-      void reportContractFormLoadFailure({
-        action: isEdit ? "edit" : "create",
-        contractId: initialContract?.id ?? null,
-        stage,
-        message
-      }).catch(() => {
-        /* logging best-effort */
-      });
-    },
-    [isEdit, initialContract?.id]
-  );
-
   const onContractTypeCatalogChange = useCallback(
     (catalogId: string, catalog?: ContractTypeCatalogRecord) => {
       form.setValue("contractTypeCatalogId", catalogId, { shouldValidate: true });
@@ -412,20 +370,9 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
   );
 
   useEffect(() => {
-    if (qContractDetail.isError && initialContract?.id) {
-      const msg =
-        qContractDetail.error instanceof Error
-          ? qContractDetail.error.message
-          : "Falha ao carregar detalhe do contrato";
-      logFormFailure("contract_form_data", msg);
-    }
-  }, [qContractDetail.isError, qContractDetail.error, initialContract?.id, logFormFailure]);
-
-  useEffect(() => {
     try {
       if (isEdit) {
-        // Aguarda catálogos para evitar Select com value sem opção correspondente (crash do Radix).
-        if (catalogsLoading) return;
+        // Dados básicos primeiro (lista / form-data); catálogos não bloqueiam a abertura.
         const source = editContract ?? initialContract;
         form.reset(contractToFormDefaults(source));
         try {
@@ -438,7 +385,7 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
           );
         }
       } else {
-        form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+        form.reset({ ...CONTRACT_FORM_DEFAULT_VALUES, glpiGroups: [] });
         setPricingItems([]);
       }
       setPricingError(null);
@@ -451,7 +398,7 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
       );
       logFormFailure("form_reset", message);
       // Mantém formulário utilizável com defaults seguros.
-      form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+      form.reset({ ...CONTRACT_FORM_DEFAULT_VALUES, glpiGroups: [] });
       setPricingItems([]);
     }
   }, [
@@ -460,7 +407,6 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
     editContract?.pricingItems,
     form,
     editContract,
-    catalogsLoading,
     isEdit,
     initialContract,
     initNonce,
@@ -577,12 +523,26 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
   });
 
   const fiscalOptions = useMemo(
-    () => fiscais.map((f: Fiscal) => ({ value: f.id, label: `${f.name} · ${f.email}` })),
+    () =>
+      fiscais
+        .map((f: Fiscal) => {
+          const id = safeOptionId(f?.id);
+          if (!id) return null;
+          return { value: id, label: `${f.name ?? "Fiscal"} · ${f.email ?? ""}` };
+        })
+        .filter((o): o is NonNullable<typeof o> => Boolean(o)),
     [fiscais]
   );
 
   const supplierOptions = useMemo(
-    () => suppliers.map((s: Supplier) => ({ value: s.id, label: `${s.name} (${onlyDigitsCnpj(s.cnpj)})` })),
+    () =>
+      suppliers
+        .map((s: Supplier) => {
+          const id = safeOptionId(s?.id);
+          if (!id) return null;
+          return { value: id, label: `${s.name ?? "Fornecedor"} (${onlyDigitsCnpj(s.cnpj ?? "")})` };
+        })
+        .filter((o): o is NonNullable<typeof o> => Boolean(o)),
     [suppliers]
   );
 
@@ -834,18 +794,18 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
               </FormItem>
             )}
           />
-          <FormItem>
-            <FormLabel>Número completo (pré-visualização)</FormLabel>
+          <div className="space-y-2">
+            <Label>Número completo (pré-visualização)</Label>
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">{numberPreview}</div>
-            <FormDescription>
+            <p className="text-[0.8rem] text-muted-foreground">
               Formato número/ano: o ano vem do início da vigência.{" "}
               {editContract?.internalCode ? (
                 <>Código interno atual: <strong>{editContract.internalCode}</strong>.</>
               ) : (
                 <>O código interno (ex.: ST-2026-001) será gerado ao salvar.</>
               )}
-            </FormDescription>
-          </FormItem>
+            </p>
+          </div>
           <FormField
             control={form.control}
             name="administrativeProcess"
@@ -884,14 +844,12 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
                     ))}
                   </SelectContent>
                 </Select>
-                {!catalogsLoading && organizationOptions.filter((o) => o.active !== false).length === 0 ? (
+                {!catalogsLoading &&
+                (dependencyErrors.orgaos ||
+                  organizationOptions.filter((o) => o.active !== false).length === 0) ? (
                   <CatalogFieldHint
-                    emptyMessage="Nenhum órgão ativo está disponível."
-                    loadError={
-                      qOrganizations.isError
-                        ? "Não foi possível carregar a lista de órgãos."
-                        : null
-                    }
+                    emptyMessage="Nenhum órgão ativo está disponível. Cadastre um órgão na Administração para continuar."
+                    loadError={dependencyErrors.orgaos ?? null}
                     onRetry={() => void qc.invalidateQueries({ queryKey: queryKeys.organizations })}
                     adminTab="orgaos"
                     adminLabel="Abrir cadastro de órgãos"
@@ -953,14 +911,12 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
                     ))}
                   </SelectContent>
                 </Select>
-                {!catalogsLoading && contractTypeOptions.filter((t) => t.active !== false).length === 0 ? (
+                {!catalogsLoading &&
+                (dependencyErrors.tipos_contrato ||
+                  contractTypeOptions.filter((t) => t.active !== false).length === 0) ? (
                   <CatalogFieldHint
-                    emptyMessage="Nenhum tipo de contrato ativo foi cadastrado."
-                    loadError={
-                      qContractTypes.isError
-                        ? "Não foi possível carregar os tipos de contrato."
-                        : null
-                    }
+                    emptyMessage="Nenhum tipo de contrato ativo foi cadastrado. Cadastre um tipo na Administração para continuar."
+                    loadError={dependencyErrors.tipos_contrato ?? null}
                     onRetry={() => void qc.invalidateQueries({ queryKey: queryKeys.contractTypeCatalog })}
                     adminTab="tipos-contrato"
                     adminLabel="Abrir tipos de contrato"
@@ -1006,14 +962,12 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
                     ))}
                   </SelectContent>
                 </Select>
-                {!catalogsLoading && hiringTypeOptions.filter((t) => t.active !== false).length === 0 ? (
+                {!catalogsLoading &&
+                (dependencyErrors.tipos_contratacao ||
+                  hiringTypeOptions.filter((t) => t.active !== false).length === 0) ? (
                   <CatalogFieldHint
-                    emptyMessage="Nenhum tipo de contratação ativo está disponível."
-                    loadError={
-                      qHiringTypes.isError
-                        ? "Não foi possível carregar os tipos de contratação."
-                        : null
-                    }
+                    emptyMessage="Nenhum tipo de contratação ativo está disponível. O campo pode permanecer em branco."
+                    loadError={dependencyErrors.tipos_contratacao ?? null}
                     onRetry={() => void qc.invalidateQueries({ queryKey: queryKeys.hiringTypes })}
                     adminTab="tipos-contratacao"
                     adminLabel="Abrir tipos de contratação"
@@ -1138,9 +1092,15 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
                   }}
                   disabled={listsLoading}
                   hint="Ao selecionar, a razão social e o CNPJ são preenchidos automaticamente (pode ajustar antes de salvar)."
+                  error={dependencyErrors.fornecedores ?? undefined}
                 />
               )}
             />
+            {!listsLoading && !dependencyErrors.fornecedores && suppliers.length === 0 ? (
+              <p className="mt-1 text-sm text-amber-800">
+                Nenhum fornecedor cadastrado. Preencha manualmente ou use «+ Novo fornecedor».
+              </p>
+            ) : null}
           </div>
           <FormField
             control={form.control}
@@ -1175,36 +1135,36 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
           title="Integração GLPI"
           description="Opcional. Vincule um ou mais grupos de trabalho do GLPI para relacionar chamados e acompanhar SLA."
         >
-          <FormField
-            control={form.control}
-            name="glpiGroups"
-            render={({ field }) => (
-              <FormItem className="sm:col-span-2">
-                <FormLabel>Grupos GLPI vinculados</FormLabel>
-                <FormControl>
-                  <ContractGlpiGroupsField
-                    id="field-glpiGroups"
-                    catalog={qGlpiGroups.data ?? []}
-                    value={field.value ?? []}
-                    onChange={field.onChange}
-                    disabled={qGlpiGroups.isPending}
-                    loading={qGlpiGroups.isPending}
-                    loadError={
-                      qGlpiGroups.isError
-                        ? "Não foi possível carregar os grupos GLPI. Tente novamente mais tarde."
-                        : null
-                    }
-                    maxVisibleChips={2}
-                  />
-                </FormControl>
-                <FormDescription>
-                  Selecione apenas grupos identificados no GLPI (API e chamados sincronizados). Não é possível digitar
-                  nomes livres.
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <div className="sm:col-span-2">
+            <ContractFormSectionBoundary label="Grupos GLPI" stage="grupos_glpi" onReport={logFormFailure}>
+              <FormField
+                control={form.control}
+                name="glpiGroups"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Grupos GLPI vinculados</FormLabel>
+                    <FormControl>
+                      <ContractGlpiGroupsField
+                        id="field-glpiGroups"
+                        catalog={glpiGroups}
+                        value={Array.isArray(field.value) ? field.value : []}
+                        onChange={field.onChange}
+                        disabled={qGlpiGroups.isPending}
+                        loading={qGlpiGroups.isPending}
+                        loadError={dependencyErrors.grupos_glpi ?? null}
+                        maxVisibleChips={2}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Selecione apenas grupos identificados no GLPI (API e chamados sincronizados). Não é possível
+                      digitar nomes livres.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </ContractFormSectionBoundary>
+          </div>
         </FormSection>
 
         <FormSection title="Responsáveis" description="Fiscal e gestor vêm da mesma lista de fiscais; pode cadastrar novo sem sair da página.">
@@ -1230,14 +1190,14 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
                     disabled={qFiscais.isPending}
                     error={fieldState.error?.message}
                   />
-                  {qFiscais.isError ? (
+                  {dependencyErrors.fiscais ? (
                     <CatalogFieldHint
                       emptyMessage=""
-                      loadError="Não foi possível carregar a lista de fiscais."
+                      loadError={dependencyErrors.fiscais}
                       onRetry={() => void qc.invalidateQueries({ queryKey: queryKeys.fiscais })}
                     />
                   ) : null}
-                  {!qFiscais.isPending && !qFiscais.isError && fiscais.length === 0 ? (
+                  {!qFiscais.isPending && !dependencyErrors.fiscais && fiscais.length === 0 ? (
                     <p className="mt-1 text-sm text-amber-800">Nenhum fiscal cadastrado. Use «+ Novo fiscal».</p>
                   ) : null}
                 </div>
@@ -1341,15 +1301,23 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
           title="Itens contratuais"
           description="Registre mensalidade, implantação, horas, UST, equipamentos, licenças e demais itens precificados. A descrição livre e o tipo padronizado são complementares: não se substituem. O valor total é calculado automaticamente (quantidade × unitário), salvo indicação manual justificada."
         >
-          <ContractPricingItemsEditor
-            value={pricingItems}
-            onChange={(next) => {
-              setPricingItems(next);
-              if (pricingError) setPricingError(validatePricingDraft(next));
-            }}
-            lockHardDelete={Boolean(editContract?.pricingLocked)}
-            error={pricingError}
-          />
+          <div className="sm:col-span-2">
+            <ContractFormSectionBoundary
+              label="Itens contratuais"
+              stage="itens_contratuais"
+              onReport={logFormFailure}
+            >
+              <ContractPricingItemsEditor
+                value={pricingItems}
+                onChange={(next) => {
+                  setPricingItems(next);
+                  if (pricingError) setPricingError(validatePricingDraft(next));
+                }}
+                lockHardDelete={Boolean(editContract?.pricingLocked)}
+                error={pricingError}
+              />
+            </ContractFormSectionBoundary>
+          </div>
           {initialContract && qContractDetail.isPending && !editContract?.pricingItems ? (
             <p className="sm:col-span-2 text-sm text-muted-foreground">Carregando itens contratuais…</p>
           ) : null}
@@ -1359,16 +1327,16 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
           title="Valor global"
           description="O valor global é estimado pelos itens contratuais. Use ajuste manual apenas em situação excepcional e registre a justificativa."
         >
-          <FormItem>
-            <FormLabel>Estimativa calculada pelos itens</FormLabel>
+          <div className="space-y-2">
+            <Label>Estimativa calculada pelos itens</Label>
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">
               {formatBrl(pricingTotals.globalEstimated)}
             </div>
-            <FormDescription>
-              Recorrentes: {formatBrl(pricingTotals.recurringPredicted)} · Únicos: {formatBrl(pricingTotals.oneTime)} · Sob demanda:{" "}
-              {formatBrl(pricingTotals.onDemand)}
-            </FormDescription>
-          </FormItem>
+            <p className="text-[0.8rem] text-muted-foreground">
+              Recorrentes: {formatBrl(pricingTotals.recurringPredicted)} · Únicos: {formatBrl(pricingTotals.oneTime)} ·
+              Sob demanda: {formatBrl(pricingTotals.onDemand)}
+            </p>
+          </div>
           <FormField
             control={form.control}
             name="globalValueManual"
@@ -1401,14 +1369,14 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
                   </FormItem>
                 )}
               />
-              <FormItem>
-                <FormLabel>Diferença em relação aos itens</FormLabel>
+              <div className="space-y-2">
+                <Label>Diferença em relação aos itens</Label>
                 <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">
                   {globalValueDifference == null
                     ? "Informe o valor ajustado."
                     : `${globalValueDifference >= 0 ? "+" : "−"} ${formatBrl(Math.abs(globalValueDifference))}`}
                 </div>
-              </FormItem>
+              </div>
               <FormField
                 control={form.control}
                 name="globalValueJustification"

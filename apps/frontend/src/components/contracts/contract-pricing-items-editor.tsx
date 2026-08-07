@@ -272,9 +272,14 @@ export function validatePricingDraft(items: PricingDraftItem[]): string | null {
 
 export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, error }: Props): JSX.Element {
   const qc = useQueryClient();
-  const qCatalog = useQuery({ queryKey: queryKeys.contractPricingCatalog, queryFn: getContractPricingCatalog });
-  const types = qCatalog.data?.types ?? [];
-  const units = qCatalog.data?.units ?? [];
+  const qCatalog = useQuery({
+    queryKey: queryKeys.contractPricingCatalog,
+    queryFn: getContractPricingCatalog,
+    retry: 1,
+    throwOnError: false
+  });
+  const types = Array.isArray(qCatalog.data?.types) ? qCatalog.data.types : [];
+  const units = Array.isArray(qCatalog.data?.units) ? qCatalog.data.units : [];
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [newUnitLabel, setNewUnitLabel] = useState("");
   const [newTypeLabel, setNewTypeLabel] = useState("");
@@ -416,9 +421,10 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Item {item.sequence}
-                      {cancelled ? " · Cancelado" : ""} · {BILLING_LABELS[item.billingKind]}
+                      {cancelled ? " · Cancelado" : ""} ·{" "}
+                      {BILLING_LABELS[item.billingKind] ?? item.billingKind ?? "—"}
                       {item.billingKind === "RECURRING" && item.periodicity
-                        ? ` · ${PERIODICITY_LABELS[item.periodicity]}`
+                        ? ` · ${PERIODICITY_LABELS[item.periodicity] ?? item.periodicity}`
                         : ""}
                     </p>
                     <p className="mt-0.5 text-sm font-medium text-slate-900">{typeLabel(item.typeId)}</p>
