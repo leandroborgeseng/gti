@@ -84,28 +84,58 @@ function newKey(): string {
   return `local_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+const BILLING_KINDS = new Set<ContractPricingBillingKind>(["RECURRING", "ONE_TIME", "ON_DEMAND"]);
+const PERIODICITIES = new Set<ContractPricingPeriodicity>([
+  "MONTHLY",
+  "BIMONTHLY",
+  "QUARTERLY",
+  "SEMIANNUAL",
+  "ANNUAL",
+  "CUSTOM"
+]);
+const ITEM_STATUSES = new Set<ContractPricingItemStatus>(["ACTIVE", "CANCELLED"]);
+
 export function pricingItemsFromContract(items: ContractPricingItem[] | undefined): PricingDraftItem[] {
   if (!items?.length) return [];
-  return items.map((it) => ({
-    key: it.id,
-    id: it.id,
-    sequence: it.sequence,
-    typeId: it.typeId,
-    description: it.description,
-    unitId: it.unitId,
-    quantity: formatMoneyInput(Number(it.quantity)),
-    unitValue: formatMoneyInput(Number(it.unitValue)),
-    totalValue: formatMoneyInput(Number(it.totalValue)),
-    totalManual: Boolean(it.totalManual),
-    totalJustification: it.totalJustification ?? "",
-    billingKind: it.billingKind,
-    periodicity: (it.periodicity ?? "") as ContractPricingPeriodicity | "",
-    periodStart: it.periodStart ? String(it.periodStart).slice(0, 10) : "",
-    periodEnd: it.periodEnd ? String(it.periodEnd).slice(0, 10) : "",
-    status: it.status,
-    includeInGlosaBase: Boolean(it.includeInGlosaBase),
-    consumedQuantity: it.consumedQuantity
-  }));
+  try {
+    return items.map((it, idx) => {
+      const billingKind = BILLING_KINDS.has(it.billingKind as ContractPricingBillingKind)
+        ? (it.billingKind as ContractPricingBillingKind)
+        : "RECURRING";
+      const periodicityRaw = (it.periodicity ?? "") as ContractPricingPeriodicity | "";
+      const periodicity =
+        periodicityRaw && PERIODICITIES.has(periodicityRaw as ContractPricingPeriodicity)
+          ? (periodicityRaw as ContractPricingPeriodicity)
+          : billingKind === "RECURRING"
+            ? "MONTHLY"
+            : "";
+      const status = ITEM_STATUSES.has(it.status as ContractPricingItemStatus)
+        ? (it.status as ContractPricingItemStatus)
+        : "ACTIVE";
+      return {
+        key: it.id || `legacy_${idx}_${newKey()}`,
+        id: it.id,
+        sequence: Number.isFinite(Number(it.sequence)) ? Number(it.sequence) : idx + 1,
+        typeId: it.typeId ?? "",
+        description: it.description ?? "",
+        unitId: it.unitId ?? "",
+        quantity: formatMoneyInput(Number(it.quantity)),
+        unitValue: formatMoneyInput(Number(it.unitValue)),
+        totalValue: formatMoneyInput(Number(it.totalValue)),
+        totalManual: Boolean(it.totalManual),
+        totalJustification: it.totalJustification ?? "",
+        billingKind,
+        periodicity,
+        periodStart: it.periodStart ? String(it.periodStart).slice(0, 10) : "",
+        periodEnd: it.periodEnd ? String(it.periodEnd).slice(0, 10) : "",
+        status,
+        includeInGlosaBase: Boolean(it.includeInGlosaBase),
+        consumedQuantity: it.consumedQuantity
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 export function emptyPricingItem(sequence: number, defaults?: Partial<PricingDraftItem>): PricingDraftItem {
@@ -443,35 +473,62 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
                   <div className="grid gap-3 border-t border-slate-100 px-3 py-3 sm:grid-cols-2">
                     <label className="block text-sm">
                       <span className="mb-1 block font-medium text-slate-700">Tipo padronizado</span>
-                      <Select value={item.typeId} onValueChange={(v) => updateItem(item.key, { typeId: v })}>
+                      <Select
+                        value={item.typeId.trim() || undefined}
+                        onValueChange={(v) => updateItem(item.key, { typeId: v })}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
                         <SelectContent>
+                          {item.typeId && !types.some((t) => t.id === item.typeId) ? (
+                            <SelectItem value={item.typeId}>Tipo vinculado (indisponível) (Inativo)</SelectItem>
+                          ) : null}
                           {types
-                            .filter((t) => t.active || t.id === item.typeId)
+                            .filter((t) => t.id && (t.active || t.id === item.typeId))
                             .map((t) => (
                               <SelectItem key={t.id} value={t.id}>
                                 {t.label}
-                                {!t.active ? " (inativo)" : ""}
+                                {!t.active ? " (Inativo)" : ""}
                               </SelectItem>
                             ))}
                         </SelectContent>
                       </Select>
+                      {types.length === 0 && !qCatalog.isPending ? (
+                        <p className="mt-1 text-xs text-amber-800">Nenhum tipo de item ativo foi cadastrado.</p>
+                      ) : null}
+                      {qCatalog.isError ? (
+                        <p className="mt-1 text-xs text-amber-800">
+                          Não foi possível carregar os tipos de item.{" "}
+                          <button
+                            type="button"
+                            className="underline"
+                            onClick={() => void qc.invalidateQueries({ queryKey: queryKeys.contractPricingCatalog })}
+                          >
+                            Tentar novamente
+                          </button>
+                        </p>
+                      ) : null}
                     </label>
                     <label className="block text-sm">
                       <span className="mb-1 block font-medium text-slate-700">Unidade de medida</span>
-                      <Select value={item.unitId} onValueChange={(v) => updateItem(item.key, { unitId: v })}>
+                      <Select
+                        value={item.unitId.trim() || undefined}
+                        onValueChange={(v) => updateItem(item.key, { unitId: v })}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
                         <SelectContent>
+                          {item.unitId && !units.some((u) => u.id === item.unitId) ? (
+                            <SelectItem value={item.unitId}>Unidade vinculada (indisponível) (Inativo)</SelectItem>
+                          ) : null}
                           {units
-                            .filter((u) => u.active || u.id === item.unitId)
+                            .filter((u) => u.id && (u.active || u.id === item.unitId))
                             .map((u) => (
                               <SelectItem key={u.id} value={u.id}>
                                 {u.label}
-                                {!u.active ? " (inativa)" : ""}
+                                {!u.active ? " (Inativo)" : ""}
                               </SelectItem>
                             ))}
                         </SelectContent>

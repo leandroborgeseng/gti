@@ -112,10 +112,10 @@ export function ContractItemChangeHistoryPanel({ logs = [] }: { logs?: ContractI
     <Card className="p-5">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">Histórico auditável dos itens do contrato</h2>
+          <h2 className="text-base font-semibold text-slate-900">Auditoria</h2>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Registra inserções, exclusões e mudanças de status dos itens contratuais para apoiar validação antes de
-            medições e pagamentos.
+            Histórico de alterações dos itens do contrato (módulos, funcionalidades e serviços). Esta área poderá
+            consolidar outros eventos do contrato no futuro.
           </p>
         </div>
         <span className="text-xs text-slate-500">{logs.length} registro{logs.length === 1 ? "" : "s"}</span>

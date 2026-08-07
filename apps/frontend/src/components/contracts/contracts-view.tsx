@@ -2,62 +2,20 @@
 
 import type { Route } from "next";
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, FilePlus2, FileStack, Layers, Pencil } from "lucide-react";
 import Link from "next/link";
-import { Component, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import type { Contract } from "@/lib/api";
 import { getContracts } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
 import { queryKeys } from "@/lib/query-keys";
-import { ContractForm } from "@/components/actions/contract-form";
+import { ContractFormModal } from "@/components/contracts/contract-form-modal";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
-import { Modal } from "@/components/ui/modal";
 import "@/styles/gti-exec-metric-dash.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
-
-class ContractFormErrorBoundary extends Component<
-  { children: ReactNode; onReset: () => void },
-  { error: Error | null }
-> {
-  state: { error: Error | null } = { error: null };
-
-  static getDerivedStateFromError(error: Error) {
-    return { error };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("Erro ao abrir formulário de contrato", error, info.componentStack);
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          <p className="font-medium">Não foi possível abrir o formulário deste contrato.</p>
-          <p className="text-amber-900/90">
-            Alguns dados podem estar incompletos ou incompatíveis com o cadastro atual. Use «Abrir» para consultar o
-            detalhe ou tente novamente após regularizar órgãos e tipos de contrato.
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              this.setState({ error: null });
-              this.props.onReset();
-            }}
-          >
-            Voltar à listagem
-          </Button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 const statusLabel: Record<string, string> = {
   ACTIVE: "Ativo",
@@ -193,7 +151,6 @@ type Props = {
 };
 
 export function ContractsView({ contracts: initialContracts, dataLoadErrors = [] }: Props): JSX.Element {
-  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
 
@@ -482,42 +439,14 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
         />
       </section>
 
-      <Modal
+      <ContractFormModal
         open={modalOpen}
+        contract={editingContract}
         onClose={() => {
           setModalOpen(false);
           setEditingContract(null);
         }}
-        title={
-          editingContract
-            ? `Editar contrato ${editingContract.internalCode || editingContract.number || editingContract.name || ""}`.trim()
-            : "Novo contrato"
-        }
-        description={
-          editingContract
-            ? "Altere os dados e clique em Salvar alterações. Campos pendentes de migração podem ficar em branco até a regularização."
-            : "Preencha os campos obrigatórios. O contrato fica disponível na lista assim que for salvo."
-        }
-      >
-        <ContractFormErrorBoundary
-          onReset={() => {
-            setModalOpen(false);
-            setEditingContract(null);
-          }}
-        >
-          <ContractForm
-            key={editingContract?.id ?? "create"}
-            initialContract={editingContract}
-            onSuccess={() => {
-              setModalOpen(false);
-              setEditingContract(null);
-              void qc.invalidateQueries({ queryKey: queryKeys.contracts });
-              void qc.invalidateQueries({ queryKey: queryKeys.suppliers });
-              void qc.invalidateQueries({ queryKey: queryKeys.fiscais });
-            }}
-          />
-        </ContractFormErrorBoundary>
-      </Modal>
+      />
     </div>
   );
 }

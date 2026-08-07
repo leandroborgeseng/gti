@@ -5,6 +5,8 @@ export const queryKeys = {
   suppliers: ["gestao", "suppliers"] as const,
   fiscais: ["gestao", "fiscais"] as const,
   contracts: ["gestao", "contracts"] as const,
+  myPermissions: ["gestao", "permissions", "me"] as const,
+  contractFormData: (id: string) => ["gestao", "contracts", "form-data", id] as const,
   /** Resumo dos contratos na tela Funcionalidades. */
   modulesDeliveryOverview: ["gestao", "modules-delivery-overview"] as const,
   contractModulesDelivery: (contractId: string) => ["gestao", "contract-modules-delivery", contractId] as const,

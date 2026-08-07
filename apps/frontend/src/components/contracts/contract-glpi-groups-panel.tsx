@@ -21,6 +21,7 @@ type Props = {
   initialGroups: ContractGlpiGroup[];
 };
 
+/** Painel avulso (legado). Preferir o campo no formulário de edição do contrato. */
 export function ContractGlpiGroupsPanel({ contractId, initialGroups }: Props): JSX.Element {
   const qc = useQueryClient();
   const stableKey = useMemo(
@@ -64,24 +65,24 @@ export function ContractGlpiGroupsPanel({ contractId, initialGroups }: Props): J
 
   return (
     <Card className="p-5">
-      <h2 className="text-lg font-semibold text-slate-900">Grupos GLPI (trabalho atribuído)</h2>
+      <h2 className="text-lg font-semibold text-slate-900">Grupos GLPI vinculados</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Marque um ou mais grupos na lista abaixo (vinda da <strong>API GLPI</strong> e complementada por grupos já
-        observados nos chamados em cache). Os IDs coincidem com{" "}
-        <code className="rounded bg-slate-100 px-1 text-xs">contractGroupId</code> nos chamados, para cruzar métricas
-        de SLA por contrato.
+        Selecione os grupos identificados no GLPI. A edição principal ocorre no formulário do contrato.
       </p>
-      {qCat.isError ? (
-        <p className="mt-3 text-sm text-destructive">
-          {qCat.error instanceof Error ? qCat.error.message : "Não foi possível carregar o catálogo de grupos."}
-        </p>
-      ) : null}
       <div className="mt-4">
         <ContractGlpiGroupsField
           catalog={catalog}
           value={selected}
           onChange={setSelected}
           disabled={qCat.isPending || mut.isPending}
+          loading={qCat.isPending}
+          loadError={
+            qCat.isError
+              ? qCat.error instanceof Error
+                ? qCat.error.message
+                : "Não foi possível carregar o catálogo de grupos."
+              : null
+          }
         />
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -89,7 +90,13 @@ export function ContractGlpiGroupsPanel({ contractId, initialGroups }: Props): J
           {mut.isPending ? "Salvando…" : "Salvar grupos"}
         </Button>
         {dirty ? (
-          <Button type="button" variant="ghost" size="sm" disabled={mut.isPending} onClick={() => setSelected(toSelection(initialGroups))}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={mut.isPending}
+            onClick={() => setSelected(toSelection(initialGroups))}
+          >
             Repor
           </Button>
         ) : null}

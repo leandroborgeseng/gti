@@ -35,6 +35,12 @@ export function EntitySelectWithCreate({
   error,
   hint
 }: Props): JSX.Element {
+  const safeOptions = options.filter((o) => o.value);
+  const hasValue = Boolean(value) && safeOptions.some((o) => o.value === value);
+  const selectOptions =
+    value && !hasValue
+      ? [{ value, label: "Registro vinculado (indisponível) — Inativo" }, ...safeOptions]
+      : safeOptions;
   return (
     <div>
       <label htmlFor={id} className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -45,7 +51,7 @@ export function EntitySelectWithCreate({
         <select
           id={id}
           className={`${formControlClass} min-w-0 flex-1`}
-          value={value}
+          value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           required={required}
@@ -53,7 +59,7 @@ export function EntitySelectWithCreate({
           aria-describedby={hint ? `${id}-hint` : undefined}
         >
           <option value="">{placeholder}</option>
-          {options.map((o) => (
+          {selectOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>

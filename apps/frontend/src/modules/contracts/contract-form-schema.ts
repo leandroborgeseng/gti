@@ -11,6 +11,7 @@ export function onlyDigits(v: string): string {
 const hiringProcedurePattern = /^\d{1,4}\/\d{4}$/;
 
 export const contractTypeSchema = z.enum(["SOFTWARE", "DATACENTER", "INFRA", "SERVICO"]);
+export const contractStatusSchema = z.enum(["ACTIVE", "EXPIRED", "SUSPENDED"]);
 export const lawTypeFieldSchema = z.union([z.literal(""), z.enum(["LEI_8666", "LEI_14133"])]);
 
 const glpiGroupLinkSchema = z.object({
@@ -52,6 +53,7 @@ export const contractPageSchema = z
       .transform(onlyDigitsCnpj)
       .refine((d) => d.length === 14, { message: "CNPJ deve ter 14 dígitos." }),
     lawType: lawTypeFieldSchema,
+    status: contractStatusSchema.default("ACTIVE"),
     startDate: z.string().min(1, "Informe o início da vigência."),
     endDate: z.string().min(1, "Informe o fim da vigência."),
     /** Mantidos para compatibilidade; valores derivados dos itens contratuais no envio. */
@@ -157,6 +159,7 @@ export const CONTRACT_FORM_DEFAULT_VALUES: ContractPageFormInput = {
   companyName: "",
   cnpj: "",
   lawType: "",
+  status: "ACTIVE",
   startDate: "",
   endDate: "",
   monthlyValue: "",

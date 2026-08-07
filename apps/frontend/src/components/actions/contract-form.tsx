@@ -9,13 +9,15 @@ import {
   createContract,
   createFiscal,
   createSupplier,
-  getContract,
+  getContractFormData,
   getContractTypeCatalog,
   getFiscais,
   getGlpiAssignedGroupsCatalog,
   getHiringTypes,
+  getMyPermissions,
   getOrganizations,
   getSuppliers,
+  reportContractFormLoadFailure,
   updateContract,
   type Contract,
   type ContractTypeCatalogRecord,
@@ -35,11 +37,16 @@ import {
 import { queryKeys } from "@/lib/query-keys";
 import { formatBrl } from "@/lib/format-brl";
 import {
+  collectRegularizationPendings,
+  contractToFormDefaults,
+  mergeCatalogOptionsWithLink,
+  safeSelectValue
+} from "@/modules/contracts/contract-form-helpers";
+import {
   CONTRACT_FORM_DEFAULT_VALUES,
   contractPageSchema,
   createContractPageSchema,
   formatFormalNumberPreview,
-  formalNumberFromContract,
   onlyDigits,
   onlyDigitsCnpj,
   quickFiscalSchema,
@@ -47,6 +54,12 @@ import {
   type ContractPageFormInput,
   type ContractPageParsed
 } from "@/modules/contracts/contract-form-schema";
+import {
+  CONTRACT_STATUS_OPTIONS,
+  contractStatusConfirmationCopy,
+  isContractLifecycleStatus,
+  type ContractLifecycleStatus
+} from "@/modules/contracts/contract-status";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -58,60 +71,69 @@ import { EntitySelectWithCreate } from "@/components/ui/entity-select-with-creat
 
 type Props = {
   onSuccess?: () => void;
+  /** Chamado quando o usuário pede para fechar após falha técnica irrecuperável. */
+  onDismiss?: () => void;
   /** Se definido, o formulário passa a modo edição (`PUT /contracts/:id`). */
   initialContract?: Contract | null;
 };
 
-function safeDateInput(value: string | null | undefined): string {
-  if (!value) return "";
-  const raw = String(value).trim();
-  if (raw.length < 10) return "";
-  return raw.slice(0, 10);
+function AdminCatalogLink({
+  tab,
+  label,
+  enabled
+}: {
+  tab: "orgaos" | "tipos-contrato" | "tipos-contratacao" | "tipos-itens";
+  label: string;
+  enabled: boolean;
+}): JSX.Element | null {
+  if (!enabled) return null;
+  return (
+    <a
+      href={`/administracao?tab=${tab}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="ml-1 font-medium text-primary underline underline-offset-2"
+    >
+      {label}
+    </a>
+  );
 }
 
-function normalizeContractType(raw: string | null | undefined): ContractPageFormInput["contractType"] {
-  if (raw === "SOFTWARE" || raw === "DATACENTER" || raw === "INFRA" || raw === "SERVICO") {
-    return raw;
+function CatalogFieldHint({
+  emptyMessage,
+  loadError,
+  onRetry,
+  adminTab,
+  adminLabel,
+  canAdmin
+}: {
+  emptyMessage: string;
+  loadError?: string | null;
+  onRetry?: () => void;
+  adminTab?: "orgaos" | "tipos-contrato" | "tipos-contratacao" | "tipos-itens";
+  adminLabel?: string;
+  canAdmin?: boolean;
+}): JSX.Element | null {
+  if (loadError) {
+    return (
+      <p className="text-sm text-amber-800">
+        {loadError}{" "}
+        {onRetry ? (
+          <button type="button" className="font-medium underline underline-offset-2" onClick={onRetry}>
+            Tentar novamente
+          </button>
+        ) : null}
+      </p>
+    );
   }
-  return "SOFTWARE";
-}
-
-function contractToFormDefaults(c: Contract): ContractPageFormInput {
-  const cnpjDigits = onlyDigitsCnpj(c.cnpj ?? c.supplier?.cnpj ?? "");
-  const lt = (c.lawType ?? "") as ContractPageFormInput["lawType"];
-  return {
-    ...CONTRACT_FORM_DEFAULT_VALUES,
-    formalNumber: formalNumberFromContract(c),
-    number: c.number ?? "",
-    administrativeProcess: c.administrativeProcess ?? "",
-    organizationId: c.organizationId ?? "",
-    contractTypeCatalogId: c.contractTypeCatalogId ?? "",
-    contractType: normalizeContractType(c.contractType),
-    hiringTypeId: c.hiringTypeId ?? "",
-    hiringProcedureNumber: c.hiringProcedureNumber ?? "",
-    name: c.name ?? "",
-    description: c.description ?? "",
-    managingUnit: c.managingUnit ?? "",
-    companyName: c.companyName ?? "",
-    cnpj: cnpjDigits,
-    lawType: lt === "LEI_8666" || lt === "LEI_14133" ? lt : "",
-    startDate: safeDateInput(c.startDate),
-    endDate: safeDateInput(c.endDate),
-    monthlyValue: "",
-    installationValue: "",
-    globalValueManual: Boolean(c.globalValueManual),
-    globalValueCurrent: c.globalValueManual ? String(c.globalValueCurrent ?? "") : "",
-    globalValueJustification: c.globalValueManual ? c.globalValueJustification ?? "" : "",
-    implementationPeriodStart: safeDateInput(c.implementationPeriodStart),
-    implementationPeriodEnd: safeDateInput(c.implementationPeriodEnd),
-    fiscalId: c.fiscal?.id ?? "",
-    managerId: c.manager?.id ?? "",
-    supplierId: c.supplier?.id ?? "",
-    glpiGroups: (c.glpiGroups ?? []).map((g) => ({
-      glpiGroupId: g.glpiGroupId,
-      glpiGroupName: g.glpiGroupName ?? undefined
-    }))
-  };
+  return (
+    <p className="text-sm text-amber-800">
+      {emptyMessage}
+      {adminTab && adminLabel ? (
+        <AdminCatalogLink tab={adminTab} label={adminLabel} enabled={Boolean(canAdmin)} />
+      ) : null}
+    </p>
+  );
 }
 
 function catalogPayloadFields(data: ContractPageParsed): {
@@ -163,97 +185,146 @@ function formatCnpjHint(v: string): string {
   return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12, 14)}`;
 }
 
-export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.Element {
+export function ContractForm({ onSuccess, onDismiss, initialContract = null }: Props): JSX.Element {
   const qc = useQueryClient();
-  const qFiscais = useQuery({ queryKey: queryKeys.fiscais, queryFn: getFiscais });
-  const qSuppliers = useQuery({ queryKey: queryKeys.suppliers, queryFn: getSuppliers });
-  const qGlpiGroups = useQuery({ queryKey: queryKeys.glpiAssignedGroups, queryFn: getGlpiAssignedGroupsCatalog });
-  const qOrganizations = useQuery({ queryKey: queryKeys.organizations, queryFn: getOrganizations });
-  const qContractTypes = useQuery({ queryKey: queryKeys.contractTypeCatalog, queryFn: getContractTypeCatalog });
-  const qHiringTypes = useQuery({ queryKey: queryKeys.hiringTypes, queryFn: getHiringTypes });
-  const qContractDetail = useQuery({
-    queryKey: [...queryKeys.contracts, "detail", initialContract?.id ?? ""] as const,
-    queryFn: () => getContract(initialContract!.id),
-    enabled: Boolean(initialContract?.id),
-    initialData: initialContract?.pricingItems ? initialContract : undefined
+  const isEdit = Boolean(initialContract?.id);
+  const qPerms = useQuery({ queryKey: queryKeys.myPermissions, queryFn: getMyPermissions, staleTime: 60_000 });
+  const canAdminCatalogs =
+    qPerms.data?.role === "ADMIN" ||
+    (qPerms.data?.keys ?? []).some(
+      (k) =>
+        k === "admin.organs.manage" ||
+        k === "admin.organs.view" ||
+        k.startsWith("admin.")
+    );
+  const qFiscais = useQuery({
+    queryKey: queryKeys.fiscais,
+    queryFn: getFiscais,
+    retry: 1,
+    throwOnError: false
   });
-  const editContract = qContractDetail.data ?? initialContract;
+  const qSuppliers = useQuery({
+    queryKey: queryKeys.suppliers,
+    queryFn: getSuppliers,
+    retry: 1,
+    throwOnError: false
+  });
+  const qGlpiGroups = useQuery({
+    queryKey: queryKeys.glpiAssignedGroups,
+    queryFn: getGlpiAssignedGroupsCatalog,
+    retry: 1,
+    throwOnError: false
+  });
+  const qOrganizations = useQuery({
+    queryKey: queryKeys.organizations,
+    queryFn: getOrganizations,
+    retry: 1,
+    throwOnError: false
+  });
+  const qContractTypes = useQuery({
+    queryKey: queryKeys.contractTypeCatalog,
+    queryFn: getContractTypeCatalog,
+    retry: 1,
+    throwOnError: false
+  });
+  const qHiringTypes = useQuery({
+    queryKey: queryKeys.hiringTypes,
+    queryFn: getHiringTypes,
+    retry: 1,
+    throwOnError: false
+  });
+  const qContractDetail = useQuery({
+    queryKey: queryKeys.contractFormData(initialContract?.id ?? ""),
+    queryFn: () => getContractFormData(initialContract!.id),
+    enabled: Boolean(initialContract?.id),
+    retry: 1,
+    throwOnError: false,
+    // Lista já traz identificação; itens vêm do form-data.
+    placeholderData: initialContract ?? undefined
+  });
+  const editContract = (qContractDetail.data ?? initialContract) as Contract | null;
+  const detailLoadFailed = isEdit && qContractDetail.isError;
   const fiscais = qFiscais.data ?? [];
   const suppliers = qSuppliers.data ?? [];
-  const organizationOptions = useMemo(() => {
-    const all = qOrganizations.data ?? [];
-    const active = all.filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-    const linkedId = editContract?.organizationId;
-    if (!linkedId) return active;
-    if (active.some((o) => o.id === linkedId)) return active;
-    const linked =
-      editContract?.organization ??
-      all.find((o) => o.id === linkedId) ??
-      ({ id: linkedId, name: "Órgão vinculado (indisponível)", acronym: "", active: false } as const);
-    return [
-      {
-        id: linked.id,
-        name: linked.name,
-        acronym: "acronym" in linked ? linked.acronym ?? "" : "",
-        active: false
-      },
-      ...active
-    ];
-  }, [qOrganizations.data, editContract?.organizationId, editContract?.organization]);
+  const organizationOptions = useMemo(
+    () =>
+      mergeCatalogOptionsWithLink(
+        (qOrganizations.data ?? []).map((o) => ({
+          id: o.id,
+          name: o.name,
+          acronym: o.acronym ?? "",
+          active: o.active
+        })),
+        editContract?.organizationId,
+        editContract?.organization
+          ? {
+              id: editContract.organization.id,
+              name: editContract.organization.name,
+              acronym: editContract.organization.acronym ?? "",
+              active: editContract.organization.active
+            }
+          : null,
+        "Órgão vinculado (indisponível)"
+      ),
+    [qOrganizations.data, editContract?.organizationId, editContract?.organization]
+  );
 
-  const contractTypeOptions = useMemo(() => {
-    const all = qContractTypes.data ?? [];
-    const active = all
-      .filter((t) => t.active)
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR"));
-    const linkedId = editContract?.contractTypeCatalogId;
-    if (!linkedId) return active;
-    if (active.some((t) => t.id === linkedId)) return active;
-    const linked =
-      editContract?.contractTypeCatalog ??
-      all.find((t) => t.id === linkedId) ??
-      ({
-        id: linkedId,
-        name: "Tipo vinculado (indisponível)",
-        acronym: "",
-        legacyEnum: null,
-        active: false,
-        sortOrder: 0
-      });
-    return [{ ...linked, active: false }, ...active];
-  }, [qContractTypes.data, editContract?.contractTypeCatalogId, editContract?.contractTypeCatalog]);
+  const contractTypeOptions = useMemo(
+    () =>
+      mergeCatalogOptionsWithLink(
+        (qContractTypes.data ?? []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          acronym: t.acronym ?? "",
+          active: t.active,
+          legacyEnum: t.legacyEnum,
+          sortOrder: t.sortOrder
+        })),
+        editContract?.contractTypeCatalogId,
+        editContract?.contractTypeCatalog
+          ? {
+              id: editContract.contractTypeCatalog.id,
+              name: editContract.contractTypeCatalog.name,
+              acronym: editContract.contractTypeCatalog.acronym ?? "",
+              legacyEnum:
+                editContract.contractTypeCatalog.legacyEnum === "SOFTWARE" ||
+                editContract.contractTypeCatalog.legacyEnum === "DATACENTER" ||
+                editContract.contractTypeCatalog.legacyEnum === "INFRA" ||
+                editContract.contractTypeCatalog.legacyEnum === "SERVICO"
+                  ? editContract.contractTypeCatalog.legacyEnum
+                  : null,
+              active: false,
+              sortOrder: 0
+            }
+          : null,
+        "Tipo vinculado (indisponível)"
+      ),
+    [qContractTypes.data, editContract?.contractTypeCatalogId, editContract?.contractTypeCatalog]
+  );
 
-  const hiringTypeOptions = useMemo(() => {
-    const all = qHiringTypes.data ?? [];
-    const active = all
-      .filter((t) => t.active)
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "pt-BR"));
-    const linkedId = editContract?.hiringTypeId;
-    if (!linkedId) return active;
-    if (active.some((t) => t.id === linkedId)) return active;
-    const linked =
-      editContract?.hiringType ??
-      all.find((t) => t.id === linkedId) ??
-      ({ id: linkedId, name: "Modalidade vinculada (indisponível)", active: false, sortOrder: 0 });
-    return [{ ...linked, active: false }, ...active];
-  }, [qHiringTypes.data, editContract?.hiringTypeId, editContract?.hiringType]);
+  const hiringTypeOptions = useMemo(
+    () =>
+      mergeCatalogOptionsWithLink(
+        (qHiringTypes.data ?? []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          active: t.active,
+          sortOrder: t.sortOrder
+        })),
+        editContract?.hiringTypeId,
+        editContract?.hiringType
+          ? { id: editContract.hiringType.id, name: editContract.hiringType.name, active: false, sortOrder: 0 }
+          : null,
+        "Modalidade vinculada (indisponível)"
+      ),
+    [qHiringTypes.data, editContract?.hiringTypeId, editContract?.hiringType]
+  );
+  const orgOptionIds = useMemo(() => new Set(organizationOptions.map((o) => o.id)), [organizationOptions]);
+  const typeOptionIds = useMemo(() => new Set(contractTypeOptions.map((t) => t.id)), [contractTypeOptions]);
+  const hiringOptionIds = useMemo(() => new Set(hiringTypeOptions.map((t) => t.id)), [hiringTypeOptions]);
   const catalogsLoading =
     qOrganizations.isPending || qContractTypes.isPending || qHiringTypes.isPending;
-  const catalogsError =
-    qOrganizations.error || qContractTypes.error || qHiringTypes.error
-      ? [qOrganizations.error, qContractTypes.error, qHiringTypes.error]
-          .filter(Boolean)
-          .map((e) => (e instanceof Error ? e.message : String(e)))
-          .join(" · ")
-      : null;
   const listsLoading = qFiscais.isPending || qSuppliers.isPending || catalogsLoading;
-  const listsError =
-    qFiscais.error || qSuppliers.error || catalogsError
-      ? [qFiscais.error, qSuppliers.error, catalogsError]
-          .filter(Boolean)
-          .map((e) => (e instanceof Error ? e.message : String(e)))
-          .join(" · ")
-      : null;
 
   const [fiscalModalRole, setFiscalModalRole] = useState<FiscalModalRole | null>(null);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
@@ -261,6 +332,10 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const [newSupplierErr, setNewSupplierErr] = useState<string | null>(null);
   const [pricingItems, setPricingItems] = useState<PricingDraftItem[]>([]);
   const [pricingError, setPricingError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [initNonce, setInitNonce] = useState(0);
+  const [statusConfirmOpen, setStatusConfirmOpen] = useState(false);
+  const [pendingStatusSubmit, setPendingStatusSubmit] = useState<ContractPageParsed | null>(null);
 
   const form = useForm<ContractPageFormInput>({
     resolver: zodResolver(contractPageSchema),
@@ -270,8 +345,13 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const watchFormalNumber = form.watch("formalNumber");
   const watchStartDate = form.watch("startDate");
   const watchOrganizationId = form.watch("organizationId");
+  const watchContractTypeCatalogId = form.watch("contractTypeCatalogId");
+  const watchHiringTypeId = form.watch("hiringTypeId");
+  const watchFiscalId = form.watch("fiscalId");
+  const watchManagingUnit = form.watch("managingUnit");
   const watchGlobalValueManual = form.watch("globalValueManual");
   const watchGlobalValueCurrent = form.watch("globalValueCurrent");
+  const formValues = form.watch();
   const pricingTotals = useMemo(() => summarizePricingDraft(pricingItems), [pricingItems]);
   const manualGlobalValue = Number(String(watchGlobalValueCurrent ?? "").replace(",", "."));
   const globalValueDifference =
@@ -281,6 +361,43 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   const numberPreview = useMemo(
     () => formatFormalNumberPreview(String(watchFormalNumber ?? ""), String(watchStartDate ?? "")),
     [watchFormalNumber, watchStartDate]
+  );
+
+  const fiscalIdSet = useMemo(() => new Set(fiscais.map((f) => f.id)), [fiscais]);
+  const regularizationPendings = useMemo(() => {
+    if (!isEdit) return [];
+    return collectRegularizationPendings(formValues, {
+      organizationOptions,
+      contractTypeOptions,
+      hiringTypeOptions,
+      fiscalIds: fiscalIdSet,
+      managingUnitLegacy: editContract?.managingUnit ?? watchManagingUnit,
+      contractTypeLegacy: editContract?.contractType ?? null
+    });
+  }, [
+    isEdit,
+    formValues,
+    organizationOptions,
+    contractTypeOptions,
+    hiringTypeOptions,
+    fiscalIdSet,
+    editContract?.managingUnit,
+    editContract?.contractType,
+    watchManagingUnit
+  ]);
+
+  const logFormFailure = useCallback(
+    (stage: string, message: string) => {
+      void reportContractFormLoadFailure({
+        action: isEdit ? "edit" : "create",
+        contractId: initialContract?.id ?? null,
+        stage,
+        message
+      }).catch(() => {
+        /* logging best-effort */
+      });
+    },
+    [isEdit, initialContract?.id]
   );
 
   const onContractTypeCatalogChange = useCallback(
@@ -295,30 +412,60 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   );
 
   useEffect(() => {
+    if (qContractDetail.isError && initialContract?.id) {
+      const msg =
+        qContractDetail.error instanceof Error
+          ? qContractDetail.error.message
+          : "Falha ao carregar detalhe do contrato";
+      logFormFailure("contract_form_data", msg);
+    }
+  }, [qContractDetail.isError, qContractDetail.error, initialContract?.id, logFormFailure]);
+
+  useEffect(() => {
     try {
-      if (editContract) {
+      if (isEdit) {
         // Aguarda catálogos para evitar Select com value sem opção correspondente (crash do Radix).
         if (catalogsLoading) return;
-        form.reset(contractToFormDefaults(editContract));
-        if (editContract.pricingItems) {
-          setPricingItems(pricingItemsFromContract(editContract.pricingItems));
-        } else {
+        const source = editContract ?? initialContract;
+        form.reset(contractToFormDefaults(source));
+        try {
+          setPricingItems(pricingItemsFromContract(source?.pricingItems));
+        } catch (pricingErr) {
           setPricingItems([]);
+          logFormFailure(
+            "pricing_items_map",
+            pricingErr instanceof Error ? pricingErr.message : "Falha ao mapear itens"
+          );
         }
       } else {
         form.reset(CONTRACT_FORM_DEFAULT_VALUES);
         setPricingItems([]);
       }
       setPricingError(null);
+      setInitError(null);
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Falha ao preparar o formulário";
       console.error("Falha ao preparar formulário do contrato", err);
-      toast.error(
-        err instanceof Error
-          ? `Não foi possível carregar o formulário: ${err.message}`
-          : "Não foi possível carregar o formulário do contrato."
+      setInitError(
+        "Não foi possível preparar alguns dados do formulário. Você pode tentar novamente ou voltar à listagem."
       );
+      logFormFailure("form_reset", message);
+      // Mantém formulário utilizável com defaults seguros.
+      form.reset(CONTRACT_FORM_DEFAULT_VALUES);
+      setPricingItems([]);
     }
-  }, [editContract?.id, editContract?.updatedAt, form, editContract, catalogsLoading]);
+  }, [
+    editContract?.id,
+    editContract?.updatedAt,
+    editContract?.pricingItems,
+    form,
+    editContract,
+    catalogsLoading,
+    isEdit,
+    initialContract,
+    initNonce,
+    logFormFailure
+  ]);
 
   const createFiscalMut = useMutation({
     mutationFn: async (vars: { name: string; email: string; phone: string; role: FiscalModalRole }) => {
@@ -401,6 +548,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
         companyName: data.companyName.trim(),
         cnpj: data.cnpj,
         lawType: data.lawType || undefined,
+        status: data.status,
         startDate: data.startDate,
         endDate: data.endDate,
         monthlyValue: totals.monthlyValue,
@@ -417,6 +565,8 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
     },
     onSuccess: () => {
       toast.success("Contrato atualizado.");
+      setStatusConfirmOpen(false);
+      setPendingStatusSubmit(null);
       void qc.invalidateQueries({ queryKey: queryKeys.contracts });
       void qc.invalidateQueries({ queryKey: queryKeys.glpiAssignedGroups });
       onSuccess?.();
@@ -491,16 +641,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
     });
   }
 
-  function onValidSubmit(raw: ContractPageFormInput): void {
-    const schema = initialContract ? contractPageSchema : createContractPageSchema;
-    const parsed = schema.safeParse(raw);
-    if (!parsed.success) {
-      const first = parsed.error.flatten().fieldErrors;
-      const msg = Object.values(first).flat()[0];
-      toast.error(typeof msg === "string" ? msg : "Verifique os campos do formulário.");
-      return;
-    }
-    const data = parsed.data;
+  function executeSubmit(data: ContractPageParsed): void {
     const pricingMsg = validatePricingDraft(pricingItems);
     setPricingError(pricingMsg);
     if (pricingMsg) {
@@ -522,6 +663,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
       companyName: data.companyName.trim(),
       cnpj: data.cnpj,
       lawType: data.lawType || undefined,
+      status: data.status,
       startDate: data.startDate,
       endDate: data.endDate,
       monthlyValue: totals.monthlyValue,
@@ -537,6 +679,43 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
     });
   }
 
+  function onValidSubmit(raw: ContractPageFormInput): void {
+    const schema = initialContract ? contractPageSchema : createContractPageSchema;
+    const parsed = schema.safeParse(raw);
+    if (!parsed.success) {
+      const flat = parsed.error.flatten().fieldErrors;
+      for (const [key, messages] of Object.entries(flat)) {
+        const msg = messages?.[0];
+        if (msg) {
+          form.setError(key as keyof ContractPageFormInput, { type: "manual", message: msg });
+        }
+      }
+      const first = Object.values(flat).flat()[0];
+      toast.error(typeof first === "string" ? first : "Verifique os campos obrigatórios do formulário.");
+      return;
+    }
+    const data = parsed.data;
+    const previousStatus = initialContract?.status ?? "ACTIVE";
+    if (
+      initialContract &&
+      isContractLifecycleStatus(data.status) &&
+      data.status !== previousStatus
+    ) {
+      setPendingStatusSubmit(data);
+      setStatusConfirmOpen(true);
+      return;
+    }
+    executeSubmit(data);
+  }
+
+  const statusConfirmTexts =
+    pendingStatusSubmit != null
+      ? contractStatusConfirmationCopy(
+          initialContract?.status ?? "ACTIVE",
+          pendingStatusSubmit.status as ContractLifecycleStatus
+        )
+      : { title: "", description: "" };
+
   const sameAsFiscal = useCallback(() => {
     const fid = form.getValues("fiscalId");
     if (!fid) {
@@ -550,8 +729,85 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
   return (
     <Form {...form}>
       <form className="space-y-5" onSubmit={form.handleSubmit(onValidSubmit)}>
-        {listsLoading ? <p className="text-sm text-muted-foreground">Carregando fiscais e fornecedores…</p> : null}
-        {listsError ? <p className="text-sm text-destructive">{listsError}</p> : null}
+        {listsLoading ? (
+          <p className="text-sm text-muted-foreground">Carregando cadastros auxiliares…</p>
+        ) : null}
+        {detailLoadFailed ? (
+          <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+            <p>
+              Não foi possível recarregar o detalhe completo deste contrato. Os dados disponíveis foram carregados; itens
+              contratuais e vínculos recentes podem estar incompletos.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void qc.invalidateQueries({ queryKey: queryKeys.contractFormData(initialContract!.id) });
+                  setInitNonce((n) => n + 1);
+                }}
+              >
+                Tentar novamente
+              </Button>
+              {onDismiss ? (
+                <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>
+                  Voltar à listagem
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        {initError ? (
+          <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+            <p>{initError}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setInitNonce((n) => n + 1)}>
+                Tentar novamente
+              </Button>
+              {onDismiss ? (
+                <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>
+                  Voltar à listagem
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        {isEdit && regularizationPendings.length > 0 ? (
+          <div
+            className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-sm text-slate-800"
+            role="region"
+            aria-label="Pendências de regularização"
+          >
+            <p className="font-medium text-slate-900">Pendências de regularização</p>
+            <p className="mt-0.5 text-xs text-slate-600">
+              Campos abaixo precisam de atenção. O restante do formulário permanece editável.
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {regularizationPendings.map((p) => (
+                <li key={p.field}>
+                  <button
+                    type="button"
+                    className="text-left font-medium text-primary underline-offset-2 hover:underline"
+                    onClick={() => {
+                      document.getElementById(p.anchorId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      document.getElementById(p.anchorId)?.focus?.();
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                  <span className="text-slate-700"> — {p.message}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {isEdit && editContract?.managingUnit && !watchOrganizationId ? (
+          <p className="text-sm text-muted-foreground">
+            Referência legada de órgão: <strong>{editContract.managingUnit}</strong>. Selecione o órgão correspondente na
+            lista abaixo.
+          </p>
+        ) : null}
 
         <FormSection
           title="Identificação do contrato"
@@ -565,6 +821,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                 <FormLabel>Número formal {initialContract ? "(opcional na edição)" : ""}</FormLabel>
                 <FormControl>
                   <Input
+                    id="field-formalNumber"
                     placeholder="Somente dígitos (ex.: 370)"
                     inputMode="numeric"
                     autoComplete="off"
@@ -606,9 +863,13 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             control={form.control}
             name="organizationId"
             render={({ field }) => (
-              <FormItem className="sm:col-span-2">
+              <FormItem className="sm:col-span-2" id="field-organizationId">
                 <FormLabel>Órgão gestor</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value || undefined} disabled={catalogsLoading}>
+                <Select
+                  onValueChange={field.onChange}
+                  value={safeSelectValue(field.value, orgOptionIds)}
+                  disabled={catalogsLoading}
+                >
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder={catalogsLoading ? "Carregando…" : "Selecione o órgão"} />
@@ -623,6 +884,25 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                     ))}
                   </SelectContent>
                 </Select>
+                {!catalogsLoading && organizationOptions.filter((o) => o.active !== false).length === 0 ? (
+                  <CatalogFieldHint
+                    emptyMessage="Nenhum órgão ativo está disponível."
+                    loadError={
+                      qOrganizations.isError
+                        ? "Não foi possível carregar a lista de órgãos."
+                        : null
+                    }
+                    onRetry={() => void qc.invalidateQueries({ queryKey: queryKeys.organizations })}
+                    adminTab="orgaos"
+                    adminLabel="Abrir cadastro de órgãos"
+                    canAdmin={canAdminCatalogs}
+                  />
+                ) : null}
+                {field.value && !orgOptionIds.has(field.value) ? (
+                  <p className="text-sm text-amber-800">
+                    Há um órgão vinculado que não está na lista atual. Selecione um registro correspondente.
+                  </p>
+                ) : null}
                 <FormMessage />
               </FormItem>
             )}
@@ -633,11 +913,13 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
               name="managingUnit"
               render={({ field }) => (
                 <FormItem className="sm:col-span-2">
-                  <FormLabel>Órgão gestor (texto legado)</FormLabel>
+                  <FormLabel>Órgão gestor (texto legado — referência)</FormLabel>
                   <FormControl>
                     <Input placeholder="Ex.: SEC. ADM. E RH" autoComplete="organization" {...field} />
                   </FormControl>
-                  <FormDescription>Use apenas se o órgão ainda não estiver no cadastro central.</FormDescription>
+                  <FormDescription>
+                    Valor legado apenas como referência. Regularize selecionando o órgão no cadastro central acima.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -647,14 +929,14 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             control={form.control}
             name="contractTypeCatalogId"
             render={({ field }) => (
-              <FormItem>
+              <FormItem id="field-contractTypeCatalogId">
                 <FormLabel>Tipo de contrato</FormLabel>
                 <Select
                   onValueChange={(id) => {
                     const catalog = contractTypeOptions.find((t) => t.id === id);
                     onContractTypeCatalogChange(id, catalog as ContractTypeCatalogRecord | undefined);
                   }}
-                  value={field.value || undefined}
+                  value={safeSelectValue(field.value, typeOptionIds)}
                   disabled={catalogsLoading}
                 >
                   <FormControl>
@@ -666,11 +948,30 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                     {contractTypeOptions.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
                         {t.acronym ? `${t.acronym} · ${t.name}` : t.name}
-                        {"active" in t && t.active === false ? " (Inativo)" : ""}
+                        {t.active === false ? " (Inativo)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!catalogsLoading && contractTypeOptions.filter((t) => t.active !== false).length === 0 ? (
+                  <CatalogFieldHint
+                    emptyMessage="Nenhum tipo de contrato ativo foi cadastrado."
+                    loadError={
+                      qContractTypes.isError
+                        ? "Não foi possível carregar os tipos de contrato."
+                        : null
+                    }
+                    onRetry={() => void qc.invalidateQueries({ queryKey: queryKeys.contractTypeCatalog })}
+                    adminTab="tipos-contrato"
+                    adminLabel="Abrir tipos de contrato"
+                    canAdmin={canAdminCatalogs}
+                  />
+                ) : null}
+                {isEdit && !watchContractTypeCatalogId && editContract?.contractType ? (
+                  <FormDescription>
+                    Classificação legada: {editContract.contractType}. Selecione o tipo correspondente no catálogo.
+                  </FormDescription>
+                ) : null}
                 <FormMessage />
               </FormItem>
             )}
@@ -679,11 +980,15 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             control={form.control}
             name="hiringTypeId"
             render={({ field }) => (
-              <FormItem>
+              <FormItem id="field-hiringTypeId">
                 <FormLabel>Modalidade de contratação (opcional)</FormLabel>
                 <Select
                   onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
-                  value={field.value ? field.value : "__none__"}
+                  value={
+                    field.value?.trim() && hiringOptionIds.has(field.value)
+                      ? field.value
+                      : "__none__"
+                  }
                   disabled={catalogsLoading}
                 >
                   <FormControl>
@@ -696,11 +1001,28 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                     {hiringTypeOptions.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
                         {t.name}
-                        {"active" in t && t.active === false ? " (Inativo)" : ""}
+                        {t.active === false ? " (Inativo)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!catalogsLoading && hiringTypeOptions.filter((t) => t.active !== false).length === 0 ? (
+                  <CatalogFieldHint
+                    emptyMessage="Nenhum tipo de contratação ativo está disponível."
+                    loadError={
+                      qHiringTypes.isError
+                        ? "Não foi possível carregar os tipos de contratação."
+                        : null
+                    }
+                    onRetry={() => void qc.invalidateQueries({ queryKey: queryKeys.hiringTypes })}
+                    adminTab="tipos-contratacao"
+                    adminLabel="Abrir tipos de contratação"
+                    canAdmin={canAdminCatalogs}
+                  />
+                ) : null}
+                {!watchHiringTypeId && isEdit ? (
+                  <FormDescription>Sem modalidade vinculada — pode permanecer em branco até a regularização.</FormDescription>
+                ) : null}
                 <FormMessage />
               </FormItem>
             )}
@@ -753,6 +1075,35 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                   </SelectContent>
                 </Select>
                 <FormDescription>Se vazio, o servidor usa a regra por padrão (14133).</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="status"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Status</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || "ACTIVE"}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o status" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {CONTRACT_STATUS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription>
+                  {isEdit
+                    ? "A alteração do status é salva junto com o restante do cadastro. Situações sensíveis pedem confirmação."
+                    : "Situação inicial do contrato após o cadastro."}
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -821,25 +1172,34 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
         </FormSection>
 
         <FormSection
-          title="Grupos GLPI (SLA)"
-          description="Opcional. Liga o contrato aos grupos de trabalho já vistos nos chamados sincronizados, para futuras métricas de SLA por contrato."
+          title="Integração GLPI"
+          description="Opcional. Vincule um ou mais grupos de trabalho do GLPI para relacionar chamados e acompanhar SLA."
         >
           <FormField
             control={form.control}
             name="glpiGroups"
             render={({ field }) => (
               <FormItem className="sm:col-span-2">
-                <FormLabel>Grupos atribuídos no GLPI</FormLabel>
+                <FormLabel>Grupos GLPI vinculados</FormLabel>
                 <FormControl>
                   <ContractGlpiGroupsField
+                    id="field-glpiGroups"
                     catalog={qGlpiGroups.data ?? []}
                     value={field.value ?? []}
                     onChange={field.onChange}
                     disabled={qGlpiGroups.isPending}
+                    loading={qGlpiGroups.isPending}
+                    loadError={
+                      qGlpiGroups.isError
+                        ? "Não foi possível carregar os grupos GLPI. Tente novamente mais tarde."
+                        : null
+                    }
+                    maxVisibleChips={2}
                   />
                 </FormControl>
                 <FormDescription>
-                  Lista carregada a partir da API GLPI (grupos ativos) e de grupos já vistos nos chamados sincronizados.
+                  Selecione apenas grupos identificados no GLPI (API e chamados sincronizados). Não é possível digitar
+                  nomes livres.
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -853,22 +1213,34 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
               control={form.control}
               name="fiscalId"
               render={({ field, fieldState }) => (
-                <EntitySelectWithCreate
-                  id="c-fiscal"
-                  label="Fiscal"
-                  required
-                  value={field.value ?? ""}
-                  onChange={(v) => {
-                    field.onChange(v);
-                    form.clearErrors("fiscalId");
-                  }}
-                  options={fiscalOptions}
-                  placeholder="Selecione o fiscal"
-                  addNewLabel="+ Novo fiscal"
-                  onAddNew={() => openFiscalModal("fiscal")}
-                  disabled={listsLoading}
-                  error={fieldState.error?.message}
-                />
+                <div id="field-fiscalId">
+                  <EntitySelectWithCreate
+                    id="c-fiscal"
+                    label="Fiscal"
+                    required
+                    value={field.value ?? ""}
+                    onChange={(v) => {
+                      field.onChange(v);
+                      form.clearErrors("fiscalId");
+                    }}
+                    options={fiscalOptions}
+                    placeholder="Selecione o fiscal"
+                    addNewLabel="+ Novo fiscal"
+                    onAddNew={() => openFiscalModal("fiscal")}
+                    disabled={qFiscais.isPending}
+                    error={fieldState.error?.message}
+                  />
+                  {qFiscais.isError ? (
+                    <CatalogFieldHint
+                      emptyMessage=""
+                      loadError="Não foi possível carregar a lista de fiscais."
+                      onRetry={() => void qc.invalidateQueries({ queryKey: queryKeys.fiscais })}
+                    />
+                  ) : null}
+                  {!qFiscais.isPending && !qFiscais.isError && fiscais.length === 0 ? (
+                    <p className="mt-1 text-sm text-amber-800">Nenhum fiscal cadastrado. Use «+ Novo fiscal».</p>
+                  ) : null}
+                </div>
               )}
             />
           </div>
@@ -897,7 +1269,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             />
           </div>
           <div className="sm:col-span-2">
-            <Button type="button" variant="outline" onClick={sameAsFiscal} disabled={listsLoading || Boolean(listsError) || !form.watch("fiscalId")}>
+            <Button type="button" variant="outline" onClick={sameAsFiscal} disabled={!watchFiscalId}>
               Usar o fiscal selecionado como gestor
             </Button>
           </div>
@@ -911,7 +1283,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
             control={form.control}
             name="startDate"
             render={({ field }) => (
-              <FormItem>
+              <FormItem id="field-startDate">
                 <FormLabel>Início da vigência</FormLabel>
                 <FormControl>
                   <Input type="date" {...field} />
@@ -1078,12 +1450,7 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
         <div className="flex flex-wrap items-center gap-3">
           <Button
             type="submit"
-            disabled={
-              listsLoading ||
-              Boolean(listsError) ||
-              createContractMut.isPending ||
-              updateContractMut.isPending
-            }
+            disabled={createContractMut.isPending || updateContractMut.isPending}
           >
             {initialContract
               ? updateContractMut.isPending
@@ -1093,6 +1460,11 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                 ? "Salvando…"
                 : "Salvar contrato"}
           </Button>
+          {onDismiss ? (
+            <Button type="button" variant="outline" onClick={onDismiss}>
+              Voltar à listagem
+            </Button>
+          ) : null}
         </div>
 
         <Modal
@@ -1195,6 +1567,41 @@ export function ContractForm({ onSuccess, initialContract = null }: Props): JSX.
                 Cancelar
               </Button>
             </div>
+          </div>
+        </Modal>
+
+        <Modal
+          open={statusConfirmOpen && pendingStatusSubmit != null}
+          onClose={() => {
+            if (updateContractMut.isPending) return;
+            setStatusConfirmOpen(false);
+            setPendingStatusSubmit(null);
+          }}
+          title={statusConfirmTexts.title}
+          description={statusConfirmTexts.description}
+        >
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={updateContractMut.isPending}
+              onClick={() => {
+                setStatusConfirmOpen(false);
+                setPendingStatusSubmit(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={updateContractMut.isPending || !pendingStatusSubmit}
+              onClick={() => {
+                if (!pendingStatusSubmit) return;
+                executeSubmit(pendingStatusSubmit);
+              }}
+            >
+              {updateContractMut.isPending ? "Salvando…" : "Confirmar e salvar"}
+            </Button>
           </div>
         </Modal>
       </form>

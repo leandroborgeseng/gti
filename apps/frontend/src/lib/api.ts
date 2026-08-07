@@ -1447,6 +1447,24 @@ export async function getContract(id: string): Promise<Contract> {
   return request(`/contracts/${id}`);
 }
 
+/** Carga leve do contrato para o formulário de edição (sem cronogramas/ocorrências). */
+export async function getContractFormData(id: string): Promise<Contract> {
+  return request(`/contracts/${id}/form-data`);
+}
+
+/** Registra falha de carregamento do formulário nos logs administrativos. */
+export async function reportContractFormLoadFailure(payload: {
+  action: "create" | "edit";
+  contractId?: string | null;
+  stage: string;
+  message?: string;
+}): Promise<{ ok: true }> {
+  return request("/contracts/form-load-failure", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function createContractAmendment(
   contractId: string,
   payload: CreateContractAmendmentPayload

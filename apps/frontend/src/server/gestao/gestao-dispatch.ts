@@ -787,6 +787,18 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 1 && method === "POST") {
       return jsonOk(await gestaoContracts.create((await readJsonBody(req)) as never));
     }
+    if (seg.length === 2 && seg[1] === "form-load-failure" && method === "POST") {
+      const body = (await readJsonBody(req)) as {
+        action?: string | null;
+        contractId?: string | null;
+        stage?: string | null;
+        message?: string | null;
+      };
+      return jsonOk(await gestaoContracts.reportFormLoadFailure(body ?? {}));
+    }
+    if (seg.length === 3 && seg[2] === "form-data" && method === "GET") {
+      return jsonOk(await gestaoContracts.findOneForForm(seg[1]));
+    }
     if (seg.length === 3 && seg[2] === "regenerate-internal-code" && method === "POST") {
       assertRoles(user, [UserRole.ADMIN]);
       assertPermission(user, "contracts.internal_code.regenerate");

@@ -99,6 +99,39 @@ function dedupeGlpiGroupLinks(links: ContractGlpiGroupLinkDto[]): { glpiGroupId:
   return out;
 }
 
+function serializeGlpiGroupsForAudit(
+  groups: Array<{ glpiGroupId: number; glpiGroupName?: string | null }>
+): Array<{ glpiGroupId: number; glpiGroupName: string | null }> {
+  return groups
+    .map((g) => ({
+      glpiGroupId: g.glpiGroupId,
+      glpiGroupName: g.glpiGroupName?.trim() ? g.glpiGroupName.trim() : null
+    }))
+    .sort((a, b) => a.glpiGroupId - b.glpiGroupId);
+}
+
+function glpiGroupsAuditPayload(
+  previous: Array<{ glpiGroupId: number; glpiGroupName?: string | null }>,
+  next: Array<{ glpiGroupId: number; glpiGroupName?: string | null }>
+): {
+  previousGroups: Array<{ glpiGroupId: number; glpiGroupName: string | null }>;
+  newGroups: Array<{ glpiGroupId: number; glpiGroupName: string | null }>;
+  added: Array<{ glpiGroupId: number; glpiGroupName: string | null }>;
+  removed: Array<{ glpiGroupId: number; glpiGroupName: string | null }>;
+} | null {
+  const previousGroups = serializeGlpiGroupsForAudit(previous);
+  const newGroups = serializeGlpiGroupsForAudit(next);
+  if (JSON.stringify(previousGroups) === JSON.stringify(newGroups)) return null;
+  const prevIds = new Set(previousGroups.map((g) => g.glpiGroupId));
+  const nextIds = new Set(newGroups.map((g) => g.glpiGroupId));
+  return {
+    previousGroups,
+    newGroups,
+    added: newGroups.filter((g) => !prevIds.has(g.glpiGroupId)),
+    removed: previousGroups.filter((g) => !nextIds.has(g.glpiGroupId))
+  };
+}
+
 function isGlpiTicketClosedStatus(status: string | null | undefined): boolean {
   const s = (status || "").toLowerCase();
   return (
@@ -608,6 +641,17 @@ export class ContractsService {
       });
     });
     await this.createAudit("Contract", created.id, "CREATE", null, created);
+    const createdGlpiLinks = glpiGroups != null ? dedupeGlpiGroupLinks(glpiGroups) : [];
+    const createGlpiAudit = glpiGroupsAuditPayload([], createdGlpiLinks);
+    if (createGlpiAudit) {
+      await this.createAudit(
+        "ContractGlpiGroup",
+        created.id,
+        "UPDATE",
+        { previousGroups: createGlpiAudit.previousGroups, removed: createGlpiAudit.removed },
+        { newGroups: createGlpiAudit.newGroups, added: createGlpiAudit.added }
+      );
+    }
     if (pricingItems && pricingItems.length > 0) {
       await this.pricing.replaceItems(created.id, pricingItems as PricingItemInput[], (action, oldData, newData) =>
         this.createAudit("ContractPricingItem", created.id, action, oldData, newData)
@@ -1753,11 +1797,77 @@ export class ContractsService {
     return { scanned: contracts.length, updated };
   }
 
+  /**
+   * Carga leve para o formulário de criação/edição — evita relações pesadas
+   * (cronogramas, ocorrências, módulos) que podem falhar e derrubar a tela.
+   */
+  async findOneForForm(id: string): Promise<unknown> {
+    const accessible = await this.accessibleContractWhere(id);
+    const contract = await this.prisma.contract.findFirst({
+      where: accessible,
+      include: {
+        fiscal: true,
+        manager: true,
+        supplier: true,
+        organization: { select: { id: true, name: true, acronym: true, active: true } },
+        contractTypeCatalog: {
+          select: { id: true, name: true, acronym: true, legacyEnum: true, active: true }
+        },
+        hiringType: { select: { id: true, name: true, active: true } },
+        glpiGroups: { orderBy: { glpiGroupName: "asc" } },
+        pricingItems: {
+          include: { type: true, unit: true },
+          orderBy: { sequence: "asc" }
+        }
+      }
+    });
+    if (!contract) throw new NotFoundException("Contrato não encontrado");
+    let pricingLocked = false;
+    try {
+      pricingLocked = await this.pricing.contractHasMovements(id);
+    } catch {
+      pricingLocked = false;
+    }
+    return { ...contract, pricingLocked };
+  }
+
+  /** Registra falha de carregamento do formulário nos logs administrativos (sem dados sensíveis ao cliente). */
+  async reportFormLoadFailure(input: {
+    action?: string | null;
+    contractId?: string | null;
+    stage?: string | null;
+    message?: string | null;
+  }): Promise<{ ok: true }> {
+    const action = (input.action ?? "unknown").trim().slice(0, 40) || "unknown";
+    const stage = (input.stage ?? "unknown").trim().slice(0, 120) || "unknown";
+    const message = (input.message ?? "").trim().slice(0, 500);
+    const contractId = (input.contractId ?? "").trim() || null;
+    await this.createAudit(
+      "ContractForm",
+      contractId ?? "new",
+      "FORM_LOAD_FAILURE",
+      null,
+      {
+        formAction: action === "edit" ? "edit" : action === "create" ? "create" : action,
+        contractId,
+        stage,
+        message,
+        at: new Date().toISOString()
+      }
+    );
+    return { ok: true };
+  }
+
   async findOne(id: string): Promise<unknown> {
     const accessible = await this.accessibleContractWhere(id);
     const contract = await this.prisma.contract.findFirst({
       where: accessible,
       include: {
+        organization: { select: { id: true, name: true, acronym: true, active: true } },
+        contractTypeCatalog: {
+          select: { id: true, name: true, acronym: true, legacyEnum: true, active: true }
+        },
+        hiringType: { select: { id: true, name: true, active: true } },
         modules: {
           include: {
             features: {
@@ -2415,6 +2525,14 @@ export class ContractsService {
   async update(id: string, dto: UpdateContractDto): Promise<unknown> {
     const prev = await this.prisma.contract.findFirst({ where: { id, deletedAt: null } });
     if (!prev) throw new NotFoundException("Contrato não encontrado");
+    const prevGlpiGroups =
+      dto.glpiGroups !== undefined
+        ? await this.prisma.contractGlpiGroup.findMany({
+            where: { contractId: id },
+            select: { glpiGroupId: true, glpiGroupName: true },
+            orderBy: { glpiGroupId: "asc" }
+          })
+        : [];
     const nextImplStart =
       dto.implementationPeriodStart !== undefined
         ? dto.implementationPeriodStart === null
@@ -2524,6 +2642,19 @@ export class ContractsService {
       }
     });
     await this.createAudit("Contract", id, "UPDATE", prev, updated);
+    if (glpiGroups !== undefined) {
+      const nextGlpiLinks = dedupeGlpiGroupLinks(glpiGroups);
+      const glpiAudit = glpiGroupsAuditPayload(prevGlpiGroups, nextGlpiLinks);
+      if (glpiAudit) {
+        await this.createAudit(
+          "ContractGlpiGroup",
+          id,
+          "UPDATE",
+          { previousGroups: glpiAudit.previousGroups, removed: glpiAudit.removed },
+          { newGroups: glpiAudit.newGroups, added: glpiAudit.added }
+        );
+      }
+    }
     if (pricingItems !== undefined) {
       await this.pricing.replaceItems(id, pricingItems as PricingItemInput[], (action, oldData, newData) =>
         this.createAudit("ContractPricingItem", id, action, oldData, newData)

@@ -501,6 +501,24 @@ export class ContractsController {
     return this.service.regenerateInternalCode(id, dto.justification);
   }
 
+  @Post("form-load-failure")
+  reportFormLoadFailure(
+    @Body()
+    body: {
+      action?: string | null;
+      contractId?: string | null;
+      stage?: string | null;
+      message?: string | null;
+    }
+  ): Promise<{ ok: true }> {
+    return this.service.reportFormLoadFailure(body ?? {});
+  }
+
+  @Get(":id/form-data")
+  findOneForForm(@Param("id") id: string): Promise<unknown> {
+    return this.service.findOneForForm(id);
+  }
+
   @Get(":id")
   findOne(@Param("id") id: string): Promise<unknown> {
     return this.service.findOne(id);
