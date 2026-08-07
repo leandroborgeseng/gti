@@ -38,6 +38,11 @@ class ContractFormErrorBoundary extends Component<
             formulário mais tarde. A regularização de órgão, tipo de contrato e demais campos é feita neste próprio
             formulário de edição.
           </p>
+          {this.state.error.message ? (
+            <p className="rounded border border-amber-200/80 bg-white/60 px-2 py-1.5 text-xs text-amber-900/80">
+              Detalhe: {this.state.error.message}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
