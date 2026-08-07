@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import {
   createContract,
@@ -311,19 +311,40 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
 
   const form = useForm<ContractPageFormInput>({
     resolver: zodResolver(contractPageSchema),
-    defaultValues: CONTRACT_FORM_DEFAULT_VALUES
+    defaultValues: CONTRACT_FORM_DEFAULT_VALUES,
+    // Validação no blur/submit — evita custo do Zod a cada tecla em formulário grande.
+    mode: "onBlur",
+    reValidateMode: "onBlur"
   });
 
-  const watchFormalNumber = form.watch("formalNumber");
-  const watchStartDate = form.watch("startDate");
-  const watchOrganizationId = form.watch("organizationId");
-  const watchContractTypeCatalogId = form.watch("contractTypeCatalogId");
-  const watchHiringTypeId = form.watch("hiringTypeId");
-  const watchFiscalId = form.watch("fiscalId");
-  const watchManagingUnit = form.watch("managingUnit");
-  const watchGlobalValueManual = form.watch("globalValueManual");
-  const watchGlobalValueCurrent = form.watch("globalValueCurrent");
-  const formValues = form.watch();
+  // Observa só campos que afetam UI derivada (não o formulário inteiro a cada tecla).
+  const [
+    watchFormalNumber,
+    watchStartDate,
+    watchEndDate,
+    watchOrganizationId,
+    watchContractTypeCatalogId,
+    watchHiringTypeId,
+    watchFiscalId,
+    watchManagingUnit,
+    watchGlobalValueManual,
+    watchGlobalValueCurrent
+  ] = useWatch({
+    control: form.control,
+    name: [
+      "formalNumber",
+      "startDate",
+      "endDate",
+      "organizationId",
+      "contractTypeCatalogId",
+      "hiringTypeId",
+      "fiscalId",
+      "managingUnit",
+      "globalValueManual",
+      "globalValueCurrent"
+    ]
+  });
+
   const pricingTotals = useMemo(() => summarizePricingDraft(pricingItems), [pricingItems]);
   const manualGlobalValue = Number(String(watchGlobalValueCurrent ?? "").replace(",", "."));
   const globalValueDifference =
@@ -338,24 +359,43 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
   const fiscalIdSet = useMemo(() => new Set(fiscais.map((f) => f.id)), [fiscais]);
   const regularizationPendings = useMemo(() => {
     if (!isEdit) return [];
-    return collectRegularizationPendings(formValues, {
-      organizationOptions,
-      contractTypeOptions,
-      hiringTypeOptions,
-      fiscalIds: fiscalIdSet,
-      managingUnitLegacy: editContract?.managingUnit ?? watchManagingUnit,
-      contractTypeLegacy: editContract?.contractType ?? null
-    });
+    return collectRegularizationPendings(
+      {
+        ...CONTRACT_FORM_DEFAULT_VALUES,
+        organizationId: watchOrganizationId ?? "",
+        contractTypeCatalogId: watchContractTypeCatalogId ?? "",
+        hiringTypeId: watchHiringTypeId ?? "",
+        formalNumber: watchFormalNumber ?? "",
+        fiscalId: watchFiscalId ?? "",
+        startDate: watchStartDate ?? "",
+        endDate: watchEndDate ?? "",
+        managingUnit: watchManagingUnit ?? ""
+      },
+      {
+        organizationOptions,
+        contractTypeOptions,
+        hiringTypeOptions,
+        fiscalIds: fiscalIdSet,
+        managingUnitLegacy: editContract?.managingUnit ?? watchManagingUnit,
+        contractTypeLegacy: editContract?.contractType ?? null
+      }
+    );
   }, [
     isEdit,
-    formValues,
+    watchOrganizationId,
+    watchContractTypeCatalogId,
+    watchHiringTypeId,
+    watchFormalNumber,
+    watchFiscalId,
+    watchStartDate,
+    watchEndDate,
+    watchManagingUnit,
     organizationOptions,
     contractTypeOptions,
     hiringTypeOptions,
     fiscalIdSet,
     editContract?.managingUnit,
-    editContract?.contractType,
-    watchManagingUnit
+    editContract?.contractType
   ]);
 
   const onContractTypeCatalogChange = useCallback(

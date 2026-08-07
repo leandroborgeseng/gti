@@ -4,8 +4,9 @@ import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
+import { prefetchContractFormCatalogs } from "@/modules/contracts/prefetch-contract-form-catalogs";
 import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
 import { ContractDeleteButton } from "@/components/contracts/contract-delete-button";
 import { formatGlpiGroupsSummary } from "@/components/contracts/contract-glpi-groups-field";
@@ -67,6 +68,7 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const qc = useQueryClient();
   const qPerms = useQuery({
     queryKey: queryKeys.myPermissions,
     queryFn: getMyPermissions,
@@ -79,6 +81,12 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
     permissionKeys.includes("contracts.financial.view") ||
     permissionKeys.includes("contracts.view");
   const [editOpen, setEditOpen] = useState(false);
+
+  useEffect(() => {
+    if (!canEditContract) return;
+    const t = globalThis.setTimeout(() => prefetchContractFormCatalogs(qc), 500);
+    return () => globalThis.clearTimeout(t);
+  }, [canEditContract, qc]);
 
   const visibleTabs = useMemo(
     () => CONTRACT_DETAIL_TABS.filter((t) => tabAllowed(t, permissionKeys)),

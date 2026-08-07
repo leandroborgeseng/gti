@@ -27,6 +27,10 @@ import {
   logContractFormStage,
   type ContractFormLoadStage
 } from "@/modules/contracts/contract-form-load";
+import {
+  CONTRACT_FORM_CATALOG_STALE_MS,
+  CONTRACT_FORM_HEAVY_STALE_MS
+} from "@/modules/contracts/prefetch-contract-form-catalogs";
 
 type Args = {
   initialContract?: Contract | null;
@@ -73,6 +77,7 @@ export function useContractFormDependencies({ initialContract = null }: Args) {
   const qFiscais = useQuery({
     queryKey: queryKeys.fiscais,
     queryFn: async () => asArray<Fiscal>(await getFiscais()),
+    staleTime: CONTRACT_FORM_CATALOG_STALE_MS,
     retry: 1,
     throwOnError: false
   });
@@ -80,6 +85,7 @@ export function useContractFormDependencies({ initialContract = null }: Args) {
   const qSuppliers = useQuery({
     queryKey: queryKeys.suppliers,
     queryFn: async () => asArray<Supplier>(await getSuppliers()),
+    staleTime: CONTRACT_FORM_CATALOG_STALE_MS,
     retry: 1,
     throwOnError: false
   });
@@ -87,6 +93,7 @@ export function useContractFormDependencies({ initialContract = null }: Args) {
   const qGlpiGroups = useQuery({
     queryKey: queryKeys.glpiAssignedGroups,
     queryFn: async () => asArray<GlpiAssignedGroupOption>(await getGlpiAssignedGroupsCatalog()),
+    staleTime: CONTRACT_FORM_HEAVY_STALE_MS,
     retry: 1,
     throwOnError: false
   });
@@ -94,6 +101,7 @@ export function useContractFormDependencies({ initialContract = null }: Args) {
   const qOrganizations = useQuery({
     queryKey: queryKeys.organizations,
     queryFn: async () => asArray<OrganizationRecord>(await getOrganizations()),
+    staleTime: CONTRACT_FORM_CATALOG_STALE_MS,
     retry: 1,
     throwOnError: false
   });
@@ -101,6 +109,7 @@ export function useContractFormDependencies({ initialContract = null }: Args) {
   const qContractTypes = useQuery({
     queryKey: queryKeys.contractTypeCatalog,
     queryFn: async () => asArray<ContractTypeCatalogRecord>(await getContractTypeCatalog()),
+    staleTime: CONTRACT_FORM_CATALOG_STALE_MS,
     retry: 1,
     throwOnError: false
   });
@@ -108,6 +117,7 @@ export function useContractFormDependencies({ initialContract = null }: Args) {
   const qHiringTypes = useQuery({
     queryKey: queryKeys.hiringTypes,
     queryFn: async () => asArray<HiringTypeRecord>(await getHiringTypes()),
+    staleTime: CONTRACT_FORM_CATALOG_STALE_MS,
     retry: 1,
     throwOnError: false
   });
@@ -116,58 +126,52 @@ export function useContractFormDependencies({ initialContract = null }: Args) {
     queryKey: queryKeys.contractFormData(initialContract?.id ?? ""),
     queryFn: () => getContractFormData(initialContract!.id),
     enabled: Boolean(initialContract?.id),
+    staleTime: 30_000,
     retry: 1,
     throwOnError: false,
     placeholderData: initialContract ?? undefined
   });
 
+  // Um único efeito de diagnóstico — evita 8 efeitos reagindo em cascata.
   useEffect(() => {
-    if (qOrganizations.isError) {
-      report("orgaos", errorMessage(qOrganizations.error, "Falha ao carregar órgãos"));
+    const failures: Array<[ContractFormLoadStage, unknown, string]> = [
+      [ "orgaos", qOrganizations.isError ? qOrganizations.error : null, "Falha ao carregar órgãos" ],
+      [ "fornecedores", qSuppliers.isError ? qSuppliers.error : null, "Falha ao carregar fornecedores" ],
+      [ "tipos_contrato", qContractTypes.isError ? qContractTypes.error : null, "Falha ao carregar tipos de contrato" ],
+      [ "tipos_contratacao", qHiringTypes.isError ? qHiringTypes.error : null, "Falha ao carregar tipos de contratação" ],
+      [ "fiscais", qFiscais.isError ? qFiscais.error : null, "Falha ao carregar fiscais" ],
+      [ "grupos_glpi", qGlpiGroups.isError ? qGlpiGroups.error : null, "Falha ao carregar grupos GLPI" ],
+      [ "permissoes", qPerms.isError ? qPerms.error : null, "Falha ao carregar permissões" ]
+    ];
+    for (const [stage, err, fallback] of failures) {
+      if (err) report(stage, errorMessage(err, fallback));
     }
-  }, [qOrganizations.isError, qOrganizations.error, report]);
-
-  useEffect(() => {
-    if (qSuppliers.isError) {
-      report("fornecedores", errorMessage(qSuppliers.error, "Falha ao carregar fornecedores"));
-    }
-  }, [qSuppliers.isError, qSuppliers.error, report]);
-
-  useEffect(() => {
-    if (qContractTypes.isError) {
-      report("tipos_contrato", errorMessage(qContractTypes.error, "Falha ao carregar tipos de contrato"));
-    }
-  }, [qContractTypes.isError, qContractTypes.error, report]);
-
-  useEffect(() => {
-    if (qHiringTypes.isError) {
-      report("tipos_contratacao", errorMessage(qHiringTypes.error, "Falha ao carregar tipos de contratação"));
-    }
-  }, [qHiringTypes.isError, qHiringTypes.error, report]);
-
-  useEffect(() => {
-    if (qFiscais.isError) {
-      report("fiscais", errorMessage(qFiscais.error, "Falha ao carregar fiscais"));
-    }
-  }, [qFiscais.isError, qFiscais.error, report]);
-
-  useEffect(() => {
-    if (qGlpiGroups.isError) {
-      report("grupos_glpi", errorMessage(qGlpiGroups.error, "Falha ao carregar grupos GLPI"));
-    }
-  }, [qGlpiGroups.isError, qGlpiGroups.error, report]);
-
-  useEffect(() => {
     if (qContractDetail.isError && initialContract?.id) {
-      report("dados_basicos", errorMessage(qContractDetail.error, "Falha ao carregar dados básicos do contrato"));
+      report(
+        "dados_basicos",
+        errorMessage(qContractDetail.error, "Falha ao carregar dados básicos do contrato")
+      );
     }
-  }, [qContractDetail.isError, qContractDetail.error, initialContract?.id, report]);
-
-  useEffect(() => {
-    if (qPerms.isError) {
-      report("permissoes", errorMessage(qPerms.error, "Falha ao carregar permissões"));
-    }
-  }, [qPerms.isError, qPerms.error, report]);
+  }, [
+    qOrganizations.isError,
+    qOrganizations.error,
+    qSuppliers.isError,
+    qSuppliers.error,
+    qContractTypes.isError,
+    qContractTypes.error,
+    qHiringTypes.isError,
+    qHiringTypes.error,
+    qFiscais.isError,
+    qFiscais.error,
+    qGlpiGroups.isError,
+    qGlpiGroups.error,
+    qPerms.isError,
+    qPerms.error,
+    qContractDetail.isError,
+    qContractDetail.error,
+    initialContract?.id,
+    report
+  ]);
 
   const canAdminCatalogs =
     qPerms.data?.role === "ADMIN" ||
@@ -175,18 +179,13 @@ export function useContractFormDependencies({ initialContract = null }: Args) {
       (k) => k === "admin.organs.manage" || k === "admin.organs.view" || k.startsWith("admin.")
     );
 
-  const fiscais = useMemo(() => asArray<Fiscal>(qFiscais.data), [qFiscais.data]);
-  const suppliers = useMemo(() => asArray<Supplier>(qSuppliers.data), [qSuppliers.data]);
-  const organizations = useMemo(() => asArray<OrganizationRecord>(qOrganizations.data), [qOrganizations.data]);
-  const contractTypes = useMemo(
-    () => asArray<ContractTypeCatalogRecord>(qContractTypes.data),
-    [qContractTypes.data]
-  );
-  const hiringTypes = useMemo(() => asArray<HiringTypeRecord>(qHiringTypes.data), [qHiringTypes.data]);
-  const glpiGroups = useMemo(
-    () => asArray<GlpiAssignedGroupOption>(qGlpiGroups.data),
-    [qGlpiGroups.data]
-  );
+  // queryFn já normaliza com asArray — evita remapeamento a cada render.
+  const fiscais = qFiscais.data ?? [];
+  const suppliers = qSuppliers.data ?? [];
+  const organizations = qOrganizations.data ?? [];
+  const contractTypes = qContractTypes.data ?? [];
+  const hiringTypes = qHiringTypes.data ?? [];
+  const glpiGroups = qGlpiGroups.data ?? [];
 
   const editContract = (qContractDetail.data ?? initialContract) as Contract | null;
   const detailLoadFailed = isEdit && qContractDetail.isError;

@@ -2,14 +2,15 @@
 
 import type { Route } from "next";
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, FilePlus2, FileStack, Layers, Pencil } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Contract } from "@/lib/api";
 import { getContracts } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
 import { queryKeys } from "@/lib/query-keys";
+import { prefetchContractFormCatalogs } from "@/modules/contracts/prefetch-contract-form-catalogs";
 import { ContractFormModal } from "@/components/contracts/contract-form-modal";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import "@/styles/gti-exec-metric-dash.css";
@@ -151,14 +152,31 @@ type Props = {
 };
 
 export function ContractsView({ contracts: initialContracts, dataLoadErrors = [] }: Props): JSX.Element {
+  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
 
   const { data: contracts = initialContracts } = useQuery({
     queryKey: queryKeys.contracts,
     queryFn: getContracts,
-    initialData: initialContracts
+    initialData: initialContracts,
+    staleTime: 60_000
   });
+
+  // Prefetch em idle: formulário abre sem esperar catálogos auxiliares.
+  useEffect(() => {
+    const run = () => prefetchContractFormCatalogs(qc);
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(run, { timeout: 2500 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = globalThis.setTimeout(run, 400);
+    return () => globalThis.clearTimeout(t);
+  }, [qc]);
 
   const dash = useMemo(() => computeContractDashboardStats(contracts), [contracts]);
 

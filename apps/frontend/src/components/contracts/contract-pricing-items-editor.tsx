@@ -275,6 +275,7 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
   const qCatalog = useQuery({
     queryKey: queryKeys.contractPricingCatalog,
     queryFn: getContractPricingCatalog,
+    staleTime: 10 * 60_000,
     retry: 1,
     throwOnError: false
   });
