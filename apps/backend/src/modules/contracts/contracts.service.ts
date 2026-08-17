@@ -1331,7 +1331,7 @@ export class ContractsService {
         }
       },
       orderBy: [{ itemCode: "asc" }, { name: "asc" }],
-      take: 2000
+      take: 500
     });
 
     type ModBucket = {
@@ -1876,11 +1876,7 @@ export class ContractsService {
                   select: {
                     id: true,
                     name: true,
-                    active: true,
-                    members: {
-                      include: { user: { select: LINKED_USER_SELECT } },
-                      orderBy: { createdAt: "asc" }
-                    }
+                    active: true
                   }
                 },
                 responsibles: {
@@ -1949,7 +1945,6 @@ export class ContractsService {
           orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
           include: { items: { orderBy: { createdAt: "asc" } } }
         },
-        itemChangeLogs: { orderBy: { changedAt: "desc" }, take: 100 },
         pricingItems: {
           include: { type: true, unit: true },
           orderBy: { sequence: "asc" }
@@ -1991,6 +1986,8 @@ export class ContractsService {
       schedules,
       occurrences,
       controladoriaCases,
+      /** Carregado sob demanda em GET /contracts/:id/item-change-logs */
+      itemChangeLogs: [],
       pricingTotals,
       pricingLocked,
       featureImplantationProportion: buildFeatureImplantationProportion({
@@ -2002,6 +1999,17 @@ export class ContractsService {
         at: new Date()
       })
     };
+  }
+
+  async findItemChangeLogs(contractId: string): Promise<unknown> {
+    const accessible = await this.accessibleContractWhere(contractId);
+    const exists = await this.prisma.contract.findFirst({ where: accessible, select: { id: true } });
+    if (!exists) throw new NotFoundException("Contrato não encontrado");
+    return this.prisma.contractItemChangeLog.findMany({
+      where: { contractId },
+      orderBy: { changedAt: "desc" },
+      take: 200
+    });
   }
 
   /**
@@ -2170,7 +2178,14 @@ export class ContractsService {
               periodStart,
               periodEnd,
               status: ContractPricingItemStatus.ACTIVE,
-              includeInGlosaBase: Boolean(after.includeInGlosaBase)
+              includeInGlosaBase: Boolean(after.includeInGlosaBase),
+              consumptionEnabled: billingKind === ContractPricingBillingKind.ON_DEMAND,
+              consumptionFinancialRule:
+                billingKind === ContractPricingBillingKind.ON_DEMAND ? "BILLED_BY_CONSUMPTION" : null,
+              consumptionAvailability:
+                billingKind === ContractPricingBillingKind.ON_DEMAND ? "CONTRACT_TERM" : null,
+              consumptionAccumulates: false,
+              consumptionRequiresValidation: false
             }
           });
         });
@@ -2193,6 +2208,14 @@ export class ContractsService {
           status: ContractPricingItemStatus.ACTIVE,
           includeInGlosaBase: Boolean(after.includeInGlosaBase),
           consumedQuantity: new Prisma.Decimal(0),
+          consumptionEnabled: billingKind === ContractPricingBillingKind.ON_DEMAND,
+          consumptionFinancialRule:
+            billingKind === ContractPricingBillingKind.ON_DEMAND ? ("BILLED_BY_CONSUMPTION" as const) : null,
+          consumptionAvailability:
+            billingKind === ContractPricingBillingKind.ON_DEMAND ? ("CONTRACT_TERM" as const) : null,
+          consumptionAccumulates: false,
+          consumptionRequiresValidation: false,
+          consumptionAlertThresholds: null,
           createdAt: new Date(),
           updatedAt: new Date(),
           type: null as never,

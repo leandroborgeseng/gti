@@ -3,11 +3,12 @@
 import { BookOpen, LogOut, Megaphone, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PropsWithChildren, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { PropsWithChildren, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getAuthMe, getMyPermissions, trackUserAccessEvent } from "@/lib/api";
 import { AccessContextSelector } from "@/components/layout/access-context-selector";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
+import { ContentLoadingBar } from "@/components/ui/content-loading-bar";
 import { filterMainNavGroups, MAIN_NAV_GROUPS } from "./main-nav-data";
 import { MobileNav } from "./mobile-nav";
 import { Sidebar, SidebarCollapsed } from "./sidebar";
@@ -222,6 +223,23 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
     };
   }, [pathname, title]);
 
+  const headerRef = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const apply = () => {
+      document.documentElement.style.setProperty("--app-header-height", `${el.offsetHeight}px`);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty("--app-header-height");
+    };
+  }, []);
+
   return (
     <div className="flex min-h-screen bg-muted/30">
       {!sidebarCollapsed ? (
@@ -230,7 +248,10 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
         <SidebarCollapsed onExpand={expandSidebar} />
       )}
       <main className="min-w-0 flex-1">
-        <header className="sticky top-0 z-10 border-b-2 border-primary/90 bg-background/90 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 md:px-6 md:py-3.5">
+        <header
+          ref={headerRef}
+          className="sticky top-0 z-30 border-b-2 border-primary/90 bg-background/90 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 md:px-6 md:py-3.5"
+        >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <MobileNav groups={visibleNavGroups} />
@@ -283,6 +304,7 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
             </div>
           </div>
         ) : null}
+        <ContentLoadingBar />
         <div className="p-6 md:p-8">
           <PageTransition>{children}</PageTransition>
         </div>

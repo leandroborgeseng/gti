@@ -124,6 +124,26 @@ export class PricingItemDto {
   @IsOptional()
   @IsBoolean()
   includeInGlosaBase?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  consumptionEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  consumptionFinancialRule?: string | null;
+
+  @IsOptional()
+  @IsString()
+  consumptionAvailability?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  consumptionAccumulates?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  consumptionRequiresValidation?: boolean;
 }
 
 /** Grupo de trabalho GLPI (ID na instância; nome opcional para exibição). */

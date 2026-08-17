@@ -26,6 +26,7 @@ import {
   type ContractFeatureStatus,
   type ContractLinkedUser
 } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import {
   formatWeightPt,
   projectContractModulesSum,
@@ -167,8 +168,9 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { data: permissions } = useQuery({
-    queryKey: ["gestao", "my-permissions"],
-    queryFn: getMyPermissions
+    queryKey: queryKeys.myPermissions,
+    queryFn: getMyPermissions,
+    staleTime: 10 * 60_000
   });
   const cid = contract.id;
 

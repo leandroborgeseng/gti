@@ -1,5 +1,8 @@
-import type { ContractItemChangeLog } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { getContractItemChangeLogs, type ContractItemChangeLog } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { Card } from "@/components/ui/card";
+import { InlineLoading } from "@/components/ui/inline-loading";
 
 const actionLabel: Record<ContractItemChangeLog["action"], string> = {
   CREATED: "Inserido",
@@ -107,7 +110,20 @@ function ChangeDetails({ log }: { log: ContractItemChangeLog }): JSX.Element | n
   );
 }
 
-export function ContractItemChangeHistoryPanel({ logs = [] }: { logs?: ContractItemChangeLog[] }): JSX.Element {
+export function ContractItemChangeHistoryPanel({
+  contractId,
+  logs: logsProp
+}: {
+  contractId?: string;
+  logs?: ContractItemChangeLog[];
+}): JSX.Element {
+  const qLogs = useQuery({
+    queryKey: queryKeys.contractItemChangeLogs(contractId ?? "none"),
+    queryFn: () => getContractItemChangeLogs(contractId!),
+    enabled: Boolean(contractId)
+  });
+  const logs = contractId ? qLogs.data ?? [] : logsProp ?? [];
+
   return (
     <Card className="p-5">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
@@ -118,10 +134,16 @@ export function ContractItemChangeHistoryPanel({ logs = [] }: { logs?: ContractI
             consolidar outros eventos do contrato no futuro.
           </p>
         </div>
-        <span className="text-xs text-slate-500">{logs.length} registro{logs.length === 1 ? "" : "s"}</span>
+        <span className="text-xs text-slate-500">
+          {qLogs.isFetching ? <InlineLoading label="Carregando..." /> : `${logs.length} registro${logs.length === 1 ? "" : "s"}`}
+        </span>
       </div>
 
-      {logs.length === 0 ? (
+      {qLogs.isLoading && contractId ? (
+        <p className="mt-4 text-sm text-slate-600">
+          <InlineLoading label="Carregando auditoria..." />
+        </p>
+      ) : logs.length === 0 ? (
         <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
           Nenhuma alteração de item registrada ainda. O histórico passa a ser preenchido a partir desta versão.
         </p>

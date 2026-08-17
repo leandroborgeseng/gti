@@ -770,9 +770,27 @@ export type ContractPricingItem = {
   status: ContractPricingItemStatus;
   includeInGlosaBase: boolean;
   consumedQuantity?: string;
+  consumptionEnabled?: boolean;
+  consumptionFinancialRule?: ConsumptionFinancialRule | null;
+  consumptionAvailability?: ConsumptionAvailabilityPeriod | null;
+  consumptionAccumulates?: boolean;
+  consumptionRequiresValidation?: boolean;
   type?: ContractItemTypeCatalog & { participatesInGlosa?: boolean };
   unit?: MeasureUnitCatalog;
 };
+
+export type ConsumptionFinancialRule =
+  | "INCLUDED_IN_MONTHLY"
+  | "BILLED_BY_CONSUMPTION"
+  | "CONTRACTED_BY_QUANTITY"
+  | "BALANCE_ONLY";
+
+export type ConsumptionAvailabilityPeriod =
+  | "MONTHLY"
+  | "ANNUAL"
+  | "CONTRACT_TERM"
+  | "SPECIFIC_PERIOD"
+  | "AMENDMENT";
 
 export type ContractPricingTotals = {
   recurringPredicted: number;
@@ -800,6 +818,11 @@ export type ContractPricingItemInput = {
   periodEnd?: string | null;
   status?: ContractPricingItemStatus;
   includeInGlosaBase?: boolean;
+  consumptionEnabled?: boolean;
+  consumptionFinancialRule?: ConsumptionFinancialRule | null;
+  consumptionAvailability?: ConsumptionAvailabilityPeriod | null;
+  consumptionAccumulates?: boolean;
+  consumptionRequiresValidation?: boolean;
 };
 
 export type ContractItemChangeLog = {
@@ -1445,6 +1468,132 @@ export async function getContracts(): Promise<Contract[]> {
 
 export async function getContract(id: string): Promise<Contract> {
   return request(`/contracts/${id}`);
+}
+
+export type ConsumptionMovementStatus =
+  | "DRAFT"
+  | "INFORMED"
+  | "UNDER_VALIDATION"
+  | "APPROVED"
+  | "REJECTED"
+  | "ADJUSTED"
+  | "REVERSED";
+
+export type ContractConsumptionSummaryItem = {
+  id: string;
+  sequence: number;
+  description: string;
+  unit?: MeasureUnitCatalog | null;
+  type?: ContractItemTypeCatalog | null;
+  billingKind: ContractPricingBillingKind;
+  financialRule: ConsumptionFinancialRule;
+  availability?: string | null;
+  accumulates?: boolean;
+  requiresValidation?: boolean;
+  quantityContracted: string;
+  quantityApprovedUsed: string;
+  quantityPendingValidation: string;
+  quantityAvailable: string;
+  quantityCommittedAvailable: string;
+  consumedPercent: number;
+  alertLevel: number | null;
+  unitValue: string;
+};
+
+export type ContractConsumptionMovement = {
+  id: string;
+  contractId: string;
+  pricingItemId: string;
+  quantity: string;
+  originalQuantity?: string | null;
+  unitCodeSnapshot?: string | null;
+  unitLabelSnapshot?: string | null;
+  status: ConsumptionMovementStatus;
+  source: string;
+  glpiTicketId?: number | null;
+  measurementId?: string | null;
+  executionDate: string;
+  responsibleLabel?: string | null;
+  description?: string | null;
+  notes?: string | null;
+  pricingItem?: {
+    id: string;
+    description: string;
+    sequence: number;
+    unit?: { code: string; label: string } | null;
+    type?: { code: string; label: string } | null;
+  } | null;
+};
+
+export async function getContractConsumptions(
+  contractId: string
+): Promise<{ items: ContractConsumptionSummaryItem[] }> {
+  return request(`/contracts/${contractId}/consumptions`);
+}
+
+export async function getContractConsumptionMovements(
+  contractId: string,
+  params?: { pricingItemId?: string; glpiTicketId?: number; status?: string; page?: number; pageSize?: number }
+): Promise<{ items: ContractConsumptionMovement[]; total: number; page: number; pageSize: number; pageCount: number }> {
+  const query = new URLSearchParams();
+  if (params?.pricingItemId) query.set("pricingItemId", params.pricingItemId);
+  if (params?.glpiTicketId != null) query.set("glpiTicketId", String(params.glpiTicketId));
+  if (params?.status) query.set("status", params.status);
+  if (params?.page != null) query.set("page", String(params.page));
+  if (params?.pageSize != null) query.set("pageSize", String(params.pageSize));
+  const suffix = query.toString();
+  return request(`/contracts/${contractId}/consumptions/movements${suffix ? `?${suffix}` : ""}`);
+}
+
+export async function createContractConsumptionMovement(
+  contractId: string,
+  payload: {
+    pricingItemId: string;
+    quantity: number;
+    executionDate: string;
+    description?: string | null;
+    notes?: string | null;
+    responsibleLabel?: string | null;
+    responsibleUserId?: string | null;
+    glpiTicketId?: number | null;
+    submitForValidation?: boolean;
+  }
+): Promise<ContractConsumptionMovement> {
+  return request(`/contracts/${contractId}/consumptions/movements`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function validateContractConsumptionMovement(
+  contractId: string,
+  movementId: string,
+  payload: {
+    action: "approve" | "reject" | "adjust";
+    quantity?: number;
+    justification?: string | null;
+    rejectionReason?: string | null;
+  }
+): Promise<ContractConsumptionMovement> {
+  return request(`/contracts/${contractId}/consumptions/movements/${movementId}/validate`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function reverseContractConsumptionMovement(
+  contractId: string,
+  movementId: string,
+  payload?: { justification?: string | null }
+): Promise<ContractConsumptionMovement> {
+  return request(`/contracts/${contractId}/consumptions/movements/${movementId}/reverse`, {
+    method: "POST",
+    body: JSON.stringify(payload ?? {})
+  });
+}
+
+export async function getContractItemChangeLogs(contractId: string): Promise<ContractItemChangeLog[]> {
+  return request(`/contracts/${contractId}/item-change-logs`);
 }
 
 /** Carga leve do contrato para o formulário de edição (sem cronogramas/ocorrências). */

@@ -7,6 +7,12 @@ export const CONTRACT_DETAIL_TABS = [
     anyOf: [] as string[]
   },
   {
+    id: "consumos",
+    label: "Consumos",
+    shortLabel: "Consumos",
+    anyOf: ["contracts.financial.view", "contracts.view", "measurements.view"]
+  },
+  {
     id: "chamados-glpi",
     label: "Chamados GLPI",
     shortLabel: "GLPI",

@@ -291,7 +291,7 @@ export function DashboardHome(props: {
                   <li key={c.id}>
                     <span className="font-semibold text-[var(--ink)]">
                       {c.number} · {c.name}{" "}
-                      <span className="tabular-nums text-amber-800">({formatPercent(c.percentual, 1)} validado)</span>
+                      <span className="tabular-nums text-amber-800">({formatPercent(c.percentual, 2)} validado)</span>
                     </span>
                     <Link href={`/contracts/${c.id}` as Route} className="text-xs font-semibold text-[var(--brand)] no-underline hover:underline">
                       Estrutura

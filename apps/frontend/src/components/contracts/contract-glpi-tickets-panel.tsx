@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
+  createContractConsumptionMovement,
+  getContractConsumptions,
   getContractGlpiTickets,
   upsertContractGlpiTicketClassification,
   type ContractGlpiGroup,
@@ -12,10 +14,13 @@ import {
 } from "@/lib/api";
 import { buildGlpiTicketFrontUrl } from "@/lib/glpi-ticket-front-url";
 import { queryKeys } from "@/lib/query-keys";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InlineLoading } from "@/components/ui/inline-loading";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   contractId: string;
@@ -88,6 +93,13 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [slaOverdue, setSlaOverdue] = useState(false);
+  const [consumeTicketId, setConsumeTicketId] = useState<number | null>(null);
+  const [consumeItemId, setConsumeItemId] = useState("");
+  const [consumeQty, setConsumeQty] = useState("");
+  const [consumeDate, setConsumeDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [consumeDesc, setConsumeDesc] = useState("");
+  const [consumeNotes, setConsumeNotes] = useState("");
+  const [consumeResponsible, setConsumeResponsible] = useState("");
 
   const filters: ContractGlpiTicketsQuery = useMemo(
     () => ({
@@ -129,6 +141,39 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
       toast.error(err instanceof Error ? err.message : "Não foi possível salvar a classificação.");
     }
   });
+
+  const qConsumptions = useQuery({
+    queryKey: queryKeys.contractConsumptions(contractId),
+    queryFn: () => getContractConsumptions(contractId),
+    enabled: canEdit && consumeTicketId != null
+  });
+
+  const consumeMut = useMutation({
+    mutationFn: () =>
+      createContractConsumptionMovement(contractId, {
+        pricingItemId: consumeItemId,
+        quantity: Number(consumeQty.replace(",", ".")),
+        executionDate: consumeDate,
+        description: consumeDesc || null,
+        notes: consumeNotes || null,
+        responsibleLabel: consumeResponsible || null,
+        glpiTicketId: consumeTicketId
+      }),
+    onSuccess: async () => {
+      toast.success("Consumo registrado no chamado.");
+      setConsumeTicketId(null);
+      setConsumeItemId("");
+      setConsumeQty("");
+      setConsumeDesc("");
+      setConsumeNotes("");
+      await qc.invalidateQueries({ queryKey: queryKeys.contractConsumptions(contractId) });
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : "Não foi possível registrar o consumo.");
+    }
+  });
+
+  const selectedConsumeItem = qConsumptions.data?.items.find((i) => i.id === consumeItemId) ?? null;
 
   const data = qTickets.data;
   const tickets = data?.tickets ?? [];
@@ -273,13 +318,14 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
                     <th className="py-2 pr-3 font-semibold">Grupo</th>
                     <th className="py-2 pr-3 font-semibold">Abertura</th>
                     <th className="py-2 pr-3 font-semibold">SLA</th>
-                    <th className="py-2 font-semibold">GLPI</th>
+                    <th className="py-2 pr-3 font-semibold">GLPI</th>
+                    {canEdit ? <th className="py-2 font-semibold">Consumo</th> : null}
                   </tr>
                 </thead>
                 <tbody>
                   {tickets.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-4 text-slate-600">
+                      <td colSpan={canEdit ? 10 : 9} className="py-4 text-slate-600">
                         Nenhum chamado encontrado para os grupos e filtros atuais.
                       </td>
                     </tr>
@@ -365,12 +411,96 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
                               </span>
                             )}
                           </td>
+                          {canEdit ? (
+                            <td className="py-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setConsumeTicketId(t.glpiTicketId);
+                                  setConsumeDesc(t.title?.trim() || "");
+                                }}
+                              >
+                                Registrar consumo
+                              </Button>
+                            </td>
+                          ) : null}
                         </tr>
                       );
                     })
                   )}
                 </tbody>
               </table>
+              {consumeTicketId != null ? (
+                <div className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Registrar consumo · chamado #{consumeTicketId}
+                    </h3>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setConsumeTicketId(null)}>
+                      Fechar
+                    </Button>
+                  </div>
+                  {qConsumptions.isLoading ? (
+                    <InlineLoading label="Carregando itens de consumo..." />
+                  ) : (qConsumptions.data?.items.length ?? 0) === 0 ? (
+                    <p className="text-sm text-slate-600">
+                      Nenhum item de consumo disponível neste contrato. Configure itens na aba Consumos / precificação.
+                    </p>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label>Item contratual</Label>
+                        <Select value={consumeItemId || "__none__"} onValueChange={(v) => setConsumeItemId(v === "__none__" ? "" : v)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o item" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__" disabled>
+                              Selecione…
+                            </SelectItem>
+                            {qConsumptions.data?.items.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>
+                                #{item.sequence} · {item.description} ({item.unit?.label ?? "un."})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Quantidade {selectedConsumeItem ? `(${selectedConsumeItem.unit?.label ?? "un."})` : ""}</Label>
+                        <Input value={consumeQty} onChange={(e) => setConsumeQty(e.target.value)} inputMode="decimal" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Data de execução</Label>
+                        <Input type="date" value={consumeDate} onChange={(e) => setConsumeDate(e.target.value)} />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label>Responsável</Label>
+                        <Input value={consumeResponsible} onChange={(e) => setConsumeResponsible(e.target.value)} />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label>Descrição da atividade</Label>
+                        <Textarea value={consumeDesc} onChange={(e) => setConsumeDesc(e.target.value)} rows={2} />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label>Observação</Label>
+                        <Textarea value={consumeNotes} onChange={(e) => setConsumeNotes(e.target.value)} rows={2} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Button
+                          type="button"
+                          disabled={consumeMut.isPending || !consumeItemId || !consumeQty}
+                          onClick={() => consumeMut.mutate()}
+                        >
+                          {consumeMut.isPending ? <InlineLoading label="Registrando..." /> : "Confirmar consumo"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
               {tickets.length > 0 ? (
                 <p className="mt-2 text-xs text-slate-500">
                   Exibindo {tickets.length} chamado{tickets.length === 1 ? "" : "s"}

@@ -8,6 +8,8 @@ import {
   createContractItemType,
   createMeasureUnit,
   getContractPricingCatalog,
+  type ConsumptionAvailabilityPeriod,
+  type ConsumptionFinancialRule,
   type ContractPricingBillingKind,
   type ContractPricingItem,
   type ContractPricingItemInput,
@@ -41,6 +43,11 @@ export type PricingDraftItem = {
   status: ContractPricingItemStatus;
   includeInGlosaBase: boolean;
   consumedQuantity?: string;
+  consumptionEnabled: boolean;
+  consumptionFinancialRule: ConsumptionFinancialRule | "";
+  consumptionAvailability: ConsumptionAvailabilityPeriod | "";
+  consumptionAccumulates: boolean;
+  consumptionRequiresValidation: boolean;
 };
 
 type Props = {
@@ -65,6 +72,35 @@ const PERIODICITY_LABELS: Record<ContractPricingPeriodicity, string> = {
   ANNUAL: "Anual",
   CUSTOM: "Outra"
 };
+
+const FINANCIAL_RULE_LABELS: Record<ConsumptionFinancialRule, string> = {
+  INCLUDED_IN_MONTHLY: "Incluído na mensalidade",
+  BILLED_BY_CONSUMPTION: "Faturado conforme consumo",
+  CONTRACTED_BY_QUANTITY: "Valor contratado por quantidade",
+  BALANCE_ONLY: "Somente controle de saldo"
+};
+
+const AVAILABILITY_LABELS: Record<ConsumptionAvailabilityPeriod, string> = {
+  MONTHLY: "Mensal",
+  ANNUAL: "Anual",
+  CONTRACT_TERM: "Toda a vigência",
+  SPECIFIC_PERIOD: "Período específico",
+  AMENDMENT: "Conforme aditivos"
+};
+
+const FINANCIAL_RULES = new Set<ConsumptionFinancialRule>([
+  "INCLUDED_IN_MONTHLY",
+  "BILLED_BY_CONSUMPTION",
+  "CONTRACTED_BY_QUANTITY",
+  "BALANCE_ONLY"
+]);
+const AVAILABILITIES = new Set<ConsumptionAvailabilityPeriod>([
+  "MONTHLY",
+  "ANNUAL",
+  "CONTRACT_TERM",
+  "SPECIFIC_PERIOD",
+  "AMENDMENT"
+]);
 
 function parseMoney(s: string): number {
   const n = Number(String(s).trim().replace(/\s/g, "").replace(",", "."));
@@ -130,7 +166,23 @@ export function pricingItemsFromContract(items: ContractPricingItem[] | undefine
         periodEnd: it.periodEnd ? String(it.periodEnd).slice(0, 10) : "",
         status,
         includeInGlosaBase: Boolean(it.includeInGlosaBase),
-        consumedQuantity: it.consumedQuantity
+        consumedQuantity: it.consumedQuantity,
+        consumptionEnabled:
+          it.consumptionEnabled != null
+            ? Boolean(it.consumptionEnabled)
+            : billingKind === "ON_DEMAND",
+        consumptionFinancialRule:
+          it.consumptionFinancialRule && FINANCIAL_RULES.has(it.consumptionFinancialRule)
+            ? it.consumptionFinancialRule
+            : billingKind === "ON_DEMAND"
+              ? "BILLED_BY_CONSUMPTION"
+              : "",
+        consumptionAvailability:
+          it.consumptionAvailability && AVAILABILITIES.has(it.consumptionAvailability)
+            ? it.consumptionAvailability
+            : "",
+        consumptionAccumulates: Boolean(it.consumptionAccumulates),
+        consumptionRequiresValidation: Boolean(it.consumptionRequiresValidation)
       };
     });
   } catch {
@@ -159,6 +211,11 @@ export function emptyPricingItem(sequence: number, defaults?: Partial<PricingDra
     periodEnd: "",
     status: "ACTIVE",
     includeInGlosaBase: false,
+    consumptionEnabled: false,
+    consumptionFinancialRule: "",
+    consumptionAvailability: "",
+    consumptionAccumulates: false,
+    consumptionRequiresValidation: false,
     ...restDefaults
   };
 }
@@ -238,7 +295,17 @@ export function toPricingItemInputs(items: PricingDraftItem[]): ContractPricingI
       periodStart: item.periodStart.trim() || null,
       periodEnd: item.periodEnd.trim() || null,
       status: item.status,
-      includeInGlosaBase: item.includeInGlosaBase
+      includeInGlosaBase: item.includeInGlosaBase,
+      consumptionEnabled: item.consumptionEnabled || item.billingKind === "ON_DEMAND",
+      consumptionFinancialRule: item.consumptionEnabled || item.billingKind === "ON_DEMAND"
+        ? item.consumptionFinancialRule ||
+          (item.billingKind === "ON_DEMAND" ? "BILLED_BY_CONSUMPTION" : "BALANCE_ONLY")
+        : null,
+      consumptionAvailability: item.consumptionEnabled || item.billingKind === "ON_DEMAND"
+        ? item.consumptionAvailability || "CONTRACT_TERM"
+        : null,
+      consumptionAccumulates: item.consumptionAccumulates,
+      consumptionRequiresValidation: item.consumptionRequiresValidation
     };
   });
 }
@@ -669,6 +736,122 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
                         <span className="text-slate-700">Base de glosa</span>
                       </label>
                     ) : null}
+                    <div className="sm:col-span-2 rounded-md border border-slate-200 bg-slate-50/80 p-3 space-y-3">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={item.consumptionEnabled || item.billingKind === "ON_DEMAND"}
+                          onChange={(e) =>
+                            updateItem(item.key, {
+                              consumptionEnabled: e.target.checked,
+                              consumptionFinancialRule: e.target.checked
+                                ? item.consumptionFinancialRule ||
+                                  (item.billingKind === "ON_DEMAND"
+                                    ? "BILLED_BY_CONSUMPTION"
+                                    : "BALANCE_ONLY")
+                                : "",
+                              consumptionAvailability: e.target.checked
+                                ? item.consumptionAvailability || "CONTRACT_TERM"
+                                : ""
+                            })
+                          }
+                          disabled={item.billingKind === "ON_DEMAND"}
+                        />
+                        <span className="font-medium text-slate-800">
+                          Controlar consumo (horas, UST, visitas, etc.)
+                        </span>
+                      </label>
+                      {(item.consumptionEnabled || item.billingKind === "ON_DEMAND") && (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block text-sm">
+                            <span className="mb-1 block font-medium text-slate-700">
+                              Regra financeira do consumo
+                            </span>
+                            <Select
+                              value={
+                                item.consumptionFinancialRule ||
+                                (item.billingKind === "ON_DEMAND"
+                                  ? "BILLED_BY_CONSUMPTION"
+                                  : "BALANCE_ONLY")
+                              }
+                              onValueChange={(v) =>
+                                updateItem(item.key, {
+                                  consumptionFinancialRule: v as ConsumptionFinancialRule
+                                })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(Object.keys(FINANCIAL_RULE_LABELS) as ConsumptionFinancialRule[]).map(
+                                  (k) => (
+                                    <SelectItem key={k} value={k}>
+                                      {FINANCIAL_RULE_LABELS[k]}
+                                    </SelectItem>
+                                  )
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </label>
+                          <label className="block text-sm">
+                            <span className="mb-1 block font-medium text-slate-700">
+                              Disponibilidade da quantidade
+                            </span>
+                            <Select
+                              value={item.consumptionAvailability || "CONTRACT_TERM"}
+                              onValueChange={(v) =>
+                                updateItem(item.key, {
+                                  consumptionAvailability: v as ConsumptionAvailabilityPeriod
+                                })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(Object.keys(AVAILABILITY_LABELS) as ConsumptionAvailabilityPeriod[]).map(
+                                  (k) => (
+                                    <SelectItem key={k} value={k}>
+                                      {AVAILABILITY_LABELS[k]}
+                                    </SelectItem>
+                                  )
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </label>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={item.consumptionAccumulates}
+                              onChange={(e) =>
+                                updateItem(item.key, { consumptionAccumulates: e.target.checked })
+                              }
+                            />
+                            <span className="text-slate-700">
+                              Saldo não utilizado acumula para o período seguinte
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={item.consumptionRequiresValidation}
+                              onChange={(e) =>
+                                updateItem(item.key, {
+                                  consumptionRequiresValidation: e.target.checked
+                                })
+                              }
+                            />
+                            <span className="text-slate-700">
+                              Exige validação antes de reduzir o saldo definitivo
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
                     {(item.billingKind === "RECURRING" || item.billingKind === "ON_DEMAND") && (
                       <>
                         <label className="block text-sm">

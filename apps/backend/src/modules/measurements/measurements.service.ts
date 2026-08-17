@@ -19,6 +19,7 @@ import {
   composeMeasurementLines,
   monthlyEquivalentValue
 } from "./measurement-composition";
+import { ContractConsumptionService } from "../contracts/contract-consumption.service";
 
 @Injectable()
 export class MeasurementsService {
@@ -133,8 +134,126 @@ export class MeasurementsService {
         include: { items: true, glosas: true }
       });
     });
+    await this.attachApprovedConsumptions(measurement.id, dto.contractId, dto.referenceMonth, dto.referenceYear);
     await this.audit("Measurement", measurement.id, "CREATE", null, measurement);
-    return measurement;
+    return this.findOne(measurement.id);
+  }
+
+  /** Incorpora consumos aprovados da competência (faturáveis e informativos). */
+  private async attachApprovedConsumptions(
+    measurementId: string,
+    contractId: string,
+    referenceMonth: number,
+    referenceYear: number
+  ): Promise<void> {
+    const consumption = new ContractConsumptionService(this.prisma);
+    const rows = await consumption.listBillableForMeasurement(contractId, referenceMonth, referenceYear);
+    if (rows.length === 0) return;
+
+    const byItem = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const list = byItem.get(row.pricingItemId) ?? [];
+      list.push(row);
+      byItem.set(row.pricingItemId, list);
+    }
+
+    for (const [pricingItemId, list] of byItem) {
+      const rule = list[0]?.financialRule;
+      const qty = list.reduce((acc, r) => acc.add(r.quantity), new Prisma.Decimal(0));
+      const tickets = list.map((r) => r.glpiTicketId).filter((id): id is number => id != null);
+      const memory = {
+        source: "CONTRACT_CONSUMPTION",
+        financialRule: rule,
+        movementIds: list.map((r) => r.id),
+        glpiTicketIds: tickets,
+        quantityApproved: Number(qty),
+        informativeOnly: rule === "INCLUDED_IN_MONTHLY" || rule === "BALANCE_ONLY"
+      };
+
+      const existing = await this.prisma.measurementItem.findFirst({
+        where: { measurementId, pricingItemId }
+      });
+
+      if (rule === "BILLED_BY_CONSUMPTION" || rule === "CONTRACTED_BY_QUANTITY" || !rule) {
+        const unitValue = list[0]!.unitValue;
+        const calculatedValue = qty.mul(unitValue);
+        let itemId = existing?.id;
+        if (existing) {
+          await this.prisma.measurementItem.update({
+            where: { id: existing.id },
+            data: {
+              quantity: qty,
+              calculatedValue,
+              unitValueSnapshot: unitValue,
+              calculationMemory: {
+                ...((existing.calculationMemory as object) ?? {}),
+                ...memory,
+                rule: "Quantidade aprovada de consumos × valor unitário vigente."
+              } as Prisma.InputJsonValue
+            }
+          });
+        } else {
+          const created = await this.prisma.measurementItem.create({
+            data: {
+              measurementId,
+              type: "PRICING_ITEM",
+              referenceId: pricingItemId,
+              pricingItemId,
+              quantity: qty,
+              calculatedValue,
+              descriptionSnapshot: list[0]!.description,
+              unitValueSnapshot: unitValue,
+              billingKindSnapshot: "ON_DEMAND",
+              calculationMemory: memory as Prisma.InputJsonValue
+            }
+          });
+          itemId = created.id;
+        }
+        await consumption.linkMovementsToMeasurement(
+          list.map((r) => r.id),
+          measurementId,
+          itemId ?? null
+        );
+      } else {
+        // Incluído na mensalidade / somente saldo: quadro informativo (valor 0).
+        const itemId =
+          existing?.id ??
+          (
+            await this.prisma.measurementItem.create({
+              data: {
+                measurementId,
+                type: "PRICING_ITEM",
+                referenceId: pricingItemId,
+                pricingItemId,
+                quantity: qty,
+                calculatedValue: new Prisma.Decimal(0),
+                descriptionSnapshot: `${list[0]!.description} (consumo incluso — sem cobrança adicional)`,
+                unitValueSnapshot: list[0]!.unitValue,
+                billingKindSnapshot: "ON_DEMAND",
+                calculationMemory: memory as Prisma.InputJsonValue
+              }
+            })
+          ).id;
+        if (existing) {
+          await this.prisma.measurementItem.update({
+            where: { id: existing.id },
+            data: {
+              quantity: qty,
+              calculatedValue: new Prisma.Decimal(0),
+              calculationMemory: {
+                ...((existing.calculationMemory as object) ?? {}),
+                ...memory
+              } as Prisma.InputJsonValue
+            }
+          });
+        }
+        await consumption.linkMovementsToMeasurement(
+          list.map((r) => r.id),
+          measurementId,
+          itemId
+        );
+      }
+    }
   }
 
   async findAll(): Promise<unknown> {
@@ -530,25 +649,28 @@ export class MeasurementsService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const consumptionByPricingItem = new Map<string, Prisma.Decimal>();
+      const pricingItemIds = [
+        ...new Set(measurement.items.map((item) => item.pricingItemId).filter((id): id is string => Boolean(id)))
+      ];
+      const pricingRows =
+        pricingItemIds.length > 0
+          ? await tx.contractPricingItem.findMany({
+              where: { id: { in: pricingItemIds }, contractId: measurement.contractId },
+              select: { id: true, billingKind: true, quantity: true, consumedQuantity: true }
+            })
+          : [];
+      const pricingById = new Map(pricingRows.map((row) => [row.id, row]));
+
       for (const item of measurement.items) {
         if (!item.pricingItemId) continue;
-        const billing =
-          item.billingKindSnapshot ??
-          (
-            await tx.contractPricingItem.findFirst({
-              where: { id: item.pricingItemId },
-              select: { billingKind: true }
-            })
-          )?.billingKind;
+        const pricing = pricingById.get(item.pricingItemId);
+        const billing = item.billingKindSnapshot ?? pricing?.billingKind;
         if (billing !== ContractPricingBillingKind.ON_DEMAND) continue;
         const previous = consumptionByPricingItem.get(item.pricingItemId) ?? new Prisma.Decimal(0);
         consumptionByPricingItem.set(item.pricingItemId, previous.add(item.quantity));
       }
       for (const [pricingItemId, quantity] of consumptionByPricingItem) {
-        const pricingItem = await tx.contractPricingItem.findFirst({
-          where: { id: pricingItemId, contractId: measurement.contractId },
-          select: { billingKind: true, quantity: true, consumedQuantity: true }
-        });
+        const pricingItem = pricingById.get(pricingItemId);
         if (!pricingItem) throw new BadRequestException("Um item de precificação da medição não pertence ao contrato.");
         if (pricingItem.billingKind !== ContractPricingBillingKind.ON_DEMAND) continue;
 

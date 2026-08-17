@@ -4,6 +4,7 @@ import { PermissionsService } from "@gestao/modules/permissions/permissions.serv
 import { ContractTypeCatalogService } from "@gestao/modules/contract-type-catalog/contract-type-catalog.service";
 import { HiringTypesService } from "@gestao/modules/hiring-types/hiring-types.service";
 import { ContractsService } from "@gestao/modules/contracts/contracts.service";
+import { ContractConsumptionService } from "@gestao/modules/contracts/contract-consumption.service";
 import { DashboardService } from "@gestao/modules/dashboard/dashboard.service";
 import { ExportsService } from "@gestao/modules/exports/exports.service";
 import { FiscaisService } from "@gestao/modules/fiscais/fiscais.service";
@@ -31,6 +32,7 @@ const prismaSvc = prisma as unknown as PrismaService;
 const storage = new StorageService();
 
 export const gestaoContracts = new ContractsService(prismaSvc, storage);
+export const gestaoConsumption = new ContractConsumptionService(prismaSvc);
 export const gestaoMeasurements = new MeasurementsService(prismaSvc, storage);
 export const gestaoGlosas = new GlosasService(prismaSvc, storage);
 export const gestaoDashboard = new DashboardService(prismaSvc);

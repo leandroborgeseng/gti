@@ -14,6 +14,7 @@ import { ContractFormModal } from "@/components/contracts/contract-form-modal";
 import { ContractGlpiTicketsPanel } from "@/components/contracts/contract-glpi-tickets-panel";
 import { ContractImplantationProportionPanel } from "@/components/contracts/contract-implantation-proportion-panel";
 import { ContractInternalCodeRegenerateButton } from "@/components/contracts/contract-internal-code-regenerate-button";
+import { ContractConsumptionsPanel } from "@/components/contracts/contract-consumptions-panel";
 import { ContractItemChangeHistoryPanel } from "@/components/contracts/contract-item-change-history-panel";
 import { ContractNotificationsPanel } from "@/components/contracts/contract-notifications-panel";
 import { ContractOccurrencesPanel } from "@/components/contracts/contract-occurrences-panel";
@@ -72,7 +73,7 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
   const qPerms = useQuery({
     queryKey: queryKeys.myPermissions,
     queryFn: getMyPermissions,
-    staleTime: 60_000
+    staleTime: 10 * 60_000
   });
   const permissionKeys = qPerms.data?.keys ?? null;
   const canEditContract = Boolean(permissionKeys?.includes("contracts.edit"));
@@ -157,38 +158,22 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            href={"/contracts" as Route}
-            className="font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
-          >
-            ← Voltar aos contratos
-          </Link>
-          <span className="text-slate-300" aria-hidden>
-            |
-          </span>
-          <Link
-            href={`/measurements?contractId=${contract.id}` as Route}
-            className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
-          >
-            Medições deste contrato
-          </Link>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {canEditContract ? (
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setEditOpen(true)}>
-              <Pencil className="h-3.5 w-3.5" aria-hidden />
-              Editar contrato
-            </Button>
-          ) : null}
-          <ContractInternalCodeRegenerateButton contractId={contract.id} internalCode={contract.internalCode} />
-          <ContractDeleteButton
-            contractId={contract.id}
-            contractNumber={contract.number}
-            contractName={contract.name}
-          />
-        </div>
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <Link
+          href={"/contracts" as Route}
+          className="font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
+        >
+          ← Voltar aos contratos
+        </Link>
+        <span className="text-slate-300" aria-hidden>
+          |
+        </span>
+        <Link
+          href={`/measurements?contractId=${contract.id}` as Route}
+          className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
+        >
+          Medições deste contrato
+        </Link>
       </div>
 
       <ContractFormModal
@@ -200,12 +185,12 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
         }}
       />
 
-      <Card className="sticky top-0 z-20 border-slate-200/90 bg-card/95 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/90 sm:p-5">
+      <Card className="sticky top-[var(--app-header-height,3.75rem)] z-20 border-slate-200/90 bg-card/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/90 sm:p-4 md:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">
+            <h1 className="truncate text-base font-semibold text-slate-900 sm:text-lg md:text-xl">
               {contract.internalCode ? (
-                <span className="mr-2 font-mono text-base text-slate-700">{contract.internalCode}</span>
+                <span className="mr-2 font-mono text-sm text-slate-700 sm:text-base">{contract.internalCode}</span>
               ) : null}
               {contract.name}
             </h1>
@@ -217,20 +202,32 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
             <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-800">
               {contractStatusLabel(contract.status)}
             </span>
+            {canEditContract ? (
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setEditOpen(true)}>
+                <Pencil className="h-3.5 w-3.5" aria-hidden />
+                Editar
+              </Button>
+            ) : null}
+            <ContractInternalCodeRegenerateButton contractId={contract.id} internalCode={contract.internalCode} />
+            <ContractDeleteButton
+              contractId={contract.id}
+              contractNumber={contract.number}
+              contractName={contract.name}
+            />
           </div>
         </div>
-        <dl className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
+        <dl className="mt-3 hidden gap-2 text-sm text-slate-700 sm:grid sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Órgão gestor</dt>
-            <dd className="mt-0.5">{labels.orgLabel}</dd>
+            <dd className="mt-0.5 truncate">{labels.orgLabel}</dd>
           </div>
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fornecedor</dt>
-            <dd className="mt-0.5">{supplierLabel}</dd>
+            <dd className="mt-0.5 truncate">{supplierLabel}</dd>
           </div>
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vigência</dt>
-            <dd className="mt-0.5">{vigencyLabel}</dd>
+            <dd className="mt-0.5 truncate">{vigencyLabel}</dd>
           </div>
           <div className="sm:col-span-2 lg:col-span-3">
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Grupos GLPI</dt>
@@ -273,6 +270,9 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
             </dd>
           </div>
         </dl>
+        <p className="mt-2 truncate text-xs text-slate-600 sm:hidden">
+          {labels.orgLabel} · {supplierLabel} · {vigencyLabel}
+        </p>
       </Card>
 
       <Tabs value={activeTab} onValueChange={setTab} className="space-y-3">
@@ -462,6 +462,18 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
           </TabsContent>
         ) : null}
 
+        {visibleTabs.some((t) => t.id === "consumos") ? (
+          <TabsContent
+            value="consumos"
+            forceMount={mountedTabs.has("consumos") ? true : undefined}
+            className="mt-0 space-y-4 focus-visible:ring-0 data-[state=inactive]:hidden"
+          >
+            {mountedTabs.has("consumos") ? (
+              <ContractConsumptionsPanel contractId={contract.id} canEdit={canEditContract} />
+            ) : null}
+          </TabsContent>
+        ) : null}
+
         {visibleTabs.some((t) => t.id === "chamados-glpi") ? (
           <TabsContent
             value="chamados-glpi"
@@ -549,9 +561,7 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
             forceMount={mountedTabs.has("auditoria") ? true : undefined}
             className="mt-0 focus-visible:ring-0 data-[state=inactive]:hidden"
           >
-            {mountedTabs.has("auditoria") ? (
-              <ContractItemChangeHistoryPanel logs={contract.itemChangeLogs ?? []} />
-            ) : null}
+            {mountedTabs.has("auditoria") ? <ContractItemChangeHistoryPanel contractId={contract.id} /> : null}
           </TabsContent>
         ) : null}
       </Tabs>

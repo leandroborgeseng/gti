@@ -239,6 +239,42 @@ enum ContractPricingBillingKind {
   ON_DEMAND
 }
 
+/// Disponibilidade da quantidade controlada por consumo.
+enum ConsumptionAvailabilityPeriod {
+  MONTHLY
+  ANNUAL
+  CONTRACT_TERM
+  SPECIFIC_PERIOD
+  AMENDMENT
+}
+
+/// Efeito financeiro do consumo na medição/pagamento.
+enum ConsumptionFinancialRule {
+  INCLUDED_IN_MONTHLY
+  BILLED_BY_CONSUMPTION
+  CONTRACTED_BY_QUANTITY
+  BALANCE_ONLY
+}
+
+enum ConsumptionMovementStatus {
+  DRAFT
+  INFORMED
+  UNDER_VALIDATION
+  APPROVED
+  REJECTED
+  ADJUSTED
+  REVERSED
+}
+
+enum ConsumptionMovementSource {
+  MANUAL
+  GLPI_TICKET
+  MEASUREMENT
+  ADJUSTMENT
+  AMENDMENT
+  REVERSAL
+}
+
 enum ContractPricingPeriodicity {
   MONTHLY
   BIMONTHLY
@@ -718,6 +754,8 @@ model Contract {
   notifications ContractNotification[]
   /** Classificação contratual local de chamados GLPI. */
   glpiTicketClasses ContractGlpiTicketClass[]
+  /** Movimentações de consumo (horas, UST, etc.). */
+  consumptionMovements ContractConsumptionMovement[]
 
   @@index([status, endDate])
   @@index([deletedAt])
@@ -1461,12 +1499,23 @@ model ContractPricingItem {
   includeInGlosaBase Boolean                    @default(false) @map("include_in_glosa_base")
   /// Quantidade já consumida/medida (itens sob demanda).
   consumedQuantity   Decimal                    @default(0) @map("consumed_quantity") @db.Decimal(18, 4)
+  /// Se true, o item entra no painel/extrato de consumos do contrato.
+  consumptionEnabled Boolean                    @default(false) @map("consumption_enabled")
+  consumptionFinancialRule ConsumptionFinancialRule? @map("consumption_financial_rule")
+  consumptionAvailability ConsumptionAvailabilityPeriod? @map("consumption_availability")
+  /// Se true, saldo não utilizado acumula para o período seguinte.
+  consumptionAccumulates Boolean                @default(false) @map("consumption_accumulates")
+  /// Se true, lançamentos exigem aprovação antes de reduzir o saldo definitivo.
+  consumptionRequiresValidation Boolean         @default(false) @map("consumption_requires_validation")
+  /// Limiares percentuais para alertas de saldo (ex.: [70,80,90,100]).
+  consumptionAlertThresholds Json?              @map("consumption_alert_thresholds")
   createdAt          DateTime                   @default(now()) @map("created_at")
   updatedAt          DateTime                   @updatedAt @map("updated_at")
   contract           Contract                   @relation(fields: [contractId], references: [id], onDelete: Cascade)
   type               ContractItemType           @relation(fields: [typeId], references: [id])
   unit               MeasureUnit                @relation(fields: [unitId], references: [id])
   measurementItems   MeasurementItem[]
+  consumptionMovements ContractConsumptionMovement[]
   glosaBaseModules   ContractModule[]           @relation("ContractModuleGlosaPricingItem")
   scheduleLinks      ContractSchedule[]         @relation("ContractSchedulePricingItem")
   scheduleMilestoneLinks ContractScheduleMilestone[] @relation("ContractScheduleMilestonePricingItem")
@@ -1474,7 +1523,48 @@ model ContractPricingItem {
   @@unique([contractId, sequence])
   @@index([contractId, status])
   @@index([typeId])
+  @@index([contractId, consumptionEnabled])
   @@map("contract_pricing_item")
+}
+
+/// Lançamento de consumo de item contratual (horas, UST, visitas, etc.).
+model ContractConsumptionMovement {
+  id                       String                     @id @default(uuid())
+  contractId               String                     @map("contract_id")
+  pricingItemId            String                     @map("pricing_item_id")
+  quantity                 Decimal                    @db.Decimal(18, 4)
+  /// Quantidade originalmente informada (preservada em ajustes).
+  originalQuantity         Decimal?                   @map("original_quantity") @db.Decimal(18, 4)
+  unitCodeSnapshot         String?                    @map("unit_code_snapshot")
+  unitLabelSnapshot        String?                    @map("unit_label_snapshot")
+  status                   ConsumptionMovementStatus  @default(INFORMED)
+  source                   ConsumptionMovementSource  @default(MANUAL)
+  glpiTicketId             Int?                       @map("glpi_ticket_id")
+  measurementId            String?                    @map("measurement_id")
+  measurementItemId        String?                    @map("measurement_item_id")
+  executionDate            DateTime                   @map("execution_date")
+  referencePeriodStart     DateTime?                  @map("reference_period_start")
+  referencePeriodEnd       DateTime?                  @map("reference_period_end")
+  responsibleLabel         String?                    @map("responsible_label")
+  responsibleUserId        String?                    @map("responsible_user_id")
+  description              String?                    @db.Text
+  notes                    String?                    @db.Text
+  rejectionReason          String?                    @map("rejection_reason") @db.Text
+  adjustmentJustification  String?                    @map("adjustment_justification") @db.Text
+  createdById              String?                    @map("created_by_id")
+  validatedById            String?                    @map("validated_by_id")
+  validatedAt              DateTime?                  @map("validated_at")
+  createdAt                DateTime                   @default(now()) @map("created_at")
+  updatedAt                DateTime                   @updatedAt @map("updated_at")
+  contract                 Contract                   @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  pricingItem              ContractPricingItem        @relation(fields: [pricingItemId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, status])
+  @@index([pricingItemId, status])
+  @@index([glpiTicketId])
+  @@index([measurementId])
+  @@index([executionDate])
+  @@map("contract_consumption_movement")
 }
 
 /// Cronograma operacional do contrato (implantação, migração, plano de ação, etc.).

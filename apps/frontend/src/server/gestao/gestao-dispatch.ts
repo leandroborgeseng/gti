@@ -10,12 +10,14 @@ import {
   toRequestActor
 } from "@gestao/common/access-context";
 import { requestActorStore } from "@gestao/common/audit-actor";
+import { GTI_TOKEN_COOKIE } from "@/lib/auth-cookie-name";
 import { issueAuthToken } from "@/lib/auth-issue-token";
 import { jwtSecretBytes } from "@/lib/jwt-config";
 import { sendWelcomePasswordEmail } from "@/lib/password-reset";
 import {
   ensureGoalsBootstrapped,
   gestaoContracts,
+  gestaoConsumption,
   gestaoDashboard,
   gestaoExports,
   gestaoFiscais,
@@ -91,7 +93,13 @@ async function readJsonBody(req: Request): Promise<unknown> {
 
 async function requireUser(req: Request): Promise<JwtUser | null> {
   const auth = req.headers.get("authorization");
-  const token = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  let token = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  // Navegação direta (Imprimir/PDF em <a href>) envia cookie, não Bearer.
+  if (!token) {
+    const cookie = req.headers.get("cookie") ?? "";
+    const match = cookie.match(new RegExp(`(?:^|;\\s*)${GTI_TOKEN_COOKIE}=([^;]*)`));
+    token = match?.[1] ? decodeURIComponent(match[1]) : "";
+  }
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, jwtSecretBytes());
@@ -816,6 +824,80 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 3 && seg[2] === "modules-delivery" && method === "GET") {
       return jsonOk(await gestaoContracts.findContractModulesDelivery(seg[1]));
     }
+    if (seg.length === 3 && seg[2] === "consumptions" && method === "GET") {
+      return jsonOk(await gestaoConsumption.summarize(seg[1]));
+    }
+    if (seg.length === 4 && seg[2] === "consumptions" && seg[3] === "movements" && method === "GET") {
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoConsumption.listMovements(seg[1], {
+          pricingItemId: url.searchParams.get("pricingItemId") ?? undefined,
+          glpiTicketId: url.searchParams.get("glpiTicketId")
+            ? Number(url.searchParams.get("glpiTicketId"))
+            : undefined,
+          status: url.searchParams.get("status") ?? undefined,
+          page: url.searchParams.get("page") ? Number(url.searchParams.get("page")) : undefined,
+          pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined
+        })
+      );
+    }
+    if (seg.length === 4 && seg[2] === "consumptions" && seg[3] === "movements" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      const body = (await readJsonBody(req)) as Record<string, unknown>;
+      return jsonOk(
+        await gestaoConsumption.createMovement(seg[1], {
+          pricingItemId: String(body.pricingItemId ?? ""),
+          quantity: Number(body.quantity),
+          executionDate: String(body.executionDate ?? ""),
+          description: (body.description as string | null | undefined) ?? null,
+          notes: (body.notes as string | null | undefined) ?? null,
+          responsibleLabel: (body.responsibleLabel as string | null | undefined) ?? null,
+          responsibleUserId: (body.responsibleUserId as string | null | undefined) ?? null,
+          glpiTicketId: body.glpiTicketId != null ? Number(body.glpiTicketId) : null,
+          source: body.source as never,
+          submitForValidation: Boolean(body.submitForValidation),
+          actorUserId: user.sub
+        })
+      );
+    }
+    if (
+      seg.length === 6 &&
+      seg[2] === "consumptions" &&
+      seg[3] === "movements" &&
+      seg[5] === "validate" &&
+      method === "POST"
+    ) {
+      assertPermission(user, "contracts.edit");
+      const body = (await readJsonBody(req)) as Record<string, unknown>;
+      return jsonOk(
+        await gestaoConsumption.validateMovement(seg[1], seg[4], {
+          action: body.action as "approve" | "reject" | "adjust",
+          quantity: body.quantity != null ? Number(body.quantity) : undefined,
+          justification: (body.justification as string | null | undefined) ?? null,
+          rejectionReason: (body.rejectionReason as string | null | undefined) ?? null,
+          actorUserId: user.sub
+        })
+      );
+    }
+    if (
+      seg.length === 6 &&
+      seg[2] === "consumptions" &&
+      seg[3] === "movements" &&
+      seg[5] === "reverse" &&
+      method === "POST"
+    ) {
+      assertPermission(user, "contracts.edit");
+      const body = (await readJsonBody(req)) as Record<string, unknown>;
+      return jsonOk(
+        await gestaoConsumption.reverseMovement(seg[1], seg[4], {
+          justification: (body.justification as string | null | undefined) ?? null,
+          actorUserId: user.sub
+        })
+      );
+    }
+    if (seg.length === 3 && seg[2] === "item-change-logs" && method === "GET") {
+      return jsonOk(await gestaoContracts.findItemChangeLogs(seg[1]));
+    }
     if (seg.length === 5 && seg[2] === "modules" && seg[4] === "features-delivery" && method === "GET") {
       const url = new URL(req.url);
       return jsonOk(
@@ -1522,7 +1604,34 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       return jsonOk(await gestaoContractNotifications.findOne(seg[1]));
     }
     if (seg.length === 3 && seg[2] === "print" && method === "GET") {
-      return jsonOk(await gestaoContractNotifications.printableHtml(seg[1]));
+      const doc = await gestaoContractNotifications.printableHtml(seg[1]);
+      const number = typeof doc === "object" && doc && "number" in doc ? String(doc.number) : "Notificação";
+      const bodyHtml =
+        typeof doc === "string"
+          ? doc
+          : typeof (doc as { html?: string })?.html === "string"
+            ? (doc as { html: string }).html
+            : "";
+      const isFullDoc = /^\s*<!doctype html/i.test(bodyHtml) || /^\s*<html[\s>]/i.test(bodyHtml);
+      const html = isFullDoc
+        ? bodyHtml
+        : `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${number.replace(/</g, "")}</title>
+<style>body{font-family:Georgia,serif;max-width:800px;margin:2rem auto;padding:1rem;color:#111}
+.meta{font-size:12px;color:#555;margin-bottom:1.5rem}</style></head><body>
+<div class="meta"><strong>${number.replace(/</g, "")}</strong></div>
+${bodyHtml}
+</body></html>`;
+      const wantsJson = (req.headers.get("accept") ?? "").includes("application/json");
+      if (wantsJson) {
+        return jsonOk(doc);
+      }
+      return new NextResponse(html, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "private, no-store"
+        }
+      });
     }
     if (seg.length === 3 && seg[2] === "pdf" && method === "GET") {
       const pdf = await gestaoContractNotifications.printablePdf(seg[1]);
@@ -1530,7 +1639,8 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
         status: 200,
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="${pdf.filename.replace(/"/g, "'")}"`
+          "Content-Disposition": `attachment; filename="${pdf.filename.replace(/"/g, "'")}"`,
+          "Cache-Control": "private, no-store"
         }
       });
     }

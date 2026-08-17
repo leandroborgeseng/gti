@@ -20,6 +20,10 @@ export const queryKeys = {
   /** Chamados GLPI em cache vinculados aos grupos do contrato. */
   contractGlpiTickets: (contractId: string, filterKey: string) =>
     ["gestao", "contract-glpi-tickets", contractId, filterKey] as const,
+  contractConsumptions: (contractId: string) => ["gestao", "contract-consumptions", contractId] as const,
+  contractConsumptionMovements: (contractId: string, filterKey: string) =>
+    ["gestao", "contract-consumption-movements", contractId, filterKey] as const,
+  contractItemChangeLogs: (contractId: string) => ["gestao", "contract-item-change-logs", contractId] as const,
   /** Catálogo de tipos padronizados e unidades de medida dos itens de precificação. */
   contractPricingCatalog: ["gestao", "contract-pricing-catalog"] as const,
   /** Conferência administrativa do backfill dos itens de precificação. */

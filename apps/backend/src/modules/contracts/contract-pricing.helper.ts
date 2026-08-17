@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import {
+  ConsumptionAvailabilityPeriod,
+  ConsumptionFinancialRule,
   ContractPricingBillingKind,
   ContractPricingItemStatus,
   ContractPricingPeriodicity,
@@ -24,6 +26,11 @@ export type PricingItemInput = {
   periodEnd?: string | null;
   status?: ContractPricingItemStatus | keyof typeof ContractPricingItemStatus;
   includeInGlosaBase?: boolean;
+  consumptionEnabled?: boolean;
+  consumptionFinancialRule?: string | null;
+  consumptionAvailability?: string | null;
+  consumptionAccumulates?: boolean;
+  consumptionRequiresValidation?: boolean;
 };
 
 export type PricingTotals = {
@@ -249,6 +256,11 @@ function normalizeItem(input: PricingItemInput, sequence: number): {
   periodEnd: Date | null;
   status: ContractPricingItemStatus;
   includeInGlosaBase: boolean;
+  consumptionEnabled: boolean;
+  consumptionFinancialRule: ConsumptionFinancialRule | null;
+  consumptionAvailability: ConsumptionAvailabilityPeriod | null;
+  consumptionAccumulates: boolean;
+  consumptionRequiresValidation: boolean;
 } {
   const description = input.description?.trim() ?? "";
   if (!description) throw new BadRequestException("Informe a descrição contratual do item.");
@@ -297,6 +309,23 @@ function normalizeItem(input: PricingItemInput, sequence: number): {
   }
 
   const status = (input.status as ContractPricingItemStatus) ?? ContractPricingItemStatus.ACTIVE;
+  const consumptionEnabled =
+    input.consumptionEnabled != null
+      ? Boolean(input.consumptionEnabled)
+      : billingKind === ContractPricingBillingKind.ON_DEMAND;
+
+  const parseFinancialRule = (raw: unknown): ConsumptionFinancialRule | null => {
+    if (raw == null || raw === "") return null;
+    return Object.values(ConsumptionFinancialRule).includes(raw as ConsumptionFinancialRule)
+      ? (raw as ConsumptionFinancialRule)
+      : null;
+  };
+  const parseAvailability = (raw: unknown): ConsumptionAvailabilityPeriod | null => {
+    if (raw == null || raw === "") return null;
+    return Object.values(ConsumptionAvailabilityPeriod).includes(raw as ConsumptionAvailabilityPeriod)
+      ? (raw as ConsumptionAvailabilityPeriod)
+      : null;
+  };
 
   return {
     sequence,
@@ -313,7 +342,18 @@ function normalizeItem(input: PricingItemInput, sequence: number): {
     periodStart: input.periodStart ? new Date(input.periodStart) : null,
     periodEnd: input.periodEnd ? new Date(input.periodEnd) : null,
     status,
-    includeInGlosaBase: Boolean(input.includeInGlosaBase)
+    includeInGlosaBase: Boolean(input.includeInGlosaBase),
+    consumptionEnabled,
+    consumptionFinancialRule:
+      parseFinancialRule(input.consumptionFinancialRule) ??
+      (billingKind === ContractPricingBillingKind.ON_DEMAND
+        ? ConsumptionFinancialRule.BILLED_BY_CONSUMPTION
+        : null),
+    consumptionAvailability:
+      parseAvailability(input.consumptionAvailability) ??
+      (consumptionEnabled ? ConsumptionAvailabilityPeriod.CONTRACT_TERM : null),
+    consumptionAccumulates: Boolean(input.consumptionAccumulates),
+    consumptionRequiresValidation: Boolean(input.consumptionRequiresValidation)
   };
 }
 

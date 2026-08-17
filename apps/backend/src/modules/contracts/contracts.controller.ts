@@ -18,6 +18,7 @@ import { UserRole } from "@prisma/client";
 import { memoryStorage } from "multer";
 import { Roles } from "../../auth/roles-required.decorator";
 import { ContractsService } from "./contracts.service";
+import { ContractConsumptionService } from "./contract-consumption.service";
 import {
   CancelContractAmendmentDto,
   ChangeContractOccurrenceStatusDto,
@@ -53,7 +54,10 @@ function uploadMaxBytes(): number {
 
 @Controller("contracts")
 export class ContractsController {
-  constructor(private readonly service: ContractsService) {}
+  constructor(
+    private readonly service: ContractsService,
+    private readonly consumption: ContractConsumptionService
+  ) {}
 
   @Post()
   create(@Body() dto: CreateContractDto): Promise<unknown> {
@@ -517,6 +521,75 @@ export class ContractsController {
   @Get(":id/form-data")
   findOneForForm(@Param("id") id: string): Promise<unknown> {
     return this.service.findOneForForm(id);
+  }
+
+  @Get(":id/consumptions")
+  consumptionSummary(@Param("id") id: string): Promise<unknown> {
+    return this.consumption.summarize(id);
+  }
+
+  @Get(":id/consumptions/movements")
+  consumptionMovements(
+    @Param("id") id: string,
+    @Query("pricingItemId") pricingItemId?: string,
+    @Query("glpiTicketId") glpiTicketId?: string,
+    @Query("status") status?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
+  ): Promise<unknown> {
+    return this.consumption.listMovements(id, {
+      pricingItemId: pricingItemId || undefined,
+      glpiTicketId: glpiTicketId ? Number(glpiTicketId) : undefined,
+      status: status || undefined,
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined
+    });
+  }
+
+  @Post(":id/consumptions/movements")
+  createConsumptionMovement(@Param("id") id: string, @Body() body: Record<string, unknown>): Promise<unknown> {
+    return this.consumption.createMovement(id, {
+      pricingItemId: String(body.pricingItemId ?? ""),
+      quantity: Number(body.quantity),
+      executionDate: String(body.executionDate ?? ""),
+      description: (body.description as string | null | undefined) ?? null,
+      notes: (body.notes as string | null | undefined) ?? null,
+      responsibleLabel: (body.responsibleLabel as string | null | undefined) ?? null,
+      responsibleUserId: (body.responsibleUserId as string | null | undefined) ?? null,
+      glpiTicketId: body.glpiTicketId != null ? Number(body.glpiTicketId) : null,
+      source: body.source as never,
+      submitForValidation: Boolean(body.submitForValidation)
+    });
+  }
+
+  @Post(":id/consumptions/movements/:movementId/validate")
+  validateConsumptionMovement(
+    @Param("id") id: string,
+    @Param("movementId") movementId: string,
+    @Body() body: Record<string, unknown>
+  ): Promise<unknown> {
+    return this.consumption.validateMovement(id, movementId, {
+      action: body.action as "approve" | "reject" | "adjust",
+      quantity: body.quantity != null ? Number(body.quantity) : undefined,
+      justification: (body.justification as string | null | undefined) ?? null,
+      rejectionReason: (body.rejectionReason as string | null | undefined) ?? null
+    });
+  }
+
+  @Post(":id/consumptions/movements/:movementId/reverse")
+  reverseConsumptionMovement(
+    @Param("id") id: string,
+    @Param("movementId") movementId: string,
+    @Body() body: Record<string, unknown>
+  ): Promise<unknown> {
+    return this.consumption.reverseMovement(id, movementId, {
+      justification: (body.justification as string | null | undefined) ?? null
+    });
+  }
+
+  @Get(":id/item-change-logs")
+  itemChangeLogs(@Param("id") id: string): Promise<unknown> {
+    return this.service.findItemChangeLogs(id);
   }
 
   @Get(":id")

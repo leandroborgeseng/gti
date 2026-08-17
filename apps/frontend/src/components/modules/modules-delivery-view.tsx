@@ -26,7 +26,7 @@ import {
   searchModulesDeliveryFeatures,
   updateContractFeature
 } from "@/lib/api";
-import { formatBrl } from "@/lib/format-brl";
+import { formatBrl, formatPercent } from "@/lib/format-brl";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { orderFeaturesByItemCode } from "@/lib/item-code-order";
 import { itemDeliveryLabelClass, itemDeliverySelectItemClass, itemDeliverySelectTriggerClass } from "@/lib/item-delivery-styles";
@@ -118,11 +118,12 @@ function serializeWeight(w: unknown): string {
 
 function deliveryCompletionPercent(total: number, delivered: number, partial: number): number {
   if (total <= 0) return 0;
-  return Math.round(((delivered + partial * 0.5) / total) * 100);
+  return ((delivered + partial * 0.5) / total) * 100;
 }
 
 function DeliveryMiniChart({ total, delivered, partial, notDelivered }: { total: number; delivered: number; partial: number; notDelivered: number }): JSX.Element {
   const completion = deliveryCompletionPercent(total, delivered, partial);
+  const completionLabel = formatPercent(completion, 2);
   if (total <= 0) {
     return (
       <div className="min-w-[11rem] text-xs text-muted-foreground">
@@ -140,12 +141,12 @@ function DeliveryMiniChart({ total, delivered, partial, notDelivered }: { total:
   return (
     <div className="min-w-[11rem] space-y-1">
       <div className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="font-semibold tabular-nums text-foreground">{completion}% cumprido</span>
+        <span className="font-semibold tabular-nums text-foreground">{completionLabel} cumprido</span>
         <span className={itemDeliveryLabelClass("DELIVERED")}>
           {delivered}/{total} requisito(s)
         </span>
       </div>
-      <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-label={`${completion}% dos requisitos cumpridos`}>
+      <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-label={`${completionLabel} dos requisitos cumpridos`}>
         {segments.map((segment) =>
           segment.value > 0 ? (
             <span
@@ -911,8 +912,9 @@ function ContractSection({
 export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props): JSX.Element {
   const qc = useQueryClient();
   const permissionsQuery = useQuery({
-    queryKey: ["gestao", "my-permissions"],
-    queryFn: getMyPermissions
+    queryKey: queryKeys.myPermissions,
+    queryFn: getMyPermissions,
+    staleTime: 10 * 60_000
   });
   const permissionKeys = permissionsQuery.data?.keys ?? [];
   const canEditFeature = permissionKeys.includes("contracts.edit");

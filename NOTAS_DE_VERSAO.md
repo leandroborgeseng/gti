@@ -6,6 +6,17 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- **Consumo contratual genérico** (tickets 79–84): aba «Consumos» no contrato, lançamentos manuais e a partir de chamados GLPI («Registrar consumo»), regras financeiras (incluso na mensalidade / faturado / por quantidade / só saldo), validação opcional, estorno e incorporação automática nas medições. Painel com saldo, comprometido e percentual consumido.
+- Indicadores leves de carregamento (barra no topo do conteúdo e spinner inline) e recarregamento completo ao trocar o contexto ativo (perfil/órgão).
+
+### Corrigido
+
+- Percentuais de cumprimento das funcionalidades passam a exibir sempre duas casas decimais no padrão brasileiro (ex.: `0,00%`, `37,48%`), sem alterar o cálculo interno (ticket 75).
+- Cabeçalho fixo do detalhe do contrato deixa de sobrepor o cabeçalho principal do SIGTI; botões de ação permanecem acessíveis na faixa fixa (ticket 76).
+- «Imprimir / HTML» e «Baixar PDF» das notificações passam a usar a sessão autenticada do SIGTI, com mensagens amigáveis em caso de falta de permissão ou sessão expirada (ticket 85).
+
+### Adicionado
+
 - **Usuários externos (portal da empresa)**: na Administração, cadastre contas do tipo Externo com fornecedor (CNPJ), função e contratos autorizados do mesmo fornecedor. Elas usam o perfil protegido «Usuário externo» (sem órgãos internos) e veem apenas Meus contratos, Notificações, Cronogramas, Documentos e Meu perfil. A API restringe o acesso aos contratos autorizados; aprovação/inativação permanece na listagem, com auditoria.
 - **Modelos de notificação** (Administração → Modelos de notificação): título, assunto de e-mail, prazos, exigências (ciência/manifestação) e corpo HTML com botão «Inserir campo» (mala direta). Modelos já usados só podem ser inativados; edições de conteúdo geram nova versão. Permissão: `notification_templates.manage`.
 - **Notificações no contrato**: painel na ficha para criar a partir de modelo, editar rascunho, revisar, assinar por senha (revalida a senha do SIGTI; não armazena a senha), enviar por e-mail (SMTP ACTIVE ou Resend via sender unificado), linha do tempo, cancelar/retificar com justificativa e analisar manifestações da empresa. Numeração `NOT-SIGTI-####/AAAA`. Documento HTML imprimível (não é PDF ICP-Brasil). Permissões: `notifications.view/manage/sign/send/respond/analyze`.

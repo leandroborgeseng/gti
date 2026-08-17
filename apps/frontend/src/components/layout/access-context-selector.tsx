@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronsUpDown } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { GTI_TOKEN_COOKIE } from "@/lib/auth-cookie-name";
@@ -43,7 +42,6 @@ function syncFromMe(data: AuthMe): { profileId: string; organizationValue: strin
 }
 
 export function AccessContextSelector(): JSX.Element | null {
-  const router = useRouter();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [profileId, setProfileId] = useState<string>("");
@@ -91,12 +89,12 @@ export function AccessContextSelector(): JSX.Element | null {
     },
     onSuccess: async (result) => {
       if (result.access_token) setAuthCookie(result.access_token);
-      toast.success("Contexto atualizado.");
+      toast.success("Alterando contexto...");
       setOpen(false);
       await qc.invalidateQueries();
       const permissions = await getMyPermissions().catch(() => null);
-      router.refresh();
       const path = typeof window !== "undefined" ? window.location.pathname : "/dashboard";
+      let target = path;
       if (permissions) {
         const groups = filterMainNavGroups(MAIN_NAV_GROUPS, permissions.role, permissions.keys);
         const allowedHrefs = new Set(groups.flatMap((g) => g.items.map((i) => i.href)));
@@ -108,9 +106,11 @@ export function AccessContextSelector(): JSX.Element | null {
           [...allowedHrefs].some((href) => path === href || path.startsWith(`${href}/`));
         if (!stillAllowed) {
           toast.message("A rota atual não está disponível neste contexto. Redirecionando ao painel.");
-          router.push("/dashboard");
+          target = "/dashboard";
         }
       }
+      // Reload completo: limpa estado em memória e reconstrói menus/permissões do novo contexto.
+      window.location.assign(target);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao trocar contexto")
   });

@@ -22,5 +22,8 @@ export function formatPercent(value: unknown, fractionDigits = 2): string {
   if (!Number.isFinite(n)) {
     return "-";
   }
-  return `${n.toLocaleString("pt-BR", { maximumFractionDigits: fractionDigits, minimumFractionDigits: 0 })}%`;
+  return `${n.toLocaleString("pt-BR", {
+    maximumFractionDigits: fractionDigits,
+    minimumFractionDigits: fractionDigits
+  })}%`;
 }

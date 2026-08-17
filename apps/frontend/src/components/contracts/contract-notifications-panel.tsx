@@ -18,6 +18,7 @@ import {
   updateNotificationDraft,
   type ContractNotificationRecord
 } from "@/lib/api";
+import { authHeadersForApi } from "@/lib/auth-token";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -65,6 +66,86 @@ export function ContractNotificationsPanel({ contractId }: Props): JSX.Element {
   const [signerIds, setSignerIds] = useState<string[]>([]);
   const [extraEmails, setExtraEmails] = useState("");
   const [analysisNote, setAnalysisNote] = useState("");
+  const [docBusy, setDocBusy] = useState<"print" | "pdf" | null>(null);
+
+  async function openNotificationPrint(id: string) {
+    setDocBusy("print");
+    try {
+      const auth = await authHeadersForApi();
+      const res = await fetch(`/api/contract-notifications/${id}/print`, {
+        headers: { ...auth, Accept: "text/html" },
+        credentials: "include"
+      });
+      if (res.status === 401) {
+        toast.error("Sessão expirada. Entre novamente no sistema.");
+        return;
+      }
+      if (res.status === 403) {
+        toast.error("Você não possui permissão para acessar este documento.");
+        return;
+      }
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || "Falha ao carregar o documento");
+      }
+      const html = await res.text();
+      const w = window.open("", "_blank");
+      if (!w) {
+        toast.error("Permita pop-ups para visualizar a impressão.");
+        return;
+      }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      window.setTimeout(() => {
+        try {
+          w.print();
+        } catch {
+          /* ignore */
+        }
+      }, 300);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
+    } finally {
+      setDocBusy(null);
+    }
+  }
+
+  async function downloadNotificationPdf(id: string, numberLabel: string) {
+    setDocBusy("pdf");
+    try {
+      const auth = await authHeadersForApi();
+      const res = await fetch(`/api/contract-notifications/${id}/pdf`, {
+        headers: { ...auth },
+        credentials: "include"
+      });
+      if (res.status === 401) {
+        toast.error("Sessão expirada. Entre novamente no sistema.");
+        return;
+      }
+      if (res.status === 403) {
+        toast.error("Você não possui permissão para acessar este documento.");
+        return;
+      }
+      if (!res.ok) {
+        throw new Error("Falha ao gerar o PDF");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${numberLabel || "notificacao"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao baixar PDF");
+    } finally {
+      setDocBusy(null);
+    }
+  }
 
   const detailQ = useQuery({
     queryKey: ["contract-notification", selectedId],
@@ -225,17 +306,22 @@ export function ContractNotificationsPanel({ contractId }: Props): JSX.Element {
               {selected.number} · {STATUS_LABEL[selected.status] ?? selected.status}
             </h3>
             <div className="flex flex-wrap gap-3 text-xs">
-              <a
-                className="underline"
-                href={`/api/contract-notifications/${selected.id}/print`}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                className="underline disabled:opacity-50"
+                disabled={docBusy === "print"}
+                onClick={() => void openNotificationPrint(selected.id)}
               >
-                Imprimir / HTML
-              </a>
-              <a className="underline" href={`/api/contract-notifications/${selected.id}/pdf`}>
-                Baixar PDF
-              </a>
+                {docBusy === "print" ? "Carregando…" : "Imprimir / HTML"}
+              </button>
+              <button
+                type="button"
+                className="underline disabled:opacity-50"
+                disabled={docBusy === "pdf"}
+                onClick={() => void downloadNotificationPdf(selected.id, selected.number)}
+              >
+                {docBusy === "pdf" ? "Preparando…" : "Baixar PDF"}
+              </button>
             </div>
           </div>
 
