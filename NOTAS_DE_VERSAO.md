@@ -6,8 +6,9 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
-- **Consumo contratual genérico** (tickets 79–84): aba «Consumos» no contrato, lançamentos manuais e a partir de chamados GLPI («Registrar consumo»), regras financeiras (incluso na mensalidade / faturado / por quantidade / só saldo), validação opcional, estorno e incorporação automática nas medições. Painel com saldo, comprometido e percentual consumido.
-- Indicadores leves de carregamento (barra no topo do conteúdo e spinner inline) e recarregamento completo ao trocar o contexto ativo (perfil/órgão).
+- **Solicitar acesso em tela própria** (ticket 89): o login fica só com e-mail, senha, «Esqueci minha senha» e o link «Solicitar acesso». A solicitação pede nome, CPF, e-mail e tipo (Interno com órgão / Externo com empresa e vínculo). Fica «Aguardando aprovação»; na Administração as pendências são destacadas; a recusa exige justificativa e fica na auditoria (sem exclusão silenciosa). Perfis e permissões não são escolhidos pelo solicitante.
+- **Indicador de carregamento em tela cheia** (ticket 90): removida a barra horizontal fixa no topo. Em navegações e operações que bloqueiam a página, aparece overlay semitransparente com círculo girando («Carregando...» / «Ainda carregando...»), bloqueando cliques até concluir (sucesso ou erro). Troca de perfil/órgão usa o mesmo bloqueio até o recarregamento.
+- **Consumo operacional separado do financeiro** (tickets 91–93): itens com «Controlar consumo» passam a ter unidade e quantidade próprias de consumo (ex.: 12 meses financeiros e 150 horas de saldo). A aba Consumos mostra disponível, utilizado, em validação, estimado em aberto, saldo efetivo e saldo projetado; o percentual usa só o efetivamente utilizado/validado. Lançamentos admitem quantidade estimada (não reduz saldo) e efetivamente consumida, com situações de atividade (levantamento, desenvolvimento, concluído etc.), tanto na aba Consumos quanto a partir de chamados GLPI.
 
 ### Corrigido
 
@@ -17,6 +18,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- **Consumo contratual genérico** (tickets 79–84): aba «Consumos» no contrato, lançamentos manuais e a partir de chamados GLPI («Registrar consumo»), regras financeiras (incluso na mensalidade / faturado / por quantidade / só saldo), validação opcional, estorno e incorporação automática nas medições. Painel com saldo, comprometido e percentual consumido.
 - **Usuários externos (portal da empresa)**: na Administração, cadastre contas do tipo Externo com fornecedor (CNPJ), função e contratos autorizados do mesmo fornecedor. Elas usam o perfil protegido «Usuário externo» (sem órgãos internos) e veem apenas Meus contratos, Notificações, Cronogramas, Documentos e Meu perfil. A API restringe o acesso aos contratos autorizados; aprovação/inativação permanece na listagem, com auditoria.
 - **Modelos de notificação** (Administração → Modelos de notificação): título, assunto de e-mail, prazos, exigências (ciência/manifestação) e corpo HTML com botão «Inserir campo» (mala direta). Modelos já usados só podem ser inativados; edições de conteúdo geram nova versão. Permissão: `notification_templates.manage`.
 - **Notificações no contrato**: painel na ficha para criar a partir de modelo, editar rascunho, revisar, assinar por senha (revalida a senha do SIGTI; não armazena a senha), enviar por e-mail (SMTP ACTIVE ou Resend via sender unificado), linha do tempo, cancelar/retificar com justificativa e analisar manifestações da empresa. Numeração `NOT-SIGTI-####/AAAA`. Documento HTML imprimível (não é PDF ICP-Brasil). Permissões: `notifications.view/manage/sign/send/respond/analyze`.
@@ -66,7 +68,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Área administrativa **Backup e migração** (só administradores): exporta e restaura a base PostgreSQL, preferências do sistema e, opcionalmente, anexos, para facilitar a mudança de servidor. Segredos de ambiente não entram no ficheiro; a tela mostra quais variáveis estão definidas no destino.
 - Backup automático para **S3** (AWS, MinIO, R2): configuração pela interface, envio diário com retenção diária/semanal/mensal, execução manual, listagem e restauração a partir do bucket. A chave secreta fica criptografada na base.
 - Adicionada a opção de excluir tarefas dentro de um projeto, com confirmação antes da remoção.
-- Adicionado cadastro público pela tela de login, com aprovação ou recusa de novos usuários pela administração.
+- Adicionado cadastro público pela tela «Solicitar acesso» (separada do login), com aprovação ou recusa justificada de novos usuários pela administração.
 - Adicionado o Resumo Operacional para acompanhar chamados abertos/fechados, tarefas concluídas e alterações em contratos por dia, semana ou mês.
 - Adicionado histórico auditável de itens contratuais, registrando inserção, exclusão e mudança de status com usuário e data.
 - Adicionado o relatório financeiro por item contratual, com filtros por órgão e situação, mostrando valores, consumo, saldo disponível e total medido; o resultado também pode ser baixado em CSV.

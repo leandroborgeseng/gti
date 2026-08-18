@@ -131,6 +131,15 @@ export class PricingItemDto {
 
   @IsOptional()
   @IsString()
+  consumptionUnitId?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  consumptionAvailableQuantity?: number | null;
+
+  @IsOptional()
+  @IsString()
   consumptionFinancialRule?: string | null;
 
   @IsOptional()

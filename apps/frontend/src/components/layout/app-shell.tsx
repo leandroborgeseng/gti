@@ -8,7 +8,7 @@ import { getAuthMe, getMyPermissions, trackUserAccessEvent } from "@/lib/api";
 import { AccessContextSelector } from "@/components/layout/access-context-selector";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
-import { ContentLoadingBar } from "@/components/ui/content-loading-bar";
+import { GlobalLoadingProvider } from "@/components/ui/global-loading";
 import { filterMainNavGroups, MAIN_NAV_GROUPS } from "./main-nav-data";
 import { MobileNav } from "./mobile-nav";
 import { Sidebar, SidebarCollapsed } from "./sidebar";
@@ -241,6 +241,7 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
   }, []);
 
   return (
+    <GlobalLoadingProvider>
     <div className="flex min-h-screen bg-muted/30">
       {!sidebarCollapsed ? (
         <Sidebar groups={visibleNavGroups} onCollapse={collapseSidebar} />
@@ -304,11 +305,11 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
             </div>
           </div>
         ) : null}
-        <ContentLoadingBar />
         <div className="p-6 md:p-8">
           <PageTransition>{children}</PageTransition>
         </div>
       </main>
     </div>
+    </GlobalLoadingProvider>
   );
 }

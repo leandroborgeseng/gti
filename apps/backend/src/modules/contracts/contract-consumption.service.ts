@@ -4,6 +4,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import {
+  ConsumptionActivityStatus,
   ConsumptionFinancialRule,
   ConsumptionMovementSource,
   ConsumptionMovementStatus,
@@ -27,8 +28,12 @@ const COMMITTED_STATUSES: ConsumptionMovementStatus[] = [
 
 export type CreateConsumptionMovementInput = {
   pricingItemId: string;
-  quantity: number;
+  /** Quantidade efetivamente consumida (pode ser 0 enquanto só houver estimativa). */
+  quantity?: number;
+  estimatedQuantity?: number;
+  activityStatus?: string;
   executionDate: string;
+  startDate?: string | null;
   description?: string | null;
   notes?: string | null;
   responsibleLabel?: string | null;
@@ -46,6 +51,15 @@ export type ValidateConsumptionMovementInput = {
   rejectionReason?: string | null;
   actorUserId?: string | null;
 };
+
+const OPEN_ACTIVITY: ConsumptionActivityStatus[] = [
+  ConsumptionActivityStatus.SURVEY,
+  ConsumptionActivityStatus.AWAITING_APPROVAL,
+  ConsumptionActivityStatus.APPROVED_FOR_EXECUTION,
+  ConsumptionActivityStatus.IN_DEVELOPMENT,
+  ConsumptionActivityStatus.IN_VALIDATION,
+  ConsumptionActivityStatus.SUSPENDED
+];
 
 @Injectable()
 export class ContractConsumptionService {
@@ -69,15 +83,18 @@ export class ContractConsumptionService {
     contractId: string;
     pricingItemId: string;
     quantity: Prisma.Decimal;
+    estimatedQuantity?: Prisma.Decimal;
     originalQuantity: Prisma.Decimal | null;
     unitCodeSnapshot: string | null;
     unitLabelSnapshot: string | null;
     status: ConsumptionMovementStatus;
+    activityStatus?: ConsumptionActivityStatus;
     source: ConsumptionMovementSource;
     glpiTicketId: number | null;
     measurementId: string | null;
     measurementItemId: string | null;
     executionDate: Date;
+    startDate?: Date | null;
     responsibleLabel: string | null;
     responsibleUserId: string | null;
     description: string | null;
@@ -94,13 +111,22 @@ export class ContractConsumptionService {
       description: string;
       sequence: number;
       unit?: { code: string; label: string } | null;
+      consumptionUnit?: { code: string; label: string } | null;
       type?: { code: string; label: string } | null;
     } | null;
   }) {
+    const unitSnap =
+      row.unitCodeSnapshot && row.unitLabelSnapshot
+        ? { code: row.unitCodeSnapshot, label: row.unitLabelSnapshot }
+        : row.pricingItem?.consumptionUnit ?? row.pricingItem?.unit ?? null;
     return {
       ...row,
       quantity: row.quantity.toString(),
-      originalQuantity: row.originalQuantity?.toString() ?? null
+      estimatedQuantity: (row.estimatedQuantity ?? new Prisma.Decimal(0)).toString(),
+      originalQuantity: row.originalQuantity?.toString() ?? null,
+      activityStatus: row.activityStatus ?? ConsumptionActivityStatus.SURVEY,
+      startDate: row.startDate ?? null,
+      consumptionUnit: unitSnap
     };
   }
 
@@ -111,7 +137,7 @@ export class ContractConsumptionService {
         status: ContractPricingItemStatus.ACTIVE,
         OR: [{ consumptionEnabled: true }, { billingKind: "ON_DEMAND" }]
       },
-      include: { type: true, unit: true },
+      include: { type: true, unit: true, consumptionUnit: true },
       orderBy: { sequence: "asc" }
     });
 
@@ -119,6 +145,16 @@ export class ContractConsumptionService {
       by: ["pricingItemId", "status"],
       where: { contractId },
       _sum: { quantity: true }
+    });
+
+    const openEstimated = await this.prisma.contractConsumptionMovement.groupBy({
+      by: ["pricingItemId"],
+      where: {
+        contractId,
+        activityStatus: { in: OPEN_ACTIVITY },
+        status: { not: ConsumptionMovementStatus.REVERSED }
+      },
+      _sum: { estimatedQuantity: true }
     });
 
     const sumFor = (pricingItemId: string, statuses: ConsumptionMovementStatus[]) => {
@@ -134,32 +170,53 @@ export class ContractConsumptionService {
           ConsumptionMovementStatus.INFORMED,
           ConsumptionMovementStatus.UNDER_VALIDATION
         ]);
-        const contracted = item.quantity;
-        const available = contracted.sub(approvedUsed);
-        const committedBalance = available.sub(pending);
+        const estimatedOpen =
+          openEstimated.find((e) => e.pricingItemId === item.id)?._sum.estimatedQuantity ??
+          new Prisma.Decimal(0);
+        const configurationPending =
+          Boolean(item.consumptionEnabled) &&
+          (!item.consumptionUnitId || item.consumptionAvailableQuantity == null);
+        const availableBase =
+          item.consumptionAvailableQuantity != null
+            ? item.consumptionAvailableQuantity
+            : configurationPending
+              ? new Prisma.Decimal(0)
+              : item.billingKind === "ON_DEMAND"
+                ? item.quantity
+                : new Prisma.Decimal(0);
+        const available = availableBase.sub(approvedUsed);
+        const projected = available.sub(estimatedOpen);
         const percent =
-          contracted.gt(0) ? approvedUsed.div(contracted).mul(100).toDecimalPlaces(2).toNumber() : 0;
+          availableBase.gt(0)
+            ? approvedUsed.div(availableBase).mul(100).toDecimalPlaces(2).toNumber()
+            : 0;
         const thresholds = Array.isArray(item.consumptionAlertThresholds)
           ? (item.consumptionAlertThresholds as number[])
           : [70, 80, 90, 100];
         const alertLevel = thresholds.filter((t) => percent >= Number(t)).pop() ?? null;
+        const consumptionUnit = item.consumptionUnit ?? (configurationPending ? null : item.unit);
 
         return {
           id: item.id,
           sequence: item.sequence,
           description: item.description,
-          unit: item.unit,
+          unit: consumptionUnit,
+          financialUnit: item.unit,
           type: item.type,
           billingKind: item.billingKind,
           financialRule: item.consumptionFinancialRule ?? ConsumptionFinancialRule.BALANCE_ONLY,
           availability: item.consumptionAvailability,
           accumulates: item.consumptionAccumulates,
           requiresValidation: item.consumptionRequiresValidation,
-          quantityContracted: contracted.toString(),
+          configurationPending,
+          quantityContracted: availableBase.toString(),
+          quantityAvailableBase: availableBase.toString(),
           quantityApprovedUsed: approvedUsed.toString(),
           quantityPendingValidation: pending.toString(),
+          quantityEstimatedOpen: estimatedOpen.toString(),
           quantityAvailable: available.toString(),
-          quantityCommittedAvailable: committedBalance.toString(),
+          quantityProjectedAvailable: projected.toString(),
+          quantityCommittedAvailable: available.sub(pending).toString(),
           consumedPercent: percent,
           alertLevel,
           unitValue: item.unitValue.toString()
@@ -221,14 +278,37 @@ export class ContractConsumptionService {
   }
 
   async createMovement(contractId: string, dto: CreateConsumptionMovementInput): Promise<unknown> {
-    const qty = Number(dto.quantity);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      throw new BadRequestException("Informe uma quantidade válida maior que zero.");
+    const effectiveQty = Number(dto.quantity ?? 0);
+    const estimatedQty = Number(dto.estimatedQuantity ?? 0);
+    if (!Number.isFinite(effectiveQty) || effectiveQty < 0) {
+      throw new BadRequestException("Quantidade efetivamente consumida inválida.");
+    }
+    if (!Number.isFinite(estimatedQty) || estimatedQty < 0) {
+      throw new BadRequestException("Quantidade estimada inválida.");
+    }
+    if (effectiveQty <= 0 && estimatedQty <= 0) {
+      throw new BadRequestException("Informe a quantidade estimada e/ou a efetivamente consumida.");
     }
     const executionDate = new Date(dto.executionDate);
     if (Number.isNaN(executionDate.getTime())) {
       throw new BadRequestException("Data de execução inválida.");
     }
+    const startDate =
+      dto.startDate != null && String(dto.startDate).trim()
+        ? new Date(dto.startDate)
+        : null;
+    if (startDate && Number.isNaN(startDate.getTime())) {
+      throw new BadRequestException("Data de início inválida.");
+    }
+
+    const activityStatusRaw = dto.activityStatus?.trim();
+    const activityStatus =
+      activityStatusRaw &&
+      Object.values(ConsumptionActivityStatus).includes(activityStatusRaw as ConsumptionActivityStatus)
+        ? (activityStatusRaw as ConsumptionActivityStatus)
+        : effectiveQty > 0
+          ? ConsumptionActivityStatus.COMPLETED
+          : ConsumptionActivityStatus.IN_DEVELOPMENT;
 
     const item = await this.prisma.contractPricingItem.findFirst({
       where: {
@@ -236,40 +316,64 @@ export class ContractConsumptionService {
         contractId,
         status: ContractPricingItemStatus.ACTIVE
       },
-      include: { unit: true, type: true }
+      include: { unit: true, consumptionUnit: true, type: true }
     });
     if (!item) throw new NotFoundException("Item contratual de consumo não encontrado.");
     if (!item.consumptionEnabled && item.billingKind !== "ON_DEMAND") {
       throw new BadRequestException("Este item não está configurado para controle de consumo.");
     }
-
-    const summary = (await this.summarize(contractId)) as {
-      items: Array<{ id: string; quantityCommittedAvailable: string }>;
-    };
-    const balance = summary.items.find((i) => i.id === item.id);
-    if (balance && new Prisma.Decimal(qty).gt(new Prisma.Decimal(balance.quantityCommittedAvailable))) {
-      throw new BadRequestException("Quantidade excede o saldo disponível (considerando comprometido).");
+    if (item.consumptionEnabled && (!item.consumptionUnitId || item.consumptionAvailableQuantity == null)) {
+      throw new BadRequestException(
+        "Controle de consumo pendente de configuração: informe unidade e quantidade disponível no item contratual."
+      );
     }
 
-    const requiresValidation = item.consumptionRequiresValidation;
+    const unitSnap = item.consumptionUnit ?? item.unit;
+
+    if (effectiveQty > 0) {
+      const summary = (await this.summarize(contractId)) as {
+        items: Array<{ id: string; quantityCommittedAvailable: string; configurationPending?: boolean }>;
+      };
+      const balance = summary.items.find((i) => i.id === item.id);
+      if (balance?.configurationPending) {
+        throw new BadRequestException("Controle de consumo pendente de configuração no item.");
+      }
+      if (
+        balance &&
+        new Prisma.Decimal(effectiveQty).gt(new Prisma.Decimal(balance.quantityCommittedAvailable))
+      ) {
+        throw new BadRequestException("Quantidade efetiva excede o saldo disponível (considerando comprometido).");
+      }
+    }
+
+    const requiresValidation = item.consumptionRequiresValidation && effectiveQty > 0;
     const status =
-      requiresValidation || dto.submitForValidation
-        ? ConsumptionMovementStatus.UNDER_VALIDATION
-        : ConsumptionMovementStatus.APPROVED;
+      effectiveQty <= 0
+        ? ConsumptionMovementStatus.INFORMED
+        : requiresValidation || dto.submitForValidation
+          ? ConsumptionMovementStatus.UNDER_VALIDATION
+          : ConsumptionMovementStatus.APPROVED;
 
     const created = await this.prisma.$transaction(async (tx) => {
       const row = await tx.contractConsumptionMovement.create({
         data: {
           contractId,
           pricingItemId: item.id,
-          quantity: new Prisma.Decimal(qty),
-          originalQuantity: new Prisma.Decimal(qty),
-          unitCodeSnapshot: item.unit.code,
-          unitLabelSnapshot: item.unit.label,
+          quantity: new Prisma.Decimal(effectiveQty),
+          estimatedQuantity: new Prisma.Decimal(estimatedQty),
+          originalQuantity: effectiveQty > 0 ? new Prisma.Decimal(effectiveQty) : null,
+          unitCodeSnapshot: unitSnap.code,
+          unitLabelSnapshot: unitSnap.label,
           status,
-          source: dto.source ?? (dto.glpiTicketId != null ? ConsumptionMovementSource.GLPI_TICKET : ConsumptionMovementSource.MANUAL),
+          activityStatus,
+          source:
+            dto.source ??
+            (dto.glpiTicketId != null
+              ? ConsumptionMovementSource.GLPI_TICKET
+              : ConsumptionMovementSource.MANUAL),
           glpiTicketId: dto.glpiTicketId ?? null,
           executionDate,
+          startDate,
           responsibleLabel: dto.responsibleLabel?.trim() || null,
           responsibleUserId: dto.responsibleUserId ?? null,
           description: dto.description?.trim() || null,
@@ -285,16 +389,17 @@ export class ContractConsumptionService {
               description: true,
               sequence: true,
               unit: { select: { code: true, label: true } },
+              consumptionUnit: { select: { code: true, label: true } },
               type: { select: { code: true, label: true } }
             }
           }
         }
       });
 
-      if (status === ConsumptionMovementStatus.APPROVED) {
+      if (status === ConsumptionMovementStatus.APPROVED && effectiveQty > 0) {
         await tx.contractPricingItem.update({
           where: { id: item.id },
-          data: { consumedQuantity: { increment: qty } }
+          data: { consumedQuantity: { increment: effectiveQty } }
         });
       }
       return row;

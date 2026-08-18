@@ -24,6 +24,7 @@ const USER_SELECT = {
   defaultOrganizationId: true,
   role: true,
   approvalStatus: true,
+  approvalRejectionReason: true,
   mustChangePassword: true,
   userKind: true,
   externalFunction: true,
@@ -120,6 +121,7 @@ type UserSelectRow = {
   defaultOrganizationId: string | null;
   role: UserRole;
   approvalStatus: UserApprovalStatus;
+  approvalRejectionReason: string | null;
   mustChangePassword: boolean;
   userKind: UserKind;
   externalFunction: ExternalUserFunction | null;
@@ -433,6 +435,15 @@ export class UsersService {
           })
         : null;
 
+    if (dto.approvalStatus === UserApprovalStatus.REJECTED) {
+      const reason = dto.approvalRejectionReason?.trim() ?? "";
+      if (reason.length < 5) {
+        throw new BadRequestException(
+          "Informe a justificativa administrativa da recusa (mínimo 5 caracteres)."
+        );
+      }
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       if (nextKind === UserKind.EXTERNAL) {
         await tx.userAccessProfile.deleteMany({ where: { userId: id } });
@@ -478,6 +489,13 @@ export class UsersService {
         where: { id },
         data: {
           approvalStatus: dto.approvalStatus ?? undefined,
+          ...(dto.approvalStatus === UserApprovalStatus.REJECTED
+            ? { approvalRejectionReason: dto.approvalRejectionReason?.trim() ?? null }
+            : dto.approvalStatus === UserApprovalStatus.APPROVED
+              ? { approvalRejectionReason: null, mustChangePassword: true }
+              : dto.approvalRejectionReason !== undefined
+                ? { approvalRejectionReason: dto.approvalRejectionReason }
+                : {}),
           cpf: dto.cpf === undefined ? undefined : normalizeCpfDigits(dto.cpf),
           ...(nextKind === UserKind.EXTERNAL
             ? {
@@ -535,10 +553,25 @@ export class UsersService {
           data: {
             entity: "User",
             entityId: id,
-            action: "UPDATE",
+            action: dto.approvalStatus === UserApprovalStatus.APPROVED
+              ? "APPROVE"
+              : dto.approvalStatus === UserApprovalStatus.REJECTED
+                ? "REJECT"
+                : "UPDATE",
             userId: getAuditActorId(),
-            oldData: { approvalStatus: prev.approvalStatus },
-            newData: { approvalStatus: dto.approvalStatus, userKind: nextKind }
+            oldData: {
+              approvalStatus: prev.approvalStatus,
+              approvalRejectionReason: prev.approvalRejectionReason ?? null
+            },
+            newData: {
+              approvalStatus: dto.approvalStatus,
+              userKind: nextKind,
+              ...(dto.approvalStatus === UserApprovalStatus.REJECTED
+                ? { approvalRejectionReason: dto.approvalRejectionReason?.trim() ?? null }
+                : {}),
+              mustChangePassword:
+                dto.approvalStatus === UserApprovalStatus.APPROVED ? true : undefined
+            }
           }
         });
       }

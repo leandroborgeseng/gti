@@ -5,7 +5,6 @@ import { useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Suspense } from "react";
 import { useForm } from "react-hook-form";
-import { z } from "zod";
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -18,29 +17,12 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { BRAND } from "@/lib/brand";
 
-const registerFormSchema = z
-  .object({
-    email: z.string().min(1, "Obrigatório").email("E-mail inválido"),
-    password: z.string().min(8, "Mínimo 8 caracteres"),
-    confirmPassword: z.string().min(8, "Mínimo 8 caracteres")
-  })
-  .refine((values) => values.password === values.confirmPassword, {
-    message: "As senhas não conferem",
-    path: ["confirmPassword"]
-  });
-
-type RegisterFormValues = z.infer<typeof registerFormSchema>;
-
 function LoginForm(): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: { email: "", password: "" }
-  });
-  const registerForm = useForm<RegisterFormValues>({
-    resolver: zodResolver(registerFormSchema),
-    defaultValues: { email: "", password: "", confirmPassword: "" }
   });
 
   const login = useMutation({
@@ -86,34 +68,6 @@ function LoginForm(): JSX.Element {
     }
   });
 
-  const register = useMutation({
-    mutationFn: async (values: RegisterFormValues) => {
-      const r = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: values.email.trim(), password: values.password })
-      });
-      const text = await r.text();
-      let payload: { error?: string; message?: string } = {};
-      try {
-        payload = text ? (JSON.parse(text) as typeof payload) : {};
-      } catch {
-        payload = { error: text };
-      }
-      if (!r.ok) {
-        throw new Error(payload.error || "Não foi possível enviar o cadastro");
-      }
-      return payload;
-    },
-    onSuccess: (payload) => {
-      toast.success(payload.message ?? "Cadastro enviado para aprovação.");
-      registerForm.reset({ email: "", password: "", confirmPassword: "" });
-    },
-    onError: (e) => {
-      toast.error(e instanceof Error ? e.message : "Erro ao enviar cadastro");
-    }
-  });
-
   return (
     <div className="flex min-h-[76vh] items-center justify-center px-4 py-10">
       <motion.div
@@ -132,117 +86,73 @@ function LoginForm(): JSX.Element {
           </CardHeader>
           <CardContent className="px-8 pb-8">
             <div className="rounded-xl border bg-background/70 p-4 text-sm text-muted-foreground">
-              Primeiro acesso? Cadastre-se ao lado. Sua conta ficará disponível após aprovação da administração.
+              Ainda não possui conta? Use «Solicitar acesso» para enviar um cadastro à administração.
             </div>
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
-          <Card className="p-0">
-            <CardHeader>
-              <CardTitle className="text-xl">Entrar</CardTitle>
-              <CardDescription>Informe suas credenciais para acessar o sistema.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form className="space-y-4" onSubmit={form.handleSubmit((v) => login.mutate(v))}>
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>E-mail</FormLabel>
-                        <FormControl>
-                          <Input type="email" autoComplete="username" disabled={login.isPending} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Senha</FormLabel>
-                        <FormControl>
-                          <Input type="password" autoComplete="current-password" disabled={login.isPending} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit" className="w-full" disabled={login.isPending}>
-                    {login.isPending ? "Entrando…" : "Entrar"}
-                  </Button>
-                  <p className="text-center text-sm text-muted-foreground">
-                    <Link
-                      href={"/recuperar-senha" as Route}
-                      className="underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground"
-                    >
-                      Esqueci minha senha
-                    </Link>
-                  </p>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
-
-          <Card className="p-0">
-            <CardHeader>
-              <CardTitle className="text-xl">Solicitar acesso</CardTitle>
-              <CardDescription>Crie sua conta e aguarde a aprovação de um administrador.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...registerForm}>
-                <form className="space-y-4" onSubmit={registerForm.handleSubmit((v) => register.mutate(v))}>
-                  <FormField
-                    control={registerForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>E-mail institucional</FormLabel>
-                        <FormControl>
-                          <Input type="email" autoComplete="email" disabled={register.isPending} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={registerForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Senha</FormLabel>
-                        <FormControl>
-                          <Input type="password" autoComplete="new-password" disabled={register.isPending} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={registerForm.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Confirmar senha</FormLabel>
-                        <FormControl>
-                          <Input type="password" autoComplete="new-password" disabled={register.isPending} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit" variant="outline" className="w-full" disabled={register.isPending}>
-                    {register.isPending ? "Enviando…" : "Enviar cadastro para aprovação"}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
-        </div>
+        <Card className="p-0">
+          <CardHeader>
+            <CardTitle className="text-xl">Entrar</CardTitle>
+            <CardDescription>Informe suas credenciais para acessar o sistema.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form className="space-y-4" onSubmit={form.handleSubmit((v) => login.mutate(v))}>
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>E-mail</FormLabel>
+                      <FormControl>
+                        <Input type="email" autoComplete="username" disabled={login.isPending} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Senha</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          autoComplete="current-password"
+                          disabled={login.isPending}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" className="w-full" disabled={login.isPending}>
+                  {login.isPending ? "Entrando…" : "Entrar"}
+                </Button>
+                <p className="text-center text-sm text-muted-foreground">
+                  <Link
+                    href={"/recuperar-senha" as Route}
+                    className="underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground"
+                  >
+                    Esqueci minha senha
+                  </Link>
+                </p>
+                <p className="text-center text-sm">
+                  <Link
+                    href={"/solicitar-acesso" as Route}
+                    className="font-medium text-primary underline underline-offset-2 hover:text-primary/90"
+                  >
+                    Solicitar acesso
+                  </Link>
+                </p>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
       </motion.div>
     </div>
   );

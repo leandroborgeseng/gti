@@ -44,6 +44,8 @@ export type PricingDraftItem = {
   includeInGlosaBase: boolean;
   consumedQuantity?: string;
   consumptionEnabled: boolean;
+  consumptionUnitId: string;
+  consumptionAvailableQuantity: string;
   consumptionFinancialRule: ConsumptionFinancialRule | "";
   consumptionAvailability: ConsumptionAvailabilityPeriod | "";
   consumptionAccumulates: boolean;
@@ -171,6 +173,11 @@ export function pricingItemsFromContract(items: ContractPricingItem[] | undefine
           it.consumptionEnabled != null
             ? Boolean(it.consumptionEnabled)
             : billingKind === "ON_DEMAND",
+        consumptionUnitId: it.consumptionUnitId ?? "",
+        consumptionAvailableQuantity:
+          it.consumptionAvailableQuantity != null
+            ? formatMoneyInput(Number(it.consumptionAvailableQuantity))
+            : "",
         consumptionFinancialRule:
           it.consumptionFinancialRule && FINANCIAL_RULES.has(it.consumptionFinancialRule)
             ? it.consumptionFinancialRule
@@ -212,6 +219,8 @@ export function emptyPricingItem(sequence: number, defaults?: Partial<PricingDra
     status: "ACTIVE",
     includeInGlosaBase: false,
     consumptionEnabled: false,
+    consumptionUnitId: "",
+    consumptionAvailableQuantity: "",
     consumptionFinancialRule: "",
     consumptionAvailability: "",
     consumptionAccumulates: false,
@@ -297,6 +306,17 @@ export function toPricingItemInputs(items: PricingDraftItem[]): ContractPricingI
       status: item.status,
       includeInGlosaBase: item.includeInGlosaBase,
       consumptionEnabled: item.consumptionEnabled || item.billingKind === "ON_DEMAND",
+      consumptionUnitId:
+        item.consumptionEnabled || item.billingKind === "ON_DEMAND"
+          ? item.consumptionUnitId || null
+          : null,
+      consumptionAvailableQuantity:
+        item.consumptionEnabled || item.billingKind === "ON_DEMAND"
+          ? (() => {
+              const n = parseMoney(item.consumptionAvailableQuantity);
+              return Number.isFinite(n) ? n : null;
+            })()
+          : null,
       consumptionFinancialRule: item.consumptionEnabled || item.billingKind === "ON_DEMAND"
         ? item.consumptionFinancialRule ||
           (item.billingKind === "ON_DEMAND" ? "BILLED_BY_CONSUMPTION" : "BALANCE_ONLY")
@@ -797,6 +817,52 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
                           </label>
                           <label className="block text-sm">
                             <span className="mb-1 block font-medium text-slate-700">
+                              Unidade de consumo
+                            </span>
+                            <Select
+                              value={item.consumptionUnitId || undefined}
+                              onValueChange={(v) => updateItem(item.key, { consumptionUnitId: v })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione (Hora, UST…)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {item.consumptionUnitId &&
+                                !units.some((u) => u.id === item.consumptionUnitId) ? (
+                                  <SelectItem value={item.consumptionUnitId}>
+                                    Unidade vinculada (indisponível)
+                                  </SelectItem>
+                                ) : null}
+                                {units
+                                  .filter((u) => u.id && (u.active || u.id === item.consumptionUnitId))
+                                  .map((u) => (
+                                    <SelectItem key={u.id} value={u.id}>
+                                      {u.label}
+                                      {!u.active ? " (Inativo)" : ""}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          </label>
+                          <label className="block text-sm">
+                            <span className="mb-1 block font-medium text-slate-700">
+                              Quantidade disponível para consumo
+                            </span>
+                            <Input
+                              value={item.consumptionAvailableQuantity}
+                              onChange={(e) =>
+                                updateItem(item.key, {
+                                  consumptionAvailableQuantity: e.target.value
+                                })
+                              }
+                              placeholder="Ex.: 150"
+                            />
+                            <span className="mt-1 block text-[11px] text-slate-500">
+                              Independente da quantidade financeira do item (ex.: 12 meses).
+                            </span>
+                          </label>
+                          <label className="block text-sm">
+                            <span className="mb-1 block font-medium text-slate-700">
                               Disponibilidade da quantidade
                             </span>
                             <Select
@@ -821,7 +887,7 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
                               </SelectContent>
                             </Select>
                           </label>
-                          <label className="flex items-center gap-2 text-sm">
+                          <label className="flex items-center gap-2 text-sm sm:col-span-2">
                             <input
                               type="checkbox"
                               className="h-4 w-4"
@@ -834,7 +900,7 @@ export function ContractPricingItemsEditor({ value, onChange, lockHardDelete, er
                               Saldo não utilizado acumula para o período seguinte
                             </span>
                           </label>
-                          <label className="flex items-center gap-2 text-sm">
+                          <label className="flex items-center gap-2 text-sm sm:col-span-2">
                             <input
                               type="checkbox"
                               className="h-4 w-4"

@@ -16,6 +16,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useGlobalLoading } from "@/components/ui/global-loading";
 import { filterMainNavGroups, MAIN_NAV_GROUPS } from "./main-nav-data";
 
 const ALL_ORGS_VALUE = "__ALL_ORGS__";
@@ -43,6 +44,7 @@ function syncFromMe(data: AuthMe): { profileId: string; organizationValue: strin
 
 export function AccessContextSelector(): JSX.Element | null {
   const qc = useQueryClient();
+  const globalLoading = useGlobalLoading();
   const [open, setOpen] = useState(false);
   const [profileId, setProfileId] = useState<string>("");
   const [organizationValue, setOrganizationValue] = useState<string>("");
@@ -89,30 +91,38 @@ export function AccessContextSelector(): JSX.Element | null {
     },
     onSuccess: async (result) => {
       if (result.access_token) setAuthCookie(result.access_token);
-      toast.success("Alterando contexto...");
+      globalLoading.begin("Alterando contexto...");
       setOpen(false);
-      await qc.invalidateQueries();
-      const permissions = await getMyPermissions().catch(() => null);
-      const path = typeof window !== "undefined" ? window.location.pathname : "/dashboard";
-      let target = path;
-      if (permissions) {
-        const groups = filterMainNavGroups(MAIN_NAV_GROUPS, permissions.role, permissions.keys);
-        const allowedHrefs = new Set(groups.flatMap((g) => g.items.map((i) => i.href)));
-        const stillAllowed =
-          path === "/dashboard" ||
-          path === "/perfil" ||
-          path === "/manual" ||
-          path === "/notas-versao" ||
-          [...allowedHrefs].some((href) => path === href || path.startsWith(`${href}/`));
-        if (!stillAllowed) {
-          toast.message("A rota atual não está disponível neste contexto. Redirecionando ao painel.");
-          target = "/dashboard";
+      try {
+        await qc.invalidateQueries();
+        const permissions = await getMyPermissions().catch(() => null);
+        const path = typeof window !== "undefined" ? window.location.pathname : "/dashboard";
+        let target = path;
+        if (permissions) {
+          const groups = filterMainNavGroups(MAIN_NAV_GROUPS, permissions.role, permissions.keys);
+          const allowedHrefs = new Set(groups.flatMap((g) => g.items.map((i) => i.href)));
+          const stillAllowed =
+            path === "/dashboard" ||
+            path === "/perfil" ||
+            path === "/manual" ||
+            path === "/notas-versao" ||
+            [...allowedHrefs].some((href) => path === href || path.startsWith(`${href}/`));
+          if (!stillAllowed) {
+            toast.message("A rota atual não está disponível neste contexto. Redirecionando ao painel.");
+            target = "/dashboard";
+          }
         }
+        // Reload completo: limpa estado em memória e reconstrói menus/permissões do novo contexto.
+        window.location.assign(target);
+      } catch (e) {
+        globalLoading.end();
+        throw e;
       }
-      // Reload completo: limpa estado em memória e reconstrói menus/permissões do novo contexto.
-      window.location.assign(target);
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao trocar contexto")
+    onError: (e) => {
+      globalLoading.end();
+      toast.error(e instanceof Error ? e.message : "Falha ao trocar contexto");
+    }
   });
 
   if (!me || profiles.length === 0) return null;

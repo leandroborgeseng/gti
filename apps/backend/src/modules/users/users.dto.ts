@@ -143,6 +143,11 @@ export class UpdateUserDto {
   approvalStatus?: UserApprovalStatus;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  approvalRejectionReason?: string | null;
+
+  @IsOptional()
   @IsString()
   @MinLength(8, { message: "A senha deve ter pelo menos 8 caracteres" })
   password?: string;

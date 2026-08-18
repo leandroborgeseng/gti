@@ -27,6 +27,8 @@ export type PricingItemInput = {
   status?: ContractPricingItemStatus | keyof typeof ContractPricingItemStatus;
   includeInGlosaBase?: boolean;
   consumptionEnabled?: boolean;
+  consumptionUnitId?: string | null;
+  consumptionAvailableQuantity?: number | null;
   consumptionFinancialRule?: string | null;
   consumptionAvailability?: string | null;
   consumptionAccumulates?: boolean;
@@ -257,6 +259,8 @@ function normalizeItem(input: PricingItemInput, sequence: number): {
   status: ContractPricingItemStatus;
   includeInGlosaBase: boolean;
   consumptionEnabled: boolean;
+  consumptionUnitId: string | null;
+  consumptionAvailableQuantity: Prisma.Decimal | null;
   consumptionFinancialRule: ConsumptionFinancialRule | null;
   consumptionAvailability: ConsumptionAvailabilityPeriod | null;
   consumptionAccumulates: boolean;
@@ -327,6 +331,19 @@ function normalizeItem(input: PricingItemInput, sequence: number): {
       : null;
   };
 
+  const consumptionUnitId =
+    consumptionEnabled && typeof input.consumptionUnitId === "string" && input.consumptionUnitId.trim()
+      ? input.consumptionUnitId.trim()
+      : null;
+  let consumptionAvailableQuantity: Prisma.Decimal | null = null;
+  if (consumptionEnabled && input.consumptionAvailableQuantity != null && input.consumptionAvailableQuantity !== "") {
+    const n = Number(input.consumptionAvailableQuantity);
+    if (!Number.isFinite(n) || n < 0) {
+      throw new BadRequestException("Quantidade disponível para consumo inválida.");
+    }
+    consumptionAvailableQuantity = dec(n);
+  }
+
   return {
     sequence,
     typeId: input.typeId.trim(),
@@ -344,11 +361,15 @@ function normalizeItem(input: PricingItemInput, sequence: number): {
     status,
     includeInGlosaBase: Boolean(input.includeInGlosaBase),
     consumptionEnabled,
+    consumptionUnitId,
+    consumptionAvailableQuantity,
     consumptionFinancialRule:
       parseFinancialRule(input.consumptionFinancialRule) ??
       (billingKind === ContractPricingBillingKind.ON_DEMAND
         ? ConsumptionFinancialRule.BILLED_BY_CONSUMPTION
-        : null),
+        : consumptionEnabled
+          ? ConsumptionFinancialRule.BALANCE_ONLY
+          : null),
     consumptionAvailability:
       parseAvailability(input.consumptionAvailability) ??
       (consumptionEnabled ? ConsumptionAvailabilityPeriod.CONTRACT_TERM : null),

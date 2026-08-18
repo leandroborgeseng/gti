@@ -465,7 +465,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         items: [
           "Ao criar ou editar, escolha tipo Interno ou Externo. Internos: vincule ao menos um perfil e (órgão ou «Todos os órgãos»). Externos: fornecedor, função e contratos autorizados do mesmo CNPJ (sem órgãos internos).",
           "Ao criar uma conta ou redefinir a senha de um usuário pela administração, o sistema exige que a pessoa troque a senha no primeiro acesso antes de usar as demais telas.",
-          "Na tela de login, qualquer pessoa pode solicitar acesso informando e-mail e senha. Esse cadastro fica pendente até um administrador aprovar ou recusar na tela de Usuários (e completar órgão/perfil conforme a política interna).",
+          "Na tela de login, use o link «Solicitar acesso» para abrir a tela própria de cadastro inicial (nome completo, CPF, e-mail e tipo Interno/Externo). Internos escolhem o órgão; externos escolhem a empresa e o vínculo. A solicitação fica pendente até um administrador aprovar ou recusar (com justificativa) na Administração → Usuários, onde também completa perfis, órgãos ou contratos autorizados.",
           "Ao criar uma conta, o sistema pode enviar um e-mail de boas-vindas com link para definição de senha (SMTP institucional ativo ou Resend). Se a senha for definida por esse link, a troca obrigatória é considerada concluída.",
           "Na tela de login, a opção «Esqueci a minha senha» envia um link de redefinição para o e-mail cadastrado (mesmo canal unificado). O link expira em 60 minutos."
         ]

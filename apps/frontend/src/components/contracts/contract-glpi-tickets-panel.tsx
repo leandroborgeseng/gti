@@ -95,7 +95,9 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
   const [slaOverdue, setSlaOverdue] = useState(false);
   const [consumeTicketId, setConsumeTicketId] = useState<number | null>(null);
   const [consumeItemId, setConsumeItemId] = useState("");
+  const [consumeEstimated, setConsumeEstimated] = useState("");
   const [consumeQty, setConsumeQty] = useState("");
+  const [consumeActivityStatus, setConsumeActivityStatus] = useState("IN_DEVELOPMENT");
   const [consumeDate, setConsumeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [consumeDesc, setConsumeDesc] = useState("");
   const [consumeNotes, setConsumeNotes] = useState("");
@@ -148,22 +150,35 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
     enabled: canEdit && consumeTicketId != null
   });
 
+  const selectedConsumeItem = qConsumptions.data?.items.find((i) => i.id === consumeItemId) ?? null;
+  const consumeUnitLabel = selectedConsumeItem?.unit?.label ?? "un.";
+  const consumableItems = (qConsumptions.data?.items ?? []).filter((i) => !i.configurationPending);
+
   const consumeMut = useMutation({
-    mutationFn: () =>
-      createContractConsumptionMovement(contractId, {
+    mutationFn: () => {
+      const item = qConsumptions.data?.items.find((i) => i.id === consumeItemId);
+      return createContractConsumptionMovement(contractId, {
         pricingItemId: consumeItemId,
-        quantity: Number(consumeQty.replace(",", ".")),
+        estimatedQuantity: consumeEstimated
+          ? Number(consumeEstimated.replace(",", "."))
+          : 0,
+        quantity: consumeQty ? Number(consumeQty.replace(",", ".")) : 0,
+        activityStatus: consumeActivityStatus as never,
         executionDate: consumeDate,
         description: consumeDesc || null,
         notes: consumeNotes || null,
         responsibleLabel: consumeResponsible || null,
-        glpiTicketId: consumeTicketId
-      }),
+        glpiTicketId: consumeTicketId,
+        submitForValidation: Boolean(item?.requiresValidation)
+      });
+    },
     onSuccess: async () => {
       toast.success("Consumo registrado no chamado.");
       setConsumeTicketId(null);
       setConsumeItemId("");
+      setConsumeEstimated("");
       setConsumeQty("");
+      setConsumeActivityStatus("IN_DEVELOPMENT");
       setConsumeDesc("");
       setConsumeNotes("");
       await qc.invalidateQueries({ queryKey: queryKeys.contractConsumptions(contractId) });
@@ -172,8 +187,6 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
       toast.error(err instanceof Error ? err.message : "Não foi possível registrar o consumo.");
     }
   });
-
-  const selectedConsumeItem = qConsumptions.data?.items.find((i) => i.id === consumeItemId) ?? null;
 
   const data = qTickets.data;
   const tickets = data?.tickets ?? [];
@@ -444,9 +457,10 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
                   </div>
                   {qConsumptions.isLoading ? (
                     <InlineLoading label="Carregando itens de consumo..." />
-                  ) : (qConsumptions.data?.items.length ?? 0) === 0 ? (
+                  ) : consumableItems.length === 0 ? (
                     <p className="text-sm text-slate-600">
-                      Nenhum item de consumo disponível neste contrato. Configure itens na aba Consumos / precificação.
+                      Nenhum item de consumo disponível neste contrato. Configure unidade e quantidade de consumo no
+                      cadastro do contrato (aba Precificação / itens).
                     </p>
                   ) : (
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -460,7 +474,7 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
                             <SelectItem value="__none__" disabled>
                               Selecione…
                             </SelectItem>
-                            {qConsumptions.data?.items.map((item) => (
+                            {consumableItems.map((item) => (
                               <SelectItem key={item.id} value={item.id}>
                                 #{item.sequence} · {item.description} ({item.unit?.label ?? "un."})
                               </SelectItem>
@@ -469,8 +483,40 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Quantidade {selectedConsumeItem ? `(${selectedConsumeItem.unit?.label ?? "un."})` : ""}</Label>
-                        <Input value={consumeQty} onChange={(e) => setConsumeQty(e.target.value)} inputMode="decimal" />
+                        <Label>Quantidade estimada ({consumeUnitLabel})</Label>
+                        <Input
+                          value={consumeEstimated}
+                          onChange={(e) => setConsumeEstimated(e.target.value)}
+                          inputMode="decimal"
+                          placeholder="Planejamento — não reduz saldo"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Quantidade efetivamente consumida ({consumeUnitLabel})</Label>
+                        <Input
+                          value={consumeQty}
+                          onChange={(e) => setConsumeQty(e.target.value)}
+                          inputMode="decimal"
+                          placeholder="Reduz saldo após validação"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Situação da atividade</Label>
+                        <Select value={consumeActivityStatus} onValueChange={setConsumeActivityStatus}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="SURVEY">Em levantamento</SelectItem>
+                            <SelectItem value="AWAITING_APPROVAL">Aguardando aprovação</SelectItem>
+                            <SelectItem value="APPROVED_FOR_EXECUTION">Aprovado para execução</SelectItem>
+                            <SelectItem value="IN_DEVELOPMENT">Em desenvolvimento</SelectItem>
+                            <SelectItem value="IN_VALIDATION">Em validação</SelectItem>
+                            <SelectItem value="COMPLETED">Concluído</SelectItem>
+                            <SelectItem value="CANCELLED">Cancelado</SelectItem>
+                            <SelectItem value="SUSPENDED">Suspenso</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-1.5">
                         <Label>Data de execução</Label>
@@ -491,7 +537,11 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
                       <div className="sm:col-span-2">
                         <Button
                           type="button"
-                          disabled={consumeMut.isPending || !consumeItemId || !consumeQty}
+                          disabled={
+                            consumeMut.isPending ||
+                            !consumeItemId ||
+                            (!consumeQty && !consumeEstimated)
+                          }
                           onClick={() => consumeMut.mutate()}
                         >
                           {consumeMut.isPending ? <InlineLoading label="Registrando..." /> : "Confirmar consumo"}

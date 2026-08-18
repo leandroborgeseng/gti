@@ -31,6 +31,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { DataTable } from "@/components/tables/data-table";
 
 const columnHelper = createColumnHelper<UserRecord>();
@@ -114,6 +115,7 @@ function EditUserPanel({
       organizationIds: user.organizations?.map((o) => o.id) ?? (user.organizationId ? [user.organizationId] : []),
       allOrganizations: Boolean(user.allOrganizations),
       approvalStatus: approvalDefault,
+      approvalRejectionReason: user.approvalRejectionReason ?? "",
       password: "",
       supplierId: user.supplierId ?? "",
       externalFunction:
@@ -125,6 +127,7 @@ function EditUserPanel({
   const allOrganizations = form.watch("allOrganizations");
   const userKind = form.watch("userKind");
   const supplierId = form.watch("supplierId");
+  const approvalStatus = form.watch("approvalStatus");
 
   const supplierContracts = useMemo(() => {
     const supplier = (qSuppliers.data ?? []).find((s) => s.id === supplierId);
@@ -137,6 +140,12 @@ function EditUserPanel({
 
   const mutation = useMutation({
     mutationFn: (values: EditUserFormValues) => {
+      const rejectionPayload =
+        values.approvalStatus === "REJECTED"
+          ? { approvalRejectionReason: values.approvalRejectionReason?.trim() || null }
+          : values.approvalStatus === "APPROVED"
+            ? { approvalRejectionReason: null }
+            : {};
       if (values.userKind === "EXTERNAL") {
         return updateUser(user.id, {
           fullName: values.fullName.trim(),
@@ -146,6 +155,7 @@ function EditUserPanel({
           externalFunction: values.externalFunction,
           authorizedContractIds: values.authorizedContractIds,
           approvalStatus: values.approvalStatus,
+          ...rejectionPayload,
           ...(values.password !== "" ? { password: values.password.trim() } : {})
         });
       }
@@ -159,6 +169,7 @@ function EditUserPanel({
         defaultProfileId: values.profileIds[0],
         defaultOrganizationId: values.allOrganizations ? null : values.organizationIds[0] ?? null,
         approvalStatus: values.approvalStatus,
+        ...rejectionPayload,
         ...(values.password !== "" ? { password: values.password.trim() } : {})
       });
     },
@@ -401,6 +412,21 @@ function EditUserPanel({
             </FormItem>
           )}
         />
+        {approvalStatus === "REJECTED" ? (
+          <FormField
+            control={form.control}
+            name="approvalRejectionReason"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Justificativa da recusa</FormLabel>
+                <FormControl>
+                  <Textarea rows={3} placeholder="Obrigatória para registrar a decisão" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ) : null}
         <FormField
           control={form.control}
           name="password"
@@ -431,6 +457,8 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<UserRecord | null>(null);
+  const [rejectUser, setRejectUser] = useState<UserRecord | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const { data: users = initialUsers } = useQuery({
     queryKey: queryKeys.users,
@@ -439,10 +467,29 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
   });
 
   const approvalMutation = useMutation({
-    mutationFn: ({ id, approvalStatus }: { id: string; approvalStatus: "APPROVED" | "REJECTED" }) =>
-      updateUser(id, { approvalStatus }),
+    mutationFn: ({
+      id,
+      approvalStatus,
+      approvalRejectionReason
+    }: {
+      id: string;
+      approvalStatus: "APPROVED" | "REJECTED";
+      approvalRejectionReason?: string;
+    }) =>
+      updateUser(id, {
+        approvalStatus,
+        ...(approvalStatus === "REJECTED"
+          ? { approvalRejectionReason: approvalRejectionReason?.trim() || null }
+          : {})
+      }),
     onSuccess: (_updated, variables) => {
-      toast.success(variables.approvalStatus === "APPROVED" ? "Cadastro aprovado." : "Cadastro recusado.");
+      toast.success(
+        variables.approvalStatus === "APPROVED"
+          ? "Cadastro aprovado. O usuário deverá trocar a senha no primeiro acesso."
+          : "Cadastro recusado. A justificativa foi registrada na auditoria."
+      );
+      setRejectUser(null);
+      setRejectReason("");
       void qc.invalidateQueries({ queryKey: queryKeys.users });
     },
     onError: (e) => {
@@ -450,7 +497,20 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
     }
   });
 
-  const pendingCount = users.filter((user) => user.approvalStatus === "PENDING").length;
+  const pendingUsers = useMemo(
+    () => users.filter((user) => user.approvalStatus === "PENDING"),
+    [users]
+  );
+  const pendingCount = pendingUsers.length;
+
+  const sortedUsers = useMemo(() => {
+    const rank = (s?: string | null) => (s === "PENDING" ? 0 : s === "REJECTED" ? 1 : 2);
+    return [...users].sort((a, b) => {
+      const d = rank(a.approvalStatus) - rank(b.approvalStatus);
+      if (d !== 0) return d;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [users]);
 
   const columns = useMemo<ColumnDef<UserRecord, any>[]>(
     () => [
@@ -562,10 +622,12 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
                     size="sm"
                     className="gap-1"
                     disabled={approvalMutation.isPending}
-                    onClick={() => approvalMutation.mutate({ id: user.id, approvalStatus: "APPROVED" })}
+                    onClick={() => {
+                      setEditUser(user);
+                    }}
                   >
                     <Check className="h-4 w-4" />
-                    Aprovar
+                    Analisar
                   </Button>
                   <Button
                     type="button"
@@ -573,7 +635,10 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
                     size="sm"
                     className="gap-1 text-red-700 hover:text-red-700"
                     disabled={approvalMutation.isPending}
-                    onClick={() => approvalMutation.mutate({ id: user.id, approvalStatus: "REJECTED" })}
+                    onClick={() => {
+                      setRejectUser(user);
+                      setRejectReason("");
+                    }}
                   >
                     <X className="h-4 w-4" />
                     Recusar
@@ -638,8 +703,111 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
         </div>
       )}
 
+      {pendingUsers.length > 0 ? (
+        <section className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm sm:p-5">
+          <div>
+            <h2 className="text-sm font-semibold text-amber-950">Solicitações pendentes</h2>
+            <p className="mt-1 text-xs text-amber-900/80">
+              Revise os dados informados pelo solicitante. Perfis, órgãos adicionais e permissões são definidos na
+              edição/aprovação — não pelo próprio cadastro público.
+            </p>
+          </div>
+          <ul className="space-y-3">
+            {pendingUsers.map((user) => (
+              <li
+                key={user.id}
+                className="rounded-lg border border-amber-200/80 bg-white p-4 shadow-sm"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1 text-sm">
+                    <p className="font-semibold text-foreground">{userDisplayName(user) || "Sem nome"}</p>
+                    <p className="text-muted-foreground">{user.email}</p>
+                    <dl className="mt-2 grid gap-1 text-xs text-slate-700 sm:grid-cols-2">
+                      <div>
+                        <dt className="text-slate-500">CPF</dt>
+                        <dd>{user.cpfMasked ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-slate-500">Tipo</dt>
+                        <dd>{user.userKind === "EXTERNAL" ? "Externo" : "Interno"}</dd>
+                      </div>
+                      {user.userKind === "EXTERNAL" ? (
+                        <>
+                          <div>
+                            <dt className="text-slate-500">Empresa</dt>
+                            <dd>
+                              {user.supplier
+                                ? `${user.supplier.name}${user.supplier.cnpj ? ` · ${user.supplier.cnpj}` : ""}`
+                                : "—"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Função / vínculo</dt>
+                            <dd>
+                              {user.externalFunction
+                                ? EXTERNAL_FUNCTION_LABELS[user.externalFunction] ?? user.externalFunction
+                                : "—"}
+                            </dd>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="sm:col-span-2">
+                          <dt className="text-slate-500">Órgão</dt>
+                          <dd>
+                            {user.organization
+                              ? user.organization.acronym
+                                ? `${user.organization.acronym} · ${user.organization.name}`
+                                : user.organization.name
+                              : user.organizationSummary ?? "—"}
+                          </dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt className="text-slate-500">Solicitado em</dt>
+                        <dd>
+                          {new Date(user.createdAt).toLocaleString("pt-BR", {
+                            dateStyle: "short",
+                            timeStyle: "short"
+                          })}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="gap-1"
+                      disabled={approvalMutation.isPending}
+                      onClick={() => setEditUser(user)}
+                    >
+                      <Check className="h-4 w-4" />
+                      Analisar / aprovar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1 text-red-700 hover:text-red-700"
+                      disabled={approvalMutation.isPending}
+                      onClick={() => {
+                        setRejectUser(user);
+                        setRejectReason("");
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                      Recusar
+                    </Button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
-        <DataTable columns={columns} data={users} searchPlaceholder="Pesquisar por nome, e-mail, órgão…" />
+        <DataTable columns={columns} data={sortedUsers} searchPlaceholder="Pesquisar por nome, e-mail, órgão…" />
       </section>
 
       <Modal
@@ -659,10 +827,76 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
       <Modal
         open={Boolean(editUser)}
         onClose={() => setEditUser(null)}
-        title="Editar usuário"
-        description={editUser ? editUser.email : undefined}
+        title={editUser?.approvalStatus === "PENDING" ? "Analisar solicitação" : "Editar usuário"}
+        description={
+          editUser
+            ? editUser.approvalStatus === "PENDING"
+              ? "Complete perfis/órgãos (interno) ou contratos autorizados (externo) e defina a situação como Aprovado."
+              : editUser.email
+            : undefined
+        }
       >
         {editUser ? <EditUserPanel key={editUser.id} user={editUser} onClose={() => setEditUser(null)} /> : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(rejectUser)}
+        onClose={() => {
+          if (!approvalMutation.isPending) {
+            setRejectUser(null);
+            setRejectReason("");
+          }
+        }}
+        title="Recusar solicitação"
+        description={
+          rejectUser
+            ? `Informe a justificativa administrativa para recusar o acesso de ${userDisplayName(rejectUser) || rejectUser.email}. A solicitação permanece registrada.`
+            : undefined
+        }
+      >
+        {rejectUser ? (
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-foreground" htmlFor="reject-reason">
+                Justificativa
+              </label>
+              <textarea
+                id="reject-reason"
+                className="mt-1.5 min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Motivo da recusa (obrigatório)"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={approvalMutation.isPending}
+                onClick={() => {
+                  setRejectUser(null);
+                  setRejectReason("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={approvalMutation.isPending || rejectReason.trim().length < 5}
+                onClick={() =>
+                  approvalMutation.mutate({
+                    id: rejectUser.id,
+                    approvalStatus: "REJECTED",
+                    approvalRejectionReason: rejectReason.trim()
+                  })
+                }
+              >
+                Confirmar recusa
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

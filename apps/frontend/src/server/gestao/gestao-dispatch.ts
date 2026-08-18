@@ -847,8 +847,14 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       return jsonOk(
         await gestaoConsumption.createMovement(seg[1], {
           pricingItemId: String(body.pricingItemId ?? ""),
-          quantity: Number(body.quantity),
+          quantity: body.quantity != null && body.quantity !== "" ? Number(body.quantity) : 0,
+          estimatedQuantity:
+            body.estimatedQuantity != null && body.estimatedQuantity !== ""
+              ? Number(body.estimatedQuantity)
+              : 0,
+          activityStatus: (body.activityStatus as string | undefined) ?? undefined,
           executionDate: String(body.executionDate ?? ""),
+          startDate: (body.startDate as string | null | undefined) ?? null,
           description: (body.description as string | null | undefined) ?? null,
           notes: (body.notes as string | null | undefined) ?? null,
           responsibleLabel: (body.responsibleLabel as string | null | undefined) ?? null,

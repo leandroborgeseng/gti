@@ -275,6 +275,18 @@ enum ConsumptionMovementSource {
   REVERSAL
 }
 
+/// Situação operacional da atividade de consumo (planejamento → execução).
+enum ConsumptionActivityStatus {
+  SURVEY
+  AWAITING_APPROVAL
+  APPROVED_FOR_EXECUTION
+  IN_DEVELOPMENT
+  IN_VALIDATION
+  COMPLETED
+  CANCELLED
+  SUSPENDED
+}
+
 enum ContractPricingPeriodicity {
   MONTHLY
   BIMONTHLY
@@ -500,6 +512,8 @@ model User {
   passwordHash        String
   mustChangePassword  Boolean              @default(false)
   approvalStatus      UserApprovalStatus   @default(APPROVED)
+  /// Justificativa administrativa quando o cadastro é recusado (não exclui a solicitação).
+  approvalRejectionReason String?          @map("approval_rejection_reason") @db.Text
   /// Papel legado; sincronizado com o systemKey do perfil padrão.
   role                UserRole             @default(EDITOR)
   /// Conta interna (servidor) ou externa (empresa).
@@ -1437,6 +1451,7 @@ model MeasureUnit {
   createdAt DateTime              @default(now()) @map("created_at")
   updatedAt DateTime              @updatedAt @map("updated_at")
   items     ContractPricingItem[]
+  consumptionItems ContractPricingItem[] @relation("PricingItemConsumptionUnit")
   itemTypes ContractItemType[]    @relation("ItemTypeSuggestedUnit")
 
   @@map("measure_unit")
@@ -1501,6 +1516,10 @@ model ContractPricingItem {
   consumedQuantity   Decimal                    @default(0) @map("consumed_quantity") @db.Decimal(18, 4)
   /// Se true, o item entra no painel/extrato de consumos do contrato.
   consumptionEnabled Boolean                    @default(false) @map("consumption_enabled")
+  /// Unidade operacional do consumo (independente da unidade financeira).
+  consumptionUnitId  String?                    @map("consumption_unit_id")
+  /// Quantidade disponibilizada para controle de consumo (não confundir com quantity financeira).
+  consumptionAvailableQuantity Decimal?         @map("consumption_available_quantity") @db.Decimal(18, 4)
   consumptionFinancialRule ConsumptionFinancialRule? @map("consumption_financial_rule")
   consumptionAvailability ConsumptionAvailabilityPeriod? @map("consumption_availability")
   /// Se true, saldo não utilizado acumula para o período seguinte.
@@ -1514,6 +1533,7 @@ model ContractPricingItem {
   contract           Contract                   @relation(fields: [contractId], references: [id], onDelete: Cascade)
   type               ContractItemType           @relation(fields: [typeId], references: [id])
   unit               MeasureUnit                @relation(fields: [unitId], references: [id])
+  consumptionUnit    MeasureUnit?               @relation("PricingItemConsumptionUnit", fields: [consumptionUnitId], references: [id], onDelete: SetNull)
   measurementItems   MeasurementItem[]
   consumptionMovements ContractConsumptionMovement[]
   glosaBaseModules   ContractModule[]           @relation("ContractModuleGlosaPricingItem")
@@ -1524,6 +1544,7 @@ model ContractPricingItem {
   @@index([contractId, status])
   @@index([typeId])
   @@index([contractId, consumptionEnabled])
+  @@index([consumptionUnitId])
   @@map("contract_pricing_item")
 }
 
@@ -1532,17 +1553,22 @@ model ContractConsumptionMovement {
   id                       String                     @id @default(uuid())
   contractId               String                     @map("contract_id")
   pricingItemId            String                     @map("pricing_item_id")
+  /// Quantidade efetivamente consumida (reduz saldo após validação/aprovação).
   quantity                 Decimal                    @db.Decimal(18, 4)
+  /// Quantidade estimada para planejamento (não reduz saldo definitivo).
+  estimatedQuantity        Decimal                    @default(0) @map("estimated_quantity") @db.Decimal(18, 4)
   /// Quantidade originalmente informada (preservada em ajustes).
   originalQuantity         Decimal?                   @map("original_quantity") @db.Decimal(18, 4)
   unitCodeSnapshot         String?                    @map("unit_code_snapshot")
   unitLabelSnapshot        String?                    @map("unit_label_snapshot")
   status                   ConsumptionMovementStatus  @default(INFORMED)
+  activityStatus           ConsumptionActivityStatus  @default(SURVEY) @map("activity_status")
   source                   ConsumptionMovementSource  @default(MANUAL)
   glpiTicketId             Int?                       @map("glpi_ticket_id")
   measurementId            String?                    @map("measurement_id")
   measurementItemId        String?                    @map("measurement_item_id")
   executionDate            DateTime                   @map("execution_date")
+  startDate                DateTime?                  @map("start_date")
   referencePeriodStart     DateTime?                  @map("reference_period_start")
   referencePeriodEnd       DateTime?                  @map("reference_period_end")
   responsibleLabel         String?                    @map("responsible_label")
@@ -1561,6 +1587,7 @@ model ContractConsumptionMovement {
 
   @@index([contractId, status])
   @@index([pricingItemId, status])
+  @@index([pricingItemId, activityStatus])
   @@index([glpiTicketId])
   @@index([measurementId])
   @@index([executionDate])

@@ -771,6 +771,8 @@ export type ContractPricingItem = {
   includeInGlosaBase: boolean;
   consumedQuantity?: string;
   consumptionEnabled?: boolean;
+  consumptionUnitId?: string | null;
+  consumptionAvailableQuantity?: string | null;
   consumptionFinancialRule?: ConsumptionFinancialRule | null;
   consumptionAvailability?: ConsumptionAvailabilityPeriod | null;
   consumptionAccumulates?: boolean;
@@ -819,6 +821,8 @@ export type ContractPricingItemInput = {
   status?: ContractPricingItemStatus;
   includeInGlosaBase?: boolean;
   consumptionEnabled?: boolean;
+  consumptionUnitId?: string | null;
+  consumptionAvailableQuantity?: number | null;
   consumptionFinancialRule?: ConsumptionFinancialRule | null;
   consumptionAvailability?: ConsumptionAvailabilityPeriod | null;
   consumptionAccumulates?: boolean;
@@ -1484,35 +1488,53 @@ export type ContractConsumptionSummaryItem = {
   sequence: number;
   description: string;
   unit?: MeasureUnitCatalog | null;
+  financialUnit?: MeasureUnitCatalog | null;
   type?: ContractItemTypeCatalog | null;
   billingKind: ContractPricingBillingKind;
   financialRule: ConsumptionFinancialRule;
   availability?: string | null;
   accumulates?: boolean;
   requiresValidation?: boolean;
+  configurationPending?: boolean;
   quantityContracted: string;
+  quantityAvailableBase?: string;
   quantityApprovedUsed: string;
   quantityPendingValidation: string;
+  quantityEstimatedOpen?: string;
   quantityAvailable: string;
+  quantityProjectedAvailable?: string;
   quantityCommittedAvailable: string;
   consumedPercent: number;
   alertLevel: number | null;
   unitValue: string;
 };
 
+export type ConsumptionActivityStatus =
+  | "SURVEY"
+  | "AWAITING_APPROVAL"
+  | "APPROVED_FOR_EXECUTION"
+  | "IN_DEVELOPMENT"
+  | "IN_VALIDATION"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "SUSPENDED";
+
 export type ContractConsumptionMovement = {
   id: string;
   contractId: string;
   pricingItemId: string;
   quantity: string;
+  estimatedQuantity?: string;
   originalQuantity?: string | null;
   unitCodeSnapshot?: string | null;
   unitLabelSnapshot?: string | null;
   status: ConsumptionMovementStatus;
+  activityStatus?: ConsumptionActivityStatus;
   source: string;
   glpiTicketId?: number | null;
   measurementId?: string | null;
   executionDate: string;
+  startDate?: string | null;
   responsibleLabel?: string | null;
   description?: string | null;
   notes?: string | null;
@@ -1549,8 +1571,11 @@ export async function createContractConsumptionMovement(
   contractId: string,
   payload: {
     pricingItemId: string;
-    quantity: number;
+    quantity?: number;
+    estimatedQuantity?: number;
+    activityStatus?: ConsumptionActivityStatus;
     executionDate: string;
+    startDate?: string | null;
     description?: string | null;
     notes?: string | null;
     responsibleLabel?: string | null;
@@ -2571,6 +2596,7 @@ export type UserRecord = {
   organizationSummary?: string | null;
   role: string;
   approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
+  approvalRejectionReason?: string | null;
   mustChangePassword?: boolean;
   userKind?: "INTERNAL" | "EXTERNAL";
   supplierId?: string | null;
@@ -2995,6 +3021,7 @@ export async function updateUser(
     defaultOrganizationId?: string | null;
     password?: string;
     approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
+    approvalRejectionReason?: string | null;
     userKind?: "INTERNAL" | "EXTERNAL";
     supplierId?: string | null;
     externalFunction?: string | null;

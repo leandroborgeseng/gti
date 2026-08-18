@@ -112,6 +112,7 @@ export const editUserFormSchema = z
     organizationIds: z.array(z.string()).default([]),
     allOrganizations: z.boolean().default(false),
     approvalStatus: userApprovalStatusSchema,
+    approvalRejectionReason: z.string().optional().default(""),
     /** Vazio mantém a senha atual; caso contrário mínimo 8 caracteres. */
     password: z.union([z.literal(""), z.string().min(8, "Mínimo 8 caracteres")]),
     supplierId: z.string().optional(),
@@ -126,6 +127,13 @@ export const editUserFormSchema = z
     authorizedContractIds: z.array(z.string()).default([])
   })
   .superRefine((val, ctx) => {
+    if (val.approvalStatus === "REJECTED" && (val.approvalRejectionReason?.trim().length ?? 0) < 5) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Informe a justificativa da recusa (mínimo 5 caracteres).",
+        path: ["approvalRejectionReason"]
+      });
+    }
     if (val.userKind === "EXTERNAL") {
       if (!val.supplierId) {
         ctx.addIssue({
