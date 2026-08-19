@@ -2180,6 +2180,8 @@ export class ContractsService {
               status: ContractPricingItemStatus.ACTIVE,
               includeInGlosaBase: Boolean(after.includeInGlosaBase),
               consumptionEnabled: billingKind === ContractPricingBillingKind.ON_DEMAND,
+              consumptionUnitId: null,
+              consumptionAvailableQuantity: null,
               consumptionFinancialRule:
                 billingKind === ContractPricingBillingKind.ON_DEMAND ? "BILLED_BY_CONSUMPTION" : null,
               consumptionAvailability:
@@ -2209,6 +2211,8 @@ export class ContractsService {
           includeInGlosaBase: Boolean(after.includeInGlosaBase),
           consumedQuantity: new Prisma.Decimal(0),
           consumptionEnabled: billingKind === ContractPricingBillingKind.ON_DEMAND,
+          consumptionUnitId: null,
+          consumptionAvailableQuantity: null,
           consumptionFinancialRule:
             billingKind === ContractPricingBillingKind.ON_DEMAND ? ("BILLED_BY_CONSUMPTION" as const) : null,
           consumptionAvailability:
@@ -2358,7 +2362,18 @@ export class ContractsService {
             periodEnd,
             status: ContractPricingItemStatus.ACTIVE,
             includeInGlosaBase: includeGlosa,
-            consumedQuantity: source.consumedQuantity
+            consumedQuantity: source.consumedQuantity,
+            consumptionEnabled: source.consumptionEnabled,
+            consumptionUnitId: source.consumptionUnitId,
+            consumptionAvailableQuantity: source.consumptionAvailableQuantity,
+            consumptionFinancialRule: source.consumptionFinancialRule,
+            consumptionAvailability: source.consumptionAvailability,
+            consumptionAccumulates: source.consumptionAccumulates,
+            consumptionRequiresValidation: source.consumptionRequiresValidation,
+            consumptionAlertThresholds:
+              source.consumptionAlertThresholds === null
+                ? Prisma.JsonNull
+                : (source.consumptionAlertThresholds as Prisma.InputJsonValue)
           }
         });
         // Transfere vínculo de base de glosa para a nova versão.
