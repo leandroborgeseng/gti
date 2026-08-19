@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronsUpDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { GTI_TOKEN_COOKIE } from "@/lib/auth-cookie-name";
 import {
   getAuthMe,
   getMyPermissions,
@@ -12,6 +11,7 @@ import {
   switchAccessContext,
   type AuthMe
 } from "@/lib/api";
+import { setBrowserAuthToken } from "@/lib/auth-token";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -20,12 +20,6 @@ import { useGlobalLoading } from "@/components/ui/global-loading";
 import { filterMainNavGroups, MAIN_NAV_GROUPS } from "./main-nav-data";
 
 const ALL_ORGS_VALUE = "__ALL_ORGS__";
-
-function setAuthCookie(token: string): void {
-  const maxAge = 60 * 60 * 24 * 7;
-  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `${GTI_TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
-}
 
 function contextLabel(me: AuthMe): string {
   const ctx = me.activeContext;
@@ -90,7 +84,7 @@ export function AccessContextSelector(): JSX.Element | null {
       return switchAccessContext({ profileId, organizationId });
     },
     onSuccess: async (result) => {
-      if (result.access_token) setAuthCookie(result.access_token);
+      if (result.access_token) setBrowserAuthToken(result.access_token);
       globalLoading.begin("Alterando contexto...");
       setOpen(false);
       try {

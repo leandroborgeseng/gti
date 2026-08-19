@@ -7,7 +7,7 @@ import { Suspense } from "react";
 import { useForm } from "react-hook-form";
 import type { Route } from "next";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { loginFormSchema, type LoginFormValues } from "@/modules/auth/login-schema";
 import { AppBrand } from "@/components/brand/app-brand";
@@ -15,10 +15,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { setBrowserAuthToken } from "@/lib/auth-token";
 import { BRAND } from "@/lib/brand";
 
 function LoginForm(): JSX.Element {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
@@ -30,12 +30,14 @@ function LoginForm(): JSX.Element {
       const r = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ email: values.email.trim(), password: values.password })
       });
       const text = await r.text();
       let payload: {
         error?: string;
         redirectTo?: string | null;
+        access_token?: string;
         user?: { userKind?: string; mustChangePassword?: boolean };
       } = {};
       try {
@@ -49,19 +51,26 @@ function LoginForm(): JSX.Element {
       return payload;
     },
     onSuccess: (payload) => {
+      if (payload.access_token) {
+        setBrowserAuthToken(payload.access_token);
+      }
       toast.success("Login realizado.");
       const defaultHome =
         payload.user?.userKind === "EXTERNAL" ? "/externo/notificacoes" : "/dashboard";
       const raw = searchParams.get("returnUrl") ?? defaultHome;
       const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : defaultHome;
       if (payload.redirectTo === "/trocar-senha") {
-        router.replace(`${payload.redirectTo}?returnUrl=${encodeURIComponent(next)}`);
-      } else if (payload.redirectTo) {
-        router.replace(payload.redirectTo);
-      } else {
-        router.replace(next);
+        // Reload completo garante que o middleware e o cookie novo estejam alinhados.
+        window.location.assign(
+          `${payload.redirectTo}?returnUrl=${encodeURIComponent(next)}`
+        );
+        return;
       }
-      router.refresh();
+      if (payload.redirectTo) {
+        window.location.assign(payload.redirectTo);
+        return;
+      }
+      window.location.assign(next);
     },
     onError: (e) => {
       toast.error(e instanceof Error ? e.message : "Credenciais inválidas");

@@ -12,6 +12,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Corrigido
 
+- Troca obrigatória de senha no primeiro acesso: a sessão passa a ser gravada de forma confiável no navegador após o login e a alteração de senha (cookie + token no pedido), evitando o erro «Não autenticado» na primeira tentativa.
 - Percentuais de cumprimento das funcionalidades passam a exibir sempre duas casas decimais no padrão brasileiro (ex.: `0,00%`, `37,48%`), sem alterar o cálculo interno (ticket 75).
 - Cabeçalho fixo do detalhe do contrato deixa de sobrepor o cabeçalho principal do SIGTI; botões de ação permanecem acessíveis na faixa fixa (ticket 76).
 - «Imprimir / HTML» e «Baixar PDF» das notificações passam a usar a sessão autenticada do SIGTI, com mensagens amigáveis em caso de falta de permissão ou sessão expirada (ticket 85).

@@ -41,13 +41,16 @@ export async function POST(req: Request): Promise<NextResponse> {
       : user.userKind === "EXTERNAL"
         ? "/externo/notificacoes"
         : null;
-    const res = NextResponse.json({ ok: true, expires_in, user, redirectTo });
+    const res = NextResponse.json({ ok: true, expires_in, user, redirectTo, access_token });
+    const proto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const secure =
+      process.env.NODE_ENV === "production" && (proto === "https" || proto == null);
     res.cookies.set(GTI_TOKEN_COOKIE, access_token, {
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
       sameSite: "lax",
       httpOnly: false,
-      secure: process.env.NODE_ENV === "production"
+      secure
     });
     return res;
   } catch (e) {

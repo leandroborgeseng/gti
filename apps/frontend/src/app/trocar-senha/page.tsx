@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import type { FormEvent } from "react";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { readBrowserAuthToken, setBrowserAuthToken } from "@/lib/auth-token";
 
 function ChangePasswordForm(): JSX.Element {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -25,23 +25,35 @@ function ChangePasswordForm(): JSX.Element {
     }
     setIsSubmitting(true);
     try {
+      const token = readBrowserAuthToken();
       const response = await fetch("/api/auth/change-password", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ currentPassword, newPassword })
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        access_token?: string;
+      };
       if (!response.ok) {
         throw new Error(payload.error || "Não foi possível alterar a senha.");
       }
+      if (payload.access_token) {
+        setBrowserAuthToken(payload.access_token);
+      }
       toast.success(payload.message || "Senha alterada com sucesso.");
       const raw = searchParams.get("returnUrl") ?? "/dashboard";
-      const next = raw.startsWith("/") && !raw.startsWith("//") && raw !== "/trocar-senha" ? raw : "/dashboard";
-      router.replace(next);
-      router.refresh();
+      const next =
+        raw.startsWith("/") && !raw.startsWith("//") && raw !== "/trocar-senha" ? raw : "/dashboard";
+      // Reload completo: o JWT novo (mustChangePassword=false) precisa valer no middleware.
+      window.location.assign(next);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível alterar a senha.");
-    } finally {
       setIsSubmitting(false);
     }
   }
@@ -93,7 +105,9 @@ export default function TrocarSenhaPage(): JSX.Element {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Trocar senha obrigatória</CardTitle>
-          <CardDescription>Antes de continuar, defina uma senha própria com pelo menos 8 caracteres.</CardDescription>
+          <CardDescription>
+            Antes de continuar, defina uma senha própria com pelo menos 8 caracteres.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando…</p>}>
@@ -101,7 +115,10 @@ export default function TrocarSenhaPage(): JSX.Element {
           </Suspense>
           <p className="mt-4 text-center text-sm text-muted-foreground">
             Entrou com a conta errada?{" "}
-            <Link href="/api/auth/logout" className="underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground">
+            <Link
+              href="/api/auth/logout"
+              className="underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground"
+            >
               Sair
             </Link>
           </p>

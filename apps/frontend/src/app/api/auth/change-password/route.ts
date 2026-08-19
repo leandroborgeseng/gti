@@ -1,5 +1,5 @@
 import * as bcrypt from "bcrypt";
-import { cookies } from "next/headers";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/glpi/config/prisma";
 import { GTI_TOKEN_COOKIE } from "@/lib/auth-cookie-name";
@@ -9,8 +9,23 @@ import { verifyBearerToken } from "@/lib/verify-bearer-session";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request): Promise<NextResponse> {
-  const token = cookies().get(GTI_TOKEN_COOKIE)?.value;
+function readSessionToken(req: NextRequest): string {
+  const header = req.headers.get("authorization")?.trim() ?? "";
+  if (header.toLowerCase().startsWith("bearer ")) {
+    const bearer = header.slice(7).trim();
+    if (bearer) return bearer;
+  }
+  return req.cookies.get(GTI_TOKEN_COOKIE)?.value?.trim() || "";
+}
+
+function cookieSecure(req: NextRequest): boolean {
+  if (process.env.NODE_ENV !== "production") return false;
+  const proto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  return proto === "https" || proto == null;
+}
+
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  const token = readSessionToken(req);
   if (!token) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   }
@@ -32,7 +47,10 @@ export async function POST(req: Request): Promise<NextResponse> {
   const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
   const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
   if (!currentPassword || newPassword.length < 8) {
-    return NextResponse.json({ error: "Informe a senha atual e uma nova senha com pelo menos 8 caracteres." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Informe a senha atual e uma nova senha com pelo menos 8 caracteres." },
+      { status: 400 }
+    );
   }
   if (currentPassword === newPassword) {
     return NextResponse.json({ error: "A nova senha deve ser diferente da senha atual." }, { status: 400 });
@@ -57,13 +75,17 @@ export async function POST(req: Request): Promise<NextResponse> {
   await prisma.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
 
   const { access_token } = await issueAuthToken(updated);
-  const res = NextResponse.json({ ok: true, message: "Senha alterada com sucesso." });
+  const res = NextResponse.json({
+    ok: true,
+    message: "Senha alterada com sucesso.",
+    access_token
+  });
   res.cookies.set(GTI_TOKEN_COOKIE, access_token, {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
     sameSite: "lax",
     httpOnly: false,
-    secure: process.env.NODE_ENV === "production"
+    secure: cookieSecure(req)
   });
   return res;
 }
