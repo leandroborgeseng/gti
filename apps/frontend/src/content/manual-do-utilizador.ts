@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-08-05"; // externos: edição, PDF, itens, contatos fornecedor
+export const MANUAL_LAST_UPDATED = "2026-08-19"; // troca obrigatória de senha: fluxo sem revalidar provisória
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -464,7 +464,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         kind: "ul",
         items: [
           "Ao criar ou editar, escolha tipo Interno ou Externo. Internos: vincule ao menos um perfil e (órgão ou «Todos os órgãos»). Externos: fornecedor, função e contratos autorizados do mesmo CNPJ (sem órgãos internos).",
-          "Ao criar uma conta ou redefinir a senha de um usuário pela administração, o sistema exige que a pessoa troque a senha no primeiro acesso antes de usar as demais telas.",
+          "Ao criar uma conta ou redefinir a senha de um usuário pela administração, o sistema exige que a pessoa troque a senha no primeiro acesso. Após o login com a senha provisória, a sessão fica restrita à tela «Trocar senha obrigatória» (nova senha + confirmação, sem repetir a provisória). Concluída a troca, o acesso ao SIGTI é liberado sem novo login.",
           "Na tela de login, use o link «Solicitar acesso» para abrir a tela própria de cadastro inicial (nome completo, CPF, e-mail e tipo Interno/Externo). Internos escolhem o órgão; externos escolhem a empresa e o vínculo. A solicitação fica pendente até um administrador aprovar ou recusar (com justificativa) na Administração → Usuários, onde também completa perfis, órgãos ou contratos autorizados.",
           "Ao criar uma conta, o sistema pode enviar um e-mail de boas-vindas com link para definição de senha (SMTP institucional ativo ou Resend). Se a senha for definida por esse link, a troca obrigatória é considerada concluída.",
           "Na tela de login, a opção «Esqueci a minha senha» envia um link de redefinição para o e-mail cadastrado (mesmo canal unificado). O link expira em 60 minutos."
