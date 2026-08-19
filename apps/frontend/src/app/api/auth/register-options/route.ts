@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/glpi/config/prisma";
 
+export const dynamic = "force-dynamic";
+
 /** Catálogos públicos para a tela «Solicitar acesso» (sem autenticação). */
 export async function GET(): Promise<NextResponse> {
   const [organizations, suppliers] = await Promise.all([
