@@ -28,7 +28,8 @@ export type PricingItemInput = {
   includeInGlosaBase?: boolean;
   consumptionEnabled?: boolean;
   consumptionUnitId?: string | null;
-  consumptionAvailableQuantity?: number | null;
+  /** Aceita número ou string numérica vinda do formulário JSON. */
+  consumptionAvailableQuantity?: number | string | null;
   consumptionFinancialRule?: string | null;
   consumptionAvailability?: string | null;
   consumptionAccumulates?: boolean;
@@ -336,7 +337,11 @@ function normalizeItem(input: PricingItemInput, sequence: number): {
       ? input.consumptionUnitId.trim()
       : null;
   let consumptionAvailableQuantity: Prisma.Decimal | null = null;
-  if (consumptionEnabled && input.consumptionAvailableQuantity != null && input.consumptionAvailableQuantity !== "") {
+  if (
+    consumptionEnabled &&
+    input.consumptionAvailableQuantity != null &&
+    input.consumptionAvailableQuantity !== ""
+  ) {
     const n = Number(input.consumptionAvailableQuantity);
     if (!Number.isFinite(n) || n < 0) {
       throw new BadRequestException("Quantidade disponível para consumo inválida.");
