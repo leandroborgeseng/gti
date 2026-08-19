@@ -1,5 +1,6 @@
 import * as bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/glpi/config/prisma";
 import { isValidCpf, onlyDigitsCpf } from "@/modules/users/user-schemas";
@@ -159,7 +160,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       entityId: created.id,
       action: "ACCESS_REQUEST",
       userId: "system",
-      oldData: null,
+      oldData: Prisma.JsonNull,
       newData: {
         email: created.email,
         userKind: created.userKind,
