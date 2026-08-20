@@ -5,8 +5,8 @@ import { Card } from "@/components/ui/card";
 import { getDashboardAlerts, getDashboardSummary } from "@/lib/api";
 import { collectLoadErrors, safeLoad } from "@/lib/api-load";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+/** Indicadores do hub; revalida em breve para reduzir TTFB sem dados obsoletos longos. */
+export const revalidate = 60;
 
 export default async function ReportsPage(): Promise<JSX.Element> {
   const empty: Record<string, unknown> = {};

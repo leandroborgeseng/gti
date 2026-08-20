@@ -1,8 +1,6 @@
 import { ProfileView } from "@/components/profile/profile-view";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
+/** Dados de perfil vêm do client (`useAuthMe`); sem force-dynamic. */
 export default function PerfilPage(): JSX.Element {
   return <ProfileView />;
 }

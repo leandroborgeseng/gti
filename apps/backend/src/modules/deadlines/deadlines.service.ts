@@ -180,66 +180,80 @@ export class DeadlinesService {
     const desired = await this.collectDesired(now);
     const desiredKeys = new Set(desired.map((d) => d.syncKey));
 
-    let upserted = 0;
-    for (const row of desired) {
-      const openStatus = computeDeadlineStatus(row.dueAt, now);
-      const attention =
-        row.attentionHint ?? attentionFromStatus(openStatus, row.origin, row.criticality ?? null);
+    const existingRows =
+      desired.length === 0
+        ? []
+        : await this.prisma.deadline.findMany({
+            where: { syncKey: { in: desired.map((d) => d.syncKey) } }
+          });
+    const existingByKey = new Map(existingRows.map((row) => [row.syncKey, row]));
 
-      const existing = await this.prisma.deadline.findUnique({ where: { syncKey: row.syncKey } });
-      if (existing && !isOpenDeadlineStatus(existing.status) && existing.status !== DeadlineStatus.CANCELLED) {
-        // Concluídos/suspensos manuais: só atualiza metadados leves se ainda syncManaged
-        if (existing.syncManaged) {
-          await this.prisma.deadline.update({
-            where: { id: existing.id },
-            data: {
+    let upserted = 0;
+    const UPSERT_CHUNK = 25;
+    for (let i = 0; i < desired.length; i += UPSERT_CHUNK) {
+      const chunk = desired.slice(i, i + UPSERT_CHUNK);
+      const results = await Promise.all(
+        chunk.map(async (row) => {
+          const openStatus = computeDeadlineStatus(row.dueAt, now);
+          const attention =
+            row.attentionHint ?? attentionFromStatus(openStatus, row.origin, row.criticality ?? null);
+          const existing = existingByKey.get(row.syncKey);
+
+          if (existing && !isOpenDeadlineStatus(existing.status) && existing.status !== DeadlineStatus.CANCELLED) {
+            if (existing.syncManaged) {
+              await this.prisma.deadline.update({
+                where: { id: existing.id },
+                data: {
+                  title: row.title,
+                  description: row.description,
+                  dueAt: row.dueAt,
+                  expectedAction: row.expectedAction,
+                  contractId: row.contractId,
+                  responsibleUserId: row.responsibleUserId
+                }
+              });
+              return 1;
+            }
+            return 0;
+          }
+
+          await this.prisma.deadline.upsert({
+            where: { syncKey: row.syncKey },
+            create: {
+              origin: row.origin,
+              contractId: row.contractId,
               title: row.title,
               description: row.description,
+              responsibleUserId: row.responsibleUserId,
               dueAt: row.dueAt,
+              status: openStatus,
+              attentionLevel: attention,
               expectedAction: row.expectedAction,
+              sourceEntityType: row.sourceEntityType,
+              sourceEntityId: row.sourceEntityId,
+              syncKey: row.syncKey,
+              syncManaged: true
+            },
+            update: {
+              origin: row.origin,
               contractId: row.contractId,
-              responsibleUserId: row.responsibleUserId
+              title: row.title,
+              description: row.description,
+              responsibleUserId: row.responsibleUserId,
+              dueAt: row.dueAt,
+              status: openStatus,
+              attentionLevel: attention,
+              expectedAction: row.expectedAction,
+              sourceEntityType: row.sourceEntityType,
+              sourceEntityId: row.sourceEntityId,
+              syncManaged: true,
+              completedAt: null
             }
           });
-          upserted += 1;
-        }
-        continue;
-      }
-
-      await this.prisma.deadline.upsert({
-        where: { syncKey: row.syncKey },
-        create: {
-          origin: row.origin,
-          contractId: row.contractId,
-          title: row.title,
-          description: row.description,
-          responsibleUserId: row.responsibleUserId,
-          dueAt: row.dueAt,
-          status: openStatus,
-          attentionLevel: attention,
-          expectedAction: row.expectedAction,
-          sourceEntityType: row.sourceEntityType,
-          sourceEntityId: row.sourceEntityId,
-          syncKey: row.syncKey,
-          syncManaged: true
-        },
-        update: {
-          origin: row.origin,
-          contractId: row.contractId,
-          title: row.title,
-          description: row.description,
-          responsibleUserId: row.responsibleUserId,
-          dueAt: row.dueAt,
-          status: openStatus,
-          attentionLevel: attention,
-          expectedAction: row.expectedAction,
-          sourceEntityType: row.sourceEntityType,
-          sourceEntityId: row.sourceEntityId,
-          syncManaged: true,
-          completedAt: null
-        }
-      });
-      upserted += 1;
+          return 1;
+        })
+      );
+      upserted += results.reduce<number>((acc, n) => acc + n, 0);
     }
 
     const stale = await this.prisma.deadline.findMany({

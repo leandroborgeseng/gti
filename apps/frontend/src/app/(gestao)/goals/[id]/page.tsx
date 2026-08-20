@@ -9,11 +9,7 @@ type PageProps = {
 };
 
 export default async function GoalDetailPage({ params }: PageProps): Promise<JSX.Element> {
-  const [{ data: goal, error }, projects, tasks] = await Promise.all([
-    safeLoadNullable(() => getGoal(params.id)),
-    getProjects().catch(() => []),
-    getProjectsTasksFlat({ limit: 8000, sort: "project" }).catch(() => ({ items: [], total: 0, limit: 8000, offset: 0, truncated: false }))
-  ]);
+  const { data: goal, error } = await safeLoadNullable(() => getGoal(params.id));
   if (error) {
     return (
       <div className="gti-exec-metric-dash gti-gestao-page space-y-4">
@@ -35,5 +31,23 @@ export default async function GoalDetailPage({ params }: PageProps): Promise<JSX
       </div>
     );
   }
+
+  // Escopo: tarefas do projeto vinculado (quando houver); senão amostra limitada em vez de 8k globais.
+  const tasksParams = {
+    limit: 2000,
+    sort: "project" as const,
+    ...(goal.projectId ? { projectId: goal.projectId } : {})
+  };
+  const [projects, tasks] = await Promise.all([
+    getProjects().catch(() => []),
+    getProjectsTasksFlat(tasksParams).catch(() => ({
+      items: [],
+      total: 0,
+      limit: 2000,
+      offset: 0,
+      truncated: false
+    }))
+  ]);
+
   return <GoalFinalView goal={goal} projects={projects} tasks={tasks.items} />;
 }

@@ -10,13 +10,22 @@ import { useMemo, useState } from "react";
 import type { GovernanceTicket } from "@/lib/api";
 import { getGovernanceTickets } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import { GovernanceCreateForm } from "@/components/actions/governance-create-form";
-import { GovernanceListActions } from "@/components/actions/governance-actions";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
+import dynamic from "next/dynamic";
+
+const GovernanceCreateForm = dynamic(
+  () =>
+    import("@/components/actions/governance-create-form").then((m) => ({ default: m.GovernanceCreateForm })),
+  { ssr: false }
+);
+const GovernanceListActions = dynamic(
+  () => import("@/components/actions/governance-actions").then((m) => ({ default: m.GovernanceListActions })),
+  { ssr: false }
+);
 
 const statusLabel: Record<string, string> = {
   OPEN: "Aberto",

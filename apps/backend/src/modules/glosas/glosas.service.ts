@@ -98,7 +98,7 @@ export class GlosasService {
         measurementItem: {
           select: { id: true, descriptionSnapshot: true, isLegacyMonthly: true }
         },
-        attachments: true
+        _count: { select: { attachments: true } }
       },
       orderBy: { createdAt: "desc" }
     });

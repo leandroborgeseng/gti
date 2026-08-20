@@ -888,6 +888,7 @@ model ContractModule {
   features           ContractFeature[]
   fiscals            ContractModuleFiscal[]
 
+  @@index([contractId])
   @@index([validatorId])
   @@index([glosaPricingItemId])
 }
@@ -991,6 +992,8 @@ model Measurement {
   attachments        Attachment[]
 
   @@unique([contractId, referenceMonth, referenceYear])
+  @@index([deletedAt, status])
+  @@index([status, referenceYear, referenceMonth])
 }
 
 model MeasurementItem {
@@ -1021,6 +1024,7 @@ model MeasurementItem {
   pricingItem     ContractPricingItem? @relation(fields: [pricingItemId], references: [id], onDelete: SetNull)
   glosas          Glosa[]
 
+  @@index([measurementId])
   @@index([pricingItemId])
 }
 
@@ -1052,6 +1056,11 @@ model AuditLog {
   timestamp DateTime @default(now())
   oldData   Json?
   newData   Json?
+
+  @@index([timestamp])
+  @@index([entity, entityId])
+  @@index([userId, timestamp])
+  @@index([action, timestamp])
 }
 
 model OperationalEvent {
@@ -1097,6 +1106,7 @@ model TicketGovernance {
   watchers               TicketWatcher[]
 
   @@index([ticketId])
+  @@index([contractId])
   @@index([status, slaDeadline])
 }
 
@@ -1158,6 +1168,8 @@ model GoalAction {
   dueDate        DateTime?
   responsibleId  String
   goal           Goal           @relation(fields: [goalId], references: [id], onDelete: Restrict)
+
+  @@index([goalId])
 }
 
 model Attachment {

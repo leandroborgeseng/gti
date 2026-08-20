@@ -23,7 +23,6 @@ import {
   onlyDigitsCpf,
   type EditUserFormValues
 } from "@/modules/users/user-schemas";
-import { UserForm } from "@/components/actions/user-form";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -33,6 +32,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { DataTable } from "@/components/tables/data-table";
+import dynamic from "next/dynamic";
+
+const UserForm = dynamic(
+  () => import("@/components/actions/user-form").then((m) => ({ default: m.UserForm })),
+  { ssr: false }
+);
 
 const columnHelper = createColumnHelper<UserRecord>();
 
@@ -822,19 +827,21 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
         <DataTable columns={columns} data={sortedUsers} searchPlaceholder="Pesquisar por nome, e-mail, órgão…" />
       </section>
 
-      <Modal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        title="Novo usuário"
-        description="Contas criadas pela administração já ficam aprovadas. No primeiro acesso, o usuário será obrigado a trocar a senha inicial."
-      >
-        <UserForm
-          onSuccess={() => {
-            setCreateOpen(false);
-            void qc.invalidateQueries({ queryKey: queryKeys.users });
-          }}
-        />
-      </Modal>
+      {createOpen ? (
+        <Modal
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          title="Novo usuário"
+          description="Contas criadas pela administração já ficam aprovadas. No primeiro acesso, o usuário será obrigado a trocar a senha inicial."
+        >
+          <UserForm
+            onSuccess={() => {
+              setCreateOpen(false);
+              void qc.invalidateQueries({ queryKey: queryKeys.users });
+            }}
+          />
+        </Modal>
+      ) : null}
 
       <Modal
         open={Boolean(editUser)}

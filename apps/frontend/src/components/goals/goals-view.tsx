@@ -9,12 +9,17 @@ import { useMemo, useState } from "react";
 import type { Goal, ProjectListItem, UserRecord } from "@/lib/api";
 import { getGoals } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import { GoalCreateForm } from "@/components/actions/goal-create-form";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
+import dynamic from "next/dynamic";
+
+const GoalCreateForm = dynamic(
+  () => import("@/components/actions/goal-create-form").then((m) => ({ default: m.GoalCreateForm })),
+  { ssr: false }
+);
 
 const statusLabel: Record<string, string> = {
   PLANNED: "Planejada",

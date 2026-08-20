@@ -7,13 +7,17 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import { DatabaseBackup } from "lucide-react";
 import type { UserRecord } from "@/lib/api";
-import { UsersView } from "@/components/users/users-view";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const panelFallback = (
   <p className="py-8 text-center text-sm text-muted-foreground">Carregando painel…</p>
+);
+
+const UsersView = dynamic(
+  () => import("@/components/users/users-view").then((m) => ({ default: m.UsersView })),
+  { loading: () => panelFallback }
 );
 
 const OrganizationsAdminPanel = dynamic(

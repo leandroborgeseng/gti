@@ -1456,8 +1456,7 @@ export class ContractsService {
         organization: { select: { id: true, name: true, acronym: true, active: true } },
         contractTypeCatalog: { select: { id: true, name: true, acronym: true, legacyEnum: true } },
         hiringType: { select: { id: true, name: true } },
-        glpiGroups: { orderBy: { glpiGroupName: "asc" } },
-        _count: { select: { amendments: true } }
+        _count: { select: { amendments: true, glpiGroups: true } }
       },
       orderBy: { createdAt: "desc" }
     });
