@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { queryKeys } from "@/lib/query-keys";
 import { formatCpfDisplay, isValidCpf, onlyDigitsCpf } from "@/modules/users/user-schemas";
 
 const requestAccessSchema = z
@@ -76,7 +77,7 @@ const EXTERNAL_FUNCTION_LABELS: Record<string, string> = {
 
 export default function SolicitarAcessoPage(): JSX.Element {
   const optionsQ = useQuery({
-    queryKey: ["auth", "register-options"],
+    queryKey: queryKeys.authRegisterOptions,
     queryFn: async () => {
       const r = await fetch("/api/auth/register-options");
       if (!r.ok) throw new Error("Não foi possível carregar órgãos e empresas.");
