@@ -19,6 +19,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Corrigido
 
+- **Banco / Prisma**: alinhamento de drift (índice de consumo por contrato, nomes de índices/FK truncados pelo Postgres e defaults de configuração) para o `migrate deploy` e o schema ficarem consistentes.
 - Troca obrigatória de senha no primeiro acesso: após login com senha provisória a sessão fica autenticada e restrita só à definição da nova senha (e sair). A tela pede apenas «Nova senha» e «Confirmar nova senha» (com ícone de olho e regras claras), sem pedir de novo a senha provisória. Ao concluir, a sessão é renovada e o usuário entra no SIGTI sem novo login. Corrigido o erro «Não autenticado» na primeira tentativa.
 - Percentuais de cumprimento das funcionalidades passam a exibir sempre duas casas decimais no padrão brasileiro (ex.: `0,00%`, `37,48%`), sem alterar o cálculo interno (ticket 75).
 - Cabeçalho fixo do detalhe do contrato deixa de sobrepor o cabeçalho principal do SIGTI; botões de ação permanecem acessíveis na faixa fixa (ticket 76).
