@@ -2,9 +2,10 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { getMyPermissions, regenerateContractInternalCode } from "@/lib/api";
+import { regenerateContractInternalCode } from "@/lib/api";
+import { useMyPermissions } from "@/hooks/use-my-permissions";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
@@ -18,19 +19,15 @@ type Props = {
 /** Ação excepcional, restrita a ADMIN, que não reutiliza o sequencial do código anterior. */
 export function ContractInternalCodeRegenerateButton({ contractId, internalCode }: Props): JSX.Element | null {
   const router = useRouter();
-  const [canRegenerate, setCanRegenerate] = useState<boolean | undefined>();
+  const permissionsQuery = useMyPermissions();
+  const canRegenerate = permissionsQuery.isError
+    ? false
+    : permissionsQuery.data
+      ? permissionsQuery.data.role === "ADMIN" &&
+        permissionsQuery.data.keys.includes("contracts.internal_code.regenerate")
+      : undefined;
   const [open, setOpen] = useState(false);
   const [justification, setJustification] = useState("");
-
-  useEffect(() => {
-    void getMyPermissions()
-      .then((permissions) =>
-        setCanRegenerate(
-          permissions.role === "ADMIN" && permissions.keys.includes("contracts.internal_code.regenerate")
-        )
-      )
-      .catch(() => setCanRegenerate(false));
-  }, []);
 
   const mutation = useMutation({
     mutationFn: () => regenerateContractInternalCode(contractId, justification.trim()),

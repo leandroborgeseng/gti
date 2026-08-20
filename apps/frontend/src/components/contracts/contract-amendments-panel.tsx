@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import type {
-  AuthMe,
   Contract,
   ContractAmendment,
   ContractAmendmentItemAction,
@@ -17,9 +16,11 @@ import type {
 import {
   cancelContractAmendment,
   createContractAmendment,
-  getAuthMe,
   getContractPricingCatalog
 } from "@/lib/api";
+import { useAuthMe } from "@/hooks/use-auth-me";
+import { queryKeys } from "@/lib/query-keys";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
 import { formatBrl } from "@/lib/format-brl";
@@ -138,16 +139,25 @@ function draftFromItem(item: ContractPricingItem): DraftItem {
 
 export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Element {
   const router = useRouter();
-  const [role, setRole] = useState<string | null | undefined>(undefined);
+  const meQuery = useAuthMe();
+  const role = meQuery.isError ? null : meQuery.data?.role;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [cancelFor, setCancelFor] = useState<string | null>(null);
   const [cancelJustification, setCancelJustification] = useState("");
-  const [catalog, setCatalog] = useState<{ types: Array<{ id: string; label: string }>; units: Array<{ id: string; label: string }> } | null>(
-    null
-  );
+  const catalogQuery = useQuery({
+    queryKey: queryKeys.contractPricingCatalog,
+    queryFn: getContractPricingCatalog,
+    staleTime: 10 * 60_000
+  });
+  const catalog = catalogQuery.data
+    ? {
+        types: catalogQuery.data.types.filter((t) => t.active),
+        units: catalogQuery.data.units.filter((u) => u.active)
+      }
+    : null;
 
   const [type, setType] = useState<ContractAmendmentType>("TERMO_ADITIVO");
   const [referenceCode, setReferenceCode] = useState("");
@@ -160,15 +170,6 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
     activePricingItems(props.contract.pricingItems).map(draftFromItem)
   );
   const [showForm, setShowForm] = useState(false);
-
-  useEffect(() => {
-    void getAuthMe()
-      .then((m: AuthMe) => setRole(m.role))
-      .catch(() => setRole(null));
-    void getContractPricingCatalog()
-      .then((c) => setCatalog({ types: c.types.filter((t) => t.active), units: c.units.filter((u) => u.active) }))
-      .catch(() => setCatalog(null));
-  }, []);
 
   useEffect(() => {
     setDraftItems(activePricingItems(props.contract.pricingItems).map(draftFromItem));

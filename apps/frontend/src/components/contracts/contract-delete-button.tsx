@@ -2,9 +2,10 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { deleteContract, getMyPermissions } from "@/lib/api";
+import { deleteContract } from "@/lib/api";
+import { useMyPermissions } from "@/hooks/use-my-permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,16 +23,15 @@ type Props = {
  */
 export function ContractDeleteButton({ contractId, contractNumber, contractName }: Props): JSX.Element | null {
   const router = useRouter();
-  const [canDelete, setCanDelete] = useState<boolean | undefined>(undefined);
+  const permissionsQuery = useMyPermissions();
+  const canDelete = permissionsQuery.isError
+    ? false
+    : permissionsQuery.data
+      ? permissionsQuery.data.keys.includes("contracts.delete")
+      : undefined;
   const [open, setOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [justification, setJustification] = useState("");
-
-  useEffect(() => {
-    void getMyPermissions()
-      .then((permissions) => setCanDelete(permissions.keys.includes("contracts.delete")))
-      .catch(() => setCanDelete(false));
-  }, []);
 
   const mut = useMutation({
     mutationFn: () =>

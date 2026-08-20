@@ -11,6 +11,7 @@ import {
   updateNotificationTemplate,
   type NotificationTemplateRecord
 } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,12 +33,14 @@ const emptyForm = {
 export function NotificationTemplatesAdminPanel(): JSX.Element {
   const qc = useQueryClient();
   const q = useQuery({
-    queryKey: ["notification-templates", true],
-    queryFn: () => getNotificationTemplates(true)
+    queryKey: queryKeys.notificationTemplates(true),
+    queryFn: () => getNotificationTemplates(true),
+    staleTime: 60_000
   });
   const fieldsQ = useQuery({
-    queryKey: ["notification-mail-merge"],
-    queryFn: getNotificationMailMergeFields
+    queryKey: queryKeys.notificationMailMerge,
+    queryFn: getNotificationMailMergeFields,
+    staleTime: 30 * 60_000
   });
   const [editing, setEditing] = useState<NotificationTemplateRecord | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -54,7 +57,7 @@ export function NotificationTemplatesAdminPanel(): JSX.Element {
       toast.success(editing ? "Modelo atualizado." : "Modelo criado.");
       setEditing(null);
       setForm(emptyForm);
-      void qc.invalidateQueries({ queryKey: ["notification-templates"] });
+      void qc.invalidateQueries({ queryKey: ["gestao", "notification-templates"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar")
   });
@@ -63,7 +66,7 @@ export function NotificationTemplatesAdminPanel(): JSX.Element {
     mutationFn: (id: string) => deactivateNotificationTemplate(id),
     onSuccess: () => {
       toast.success("Modelo inativado.");
-      void qc.invalidateQueries({ queryKey: ["notification-templates"] });
+      void qc.invalidateQueries({ queryKey: ["gestao", "notification-templates"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro")
   });

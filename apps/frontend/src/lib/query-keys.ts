@@ -59,5 +59,14 @@ export const queryKeys = {
   auditRetentionIndicators: ["gestao", "admin", "audit-retention-indicators"] as const,
   auditRetentionRuns: ["gestao", "admin", "audit-retention-runs"] as const,
   emailOutboundConfig: ["gestao", "admin", "email-outbound"] as const,
-  emailOutboundLogs: ["gestao", "admin", "email-outbound-logs"] as const
+  emailOutboundLogs: ["gestao", "admin", "email-outbound-logs"] as const,
+  /** Notificações de um contrato. */
+  contractNotifications: (contractId: string) => ["gestao", "contract-notifications", contractId] as const,
+  contractNotification: (id: string) => ["gestao", "contract-notification", id] as const,
+  notificationTemplates: (includeInactive: boolean) =>
+    ["gestao", "notification-templates", includeInactive] as const,
+  notificationMailMerge: ["gestao", "notification-mail-merge"] as const,
+  myContractNotifications: ["gestao", "my-contract-notifications"] as const,
+  controladoriaCasesAdmin: ["gestao", "admin", "controladoria-cases"] as const,
+  authRegisterOptions: ["auth", "register-options"] as const
 } as const;

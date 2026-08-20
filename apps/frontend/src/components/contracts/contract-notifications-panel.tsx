@@ -51,12 +51,13 @@ type Props = { contractId: string };
 export function ContractNotificationsPanel({ contractId }: Props): JSX.Element {
   const qc = useQueryClient();
   const listQ = useQuery({
-    queryKey: ["contract-notifications", contractId],
+    queryKey: queryKeys.contractNotifications(contractId),
     queryFn: () => getContractNotifications(contractId)
   });
   const templatesQ = useQuery({
-    queryKey: ["notification-templates", false],
-    queryFn: () => getNotificationTemplates(false)
+    queryKey: queryKeys.notificationTemplates(false),
+    queryFn: () => getNotificationTemplates(false),
+    staleTime: 5 * 60_000
   });
   const usersQ = useQuery({ queryKey: queryKeys.users, queryFn: getUsers, staleTime: 60_000 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -149,15 +150,15 @@ export function ContractNotificationsPanel({ contractId }: Props): JSX.Element {
   }
 
   const detailQ = useQuery({
-    queryKey: ["contract-notification", selectedId],
+    queryKey: queryKeys.contractNotification(selectedId ?? "none"),
     queryFn: () => getContractNotification(selectedId!),
     enabled: Boolean(selectedId)
   });
   const selected = detailQ.data ?? (listQ.data ?? []).find((n) => n.id === selectedId) ?? null;
 
   function refresh() {
-    void qc.invalidateQueries({ queryKey: ["contract-notifications", contractId] });
-    if (selectedId) void qc.invalidateQueries({ queryKey: ["contract-notification", selectedId] });
+    void qc.invalidateQueries({ queryKey: queryKeys.contractNotifications(contractId) });
+    if (selectedId) void qc.invalidateQueries({ queryKey: queryKeys.contractNotification(selectedId) });
   }
 
   const createMut = useMutation({

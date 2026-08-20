@@ -87,9 +87,21 @@ function EditUserPanel({
   onClose: () => void;
 }): JSX.Element {
   const qc = useQueryClient();
-  const qOrganizations = useQuery({ queryKey: queryKeys.organizations, queryFn: getOrganizations });
-  const qProfiles = useQuery({ queryKey: queryKeys.accessProfiles, queryFn: () => getAccessProfiles(false) });
-  const qSuppliers = useQuery({ queryKey: queryKeys.suppliers, queryFn: getSuppliers });
+  const qOrganizations = useQuery({
+    queryKey: queryKeys.organizations,
+    queryFn: getOrganizations,
+    staleTime: 10 * 60_000
+  });
+  const qProfiles = useQuery({
+    queryKey: queryKeys.accessProfiles,
+    queryFn: () => getAccessProfiles(false),
+    staleTime: 10 * 60_000
+  });
+  const qSuppliers = useQuery({
+    queryKey: queryKeys.suppliers,
+    queryFn: getSuppliers,
+    staleTime: 5 * 60_000
+  });
   const qContracts = useQuery({ queryKey: queryKeys.contracts, queryFn: getContracts, staleTime: 60_000 });
   const activeOrganizations = useMemo(
     () => (qOrganizations.data ?? []).filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),

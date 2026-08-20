@@ -5,7 +5,6 @@ import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import {
   fetchSystemBackupBlob,
-  getAuthMe,
   getS3BackupStatus,
   getSystemBackupInfo,
   importSystemBackup,
@@ -18,6 +17,7 @@ import {
   type SystemBackupInfo
 } from "@/lib/api";
 import { formatLoadError } from "@/lib/api-load";
+import { useAuthMe } from "@/hooks/use-auth-me";
 import { BACKUP_RESTORE_CONFIRM_PHRASE } from "@/lib/system-backup-constants";
 
 type AuthState =
@@ -117,7 +117,12 @@ const btnDangerClass =
   "rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-800 disabled:opacity-60";
 
 export default function BackupPage(): JSX.Element {
-  const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+  const meQuery = useAuthMe();
+  const auth: AuthState = meQuery.isPending
+    ? { status: "loading" }
+    : meQuery.isError
+      ? { status: "error", message: formatLoadError(meQuery.error) }
+      : { status: "ok", role: meQuery.data.role };
   const [info, setInfo] = useState<SystemBackupInfo | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
@@ -134,12 +139,6 @@ export default function BackupPage(): JSX.Element {
   const [restoreKey, setRestoreKey] = useState("");
   const [s3Confirm, setS3Confirm] = useState("");
   const [s3RestoreUploads, setS3RestoreUploads] = useState(true);
-
-  useEffect(() => {
-    void getAuthMe()
-      .then((m) => setAuth({ status: "ok", role: m.role }))
-      .catch((e) => setAuth({ status: "error", message: formatLoadError(e) }));
-  }, []);
 
   const loadS3 = useCallback(async () => {
     try {

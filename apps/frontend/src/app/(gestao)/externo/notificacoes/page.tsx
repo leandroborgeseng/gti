@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { getMyContractNotifications } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { Card } from "@/components/ui/card";
 
 export default function ExternoNotificacoesPage(): JSX.Element {
   const q = useQuery({
-    queryKey: ["my-contract-notifications"],
-    queryFn: getMyContractNotifications
+    queryKey: queryKeys.myContractNotifications,
+    queryFn: getMyContractNotifications,
+    staleTime: 30_000
   });
 
   return (

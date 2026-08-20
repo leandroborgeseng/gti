@@ -1,34 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import {
   fetchContractAmendmentsCsvBlob,
   fetchContractsCsvBlob,
   fetchGlosasCsvBlob,
-  fetchMeasurementsCsvBlob,
-  getAuthMe
+  fetchMeasurementsCsvBlob
 } from "@/lib/api";
 import { formatLoadError } from "@/lib/api-load";
+import { useAuthMe } from "@/hooks/use-auth-me";
 
 type ExportKind = "contracts" | "measurements" | "glosas" | "amendments";
 
-type AuthState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ok"; role: string };
-
 export default function ExportsPage(): JSX.Element {
-  const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+  const meQuery = useAuthMe();
   const [busy, setBusy] = useState<ExportKind | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    void getAuthMe()
-      .then((m) => setAuth({ status: "ok", role: m.role }))
-      .catch((e) => setAuth({ status: "error", message: formatLoadError(e) }));
-  }, []);
 
   const download = useCallback(async (kind: ExportKind, fetcher: () => Promise<Blob>, filename: string) => {
     setBusy(kind);
@@ -49,7 +38,7 @@ export default function ExportsPage(): JSX.Element {
     }
   }, []);
 
-  if (auth.status === "loading") {
+  if (meQuery.isPending) {
     return (
       <Card className="p-6">
         <p className="text-sm text-slate-600">Carregando…</p>
@@ -57,16 +46,16 @@ export default function ExportsPage(): JSX.Element {
     );
   }
 
-  if (auth.status === "error") {
+  if (meQuery.isError) {
     return (
       <Card className="space-y-4 p-6">
         <h1 className="text-lg font-semibold text-slate-900">Exportações</h1>
-        <DataLoadAlert messages={[auth.message]} title="Não foi possível confirmar a sessão" />
+        <DataLoadAlert messages={[formatLoadError(meQuery.error)]} title="Não foi possível confirmar a sessão" />
       </Card>
     );
   }
 
-  const { role } = auth;
+  const role = meQuery.data.role;
   if (role !== "ADMIN" && role !== "EDITOR") {
     return (
       <Card className="p-6">

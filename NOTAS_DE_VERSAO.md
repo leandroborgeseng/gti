@@ -7,6 +7,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 ### Alterado
 
 - **Carregamento mais leve na navegação**: ao trocar de página, a barra fina no topo indica progresso sem bloquear cliques. Overlay em tela cheia fica só para operações que exigem aguardar (ex.: troca de perfil/órgão). Administração carrega cada aba sob demanda; o menu prepara a próxima rota ao passar o mouse. Sessão e permissões são reaproveitadas em cache no browser e, por alguns segundos, no servidor — menos espera em cliques e aberturas de tela.
+- **Ficha do contrato e rotas pesadas**: os painéis das abas do contrato (consumos, GLPI, módulos, notificações etc.) só carregam quando a aba é aberta. Mais telas (medições, glosas, projetos, módulos, prazos, chamados…) mostram feedback imediato ao navegar.
 
 ### Adicionado
 

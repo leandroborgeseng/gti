@@ -1,33 +1,22 @@
 "use client";
 
 import type { Route } from "next";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 import { prefetchContractFormCatalogs } from "@/modules/contracts/prefetch-contract-form-catalogs";
-import { ContractAmendmentsPanel } from "@/components/contracts/contract-amendments-panel";
-import { ContractDeleteButton } from "@/components/contracts/contract-delete-button";
 import { formatGlpiGroupsSummary } from "@/components/contracts/contract-glpi-groups-field";
-import { ContractFormModal } from "@/components/contracts/contract-form-modal";
-import { ContractGlpiTicketsPanel } from "@/components/contracts/contract-glpi-tickets-panel";
-import { ContractImplantationProportionPanel } from "@/components/contracts/contract-implantation-proportion-panel";
+import { ContractDeleteButton } from "@/components/contracts/contract-delete-button";
 import { ContractInternalCodeRegenerateButton } from "@/components/contracts/contract-internal-code-regenerate-button";
-import { ContractConsumptionsPanel } from "@/components/contracts/contract-consumptions-panel";
-import { ContractItemChangeHistoryPanel } from "@/components/contracts/contract-item-change-history-panel";
-import { ContractNotificationsPanel } from "@/components/contracts/contract-notifications-panel";
-import { ContractOccurrencesPanel } from "@/components/contracts/contract-occurrences-panel";
-import { ContractPricingItemsPanel } from "@/components/contracts/contract-pricing-items-panel";
-import { ContractSchedulesPanel } from "@/components/contracts/contract-schedules-panel";
-import { ContractStructureEditor } from "@/components/contracts/contract-structure-editor";
-import { ContractValidationGroupsPanel } from "@/components/contracts/contract-validation-groups-panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatBrl } from "@/lib/format-brl";
-import { getMyPermissions, type Contract } from "@/lib/api";
-import { queryKeys } from "@/lib/query-keys";
+import type { Contract } from "@/lib/api";
+import { useMyPermissions } from "@/hooks/use-my-permissions";
 import {
   CONTRACT_DETAIL_TABS,
   resolveContractDetailTab,
@@ -35,6 +24,93 @@ import {
   type ContractDetailTabId
 } from "@/modules/contracts/contract-detail-tabs";
 import { contractStatusLabel } from "@/modules/contracts/contract-status";
+
+const panelFallback = (
+  <p className="py-8 text-center text-sm text-muted-foreground">Carregando painel…</p>
+);
+
+const ContractFormModal = dynamic(
+  () =>
+    import("@/components/contracts/contract-form-modal").then((m) => ({ default: m.ContractFormModal })),
+  { ssr: false }
+);
+const ContractPricingItemsPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-pricing-items-panel").then((m) => ({
+      default: m.ContractPricingItemsPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractImplantationProportionPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-implantation-proportion-panel").then((m) => ({
+      default: m.ContractImplantationProportionPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractAmendmentsPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-amendments-panel").then((m) => ({
+      default: m.ContractAmendmentsPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractOccurrencesPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-occurrences-panel").then((m) => ({
+      default: m.ContractOccurrencesPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractConsumptionsPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-consumptions-panel").then((m) => ({
+      default: m.ContractConsumptionsPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractGlpiTicketsPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-glpi-tickets-panel").then((m) => ({
+      default: m.ContractGlpiTicketsPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractSchedulesPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-schedules-panel").then((m) => ({
+      default: m.ContractSchedulesPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractNotificationsPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-notifications-panel").then((m) => ({
+      default: m.ContractNotificationsPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractValidationGroupsPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-validation-groups-panel").then((m) => ({
+      default: m.ContractValidationGroupsPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractStructureEditor = dynamic(
+  () =>
+    import("@/components/contracts/contract-structure-editor").then((m) => ({
+      default: m.ContractStructureEditor
+    })),
+  { loading: () => panelFallback }
+);
+const ContractItemChangeHistoryPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-item-change-history-panel").then((m) => ({
+      default: m.ContractItemChangeHistoryPanel
+    })),
+  { loading: () => panelFallback }
+);
 
 export type ContractDetailLabels = {
   formalDisplay: string;
@@ -70,11 +146,7 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const qc = useQueryClient();
-  const qPerms = useQuery({
-    queryKey: queryKeys.myPermissions,
-    queryFn: getMyPermissions,
-    staleTime: 10 * 60_000
-  });
+  const qPerms = useMyPermissions();
   const permissionKeys = qPerms.data?.keys ?? null;
   const canEditContract = Boolean(permissionKeys?.includes("contracts.edit"));
   const canViewFinancial =
@@ -134,7 +206,6 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
     [pathname, permissionKeys, router, searchParams]
   );
 
-  // Se a aba da URL ficar inválida após carregar permissões, corrige o parâmetro.
   useEffect(() => {
     if (qPerms.isPending) return;
     if (urlTab && urlTab !== activeTab) {
@@ -176,14 +247,16 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
         </Link>
       </div>
 
-      <ContractFormModal
-        open={editOpen}
-        contract={contract}
-        onClose={() => setEditOpen(false)}
-        onSuccess={() => {
-          router.refresh();
-        }}
-      />
+      {editOpen ? (
+        <ContractFormModal
+          open={editOpen}
+          contract={contract}
+          onClose={() => setEditOpen(false)}
+          onSuccess={() => {
+            router.refresh();
+          }}
+        />
+      ) : null}
 
       <Card className="sticky top-[var(--app-header-height,3.75rem)] z-20 border-slate-200/90 bg-card/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/90 sm:p-4 md:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

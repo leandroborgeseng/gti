@@ -4,6 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { listAllControladoriaCases, type ContractControladoriaCaseStatus } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 
@@ -31,8 +32,9 @@ function formatDateBr(value?: string | null): string {
 
 export function ControladoriaCasesAdminPanel(): JSX.Element {
   const { data, isLoading, error } = useQuery({
-    queryKey: ["controladoria-cases", "admin"],
-    queryFn: () => listAllControladoriaCases(200)
+    queryKey: queryKeys.controladoriaCasesAdmin,
+    queryFn: () => listAllControladoriaCases(200),
+    staleTime: 60_000
   });
 
   return (

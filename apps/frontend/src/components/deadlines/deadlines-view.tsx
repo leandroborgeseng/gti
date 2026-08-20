@@ -11,8 +11,10 @@ import type {
   DeadlineOrigin,
   DeadlineStatus
 } from "@/lib/api";
-import { getAuthMe, getDeadlines, getMyPermissions, recalculateDeadlines } from "@/lib/api";
+import { getDeadlines, recalculateDeadlines } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import { useAuthMe } from "@/hooks/use-auth-me";
+import { useMyPermissions } from "@/hooks/use-my-permissions";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
@@ -84,16 +86,8 @@ export function DeadlinesView({ initial, dataLoadErrors = [] }: Props): JSX.Elem
     initialData: key === "|||" ? initial : undefined
   });
 
-  const { data: me } = useQuery({
-    queryKey: queryKeys.authMe,
-    queryFn: getAuthMe
-  });
-
-  const { data: permissions } = useQuery({
-    queryKey: queryKeys.myPermissions,
-    queryFn: getMyPermissions,
-    staleTime: 10 * 60_000
-  });
+  const { data: me } = useAuthMe();
+  const { data: permissions } = useMyPermissions();
 
   const canRecalculate =
     me?.role === "ADMIN" || Boolean(permissions?.keys?.includes("deadlines.recalculate"));

@@ -8,20 +8,20 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ProjectCollection, ProjectListItem } from "@/lib/api";
 import {
   createProject,
   createProjectCollection,
   deleteProject,
   deleteProjectCollection,
-  getAuthMe,
   getProjectCollections,
   getProjects,
   getProjectSupervisors,
   updateProject,
   updateProjectCollection
 } from "@/lib/api";
+import { useAuthMe } from "@/hooks/use-auth-me";
 import { ProjectsOverviewDashboard } from "@/components/projects/projects-overview-dashboard";
 import { queryKeys } from "@/lib/query-keys";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
@@ -177,7 +177,8 @@ function ProjectScheduleSummary({ project }: { project: ProjectListItem }): JSX.
 export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [] }: Props): JSX.Element {
   const router = useRouter();
   const qc = useQueryClient();
-  const [role, setRole] = useState<string | null | undefined>(undefined);
+  const meQuery = useAuthMe();
+  const role = meQuery.isError ? null : meQuery.data?.role;
   const [importOpen, setImportOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectListItem | null>(null);
@@ -191,16 +192,11 @@ export function ProjectsListView({ projects: initialProjects, dataLoadErrors = [
   const [editingCollection, setEditingCollection] = useState<ProjectCollection | null>(null);
   const [collectionName, setCollectionName] = useState("");
 
-  useEffect(() => {
-    void getAuthMe()
-      .then((m) => setRole(m.role))
-      .catch(() => setRole(null));
-  }, []);
-
   const { data: projects = initialProjects } = useQuery({
     queryKey: queryKeys.projects,
     queryFn: getProjects,
-    initialData: initialProjects
+    initialData: initialProjects,
+    staleTime: 60_000
   });
 
   const { data: projectCollections = [] } = useQuery({

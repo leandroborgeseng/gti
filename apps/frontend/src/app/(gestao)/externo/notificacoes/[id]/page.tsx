@@ -11,6 +11,7 @@ import {
   saveNotificationResponse
 } from "@/lib/api";
 import { authHeadersForApi } from "@/lib/auth-token";
+import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -104,7 +105,7 @@ export default function ExternoNotificacaoDetailPage(): JSX.Element {
   const id = String(params?.id ?? "");
   const qc = useQueryClient();
   const q = useQuery({
-    queryKey: ["contract-notification", id],
+    queryKey: queryKeys.contractNotification(id),
     queryFn: () => getContractNotification(id),
     enabled: Boolean(id)
   });
@@ -202,7 +203,7 @@ export default function ExternoNotificacaoDetailPage(): JSX.Element {
     mutationFn: () => acknowledgeContractNotification(id),
     onSuccess: () => {
       toast.success("Ciência registrada.");
-      void qc.invalidateQueries({ queryKey: ["contract-notification", id] });
+      void qc.invalidateQueries({ queryKey: queryKeys.contractNotification(id) });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro")
   });
@@ -216,7 +217,7 @@ export default function ExternoNotificacaoDetailPage(): JSX.Element {
       }),
     onSuccess: (_r, submit) => {
       toast.success(submit ? "Manifestação enviada." : "Rascunho salvo.");
-      void qc.invalidateQueries({ queryKey: ["contract-notification", id] });
+      void qc.invalidateQueries({ queryKey: queryKeys.contractNotification(id) });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro")
   });
