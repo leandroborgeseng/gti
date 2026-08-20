@@ -91,16 +91,7 @@ async function readJsonBody(req: Request): Promise<unknown> {
   }
 }
 
-async function requireUser(req: Request): Promise<JwtUser | null> {
-  const auth = req.headers.get("authorization");
-  let token = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  // Navegação direta (Imprimir/PDF em <a href>) envia cookie, não Bearer.
-  if (!token) {
-    const cookie = req.headers.get("cookie") ?? "";
-    const match = cookie.match(new RegExp(`(?:^|;\\s*)${GTI_TOKEN_COOKIE}=([^;]*)`));
-    token = match?.[1] ? decodeURIComponent(match[1]) : "";
-  }
-  if (!token) return null;
+async function requireUserUncached(req: Request, token: string): Promise<JwtUser | null> {
   try {
     const { payload } = await jwtVerify(token, jwtSecretBytes());
     const sub = typeof payload.sub === "string" ? payload.sub : "";
@@ -149,6 +140,87 @@ async function requireUser(req: Request): Promise<JwtUser | null> {
     if (e instanceof HttpException) throw e;
     return null;
   }
+}
+
+/** Cache curto entre requisições paralelas da mesma sessão (ex.: várias APIs no carregamento da página). */
+const AUTH_BUNDLE_TTL_MS = 5_000;
+type AuthBundleCache = {
+  expiresAt: number;
+  user: JwtUser;
+  permissionKeys: string[];
+  permissionsResolved: boolean;
+};
+const authBundleCache = new Map<string, AuthBundleCache>();
+
+function authTokenCacheKey(token: string): string {
+  return `${token.length}:${token.slice(0, 24)}:${token.slice(-24)}`;
+}
+
+function extractBearerOrCookieToken(req: Request): string {
+  const auth = req.headers.get("authorization");
+  let token = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  // Navegação direta (Imprimir/PDF em <a href>) envia cookie, não Bearer.
+  if (!token) {
+    const cookie = req.headers.get("cookie") ?? "";
+    const match = cookie.match(new RegExp(`(?:^|;\\s*)${GTI_TOKEN_COOKIE}=([^;]*)`));
+    token = match?.[1] ? decodeURIComponent(match[1]) : "";
+  }
+  return token;
+}
+
+function cloneJwtUser(user: JwtUser): JwtUser {
+  return {
+    ...user,
+    effectivePermissionKeys: new Set(),
+    authorizedContractIds: [...user.authorizedContractIds]
+  };
+}
+
+async function requireUser(req: Request): Promise<JwtUser | null> {
+  const token = extractBearerOrCookieToken(req);
+  if (!token) return null;
+  const cacheKey = authTokenCacheKey(token);
+  const hit = authBundleCache.get(cacheKey);
+  if (hit && hit.expiresAt > Date.now()) {
+    return cloneJwtUser(hit.user);
+  }
+  const user = await requireUserUncached(req, token);
+  if (!user) {
+    authBundleCache.delete(cacheKey);
+    return null;
+  }
+  const prev = authBundleCache.get(cacheKey);
+  authBundleCache.set(cacheKey, {
+    expiresAt: Date.now() + AUTH_BUNDLE_TTL_MS,
+    user: cloneJwtUser(user),
+    permissionKeys: prev && prev.expiresAt > Date.now() ? prev.permissionKeys : [],
+    permissionsResolved: prev && prev.expiresAt > Date.now() ? prev.permissionsResolved : false
+  });
+  return user;
+}
+
+async function resolveEffectivePermissionsCached(req: Request, user: JwtUser): Promise<{
+  keys: string[];
+  usingLegacy: boolean;
+}> {
+  const token = extractBearerOrCookieToken(req);
+  const cacheKey = token ? authTokenCacheKey(token) : "";
+  const hit = cacheKey ? authBundleCache.get(cacheKey) : undefined;
+  if (hit && hit.expiresAt > Date.now() && hit.permissionsResolved) {
+    return { keys: hit.permissionKeys, usingLegacy: hit.permissionKeys.length === 0 };
+  }
+  const effectivePermissions = await gestaoPermissions.resolveEffectivePermissions(user.sub, user.profileId);
+  const keys = effectivePermissions.keys;
+  const usingLegacy = keys.length === 0;
+  if (cacheKey) {
+    authBundleCache.set(cacheKey, {
+      expiresAt: Date.now() + AUTH_BUNDLE_TTL_MS,
+      user: cloneJwtUser(user),
+      permissionKeys: keys,
+      permissionsResolved: true
+    });
+  }
+  return { keys, usingLegacy };
 }
 
 function assertRoles(user: JwtUser, roles: UserRole[]): void {
@@ -472,9 +544,9 @@ export async function dispatchGestaoApi(req: Request, pathSegments: string[]): P
     return jsonErr(401, "Não autenticado");
   }
 
-  const effectivePermissions = await gestaoPermissions.resolveEffectivePermissions(user.sub, user.profileId);
+  const effectivePermissions = await resolveEffectivePermissionsCached(req, user);
   user.effectivePermissionKeys = new Set(effectivePermissions.keys);
-  user.usingLegacyPermissionFallback = effectivePermissions.keys.length === 0;
+  user.usingLegacyPermissionFallback = effectivePermissions.usingLegacy;
 
   const actor = toRequestActor(
     {

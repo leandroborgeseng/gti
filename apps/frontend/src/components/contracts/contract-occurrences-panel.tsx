@@ -23,6 +23,7 @@ import {
   type CreateContractOccurrencePayload,
   type UpdateContractControladoriaCasePayload
 } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -380,8 +381,9 @@ export function ContractOccurrencesPanel({ contract }: Props): JSX.Element {
   const [caseDraft, setCaseDraft] = useState<UpdateContractControladoriaCasePayload>({});
 
   const { data: permissions } = useQuery({
-    queryKey: ["permissions", "me"],
-    queryFn: getMyPermissions
+    queryKey: queryKeys.myPermissions,
+    queryFn: getMyPermissions,
+    staleTime: 10 * 60_000
   });
   const permissionKeys = permissions?.keys ?? [];
   const canEdit = permissionKeys.includes("contracts.edit");

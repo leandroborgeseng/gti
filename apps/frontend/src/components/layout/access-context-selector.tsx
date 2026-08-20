@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronsUpDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -37,7 +37,6 @@ function syncFromMe(data: AuthMe): { profileId: string; organizationValue: strin
 }
 
 export function AccessContextSelector(): JSX.Element | null {
-  const qc = useQueryClient();
   const globalLoading = useGlobalLoading();
   const [open, setOpen] = useState(false);
   const [profileId, setProfileId] = useState<string>("");
@@ -45,13 +44,15 @@ export function AccessContextSelector(): JSX.Element | null {
 
   const meQuery = useQuery({
     queryKey: queryKeys.authMe,
-    queryFn: getAuthMe
+    queryFn: getAuthMe,
+    staleTime: 5 * 60_000
   });
 
   const orgsQuery = useQuery({
     queryKey: queryKeys.organizations,
     queryFn: getOrganizations,
-    enabled: Boolean(meQuery.data?.allOrganizations)
+    enabled: Boolean(meQuery.data?.allOrganizations),
+    staleTime: 10 * 60_000
   });
 
   const me = meQuery.data;
@@ -88,7 +89,7 @@ export function AccessContextSelector(): JSX.Element | null {
       globalLoading.begin("Alterando contexto...");
       setOpen(false);
       try {
-        await qc.invalidateQueries();
+        // Reload completo já reconstrói o cache; evita invalidateQueries() global (refetch em massa).
         const permissions = await getMyPermissions().catch(() => null);
         const path = typeof window !== "undefined" ? window.location.pathname : "/dashboard";
         let target = path;

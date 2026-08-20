@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { getContracts } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { Card } from "@/components/ui/card";
 
 export default function ExternoContratosPage(): JSX.Element {
-  const q = useQuery({ queryKey: ["contracts"], queryFn: getContracts });
+  const q = useQuery({ queryKey: queryKeys.contracts, queryFn: getContracts, staleTime: 60_000 });
 
   return (
     <div className="space-y-4">

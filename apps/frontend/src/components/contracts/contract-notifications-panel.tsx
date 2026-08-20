@@ -19,6 +19,7 @@ import {
   type ContractNotificationRecord
 } from "@/lib/api";
 import { authHeadersForApi } from "@/lib/auth-token";
+import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -57,7 +58,7 @@ export function ContractNotificationsPanel({ contractId }: Props): JSX.Element {
     queryKey: ["notification-templates", false],
     queryFn: () => getNotificationTemplates(false)
   });
-  const usersQ = useQuery({ queryKey: ["users"], queryFn: getUsers });
+  const usersQ = useQuery({ queryKey: queryKeys.users, queryFn: getUsers, staleTime: 60_000 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState("");
   const [draftBody, setDraftBody] = useState("");

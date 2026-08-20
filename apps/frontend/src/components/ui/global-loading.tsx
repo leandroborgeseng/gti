@@ -10,7 +10,6 @@ import {
   useState,
   type PropsWithChildren
 } from "react";
-import { useIsFetching, useIsMutating } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -18,7 +17,7 @@ import { cn } from "@/lib/utils";
 type GlobalLoadingContextValue = {
   show: (message?: string) => void;
   hide: () => void;
-  /** Incrementa um bloqueio explícito (ex.: troca de contexto). */
+  /** Bloqueio fullscreen explícito (ex.: troca de contexto, exclusão longa). */
   begin: (message?: string) => void;
   end: () => void;
   active: boolean;
@@ -41,10 +40,19 @@ export function useGlobalLoading(): GlobalLoadingContextValue {
 }
 
 type Props = PropsWithChildren<{
-  /** Se true, acompanha navegação e fetches/mutations globais (sem meta.local). */
+  /**
+   * Se true, mostra uma barra leve no topo ao mudar de rota (não bloqueia cliques).
+   * Overlay fullscreen só via begin()/show() manual.
+   */
   trackNavigation?: boolean;
 }>;
 
+/**
+ * Indicador de carregamento:
+ * - Navegação: barra fina no topo (não bloqueia a UI).
+ * - begin/show: overlay fullscreen (operações que exigem aguardar).
+ * Mutations/fetches locais NÃO disparam overlay — usem spinner no componente.
+ */
 export function GlobalLoadingProvider({ children, trackNavigation = true }: Props): JSX.Element {
   const [manualCount, setManualCount] = useState(0);
   const [message, setMessage] = useState("Carregando...");
@@ -54,51 +62,36 @@ export function GlobalLoadingProvider({ children, trackNavigation = true }: Prop
   const prevPath = useRef(pathname);
   const shownAt = useRef<number | null>(null);
 
-  const fetching = useIsFetching({
-    predicate: (q) => q.meta?.local !== true
-  });
-  const mutating = useIsMutating({
-    predicate: (m) => m.meta?.local !== true
-  });
-
   useEffect(() => {
     if (!trackNavigation) return;
     if (prevPath.current !== pathname) {
       prevPath.current = pathname;
       setNavPending(true);
-      setMessage("Carregando...");
+      const t = window.setTimeout(() => setNavPending(false), 450);
+      return () => window.clearTimeout(t);
     }
   }, [pathname, trackNavigation]);
 
-  useEffect(() => {
-    if (!navPending) return;
-    if (fetching === 0) {
-      const t = window.setTimeout(() => setNavPending(false), 120);
-      return () => window.clearTimeout(t);
-    }
-  }, [navPending, fetching]);
-
-  const autoActive = trackNavigation && (navPending || mutating > 0);
-  const active = manualCount > 0 || autoActive;
+  const blocking = manualCount > 0;
 
   useEffect(() => {
-    if (active) {
+    if (blocking) {
       if (shownAt.current == null) shownAt.current = Date.now();
       const t = window.setTimeout(() => setSlow(true), 4000);
       return () => window.clearTimeout(t);
     }
     shownAt.current = null;
     setSlow(false);
-  }, [active]);
+  }, [blocking]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!blocking) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [active]);
+  }, [blocking]);
 
   const begin = useCallback((msg?: string) => {
     if (msg) setMessage(msg);
@@ -109,29 +102,37 @@ export function GlobalLoadingProvider({ children, trackNavigation = true }: Prop
     setManualCount((c) => Math.max(0, c - 1));
   }, []);
 
-  const show = useCallback(
-    (msg?: string) => {
-      if (msg) setMessage(msg);
-      setManualCount((c) => (c === 0 ? 1 : c));
-    },
-    []
-  );
+  const show = useCallback((msg?: string) => {
+    if (msg) setMessage(msg);
+    setManualCount((c) => (c === 0 ? 1 : c));
+  }, []);
 
   const hide = useCallback(() => {
     setManualCount(0);
   }, []);
 
   const value = useMemo(
-    () => ({ show, hide, begin, end, active }),
-    [show, hide, begin, end, active]
+    () => ({ show, hide, begin, end, active: blocking }),
+    [show, hide, begin, end, blocking]
   );
 
   const label = slow ? "Ainda carregando..." : message;
+  const showNavBar = trackNavigation && navPending && !blocking;
 
   return (
     <GlobalLoadingContext.Provider value={value}>
       {children}
-      {active ? (
+      {showNavBar ? (
+        <div
+          className="pointer-events-none fixed inset-x-0 top-0 z-[90] h-0.5 overflow-hidden bg-transparent"
+          role="progressbar"
+          aria-busy="true"
+          aria-label="Carregando página"
+        >
+          <div className="h-full w-1/3 gti-nav-bar-indeterminate bg-primary" />
+        </div>
+      ) : null}
+      {blocking ? (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/35 backdrop-blur-[1px]"
           role="alertdialog"

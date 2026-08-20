@@ -90,8 +90,9 @@ export function DeadlinesView({ initial, dataLoadErrors = [] }: Props): JSX.Elem
   });
 
   const { data: permissions } = useQuery({
-    queryKey: ["gestao", "my-permissions"],
-    queryFn: getMyPermissions
+    queryKey: queryKeys.myPermissions,
+    queryFn: getMyPermissions,
+    staleTime: 10 * 60_000
   });
 
   const canRecalculate =

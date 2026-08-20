@@ -1,26 +1,98 @@
 "use client";
 
 import type { Route } from "next";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import { DatabaseBackup } from "lucide-react";
 import type { UserRecord } from "@/lib/api";
-import { ContractTypesAdminPanel } from "@/components/admin/contract-types-admin-panel";
-import { HiringTypesAdminPanel } from "@/components/admin/hiring-types-admin-panel";
-import { ItemTypesAdminPanel } from "@/components/admin/item-types-admin-panel";
-import { OrganizationsAdminPanel } from "@/components/admin/organizations-admin-panel";
-import { PermissionsAdminPanel } from "@/components/admin/permissions-admin-panel";
-import { AuditLogsAdminPanel } from "@/components/admin/audit-logs-admin-panel";
-import { ControladoriaCasesAdminPanel } from "@/components/admin/controladoria-cases-admin-panel";
-import { EmailOutboundAdminPanel } from "@/components/admin/email-outbound-admin-panel";
-import { IdentificationMigrationReviewPanel } from "@/components/admin/identification-migration-review-panel";
-import { NotificationTemplatesAdminPanel } from "@/components/admin/notification-templates-admin-panel";
-import { PricingMigrationReviewPanel } from "@/components/admin/pricing-migration-review-panel";
 import { UsersView } from "@/components/users/users-view";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const panelFallback = (
+  <p className="py-8 text-center text-sm text-muted-foreground">Carregando painel…</p>
+);
+
+const OrganizationsAdminPanel = dynamic(
+  () =>
+    import("@/components/admin/organizations-admin-panel").then((m) => ({
+      default: m.OrganizationsAdminPanel
+    })),
+  { loading: () => panelFallback }
+);
+const PermissionsAdminPanel = dynamic(
+  () =>
+    import("@/components/admin/permissions-admin-panel").then((m) => ({
+      default: m.PermissionsAdminPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ItemTypesAdminPanel = dynamic(
+  () =>
+    import("@/components/admin/item-types-admin-panel").then((m) => ({
+      default: m.ItemTypesAdminPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ContractTypesAdminPanel = dynamic(
+  () =>
+    import("@/components/admin/contract-types-admin-panel").then((m) => ({
+      default: m.ContractTypesAdminPanel
+    })),
+  { loading: () => panelFallback }
+);
+const HiringTypesAdminPanel = dynamic(
+  () =>
+    import("@/components/admin/hiring-types-admin-panel").then((m) => ({
+      default: m.HiringTypesAdminPanel
+    })),
+  { loading: () => panelFallback }
+);
+const NotificationTemplatesAdminPanel = dynamic(
+  () =>
+    import("@/components/admin/notification-templates-admin-panel").then((m) => ({
+      default: m.NotificationTemplatesAdminPanel
+    })),
+  { loading: () => panelFallback }
+);
+const IdentificationMigrationReviewPanel = dynamic(
+  () =>
+    import("@/components/admin/identification-migration-review-panel").then((m) => ({
+      default: m.IdentificationMigrationReviewPanel
+    })),
+  { loading: () => panelFallback }
+);
+const PricingMigrationReviewPanel = dynamic(
+  () =>
+    import("@/components/admin/pricing-migration-review-panel").then((m) => ({
+      default: m.PricingMigrationReviewPanel
+    })),
+  { loading: () => panelFallback }
+);
+const ControladoriaCasesAdminPanel = dynamic(
+  () =>
+    import("@/components/admin/controladoria-cases-admin-panel").then((m) => ({
+      default: m.ControladoriaCasesAdminPanel
+    })),
+  { loading: () => panelFallback }
+);
+const EmailOutboundAdminPanel = dynamic(
+  () =>
+    import("@/components/admin/email-outbound-admin-panel").then((m) => ({
+      default: m.EmailOutboundAdminPanel
+    })),
+  { loading: () => panelFallback }
+);
+const AuditLogsAdminPanel = dynamic(
+  () =>
+    import("@/components/admin/audit-logs-admin-panel").then((m) => ({
+      default: m.AuditLogsAdminPanel
+    })),
+  { loading: () => panelFallback }
+);
 
 export const ADMIN_TABS = [
   { id: "usuarios", label: "Usuários" },
@@ -91,72 +163,76 @@ export function AdministracaoView({ users, usersLoadErrors = [] }: Props): JSX.E
         </TabsList>
 
         <TabsContent value="usuarios" className="mt-4">
-          <UsersView users={users} dataLoadErrors={usersLoadErrors} embedded />
+          {activeTab === "usuarios" ? (
+            <UsersView users={users} dataLoadErrors={usersLoadErrors} embedded />
+          ) : null}
         </TabsContent>
 
         <TabsContent value="orgaos" className="mt-4">
-          <OrganizationsAdminPanel />
+          {activeTab === "orgaos" ? <OrganizationsAdminPanel /> : null}
         </TabsContent>
 
         <TabsContent value="permissoes" className="mt-4">
-          <PermissionsAdminPanel />
+          {activeTab === "permissoes" ? <PermissionsAdminPanel /> : null}
         </TabsContent>
 
         <TabsContent value="tipos-itens" className="mt-4">
-          <ItemTypesAdminPanel />
+          {activeTab === "tipos-itens" ? <ItemTypesAdminPanel /> : null}
         </TabsContent>
 
         <TabsContent value="tipos-contrato" className="mt-4">
-          <ContractTypesAdminPanel />
+          {activeTab === "tipos-contrato" ? <ContractTypesAdminPanel /> : null}
         </TabsContent>
 
         <TabsContent value="tipos-contratacao" className="mt-4">
-          <HiringTypesAdminPanel />
+          {activeTab === "tipos-contratacao" ? <HiringTypesAdminPanel /> : null}
         </TabsContent>
 
         <TabsContent value="modelos-notificacao" className="mt-4">
-          <NotificationTemplatesAdminPanel />
+          {activeTab === "modelos-notificacao" ? <NotificationTemplatesAdminPanel /> : null}
         </TabsContent>
 
         <TabsContent value="conferencia-identificacao" className="mt-4">
-          <IdentificationMigrationReviewPanel />
+          {activeTab === "conferencia-identificacao" ? <IdentificationMigrationReviewPanel /> : null}
         </TabsContent>
 
         <TabsContent value="conferencia-precificacao" className="mt-4">
-          <PricingMigrationReviewPanel />
+          {activeTab === "conferencia-precificacao" ? <PricingMigrationReviewPanel /> : null}
         </TabsContent>
 
         <TabsContent value="controladoria" className="mt-4">
-          <ControladoriaCasesAdminPanel />
+          {activeTab === "controladoria" ? <ControladoriaCasesAdminPanel /> : null}
         </TabsContent>
 
         <TabsContent value="email" className="mt-4">
-          <EmailOutboundAdminPanel />
+          {activeTab === "email" ? <EmailOutboundAdminPanel /> : null}
         </TabsContent>
 
         <TabsContent value="auditoria" className="mt-4">
-          <AuditLogsAdminPanel />
+          {activeTab === "auditoria" ? <AuditLogsAdminPanel /> : null}
         </TabsContent>
 
         <TabsContent value="backup" className="mt-4">
-          <Card className="space-y-4 p-6">
-            <div className="flex items-start gap-3">
-              <DatabaseBackup className="mt-0.5 h-8 w-8 shrink-0 text-primary" aria-hidden />
-              <div className="space-y-2">
-                <h2 className="text-lg font-semibold text-foreground">Backup e migração</h2>
-                <p className="text-sm text-muted-foreground">
-                  Exportação e restauração da base PostgreSQL, preferências do sistema, anexos e backup automático S3
-                  continuam na tela dedicada.
-                </p>
-                <Button asChild className="gap-2">
-                  <Link href="/backup">
-                    <DatabaseBackup className="h-4 w-4" />
-                    Abrir Backup e migração
-                  </Link>
-                </Button>
+          {activeTab === "backup" ? (
+            <Card className="space-y-4 p-6">
+              <div className="flex items-start gap-3">
+                <DatabaseBackup className="mt-0.5 h-8 w-8 shrink-0 text-primary" aria-hidden />
+                <div className="space-y-2">
+                  <h2 className="text-lg font-semibold text-foreground">Backup e migração</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Exportação e restauração da base PostgreSQL, preferências do sistema, anexos e backup automático S3
+                    continuam na tela dedicada.
+                  </p>
+                  <Button asChild className="gap-2">
+                    <Link href="/backup">
+                      <DatabaseBackup className="h-4 w-4" />
+                      Abrir Backup e migração
+                    </Link>
+                  </Button>
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          ) : null}
         </TabsContent>
       </Tabs>
     </div>

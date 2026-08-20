@@ -4,10 +4,14 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ## Não publicado
 
+### Alterado
+
+- **Carregamento mais leve na navegação**: ao trocar de página, a barra fina no topo indica progresso sem bloquear cliques. Overlay em tela cheia fica só para operações que exigem aguardar (ex.: troca de perfil/órgão). Administração carrega cada aba sob demanda; o menu prepara a próxima rota ao passar o mouse. Sessão e permissões são reaproveitadas em cache no browser e, por alguns segundos, no servidor — menos espera em cliques e aberturas de tela.
+
 ### Adicionado
 
 - **Solicitar acesso em tela própria** (ticket 89): o login fica só com e-mail, senha, «Esqueci minha senha» e o link «Solicitar acesso». A solicitação pede nome, CPF, e-mail e tipo (Interno com órgão / Externo com empresa e vínculo). Fica «Aguardando aprovação»; na Administração as pendências são destacadas; a recusa exige justificativa e fica na auditoria (sem exclusão silenciosa). Perfis e permissões não são escolhidos pelo solicitante.
-- **Indicador de carregamento em tela cheia** (ticket 90): removida a barra horizontal fixa no topo. Em navegações e operações que bloqueiam a página, aparece overlay semitransparente com círculo girando («Carregando...» / «Ainda carregando...»), bloqueando cliques até concluir (sucesso ou erro). Troca de perfil/órgão usa o mesmo bloqueio até o recarregamento.
+- **Indicador de carregamento**: navegações usam barra leve no topo (sem bloquear a interface). Overlay em tela cheia permanece para operações longas explícitas, como troca de contexto de acesso.
 - **Consumo operacional separado do financeiro** (tickets 91–93): itens com «Controlar consumo» passam a ter unidade e quantidade próprias de consumo (ex.: 12 meses financeiros e 150 horas de saldo). A aba Consumos mostra disponível, utilizado, em validação, estimado em aberto, saldo efetivo e saldo projetado; o percentual usa só o efetivamente utilizado/validado. Lançamentos admitem quantidade estimada (não reduz saldo) e efetivamente consumida, com situações de atividade (levantamento, desenvolvimento, concluído etc.), tanto na aba Consumos quanto a partir de chamados GLPI.
 
 ### Corrigido

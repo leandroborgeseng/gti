@@ -4,11 +4,12 @@ import { BookOpen, LogOut, Megaphone, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PropsWithChildren, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { getAuthMe, getMyPermissions, trackUserAccessEvent } from "@/lib/api";
+import { trackUserAccessEvent } from "@/lib/api";
 import { AccessContextSelector } from "@/components/layout/access-context-selector";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
-import { GlobalLoadingProvider } from "@/components/ui/global-loading";
+import { useAuthMe } from "@/hooks/use-auth-me";
+import { useMyPermissions } from "@/hooks/use-my-permissions";
 import { filterMainNavGroups, MAIN_NAV_GROUPS } from "./main-nav-data";
 import { MobileNav } from "./mobile-nav";
 import { Sidebar, SidebarCollapsed } from "./sidebar";
@@ -69,10 +70,17 @@ type AppShellProps = PropsWithChildren<{
 
 export function AppShell({ children, initialRole }: AppShellProps): JSX.Element {
   const pathname = usePathname();
-  const [role, setRole] = useState<string | null | undefined>(initialRole);
-  const [userKind, setUserKind] = useState<"INTERNAL" | "EXTERNAL" | null>(null);
-  const [systemKey, setSystemKey] = useState<string | null>(null);
-  const [permissionKeys, setPermissionKeys] = useState<string[] | null | undefined>(undefined);
+  const meQuery = useAuthMe();
+  const permissionsQuery = useMyPermissions();
+  const role =
+    permissionsQuery.data?.role ??
+    meQuery.data?.role ??
+    (meQuery.isError && permissionsQuery.isError ? null : initialRole);
+  const userKind = meQuery.data?.userKind ?? null;
+  const systemKey = meQuery.data?.activeContext?.systemKey ?? null;
+  const permissionKeys = permissionsQuery.isError
+    ? null
+    : permissionsQuery.data?.keys ?? (permissionsQuery.isPending ? undefined : null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [availableVersion, setAvailableVersion] = useState<string | null>(null);
 
@@ -87,24 +95,6 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
 
   const collapseSidebar = useCallback(() => persistSidebarCollapsed(true), [persistSidebarCollapsed]);
   const expandSidebar = useCallback(() => persistSidebarCollapsed(false), [persistSidebarCollapsed]);
-
-  useEffect(() => {
-    void getAuthMe()
-      .then((m) => {
-        if (initialRole === undefined) setRole(m.role);
-        setUserKind(m.userKind ?? "INTERNAL");
-        setSystemKey(m.activeContext?.systemKey ?? null);
-      })
-      .catch(() => {
-        if (initialRole === undefined) setRole(null);
-      });
-    void getMyPermissions()
-      .then((permissions) => {
-        setRole(permissions.role);
-        setPermissionKeys(permissions.keys);
-      })
-      .catch(() => setPermissionKeys(null));
-  }, [initialRole]);
 
   useLayoutEffect(() => {
     try {
@@ -241,7 +231,6 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
   }, []);
 
   return (
-    <GlobalLoadingProvider>
     <div className="flex min-h-screen bg-muted/30">
       {!sidebarCollapsed ? (
         <Sidebar groups={visibleNavGroups} onCollapse={collapseSidebar} />
@@ -310,6 +299,5 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
         </div>
       </main>
     </div>
-    </GlobalLoadingProvider>
   );
 }

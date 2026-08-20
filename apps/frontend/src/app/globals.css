@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes gti-nav-bar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+
+.gti-nav-bar-indeterminate {
+  animation: gti-nav-bar 0.9s ease-in-out infinite;
+}
+
+
 @layer base {
   :root {
     /* Primária / acento institucional */

@@ -43,7 +43,7 @@ export function UserForm({ onSuccess, onCreated, submitLabel = "Criar usuário" 
   const qOrganizations = useQuery({ queryKey: queryKeys.organizations, queryFn: getOrganizations });
   const qProfiles = useQuery({ queryKey: queryKeys.accessProfiles, queryFn: () => getAccessProfiles(false) });
   const qSuppliers = useQuery({ queryKey: queryKeys.suppliers, queryFn: getSuppliers });
-  const qContracts = useQuery({ queryKey: ["contracts"], queryFn: getContracts });
+  const qContracts = useQuery({ queryKey: queryKeys.contracts, queryFn: getContracts, staleTime: 60_000 });
   const activeOrganizations = useMemo(
     () => (qOrganizations.data ?? []).filter((o) => o.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [qOrganizations.data]

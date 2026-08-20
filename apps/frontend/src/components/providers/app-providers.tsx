@@ -12,6 +12,7 @@ export function AppProviders({ children }: PropsWithChildren): JSX.Element {
         defaultOptions: {
           queries: {
             staleTime: 60_000,
+            gcTime: 15 * 60_000,
             refetchOnWindowFocus: false,
             retry: 1
           }
@@ -21,7 +22,7 @@ export function AppProviders({ children }: PropsWithChildren): JSX.Element {
 
   return (
     <QueryClientProvider client={client}>
-      <GlobalLoadingProvider trackNavigation={false}>{children}</GlobalLoadingProvider>
+      <GlobalLoadingProvider trackNavigation>{children}</GlobalLoadingProvider>
       <Toaster richColors closeButton position="top-right" />
     </QueryClientProvider>
   );

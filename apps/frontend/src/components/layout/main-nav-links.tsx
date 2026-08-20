@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { MainNavItem } from "./main-nav-data";
@@ -15,6 +16,7 @@ type Props = {
 
 export function MainNavLinks({ items, onNavigate, nested = false }: Props): JSX.Element {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <>
@@ -25,6 +27,14 @@ export function MainNavLinks({ items, onNavigate, nested = false }: Props): JSX.
           <Link
             key={item.href}
             href={item.href}
+            prefetch
+            onMouseEnter={() => {
+              try {
+                router.prefetch(item.href);
+              } catch {
+                /* prefetch auxiliar */
+              }
+            }}
             onClick={() => onNavigate?.()}
             className={cn(
               "group relative flex items-center gap-2 rounded-md py-2 pr-2 transition-colors duration-200",
