@@ -314,10 +314,18 @@ export class ProjectsService {
         _count: { select: { groups: true, tasks: true } }
       }
     });
-    const meta = await this.prisma.projectTask.findMany({
-      select: { projectId: true, dueDate: true, status: true }
-    });
     const sod = this.startOfUtcDay();
+    const [grouped, overdueRows] = await Promise.all([
+      this.prisma.projectTask.groupBy({
+        by: ["projectId", "status"],
+        _count: { _all: true }
+      }),
+      this.prisma.projectTask.findMany({
+        where: { dueDate: { lt: sod } },
+        select: { projectId: true, status: true }
+      })
+    ]);
+
     const statsByProject = new Map<
       string,
       {
@@ -331,41 +339,44 @@ export class ProjectsService {
         overdueNotDone: number;
       }
     >();
-    for (const t of meta) {
-      const current =
-        statsByProject.get(t.projectId) ??
-        {
-          total: 0,
-          done: 0,
-          progress: 0,
-          blocked: 0,
-          notStarted: 0,
-          other: 0,
-          empty: 0,
-          overdueNotDone: 0
-        };
-      const kind = this.classifyTaskStatusForDashboard(t.status);
-      current.total += 1;
-      current[kind] += 1;
-      if (this.isOverdueNotDone(t.dueDate, t.status, sod)) {
-        current.overdueNotDone += 1;
-      }
+
+    const emptyStats = () => ({
+      total: 0,
+      done: 0,
+      progress: 0,
+      blocked: 0,
+      notStarted: 0,
+      other: 0,
+      empty: 0,
+      overdueNotDone: 0
+    });
+
+    for (const row of grouped) {
+      const current = statsByProject.get(row.projectId) ?? emptyStats();
+      const kind = this.classifyTaskStatusForDashboard(row.status);
+      const n = row._count._all;
+      current.total += n;
+      current[kind] += n;
+      statsByProject.set(row.projectId, current);
+    }
+
+    for (const t of overdueRows) {
+      if (this.classifyTaskStatusForDashboard(t.status) === "done") continue;
+      const current = statsByProject.get(t.projectId) ?? emptyStats();
+      current.overdueNotDone += 1;
       statsByProject.set(t.projectId, current);
     }
-    return projects.map((p) => ({
-      ...p,
-      _stats: {
-        total: statsByProject.get(p.id)?.total ?? 0,
-        done: statsByProject.get(p.id)?.done ?? 0,
-        progress: statsByProject.get(p.id)?.progress ?? 0,
-        blocked: statsByProject.get(p.id)?.blocked ?? 0,
-        notStarted: statsByProject.get(p.id)?.notStarted ?? 0,
-        other: statsByProject.get(p.id)?.other ?? 0,
-        empty: statsByProject.get(p.id)?.empty ?? 0,
-        overdueNotDone: statsByProject.get(p.id)?.overdueNotDone ?? 0,
-        completionPercent: statsByProject.get(p.id)?.total ? Math.round(((statsByProject.get(p.id)?.done ?? 0) / statsByProject.get(p.id)!.total) * 100) : 0
-      }
-    }));
+
+    return projects.map((p) => {
+      const s = statsByProject.get(p.id) ?? emptyStats();
+      return {
+        ...p,
+        _stats: {
+          ...s,
+          completionPercent: s.total ? Math.round((s.done / s.total) * 100) : 0
+        }
+      };
+    });
   }
 
   private async resolveTaskGroup(
@@ -499,13 +510,27 @@ export class ProjectsService {
    * Regras de status alinhadas ao quadro Monday no frontend (`projects-task-status`).
    */
   async dashboardStats(): Promise<ProjectsDashboardStats> {
-    const [projectCount, groupCount, tasks] = await Promise.all([
-      this.prisma.project.count(),
-      this.prisma.projectGroup.count(),
-      this.prisma.projectTask.findMany({
-        select: { projectId: true, parentTaskId: true, status: true, dueDate: true }
-      })
-    ]);
+    const sod = this.startOfUtcDay();
+    const [projectCount, groupCount, rootTaskCount, subTaskCount, byStatus, overdueRows, noDueByStatus] =
+      await Promise.all([
+        this.prisma.project.count(),
+        this.prisma.projectGroup.count(),
+        this.prisma.projectTask.count({ where: { parentTaskId: null } }),
+        this.prisma.projectTask.count({ where: { parentTaskId: { not: null } } }),
+        this.prisma.projectTask.groupBy({
+          by: ["status"],
+          _count: { _all: true }
+        }),
+        this.prisma.projectTask.findMany({
+          where: { dueDate: { lt: sod } },
+          select: { projectId: true, status: true }
+        }),
+        this.prisma.projectTask.groupBy({
+          by: ["status"],
+          where: { dueDate: null },
+          _count: { _all: true }
+        })
+      ]);
 
     const statusBreakdown: ProjectsDashboardStats["statusBreakdown"] = {
       done: 0,
@@ -516,34 +541,32 @@ export class ProjectsService {
       empty: 0
     };
 
-    let rootTaskCount = 0;
-    let subTaskCount = 0;
+    let taskCount = 0;
+    for (const row of byStatus) {
+      const kind = this.classifyTaskStatusForDashboard(row.status);
+      const n = row._count._all;
+      statusBreakdown[kind] += n;
+      taskCount += n;
+    }
+
     let overdueNotDoneCount = 0;
-    let tasksWithoutDueDateNotDone = 0;
     const projectsWithOverdue = new Set<string>();
+    for (const t of overdueRows) {
+      if (this.classifyTaskStatusForDashboard(t.status) === "done") continue;
+      overdueNotDoneCount += 1;
+      projectsWithOverdue.add(t.projectId);
+    }
 
-    const sod = this.startOfUtcDay();
-
-    for (const t of tasks) {
-      if (t.parentTaskId) subTaskCount += 1;
-      else rootTaskCount += 1;
-
-      const kind = this.classifyTaskStatusForDashboard(t.status);
-      statusBreakdown[kind] += 1;
-
-      const done = kind === "done";
-      if (t.dueDate == null) {
-        if (!done) tasksWithoutDueDateNotDone += 1;
-      } else if (this.isOverdueNotDone(t.dueDate, t.status, sod)) {
-        overdueNotDoneCount += 1;
-        projectsWithOverdue.add(t.projectId);
-      }
+    let tasksWithoutDueDateNotDone = 0;
+    for (const row of noDueByStatus) {
+      if (this.classifyTaskStatusForDashboard(row.status) === "done") continue;
+      tasksWithoutDueDateNotDone += row._count._all;
     }
 
     return {
       projectCount,
       groupCount,
-      taskCount: tasks.length,
+      taskCount,
       rootTaskCount,
       subTaskCount,
       statusBreakdown,

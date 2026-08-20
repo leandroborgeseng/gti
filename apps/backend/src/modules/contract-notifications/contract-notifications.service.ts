@@ -93,6 +93,7 @@ export class ContractNotificationsService {
     return this.prisma.contractNotification.findMany({
       where: { contractId },
       orderBy: { createdAt: "desc" },
+      take: 200,
       include: {
         signers: { orderBy: { order: "asc" }, include: { user: { select: { id: true, email: true, displayName: true } } } },
         _count: { select: { events: true, responses: true } }
@@ -110,6 +111,7 @@ export class ContractNotificationsService {
           status: { in: ["ENVIADA", "RECEBIDA", "AGUARDANDO_RESPOSTA", "RESPONDIDA", "EM_ANALISE", "ATENDIDA", "NAO_ATENDIDA", "ENCERRADA"] }
         },
         orderBy: { sentAt: "desc" },
+        take: 200,
         include: {
           contract: { select: { id: true, number: true, name: true, internalCode: true, companyName: true } }
         }

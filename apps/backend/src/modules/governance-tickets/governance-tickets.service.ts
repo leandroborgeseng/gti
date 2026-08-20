@@ -182,39 +182,55 @@ export class GovernanceTicketsService {
     const candidates = await this.prisma.ticketGovernance.findMany({
       where: {
         resolvedAt: null,
-        slaDeadline: { not: null }
+        slaDeadline: { lt: now }
       },
-      include: { deadlineExtensions: { orderBy: { createdAt: "desc" }, take: 1 } }
+      select: {
+        id: true,
+        status: true,
+        controladoriaNotified: true,
+        managerNotified: true
+      }
     });
 
     let slaViolated = 0;
     let escalated = 0;
-    for (const item of candidates) {
-      if (!item.slaDeadline || item.slaDeadline >= now) continue;
-      if (item.status === TicketGovernanceStatus.EXTENDED_DEADLINE) {
-        const previous = {
-          status: item.status,
-          controladoriaNotified: item.controladoriaNotified
-        };
-        const updated = await this.prisma.ticketGovernance.update({
-          where: { id: item.id },
-          data: { status: TicketGovernanceStatus.ESCALATED, controladoriaNotified: true }
-        });
-        await this.createEvent(item.id, "ESCALATED", "Prazo estendido descumprido; escalonamento automático.");
-        await this.createAudit("TicketGovernance", item.id, "AUTO_ESCALATE", previous, updated);
-        escalated += 1;
-      } else if (item.status !== TicketGovernanceStatus.SENT_TO_CONTROLADORIA) {
-        const previous = {
-          status: item.status,
-          managerNotified: item.managerNotified
-        };
-        const updated = await this.prisma.ticketGovernance.update({
-          where: { id: item.id },
-          data: { status: TicketGovernanceStatus.SLA_VIOLATED, managerNotified: true }
-        });
-        await this.createEvent(item.id, "SLA_VIOLATED", "SLA violado automaticamente.");
-        await this.createAudit("TicketGovernance", item.id, "AUTO_SLA_VIOLATION", previous, updated);
-        slaViolated += 1;
+    const CHUNK = 15;
+    for (let i = 0; i < candidates.length; i += CHUNK) {
+      const chunk = candidates.slice(i, i + CHUNK);
+      const results = await Promise.all(
+        chunk.map(async (item) => {
+          if (item.status === TicketGovernanceStatus.EXTENDED_DEADLINE) {
+            const previous = {
+              status: item.status,
+              controladoriaNotified: item.controladoriaNotified
+            };
+            const updated = await this.prisma.ticketGovernance.update({
+              where: { id: item.id },
+              data: { status: TicketGovernanceStatus.ESCALATED, controladoriaNotified: true }
+            });
+            await this.createEvent(item.id, "ESCALATED", "Prazo estendido descumprido; escalonamento automático.");
+            await this.createAudit("TicketGovernance", item.id, "AUTO_ESCALATE", previous, updated);
+            return { escalated: 1, slaViolated: 0 };
+          }
+          if (item.status !== TicketGovernanceStatus.SENT_TO_CONTROLADORIA) {
+            const previous = {
+              status: item.status,
+              managerNotified: item.managerNotified
+            };
+            const updated = await this.prisma.ticketGovernance.update({
+              where: { id: item.id },
+              data: { status: TicketGovernanceStatus.SLA_VIOLATED, managerNotified: true }
+            });
+            await this.createEvent(item.id, "SLA_VIOLATED", "SLA violado automaticamente.");
+            await this.createAudit("TicketGovernance", item.id, "AUTO_SLA_VIOLATION", previous, updated);
+            return { escalated: 0, slaViolated: 1 };
+          }
+          return { escalated: 0, slaViolated: 0 };
+        })
+      );
+      for (const r of results) {
+        escalated += r.escalated;
+        slaViolated += r.slaViolated;
       }
     }
 
