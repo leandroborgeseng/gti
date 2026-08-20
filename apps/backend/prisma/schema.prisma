@@ -1272,6 +1272,7 @@ model ProjectTask {
   @@index([assigneeUserId])
   @@index([goalId])
   @@index([glpiTicketId])
+  @@index([dueDate])
 }
 
 model ProjectTaskResponsible {

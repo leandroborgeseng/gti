@@ -81,9 +81,20 @@ export class GlosasService {
   async findAll(): Promise<unknown> {
     return this.prisma.glosa.findMany({
       where: this.organizationScope(),
-      include: {
+      select: {
+        id: true,
+        measurementId: true,
+        measurementItemId: true,
+        type: true,
+        origin: true,
+        value: true,
+        createdBy: true,
+        createdAt: true,
         measurement: {
-          include: {
+          select: {
+            id: true,
+            referenceMonth: true,
+            referenceYear: true,
             contract: {
               select: {
                 id: true,

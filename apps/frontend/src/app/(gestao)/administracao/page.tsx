@@ -2,8 +2,8 @@ import { Suspense } from "react";
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { AdministracaoView } from "@/components/admin/administracao-view";
-import { getAuthMe, getUsers } from "@/lib/api";
-import { collectLoadErrors, safeLoad, safeLoadNullable } from "@/lib/api-load";
+import { getAuthMe } from "@/lib/api";
+import { safeLoadNullable } from "@/lib/api-load";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,10 +33,10 @@ export default async function AdministracaoPage(): Promise<JSX.Element> {
     );
   }
 
-  const { data: users, error: usersError } = await safeLoad(() => getUsers(), []);
+  // Usuários carregam sob demanda na aba (UsersView) — evita SSR pesado no boot da Administração.
   return (
     <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando administração…</p>}>
-      <AdministracaoView users={users} usersLoadErrors={collectLoadErrors([usersError])} />
+      <AdministracaoView users={[]} />
     </Suspense>
   );
 }

@@ -1447,14 +1447,33 @@ export class ContractsService {
   }
 
   async findAll(): Promise<unknown> {
+    // Lista enxuta: a edição abre `getContractFormData` / detalhe; não carregar fiscal/manager/supplier completos.
     return this.prisma.contract.findMany({
       where: { deletedAt: null, ...this.organizationScope() },
-      include: {
-        fiscal: true,
-        manager: true,
-        supplier: true,
+      select: {
+        id: true,
+        number: true,
+        formalNumber: true,
+        contractYear: true,
+        internalCode: true,
+        administrativeProcess: true,
+        organizationId: true,
+        contractTypeCatalogId: true,
+        hiringTypeId: true,
+        hiringProcedureNumber: true,
+        name: true,
+        managingUnit: true,
+        companyName: true,
+        cnpj: true,
+        contractType: true,
+        status: true,
+        monthlyValue: true,
+        startDate: true,
+        endDate: true,
+        supplierId: true,
+        createdAt: true,
+        updatedAt: true,
         organization: { select: { id: true, name: true, acronym: true, active: true } },
-        contractTypeCatalog: { select: { id: true, name: true, acronym: true, legacyEnum: true } },
         hiringType: { select: { id: true, name: true } },
         _count: { select: { amendments: true, glpiGroups: true } }
       },

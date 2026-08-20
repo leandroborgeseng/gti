@@ -10,6 +10,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - **Ficha do contrato e rotas pesadas**: os painéis das abas do contrato (consumos, GLPI, módulos, notificações etc.) só carregam quando a aba é aberta. Mais telas (medições, glosas, projetos, módulos, prazos, chamados…) mostram feedback imediato ao navegar.
 - **Projetos e formulários sob demanda**: o quadro de tarefas do projeto e os formulários de medição/fornecedor/fiscal/contrato só entram na página quando necessários. Manual e notas de versão deixam de forçar renderização dinâmica a cada visita.
 - **Backend mais leve em listagens**: índices novos em auditoria, medições, módulos, governança e ações de meta; listas de contratos/glosas sem carregar anexos/grupos GLPI desnecessários; sincronização de prazos em lotes; métricas de projetos e monitoramento de governança sem varrer todas as linhas em memória.
+- **Fechamento de performance**: listagem de contratos só com campos da tabela; resumo de prazos e tarefas atrasadas via agregação; Administração sem carregar todos os usuários no primeiro paint; índice de data limite em tarefas de projeto.
 
 ### Adicionado
 

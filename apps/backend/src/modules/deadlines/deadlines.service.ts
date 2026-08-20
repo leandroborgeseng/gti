@@ -142,23 +142,41 @@ export class DeadlinesService {
       orderBy: [{ dueAt: "asc" }, { attentionLevel: "desc" }]
     });
 
-    const summaryBase = await this.prisma.deadline.findMany({
-      where: {
-        ...this.organizationScope(),
-        status: { not: DeadlineStatus.CANCELLED }
-      },
-      select: { status: true, origin: true, attentionLevel: true }
-    });
+    const summaryWhere = {
+      ...this.organizationScope(),
+      status: { not: DeadlineStatus.CANCELLED }
+    };
+    const [byStatusRows, byOriginRows, byAttentionRows] = await Promise.all([
+      this.prisma.deadline.groupBy({
+        by: ["status"],
+        where: summaryWhere,
+        _count: { _all: true }
+      }),
+      this.prisma.deadline.groupBy({
+        by: ["origin"],
+        where: summaryWhere,
+        _count: { _all: true }
+      }),
+      this.prisma.deadline.groupBy({
+        by: ["attentionLevel"],
+        where: summaryWhere,
+        _count: { _all: true }
+      })
+    ]);
 
     const byStatus: Record<string, number> = {};
     const byOrigin: Record<string, number> = {};
     const byAttention: Record<string, number> = {};
     let totalOpen = 0;
-    for (const row of summaryBase) {
-      byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
-      byOrigin[row.origin] = (byOrigin[row.origin] ?? 0) + 1;
-      byAttention[row.attentionLevel] = (byAttention[row.attentionLevel] ?? 0) + 1;
-      if (isOpenDeadlineStatus(row.status)) totalOpen += 1;
+    for (const row of byStatusRows) {
+      byStatus[row.status] = row._count._all;
+      if (isOpenDeadlineStatus(row.status)) totalOpen += row._count._all;
+    }
+    for (const row of byOriginRows) {
+      byOrigin[row.origin] = row._count._all;
+    }
+    for (const row of byAttentionRows) {
+      byAttention[row.attentionLevel] = row._count._all;
     }
 
     return {

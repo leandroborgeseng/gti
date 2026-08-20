@@ -1172,7 +1172,8 @@ export type Glosa = {
   type: string;
   origin?: "AUTOMATIC" | "MANUAL" | string;
   value: string;
-  justification: string;
+  /** Presente no detalhe; omitido na listagem para reduzir payload. */
+  justification?: string;
   createdBy: string;
   createdAt: string;
   measurement?: {

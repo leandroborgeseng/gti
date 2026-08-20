@@ -315,14 +315,15 @@ export class ProjectsService {
       }
     });
     const sod = this.startOfUtcDay();
-    const [grouped, overdueRows] = await Promise.all([
+    const [grouped, overdueGrouped] = await Promise.all([
       this.prisma.projectTask.groupBy({
         by: ["projectId", "status"],
         _count: { _all: true }
       }),
-      this.prisma.projectTask.findMany({
+      this.prisma.projectTask.groupBy({
+        by: ["projectId", "status"],
         where: { dueDate: { lt: sod } },
-        select: { projectId: true, status: true }
+        _count: { _all: true }
       })
     ]);
 
@@ -360,11 +361,11 @@ export class ProjectsService {
       statsByProject.set(row.projectId, current);
     }
 
-    for (const t of overdueRows) {
-      if (this.classifyTaskStatusForDashboard(t.status) === "done") continue;
-      const current = statsByProject.get(t.projectId) ?? emptyStats();
-      current.overdueNotDone += 1;
-      statsByProject.set(t.projectId, current);
+    for (const row of overdueGrouped) {
+      if (this.classifyTaskStatusForDashboard(row.status) === "done") continue;
+      const current = statsByProject.get(row.projectId) ?? emptyStats();
+      current.overdueNotDone += row._count._all;
+      statsByProject.set(row.projectId, current);
     }
 
     return projects.map((p) => {
@@ -511,7 +512,7 @@ export class ProjectsService {
    */
   async dashboardStats(): Promise<ProjectsDashboardStats> {
     const sod = this.startOfUtcDay();
-    const [projectCount, groupCount, rootTaskCount, subTaskCount, byStatus, overdueRows, noDueByStatus] =
+    const [projectCount, groupCount, rootTaskCount, subTaskCount, byStatus, overdueGrouped, noDueByStatus] =
       await Promise.all([
         this.prisma.project.count(),
         this.prisma.projectGroup.count(),
@@ -521,9 +522,10 @@ export class ProjectsService {
           by: ["status"],
           _count: { _all: true }
         }),
-        this.prisma.projectTask.findMany({
+        this.prisma.projectTask.groupBy({
+          by: ["projectId", "status"],
           where: { dueDate: { lt: sod } },
-          select: { projectId: true, status: true }
+          _count: { _all: true }
         }),
         this.prisma.projectTask.groupBy({
           by: ["status"],
@@ -551,10 +553,10 @@ export class ProjectsService {
 
     let overdueNotDoneCount = 0;
     const projectsWithOverdue = new Set<string>();
-    for (const t of overdueRows) {
-      if (this.classifyTaskStatusForDashboard(t.status) === "done") continue;
-      overdueNotDoneCount += 1;
-      projectsWithOverdue.add(t.projectId);
+    for (const row of overdueGrouped) {
+      if (this.classifyTaskStatusForDashboard(row.status) === "done") continue;
+      overdueNotDoneCount += row._count._all;
+      projectsWithOverdue.add(row.projectId);
     }
 
     let tasksWithoutDueDateNotDone = 0;

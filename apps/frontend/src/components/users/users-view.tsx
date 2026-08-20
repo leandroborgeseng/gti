@@ -480,7 +480,9 @@ export function UsersView({ users: initialUsers, dataLoadErrors = [], embedded =
   const { data: users = initialUsers } = useQuery({
     queryKey: queryKeys.users,
     queryFn: getUsers,
-    initialData: initialUsers
+    // Lista vazia no SSR (Administração) não deve “congelar” o cache — busca no cliente.
+    initialData: initialUsers.length > 0 ? initialUsers : undefined,
+    staleTime: 60_000
   });
 
   const approvalMutation = useMutation({
