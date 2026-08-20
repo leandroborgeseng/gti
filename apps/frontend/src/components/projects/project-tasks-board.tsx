@@ -11,12 +11,12 @@ import {
   createProjectTask,
   createProjectTaskComment,
   deleteProjectTask,
-  getAuthMe,
   getProjectSupervisors,
   patchProjectTask,
   uploadProjectTaskAttachment
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import { useAuthMe } from "@/hooks/use-auth-me";
 import { GestaoAttachmentsList } from "@/components/attachments/attachment-preview-modal";
 import { Button } from "@/components/ui/button";
 import {
@@ -1232,7 +1232,8 @@ export function ProjectTasksBoard({ projectId, groups, goals = [], boardQuery }:
     queryKey: queryKeys.projectSupervisors,
     queryFn: getProjectSupervisors
   });
-  const [role, setRole] = useState<string | null | undefined>(undefined);
+  const meQuery = useAuthMe();
+  const role = meQuery.isError ? null : meQuery.data?.role;
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkStatusPick, setBulkStatusPick] = useState("Feito");
@@ -1256,12 +1257,6 @@ export function ProjectTasksBoard({ projectId, groups, goals = [], boardQuery }:
     parseBoardStatusKind(boardQuery?.statusKind)
   );
   const [sortKey, setSortKey] = useState<RootSortKey>(() => parseBoardSortKey(boardQuery?.sort));
-
-  useEffect(() => {
-    void getAuthMe()
-      .then((m) => setRole(m.role))
-      .catch(() => setRole(null));
-  }, []);
 
   useEffect(() => {
     setOverdueOnly(boardQuery?.filter === "overdue");

@@ -123,7 +123,7 @@ export function AuditRetentionPanel(): JSX.Element {
       await Promise.all([
         qc.invalidateQueries({ queryKey: queryKeys.auditRetentionRuns }),
         qc.invalidateQueries({ queryKey: queryKeys.auditRetentionIndicators }),
-        qc.invalidateQueries({ queryKey: ["gestao", "admin", "audit-logs"] })
+        qc.invalidateQueries({ queryKey: queryKeys.auditLogsRoot })
       ]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao executar descarte.");

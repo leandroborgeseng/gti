@@ -1,9 +1,12 @@
 import Link from "next/link";
 import type { Goal, ProjectDetail } from "@/lib/api";
-import { ProjectTasksBoard } from "@/components/projects/project-tasks-board";
+import {
+  ProjectTasksBoardLazy,
+  type ProjectBoardQuery
+} from "@/components/projects/project-tasks-board-lazy";
 import { ScrollToTaskAnchor } from "@/components/projects/scroll-to-task-anchor";
 
-export type ProjectBoardQuery = { filter?: string; statusKind?: string; sort?: string };
+export type { ProjectBoardQuery };
 
 function formatProjectDate(value?: string | null): string {
   if (!value) return "não definida";
@@ -118,7 +121,7 @@ export function ProjectDetailView({
       ) : null}
 
       <ScrollToTaskAnchor />
-      <ProjectTasksBoard projectId={project.id} groups={project.groups} goals={allGoals} boardQuery={boardQuery} />
+      <ProjectTasksBoardLazy projectId={project.id} groups={project.groups} goals={allGoals} boardQuery={boardQuery} />
     </div>
   );
 }

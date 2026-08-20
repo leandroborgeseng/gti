@@ -50,7 +50,7 @@ export function ContractGlpiGroupsPanel({ contractId, initialGroups }: Props): J
     onSuccess: () => {
       toast.success("Grupos GLPI salvos.");
       void qc.invalidateQueries({ queryKey: queryKeys.contracts });
-      void qc.invalidateQueries({ queryKey: ["gestao", "contract-glpi-tickets", contractId] });
+      void qc.invalidateQueries({ queryKey: queryKeys.contractGlpiTicketsRoot(contractId) });
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Não foi possível salvar os grupos.");

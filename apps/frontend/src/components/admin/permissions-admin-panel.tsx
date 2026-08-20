@@ -136,7 +136,7 @@ export function PermissionsAdminPanel(): JSX.Element {
 
   const activeQuery = mode === "profile" ? profileQuery : userQuery;
   const historyQuery = useQuery({
-    queryKey: ["gestao", "admin", "permission-history", mode, mode === "profile" ? profileId : userId],
+    queryKey: queryKeys.permissionHistory(mode, mode === "profile" ? profileId : userId),
     queryFn: () =>
       mode === "profile" ? getProfilePermissionHistory(profileId) : getUserPermissionHistory(userId),
     enabled: mode === "profile" ? Boolean(profileId) : Boolean(userId)
@@ -184,7 +184,7 @@ export function PermissionsAdminPanel(): JSX.Element {
       } else {
         void qc.invalidateQueries({ queryKey: queryKeys.userPermissions(userId, userProfileId) });
       }
-      void qc.invalidateQueries({ queryKey: ["gestao", "admin", "permission-history"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.permissionHistoryRoot });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar permissões")
   });

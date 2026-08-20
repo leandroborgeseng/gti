@@ -32,8 +32,9 @@ export function FiscalForm({ fiscal, onSuccess }: Props): JSX.Element {
   });
 
   const { data: userOptions = [], isLoading: usersLoading } = useQuery({
-    queryKey: ["gestao", "fiscais", "user-options"],
-    queryFn: getFiscalUserOptions
+    queryKey: queryKeys.fiscalUserOptions,
+    queryFn: getFiscalUserOptions,
+    staleTime: 5 * 60_000
   });
 
   const mutation = useMutation({

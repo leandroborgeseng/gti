@@ -143,7 +143,7 @@ async function requireUserUncached(req: Request, token: string): Promise<JwtUser
 }
 
 /** Cache curto entre requisições paralelas da mesma sessão (ex.: várias APIs no carregamento da página). */
-const AUTH_BUNDLE_TTL_MS = 5_000;
+const AUTH_BUNDLE_TTL_MS = 15_000;
 type AuthBundleCache = {
   expiresAt: number;
   user: JwtUser;

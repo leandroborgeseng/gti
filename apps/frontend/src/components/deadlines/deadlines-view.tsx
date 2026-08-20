@@ -95,7 +95,7 @@ export function DeadlinesView({ initial, dataLoadErrors = [] }: Props): JSX.Elem
   const recalcMutation = useMutation({
     mutationFn: recalculateDeadlines,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["gestao", "deadlines"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.deadlinesRoot });
       await refetch();
     }
   });

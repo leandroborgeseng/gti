@@ -100,7 +100,7 @@ export function AuditLogsAdminPanel(): JSX.Element {
   });
 
   const detailQuery = useQuery({
-    queryKey: ["gestao", "admin", "audit-log-detail", detailId?.id, detailId?.source],
+    queryKey: queryKeys.auditLogDetail(detailId?.id ?? "", detailId?.source ?? ""),
     queryFn: () => getAuditLogDetail(detailId!.id, detailId!.source),
     enabled: Boolean(detailId)
   });

@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ReleaseNotesView } from "@/components/release-notes/release-notes-view";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+/** Revalida a cada 5 min; evita force-dynamic em toda navegação. */
+export const revalidate = 300;
 
 async function readReleaseNotes(): Promise<string> {
   const candidates = [

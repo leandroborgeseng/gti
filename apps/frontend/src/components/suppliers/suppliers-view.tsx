@@ -9,12 +9,17 @@ import { useMemo, useState } from "react";
 import type { Supplier } from "@/lib/api";
 import { getSuppliers } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import { SupplierForm } from "@/components/actions/supplier-form";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
 import { contactsToText } from "@/modules/suppliers/supplier-schema";
+import dynamic from "next/dynamic";
+
+const SupplierForm = dynamic(
+  () => import("@/components/actions/supplier-form").then((m) => ({ default: m.SupplierForm })),
+  { ssr: false }
+);
 
 const columnHelper = createColumnHelper<Supplier>();
 

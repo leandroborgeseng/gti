@@ -57,7 +57,7 @@ export function NotificationTemplatesAdminPanel(): JSX.Element {
       toast.success(editing ? "Modelo atualizado." : "Modelo criado.");
       setEditing(null);
       setForm(emptyForm);
-      void qc.invalidateQueries({ queryKey: ["gestao", "notification-templates"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.notificationTemplatesRoot });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar")
   });
@@ -66,7 +66,7 @@ export function NotificationTemplatesAdminPanel(): JSX.Element {
     mutationFn: (id: string) => deactivateNotificationTemplate(id),
     onSuccess: () => {
       toast.success("Modelo inativado.");
-      void qc.invalidateQueries({ queryKey: ["gestao", "notification-templates"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.notificationTemplatesRoot });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro")
   });

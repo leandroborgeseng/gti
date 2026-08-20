@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { getAuthMe, updateMyProfile, USER_PROFILE_COLORS, type AuthMe } from "@/lib/api";
+import { updateMyProfile, USER_PROFILE_COLORS, type AuthMe } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import { useAuthMe } from "@/hooks/use-auth-me";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,10 +20,7 @@ function initials(name: string): string {
 
 export function ProfileView(): JSX.Element {
   const qc = useQueryClient();
-  const { data: me, isLoading } = useQuery({
-    queryKey: queryKeys.authMe,
-    queryFn: getAuthMe
-  });
+  const { data: me, isLoading } = useAuthMe();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [jobTitle, setJobTitle] = useState("");

@@ -7,11 +7,16 @@ import { useMemo, useState } from "react";
 import type { Fiscal } from "@/lib/api";
 import { getFiscais } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import { FiscalForm } from "@/components/actions/fiscal-form";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
+import dynamic from "next/dynamic";
+
+const FiscalForm = dynamic(
+  () => import("@/components/actions/fiscal-form").then((m) => ({ default: m.FiscalForm })),
+  { ssr: false }
+);
 
 const columnHelper = createColumnHelper<Fiscal>();
 

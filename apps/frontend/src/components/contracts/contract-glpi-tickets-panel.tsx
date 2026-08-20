@@ -126,7 +126,7 @@ export function ContractGlpiTicketsPanel({ contractId, glpiGroups, canEdit = fal
   });
 
   const qSync = useQuery({
-    queryKey: ["glpi", "sync-status", "contract-panel"] as const,
+    queryKey: queryKeys.glpiSyncStatus("contract-panel"),
     queryFn: fetchGlpiSyncBanner,
     staleTime: 60_000
   });

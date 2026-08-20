@@ -113,7 +113,7 @@ export function ContractConsumptionsPanel({ contractId, canEdit = false }: Props
       setNotes("");
       await Promise.all([
         qc.invalidateQueries({ queryKey: queryKeys.contractConsumptions(contractId) }),
-        qc.invalidateQueries({ queryKey: ["gestao", "contract-consumption-movements", contractId] })
+        qc.invalidateQueries({ queryKey: queryKeys.contractConsumptionMovementsRoot(contractId) })
       ]);
     },
     onError: (err: Error) => toast.error(err.message || "Falha ao registrar consumo.")
@@ -131,7 +131,7 @@ export function ContractConsumptionsPanel({ contractId, canEdit = false }: Props
       toast.success("Validação registrada.");
       await Promise.all([
         qc.invalidateQueries({ queryKey: queryKeys.contractConsumptions(contractId) }),
-        qc.invalidateQueries({ queryKey: ["gestao", "contract-consumption-movements", contractId] })
+        qc.invalidateQueries({ queryKey: queryKeys.contractConsumptionMovementsRoot(contractId) })
       ]);
     },
     onError: (err: Error) => toast.error(err.message || "Falha na validação.")
@@ -143,7 +143,7 @@ export function ContractConsumptionsPanel({ contractId, canEdit = false }: Props
       toast.success("Consumo estornado.");
       await Promise.all([
         qc.invalidateQueries({ queryKey: queryKeys.contractConsumptions(contractId) }),
-        qc.invalidateQueries({ queryKey: ["gestao", "contract-consumption-movements", contractId] })
+        qc.invalidateQueries({ queryKey: queryKeys.contractConsumptionMovementsRoot(contractId) })
       ]);
     },
     onError: (err: Error) => toast.error(err.message || "Falha ao estornar.")

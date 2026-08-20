@@ -20,7 +20,6 @@ import type {
 import {
   deleteContractFeature,
   getContractModulesDelivery,
-  getMyPermissions,
   getModuleFeaturesDelivery,
   getModulesDeliveryOverview,
   searchModulesDeliveryFeatures,
@@ -28,6 +27,7 @@ import {
 } from "@/lib/api";
 import { formatBrl, formatPercent } from "@/lib/format-brl";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useMyPermissions } from "@/hooks/use-my-permissions";
 import { orderFeaturesByItemCode } from "@/lib/item-code-order";
 import { itemDeliveryLabelClass, itemDeliverySelectItemClass, itemDeliverySelectTriggerClass } from "@/lib/item-delivery-styles";
 import { queryKeys } from "@/lib/query-keys";
@@ -911,11 +911,7 @@ function ContractSection({
 
 export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props): JSX.Element {
   const qc = useQueryClient();
-  const permissionsQuery = useQuery({
-    queryKey: queryKeys.myPermissions,
-    queryFn: getMyPermissions,
-    staleTime: 10 * 60_000
-  });
+  const permissionsQuery = useMyPermissions();
   const permissionKeys = permissionsQuery.data?.keys ?? [];
   const canEditFeature = permissionKeys.includes("contracts.edit");
   const canEditDelivery = permissionKeys.includes("contracts.features.edit_delivery");
@@ -979,7 +975,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliveryOverview });
     void qc.invalidateQueries({ queryKey: queryKeys.contractModulesDelivery(contractId) });
     void qc.invalidateQueries({ queryKey: queryKeys.moduleFeaturesDelivery(contractId, moduleId) });
-    void qc.invalidateQueries({ queryKey: ["gestao", "modules-delivery-search"] });
+    void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliverySearchRoot });
     void qc.invalidateQueries({ queryKey: queryKeys.contracts });
   }
 

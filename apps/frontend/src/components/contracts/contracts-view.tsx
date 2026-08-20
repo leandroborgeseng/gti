@@ -11,12 +11,20 @@ import { getContracts } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
 import { queryKeys } from "@/lib/query-keys";
 import { prefetchContractFormCatalogs } from "@/modules/contracts/prefetch-contract-form-catalogs";
-import { ContractFormModal } from "@/components/contracts/contract-form-modal";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import "@/styles/gti-exec-metric-dash.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
+import dynamic from "next/dynamic";
+
+const ContractFormModal = dynamic(
+  () =>
+    import("@/components/contracts/contract-form-modal").then((m) => ({
+      default: m.ContractFormModal
+    })),
+  { ssr: false }
+);
 
 const statusLabel: Record<string, string> = {
   ACTIVE: "Ativo",
@@ -457,14 +465,16 @@ export function ContractsView({ contracts: initialContracts, dataLoadErrors = []
         />
       </section>
 
-      <ContractFormModal
-        open={modalOpen}
-        contract={editingContract}
-        onClose={() => {
-          setModalOpen(false);
-          setEditingContract(null);
-        }}
-      />
+      {modalOpen ? (
+        <ContractFormModal
+          open={modalOpen}
+          contract={editingContract}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingContract(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

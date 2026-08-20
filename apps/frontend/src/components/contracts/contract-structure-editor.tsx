@@ -1,7 +1,6 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,6 @@ import {
   deleteContractModule,
   deleteContractService,
   fetchContractStructureTemplateBlob,
-  getMyPermissions,
   importContractStructureFromXlsx,
   updateContractFeature,
   updateContractModule,
@@ -26,7 +24,7 @@ import {
   type ContractFeatureStatus,
   type ContractLinkedUser
 } from "@/lib/api";
-import { queryKeys } from "@/lib/query-keys";
+import { useMyPermissions } from "@/hooks/use-my-permissions";
 import {
   formatWeightPt,
   projectContractModulesSum,
@@ -167,11 +165,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
   }, [props.contract]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const { data: permissions } = useQuery({
-    queryKey: queryKeys.myPermissions,
-    queryFn: getMyPermissions,
-    staleTime: 10 * 60_000
-  });
+  const { data: permissions } = useMyPermissions();
   const cid = contract.id;
 
   async function run(op: () => Promise<Contract>): Promise<void> {

@@ -9,12 +9,17 @@ import { useMemo, useState } from "react";
 import type { Measurement } from "@/lib/api";
 import { getMeasurements } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import { MeasurementForm } from "@/components/actions/measurement-form";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/tables/data-table";
+import dynamic from "next/dynamic";
+
+const MeasurementForm = dynamic(
+  () => import("@/components/actions/measurement-form").then((m) => ({ default: m.MeasurementForm })),
+  { ssr: false }
+);
 
 const statusLabel: Record<string, string> = {
   OPEN: "Aberta",

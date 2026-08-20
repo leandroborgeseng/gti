@@ -68,5 +68,21 @@ export const queryKeys = {
   notificationMailMerge: ["gestao", "notification-mail-merge"] as const,
   myContractNotifications: ["gestao", "my-contract-notifications"] as const,
   controladoriaCasesAdmin: ["gestao", "admin", "controladoria-cases"] as const,
-  authRegisterOptions: ["auth", "register-options"] as const
+  authRegisterOptions: ["auth", "register-options"] as const,
+  fiscalUserOptions: ["gestao", "fiscais", "user-options"] as const,
+  glpiSyncStatus: (scope: string) => ["glpi", "sync-status", scope] as const,
+  auditLogDetail: (id: string, source: string) => ["gestao", "admin", "audit-log-detail", id, source] as const,
+  permissionHistory: (mode: string, subjectId: string) =>
+    ["gestao", "admin", "permission-history", mode, subjectId] as const,
+  /** Prefixo para invalidar buscas de funcionalidades. */
+  modulesDeliverySearchRoot: ["gestao", "modules-delivery-search"] as const,
+  /** Prefixo para invalidar movimentos de consumo de um contrato. */
+  contractConsumptionMovementsRoot: (contractId: string) =>
+    ["gestao", "contract-consumption-movements", contractId] as const,
+  /** Prefixo para invalidar todos os prazos. */
+  deadlinesRoot: ["gestao", "deadlines"] as const,
+  notificationTemplatesRoot: ["gestao", "notification-templates"] as const,
+  auditLogsRoot: ["gestao", "admin", "audit-logs"] as const,
+  permissionHistoryRoot: ["gestao", "admin", "permission-history"] as const,
+  contractGlpiTicketsRoot: (contractId: string) => ["gestao", "contract-glpi-tickets", contractId] as const
 } as const;
