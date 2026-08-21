@@ -96,26 +96,44 @@ export class ContractNotificationsService {
 
   async listMine() {
     const actor = requestActorStore.getStore();
+    const include = {
+      contract: { select: { id: true, number: true, name: true, internalCode: true, companyName: true } },
+      signers: { orderBy: { order: "asc" as const }, select: { id: true, userId: true, signedAt: true, order: true, required: true } }
+    };
     if (isExternalActor(actor)) {
       const ids = actor?.authorizedContractIds ?? [];
       return this.prisma.contractNotification.findMany({
         where: {
           contractId: { in: ids },
-          status: { in: ["ENVIADA", "RECEBIDA", "AGUARDANDO_RESPOSTA", "RESPONDIDA", "EM_ANALISE", "ATENDIDA", "NAO_ATENDIDA", "ENCERRADA"] }
+          status: {
+            in: [
+              "ENVIADA",
+              "RECEBIDA",
+              "AGUARDANDO_RESPOSTA",
+              "RESPONDIDA",
+              "EM_ANALISE",
+              "ATENDIDA",
+              "NAO_ATENDIDA",
+              "ENCERRADA",
+              "ASSINADA",
+              "AGUARDANDO_ASSINATURA"
+            ]
+          }
         },
         orderBy: { sentAt: "desc" },
         take: 200,
-        include: {
-          contract: { select: { id: true, number: true, name: true, internalCode: true, companyName: true } }
-        }
+        include
       });
     }
     return this.prisma.contractNotification.findMany({
+      where: {
+        status: {
+          notIn: ["RASCUNHO", "CANCELADA"]
+        }
+      },
       orderBy: { createdAt: "desc" },
-      take: 100,
-      include: {
-        contract: { select: { id: true, number: true, name: true, internalCode: true, companyName: true } }
-      }
+      take: 200,
+      include
     });
   }
 

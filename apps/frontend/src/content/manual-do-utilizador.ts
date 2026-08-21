@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-08-21"; // memória de saldo na medição + DOC-SIGTI/QR/PDF HTML
+export const MANUAL_LAST_UPDATED = "2026-08-21"; // Central Documentos interna + renovação/PDF/consumos
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -102,7 +102,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       {
         kind: "p",
         parts: [
-          "Na ficha do contrato (usuários internos), a seção Notificações permite criar a partir de um modelo, revisar, assinar com senha do SIGTI e enviar por e-mail. Em Administração → Modelos de notificação, cadastre os textos-base com campos de mala direta."
+          "Na ficha do contrato (usuários internos), a seção Notificações permite criar a partir de um modelo, revisar, assinar com senha do SIGTI e enviar por e-mail. Em Administração → Modelos de notificação, cadastre os textos-base com campos de mala direta. A Central de Documentos (`/documentos` para internos e `/externo/documentos` para a empresa) lista notificações formalizadas com filtros rápidos."
         ]
       },
       {

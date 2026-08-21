@@ -37,6 +37,12 @@ const STATUS_LABEL: Record<string, string> = {
   REVERSED: "Estornado"
 };
 
+const MEASUREMENT_BILLING_LABEL: Record<string, string> = {
+  NAO_MEDIDO: "Não medido",
+  INCLUIDO_EM_MEDICAO: "Incluído em medição",
+  MEDIDO_APROVADO: "Medido e aprovado"
+};
+
 const ACTIVITY_LABEL: Record<string, string> = {
   SURVEY: "Em levantamento",
   AWAITING_APPROVAL: "Aguardando aprovação",
@@ -362,6 +368,7 @@ export function ContractConsumptionsPanel({ contractId, canEdit = false }: Props
                   <th className="px-2 py-2">Efetivo</th>
                   <th className="px-2 py-2">Atividade</th>
                   <th className="px-2 py-2">Validação</th>
+                  <th className="px-2 py-2">Medição</th>
                   <th className="px-2 py-2">GLPI</th>
                   <th className="px-2 py-2">Ações</th>
                 </tr>
@@ -383,6 +390,15 @@ export function ContractConsumptionsPanel({ contractId, canEdit = false }: Props
                       {ACTIVITY_LABEL[m.activityStatus ?? ""] ?? m.activityStatus ?? "—"}
                     </td>
                     <td className="px-2 py-2">{STATUS_LABEL[m.status] ?? m.status}</td>
+                    <td className="px-2 py-2">
+                      <span className="text-slate-800">
+                        {MEASUREMENT_BILLING_LABEL[m.measurementBillingStatus ?? ""] ??
+                          (m.measurementId ? "Incluído em medição" : "Não medido")}
+                      </span>
+                      {m.measurementLabel ? (
+                        <span className="mt-0.5 block text-[11px] text-slate-500">{m.measurementLabel}</span>
+                      ) : null}
+                    </td>
                     <td className="px-2 py-2 tabular-nums">{m.glpiTicketId ?? "—"}</td>
                     <td className="px-2 py-2">
                       {canEdit && (m.status === "UNDER_VALIDATION" || m.status === "INFORMED") ? (

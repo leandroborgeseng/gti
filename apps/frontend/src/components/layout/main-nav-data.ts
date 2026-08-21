@@ -71,6 +71,7 @@ export const MAIN_NAV_GROUPS: MainNavGroup[] = [
     label: "Contratos e medição",
     items: [
       { href: "/contracts", label: "Contratos", icon: FileText, hideForExternal: true },
+      { href: "/documentos", label: "Documentos", icon: FolderOpen, hideForExternal: true },
       { href: "/modulos", label: "Funcionalidades", icon: ListChecks, hideForExternal: true },
       { href: "/measurements", label: "Medições", icon: ClipboardList, hideForExternal: true },
       { href: "/glosas", label: "Glosas", icon: Wallet, hideForExternal: true }
@@ -107,6 +108,7 @@ const NAV_REQUIRED_PERMISSIONS: Record<string, readonly string[]> = {
   "/dashboard": ["dashboard.view"],
   "/prazos-pendencias": ["deadlines.view"],
   "/contracts": ["contracts.view"],
+  "/documentos": ["notifications.view", "documents.view"],
   "/modulos": ["contracts.features.view"],
   "/measurements": ["measurements.view"],
   "/glosas": ["glosas.view"],

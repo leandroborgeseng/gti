@@ -174,7 +174,16 @@ export default function ExternoNotificacaoDetailPage(): JSX.Element {
         toast.error("Você não possui permissão para acessar este documento.");
         return;
       }
-      if (!res.ok) throw new Error("Falha ao gerar o PDF");
+      if (!res.ok) {
+        let detail = "Falha ao gerar o PDF";
+        try {
+          const errBody = (await res.json()) as { message?: string; error?: string };
+          detail = errBody.message || errBody.error || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

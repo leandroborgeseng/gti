@@ -20,6 +20,20 @@ import {
   monthlyEquivalentValue
 } from "./measurement-composition";
 import { ContractConsumptionService } from "../contracts/contract-consumption.service";
+import {
+  deliveryFractionAsOf,
+  deliverySnapshotAsOf,
+  type DeliveryEventLike
+} from "../../common/feature-delivery-as-of";
+
+type FeatureForGlosa = {
+  criticality?: string | null;
+  deliveryStatus?: string | null;
+  partialDeliveryPercent?: number | null;
+  deliveryEffectiveDate?: Date | null;
+  status?: string | null;
+  deliveryEvents?: DeliveryEventLike[];
+};
 
 @Injectable()
 export class MeasurementsService {
@@ -450,7 +464,19 @@ export class MeasurementsService {
       include: {
         contract: {
           include: {
-            modules: { include: { features: true, glosaPricingItem: { include: { type: true } } } },
+            modules: {
+              include: {
+                features: {
+                  include: {
+                    deliveryEvents: {
+                      where: { status: "ACTIVE" },
+                      orderBy: [{ effectiveDate: "desc" }, { recordedAt: "desc" }]
+                    }
+                  }
+                },
+                glosaPricingItem: { include: { type: true } }
+              }
+            },
             services: true,
             pricingItems: { where: { status: ContractPricingItemStatus.ACTIVE }, include: { type: true } }
           }
@@ -874,11 +900,11 @@ export class MeasurementsService {
 
     if (modulesWithLink.length > 0) {
       for (const module of modulesWithLink) {
-        const measurable = module.features.filter((f) => (f as { criticality?: string }).criticality !== "NAO_SE_APLICA");
+        const measurable = module.features.filter((f) => (f as FeatureForGlosa).criticality !== "NAO_SE_APLICA");
         const totalWeight = measurable.reduce((s, f) => s + this.featureCriticalityWeight(f), 0);
         if (totalWeight <= 0) continue;
         const deliveredWeight = measurable.reduce(
-          (s, f) => s + this.featureCriticalityWeight(f) * this.featureDeliveryFractionAsOf(f, asOf),
+          (s, f) => s + this.featureCriticalityWeight(f) * this.featureDeliveryFractionAsOf(f as FeatureForGlosa, asOf),
           0
         );
         const missingRatio = new Prisma.Decimal(1).sub(new Prisma.Decimal(deliveredWeight).div(totalWeight));
@@ -887,11 +913,11 @@ export class MeasurementsService {
       }
     } else {
       const features = measurement.contract.modules.flatMap((module) => module.features);
-      const measurable = features.filter((f) => (f as { criticality?: string }).criticality !== "NAO_SE_APLICA");
+      const measurable = features.filter((f) => (f as FeatureForGlosa).criticality !== "NAO_SE_APLICA");
       const totalWeight = measurable.reduce((s, f) => s + this.featureCriticalityWeight(f), 0);
       if (totalWeight <= 0) return new Prisma.Decimal(0);
       const deliveredWeight = measurable.reduce(
-        (s, f) => s + this.featureCriticalityWeight(f) * this.featureDeliveryFractionAsOf(f, asOf),
+        (s, f) => s + this.featureCriticalityWeight(f) * this.featureDeliveryFractionAsOf(f as FeatureForGlosa, asOf),
         0
       );
       const missingRatio = new Prisma.Decimal(1).sub(new Prisma.Decimal(deliveredWeight).div(totalWeight));
@@ -1113,27 +1139,12 @@ export class MeasurementsService {
     }
   }
 
-  /** Fração de entrega vigente na data de corte (espelho atual; eventos ACTIVE entram no snapshot). */
-  private featureDeliveryFractionAsOf(
-    feature: {
-      status?: string;
-      deliveryStatus?: string | null;
-      partialDeliveryPercent?: number | null;
-      deliveryEffectiveDate?: Date | null;
-    },
-    asOf: Date
-  ): number {
-    // Se há data efetiva futura à competência, ainda não conta.
-    if (feature.deliveryEffectiveDate && feature.deliveryEffectiveDate.getTime() > asOf.getTime()) {
-      return 0;
-    }
-    if (feature.deliveryStatus === "DELIVERED" || feature.status === "VALIDATED") return 1;
-    if (feature.deliveryStatus === "PARTIALLY_DELIVERED") {
-      const p = feature.partialDeliveryPercent;
-      if (p != null && p >= 0 && p <= 100) return p / 100;
-      return 0.5;
-    }
-    return 0;
+  /**
+   * Fração de entrega vigente na data de corte, via histórico temporal (eventos ACTIVE).
+   * Sem eventos (legado), usa o espelho atual da funcionalidade.
+   */
+  private featureDeliveryFractionAsOf(feature: FeatureForGlosa, asOf: Date): number {
+    return deliveryFractionAsOf(asOf, feature.deliveryEvents, feature);
   }
 
   /** Monta memória de saldo + snapshot de entrega e grava na medição (exceto se já aprovada). */
@@ -1157,7 +1168,18 @@ export class MeasurementsService {
                     partialDeliveryPercent: true,
                     deliveryEffectiveDate: true,
                     status: true,
-                    weight: true
+                    weight: true,
+                    deliveryEvents: {
+                      where: { status: "ACTIVE" },
+                      select: {
+                        effectiveDate: true,
+                        deliveryStatus: true,
+                        percent: true,
+                        status: true,
+                        recordedAt: true
+                      },
+                      orderBy: [{ effectiveDate: "desc" }, { recordedAt: "desc" }]
+                    }
                   }
                 }
               }
@@ -1225,18 +1247,21 @@ export class MeasurementsService {
     });
 
     const featureSnapshot = measurement.contract.modules.flatMap((mod) =>
-      mod.features.map((f) => ({
-        featureId: f.id,
-        moduleId: mod.id,
-        itemCode: f.itemCode,
-        name: f.name,
-        criticality: f.criticality,
-        deliveryStatus: f.deliveryStatus,
-        partialDeliveryPercent: f.partialDeliveryPercent,
-        deliveryEffectiveDate: f.deliveryEffectiveDate,
-        fractionAsOf: this.featureDeliveryFractionAsOf(f, asOf),
-        excludedFromCalculation: f.criticality === "NAO_SE_APLICA"
-      }))
+      mod.features.map((f) => {
+        const snap = deliverySnapshotAsOf(asOf, f.deliveryEvents, f);
+        return {
+          featureId: f.id,
+          moduleId: mod.id,
+          itemCode: f.itemCode,
+          name: f.name,
+          criticality: f.criticality,
+          deliveryStatus: f.deliveryStatus,
+          partialDeliveryPercent: f.partialDeliveryPercent,
+          deliveryEffectiveDate: f.deliveryEffectiveDate,
+          ...snap,
+          excludedFromCalculation: f.criticality === "NAO_SE_APLICA"
+        };
+      })
     );
 
     await this.prisma.measurement.update({

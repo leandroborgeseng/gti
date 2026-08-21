@@ -245,6 +245,9 @@ export type CreateContractAmendmentPayload = {
       periodStart?: string | null;
       periodEnd?: string | null;
       includeInGlosaBase?: boolean;
+      /** Renovação: EXPIRE | ACCUMULATE | CONTINUE */
+      renewalBalancePolicy?: "EXPIRE" | "ACCUMULATE" | "CONTINUE";
+      consumptionAccumulates?: boolean;
     };
   }>;
 };
@@ -1579,6 +1582,9 @@ export type ContractConsumptionMovement = {
   source: string;
   glpiTicketId?: number | null;
   measurementId?: string | null;
+  /** Situação financeira/medição (ticket 98). */
+  measurementBillingStatus?: "NAO_MEDIDO" | "INCLUIDO_EM_MEDICAO" | "MEDIDO_APROVADO";
+  measurementLabel?: string | null;
   executionDate: string;
   startDate?: string | null;
   responsibleLabel?: string | null;
@@ -4458,6 +4464,7 @@ export type ContractNotificationRecord = {
   headerHtml?: string | null;
   footerHtml?: string | null;
   contentLocked?: boolean;
+  createdById?: string | null;
   requiresAck?: boolean;
   requiresResponse?: boolean;
   ackAt?: string | null;

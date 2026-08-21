@@ -102,7 +102,7 @@ export function MeasurementBalanceMemoryPanel({ measurement }: Props): JSX.Eleme
                   {f.name}
                 </span>
                 <span className="tabular-nums text-slate-600">
-                  {f.deliveryStatus ?? "—"}
+                  {deliveryStatusLabel(f.deliveryStatus)}
                   {f.partialDeliveryPercent != null ? ` · ${f.partialDeliveryPercent}%` : ""}
                   {typeof f.fractionAsOf === "number"
                     ? ` · ${(f.fractionAsOf * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% no corte`
@@ -123,4 +123,17 @@ export function MeasurementBalanceMemoryPanel({ measurement }: Props): JSX.Eleme
 function fmtQty(n: number): string {
   if (!Number.isFinite(n)) return "—";
   return n.toLocaleString("pt-BR", { maximumFractionDigits: 4 });
+}
+
+function deliveryStatusLabel(status?: string): string {
+  switch (status) {
+    case "DELIVERED":
+      return "Entregue";
+    case "PARTIALLY_DELIVERED":
+      return "Parcialmente entregue";
+    case "NOT_DELIVERED":
+      return "Não entregue";
+    default:
+      return status || "—";
+  }
 }

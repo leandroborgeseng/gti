@@ -2635,7 +2635,14 @@ export class ContractsService {
         qty = Number(source.quantity) + Number(after.quantity);
       }
       if (row.action === ContractAmendmentItemAction.RENEW_QUANTITY && after.quantity != null) {
-        qty = Number(after.quantity);
+        const policy = String((after as { renewalBalancePolicy?: string }).renewalBalancePolicy ?? "EXPIRE");
+        const renewed = Number(after.quantity);
+        if (policy === "ACCUMULATE") {
+          const remaining = Math.max(0, Number(source.quantity) - Number(source.consumedQuantity ?? 0));
+          qty = renewed + remaining;
+        } else {
+          qty = renewed;
+        }
       }
       const unitVal = after.unitValue != null ? Number(after.unitValue) : Number(source.unitValue);
       const billingKind = after.billingKind ?? source.billingKind;
@@ -2692,6 +2699,24 @@ export class ContractsService {
         beforeSnapshot: beforeSnap as Prisma.InputJsonValue,
         afterSnapshot: snapshotAfter as Prisma.InputJsonValue
       });
+      const renewPolicy = String(
+        (after as { renewalBalancePolicy?: string }).renewalBalancePolicy ?? "EXPIRE"
+      );
+      const nextAccumulates =
+        row.action === ContractAmendmentItemAction.RENEW_QUANTITY
+          ? renewPolicy === "ACCUMULATE" || renewPolicy === "CONTINUE"
+            ? renewPolicy === "ACCUMULATE"
+              ? true
+              : source.consumptionAccumulates
+            : false
+          : source.consumptionAccumulates;
+      const nextConsumed =
+        row.action === ContractAmendmentItemAction.RENEW_QUANTITY && renewPolicy === "EXPIRE"
+          ? new Prisma.Decimal(0)
+          : row.action === ContractAmendmentItemAction.RENEW_QUANTITY && renewPolicy === "ACCUMULATE"
+            ? new Prisma.Decimal(0)
+            : source.consumedQuantity;
+
       const sourceId = source.id;
       const includeGlosa = snapshotAfter.includeInGlosaBase;
       txOps.push(async (tx) => {
@@ -2722,13 +2747,13 @@ export class ContractsService {
             periodEnd,
             status: ContractPricingItemStatus.ACTIVE,
             includeInGlosaBase: includeGlosa,
-            consumedQuantity: source.consumedQuantity,
+            consumedQuantity: nextConsumed,
             consumptionEnabled: source.consumptionEnabled,
             consumptionUnitId: source.consumptionUnitId,
             consumptionAvailableQuantity: source.consumptionAvailableQuantity,
             consumptionFinancialRule: source.consumptionFinancialRule,
             consumptionAvailability: source.consumptionAvailability,
-            consumptionAccumulates: source.consumptionAccumulates,
+            consumptionAccumulates: nextAccumulates,
             consumptionRequiresValidation: source.consumptionRequiresValidation,
             consumptionAlertThresholds:
               source.consumptionAlertThresholds === null

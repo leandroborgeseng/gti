@@ -131,7 +131,14 @@ export function ContractNotificationsPanel({ contractId }: Props): JSX.Element {
         return;
       }
       if (!res.ok) {
-        throw new Error("Falha ao gerar o PDF");
+        let detail = "Falha ao gerar o PDF";
+        try {
+          const errBody = (await res.json()) as { message?: string; error?: string };
+          detail = errBody.message || errBody.error || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

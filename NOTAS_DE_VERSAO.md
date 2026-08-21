@@ -19,7 +19,10 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Alterado
 
-- **PDF de notificações**: o «Baixar PDF» tenta renderizar o mesmo HTML imprimível via Chromium; se o Chromium não estiver disponível no ambiente, usa fallback em texto (pdfkit).
+- **PDF de notificações**: geração padrão estável via pdfkit a partir do mesmo HTML; Chromium opcional (`PDF_ENGINE=auto|chromium`). Mensagens de erro do «Baixar PDF» passam a exibir o motivo técnico quando disponível.
+- **Central de Documentos**: disponível também para usuários internos (`/documentos`); filtros «pendentes de minha assinatura», «assinados por mim» e «elaborados por mim» passam a considerar o usuário autenticado.
+- **Aditivos — renovação**: ao renovar quantidade/período, opção de saldo remanescente (expira, acumula ou continua).
+- **Consumos × medição**: cada movimentação exibe situação «Não medido», «Incluído em medição» ou «Medido e aprovado».
 - **Logo da barra lateral**: o cabeçalho do menu passa a usar o logo resumido «F» da Prefeitura de Franca (mesmo das outras aplicações). Com o menu aberto: logo + SIGTI + nome completo; recolhido: só o logo. Login e demais telas mantêm a marca anterior.
 - **Regenerar código interno**: a ação sai do cabeçalho do contrato e fica só no modal Editar, junto ao campo «Código interno SIGTI» (somente leitura), com confirmação e justificativa.
 - **Funcionalidades mais rápidas**: ao alterar criticidade, estado de entrega ou demais campos do item, o servidor deixa de recarregar o contrato inteiro (cronogramas, aditivos, GLPI etc.); a tela de Funcionalidades também evita invalidar a lista global de contratos a cada salvamento.

@@ -1,30 +1,50 @@
 /**
  * Converte HTML completo em PDF (A4).
- * Preferência: Chromium (@sparticuz/chromium + puppeteer-core).
- * Fallback: pdfkit com texto extraído do HTML.
+ * Padrão: pdfkit (estável em container). Chromium opcional via PDF_ENGINE=chromium|auto.
  */
 export async function htmlToPdfBuffer(html: string, title: string): Promise<Buffer> {
-  try {
-    return await renderWithChromium(html);
-  } catch (err) {
-    console.warn("[html-to-pdf] Chromium indisponível, usando fallback pdfkit:", err);
-    return renderWithPdfkit(html, title);
+  const engine = (process.env.PDF_ENGINE ?? "pdfkit").toLowerCase().trim();
+
+  if (engine === "chromium") {
+    return renderWithChromium(html);
   }
+
+  if (engine === "auto") {
+    try {
+      return await Promise.race([
+        renderWithChromium(html),
+        new Promise<Buffer>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout ao iniciar Chromium (15s)")), 15_000)
+        )
+      ]);
+    } catch (err) {
+      console.warn("[html-to-pdf] Chromium indisponível, usando fallback pdfkit:", err);
+      return renderWithPdfkit(html, title);
+    }
+  }
+
+  return renderWithPdfkit(html, title);
 }
 
 async function renderWithChromium(html: string): Promise<Buffer> {
-  const chromium = (await import("@sparticuz/chromium")).default;
+  const chromiumMod = await import("@sparticuz/chromium");
+  const chromium = chromiumMod.default;
+  try {
+    chromium.setGraphicsMode = false;
+  } catch {
+    /* ignore */
+  }
   const puppeteer = await import("puppeteer-core");
   const executablePath = await chromium.executablePath();
   const browser = await puppeteer.launch({
-    args: chromium.args,
+    args: [...chromium.args, "--font-render-hinting=none", "--disable-dev-shm-usage"],
     executablePath,
     headless: true,
     defaultViewport: { width: 1280, height: 720 }
   });
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
@@ -32,26 +52,35 @@ async function renderWithChromium(html: string): Promise<Buffer> {
     });
     return Buffer.from(pdf);
   } finally {
-    await browser.close();
+    await browser.close().catch(() => undefined);
   }
 }
 
 async function renderWithPdfkit(html: string, title: string): Promise<Buffer> {
   const PDFDocument = (await import("pdfkit")).default;
   const text = stripHtmlToText(html);
-  const doc = new PDFDocument({ margin: 50, size: "A4", info: { Title: title, Author: "SIGTI" } });
+  const doc = new PDFDocument({
+    margin: 50,
+    size: "A4",
+    info: { Title: title, Author: "SIGTI" },
+    autoFirstPage: true
+  });
   const chunks: Buffer[] = [];
   doc.on("data", (chunk: Buffer) => chunks.push(chunk));
   const done = new Promise<Buffer>((resolve, reject) => {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });
-  doc.fontSize(9).fillColor("#666").text(
-    "PDF gerado em modo texto (Chromium indisponível neste ambiente). Conteúdo derivado do HTML oficial.",
+  doc.fontSize(9).fillColor("#555").text(
+    "PDF gerado a partir do mesmo HTML oficial do documento. Não é assinatura ICP-Brasil.",
     { align: "left" }
   );
-  doc.moveDown();
-  doc.fillColor("#111").fontSize(11).text(text || "(Sem conteúdo)", { align: "left", lineGap: 2 });
+  doc.moveDown(0.5);
+  doc.fillColor("#111").fontSize(11).text(text || "(Sem conteúdo textual)", {
+    align: "left",
+    lineGap: 2,
+    continued: false
+  });
   doc.end();
   return done;
 }

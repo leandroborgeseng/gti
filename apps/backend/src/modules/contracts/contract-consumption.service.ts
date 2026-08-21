@@ -114,11 +114,25 @@ export class ContractConsumptionService {
       consumptionUnit?: { code: string; label: string } | null;
       type?: { code: string; label: string } | null;
     } | null;
+    measurement?: {
+      id: string;
+      status: string;
+      referenceMonth: number;
+      referenceYear: number;
+    } | null;
   }) {
     const unitSnap =
       row.unitCodeSnapshot && row.unitLabelSnapshot
         ? { code: row.unitCodeSnapshot, label: row.unitLabelSnapshot }
         : row.pricingItem?.consumptionUnit ?? row.pricingItem?.unit ?? null;
+    let measurementBillingStatus: "NAO_MEDIDO" | "INCLUIDO_EM_MEDICAO" | "MEDIDO_APROVADO" =
+      "NAO_MEDIDO";
+    if (row.measurementId && row.measurement) {
+      measurementBillingStatus =
+        row.measurement.status === "APPROVED" ? "MEDIDO_APROVADO" : "INCLUIDO_EM_MEDICAO";
+    } else if (row.measurementId) {
+      measurementBillingStatus = "INCLUIDO_EM_MEDICAO";
+    }
     return {
       ...row,
       quantity: row.quantity.toString(),
@@ -126,7 +140,11 @@ export class ContractConsumptionService {
       originalQuantity: row.originalQuantity?.toString() ?? null,
       activityStatus: row.activityStatus ?? ConsumptionActivityStatus.SURVEY,
       startDate: row.startDate ?? null,
-      consumptionUnit: unitSnap
+      consumptionUnit: unitSnap,
+      measurementBillingStatus,
+      measurementLabel: row.measurement
+        ? `${String(row.measurement.referenceMonth).padStart(2, "0")}/${row.measurement.referenceYear}`
+        : null
     };
   }
 
@@ -260,7 +278,8 @@ export class ContractConsumptionService {
               unit: { select: { code: true, label: true } },
               type: { select: { code: true, label: true } }
             }
-          }
+          },
+          measurement: { select: { id: true, status: true, referenceMonth: true, referenceYear: true } }
         },
         orderBy: [{ executionDate: "desc" }, { createdAt: "desc" }],
         skip: (page - 1) * pageSize,

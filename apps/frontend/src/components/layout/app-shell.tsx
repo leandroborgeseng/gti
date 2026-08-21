@@ -26,6 +26,7 @@ const titles: Record<string, string> = {
   "/minhas-atribuicoes": "Minhas atribuições",
   "/chamados": "Chamados GLPI",
   "/contracts": "Contratos",
+  "/documentos": "Documentos",
   "/modulos": "Funcionalidades",
   "/measurements": "Medições",
   "/glosas": "Glosas",

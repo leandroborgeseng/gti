@@ -1818,15 +1818,21 @@ ${bodyHtml}
       });
     }
     if (seg.length === 3 && seg[2] === "pdf" && method === "GET") {
-      const pdf = await gestaoContractNotifications.printablePdf(seg[1]);
-      return new NextResponse(new Uint8Array(pdf.buffer), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="${pdf.filename.replace(/"/g, "'")}"`,
-          "Cache-Control": "private, no-store"
-        }
-      });
+      try {
+        const pdf = await gestaoContractNotifications.printablePdf(seg[1]);
+        return new NextResponse(new Uint8Array(pdf.buffer), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="${pdf.filename.replace(/"/g, "'")}"`,
+            "Cache-Control": "private, no-store"
+          }
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Falha ao gerar o PDF";
+        console.error("[contract-notifications/pdf]", e);
+        return jsonErr(500, msg);
+      }
     }
     if (seg.length === 2 && method === "PATCH") {
       assertMutation(user, method);

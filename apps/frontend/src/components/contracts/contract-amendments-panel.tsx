@@ -71,6 +71,8 @@ type DraftItem = {
   periodicity: ContractPricingPeriodicity | "";
   adjustmentPercent: string;
   beforeTotal: number;
+  /** Renovação: o que fazer com saldo remanescente do período anterior. */
+  renewalBalancePolicy?: "EXPIRE" | "ACCUMULATE" | "CONTINUE";
 };
 
 function toDateInputValue(iso: string | null | undefined): string {
@@ -136,7 +138,8 @@ function draftFromItem(item: ContractPricingItem): DraftItem {
     billingKind: item.billingKind,
     periodicity: item.periodicity ?? "",
     adjustmentPercent: "",
-    beforeTotal: money(item.totalValue)
+    beforeTotal: money(item.totalValue),
+    renewalBalancePolicy: "EXPIRE"
   };
 }
 
@@ -318,7 +321,9 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
           totalValue: Number.isFinite(tv) ? tv : undefined,
           billingKind: d.billingKind,
           periodicity: d.billingKind === "RECURRING" ? d.periodicity || "MONTHLY" : null,
-          includeInGlosaBase: false
+          includeInGlosaBase: false,
+          renewalBalancePolicy:
+            d.action === "RENEW_QUANTITY" ? d.renewalBalancePolicy ?? "EXPIRE" : undefined
         }
       });
     }
@@ -582,6 +587,30 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
                                   onChange={(e) => updateDraft(d.key, { quantity: e.target.value })}
                                 />
                               </FormField>
+                              {d.action === "RENEW_QUANTITY" ? (
+                                <FormField
+                                  label="Saldo remanescente do período anterior"
+                                  htmlFor={`renew-bal-${d.key}`}
+                                  className="sm:col-span-2 lg:col-span-4"
+                                >
+                                  <select
+                                    id={`renew-bal-${d.key}`}
+                                    className={formControlClass}
+                                    value={d.renewalBalancePolicy ?? "EXPIRE"}
+                                    onChange={(e) =>
+                                      updateDraft(d.key, {
+                                        renewalBalancePolicy: e.target.value as DraftItem["renewalBalancePolicy"]
+                                      })
+                                    }
+                                  >
+                                    <option value="EXPIRE">Expira (só a nova quantidade do período)</option>
+                                    <option value="ACCUMULATE">
+                                      Acumula (nova quantidade + saldo não medido anterior)
+                                    </option>
+                                    <option value="CONTINUE">Continua disponível (mantém regras do item)</option>
+                                  </select>
+                                </FormField>
+                              ) : null}
                               <FormField label="Valor unitário (R$)" htmlFor={`uv-${d.key}`}>
                                 <input
                                   id={`uv-${d.key}`}
