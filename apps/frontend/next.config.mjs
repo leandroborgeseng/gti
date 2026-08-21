@@ -14,6 +14,9 @@ const nextConfig = {
         bcrypt: path.join(nm, "bcrypt"),
         /** Importados desde `apps/backend/src` (externalDir); na imagem Docker não há `apps/backend/node_modules`. */
         "@nestjs/common": path.join(nm, "@nestjs", "common"),
+        "@sparticuz/chromium": path.join(nm, "@sparticuz", "chromium"),
+        "puppeteer-core": path.join(nm, "puppeteer-core"),
+        pdfkit: path.join(nm, "pdfkit"),
       };
       config.resolve.modules = [nm, ...(config.resolve.modules ?? ["node_modules"])];
     }
