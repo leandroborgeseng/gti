@@ -1144,12 +1144,45 @@ export type Measurement = {
   contractId: string;
   referenceMonth: number;
   referenceYear: number;
+  /** Data de corte (AAAA-MM-DD). */
+  referenceDate?: string | null;
   status: string;
   /** ISO; útil para alinhar estado cliente após revalidação do servidor. */
   updatedAt?: string;
   totalMeasuredValue: string;
   totalApprovedValue: string;
   totalGlosedValue: string;
+  /** Memória de saldo por item (ticket 98). */
+  balanceMemory?: {
+    asOf?: string;
+    generatedAt?: string;
+    lines?: Array<{
+      pricingItemId: string;
+      description: string;
+      billingKind?: string;
+      contractedQuantity: number;
+      alreadyMeasuredApproved: number;
+      availableBalance: number;
+      approvedConsumptionNotMeasured: number;
+      currentMeasurementQuantity: number;
+      unitValue: number;
+      grossValue: number;
+    }>;
+  } | null;
+  /** Snapshot das funcionalidades na data de corte. */
+  featureDeliverySnapshot?: {
+    asOf?: string;
+    features?: Array<{
+      featureId: string;
+      itemCode?: string | null;
+      name: string;
+      criticality?: string;
+      deliveryStatus?: string;
+      partialDeliveryPercent?: number | null;
+      fractionAsOf?: number;
+      excludedFromCalculation?: boolean;
+    }>;
+  } | null;
   financialSummary?: {
     gross: string;
     automaticGlosas: string;
@@ -4417,6 +4450,8 @@ export type ContractNotificationRecord = {
   id: string;
   contractId: string;
   number: string;
+  documentVerifierCode?: string | null;
+  documentValidationCode?: string | null;
   status: string;
   subject: string;
   bodyHtml: string;

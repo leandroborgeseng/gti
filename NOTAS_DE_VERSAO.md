@@ -4,8 +4,22 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ## Não publicado
 
+### Adicionado
+
+- **Memória de saldo na tela da medição**: no detalhe da medição, após calcular, a seção «Memória de saldo e entrega» exibe data de corte, tabela de saldo por item e snapshot das funcionalidades (itens «Não se aplica» ficam fora do percentual).
+- **Códigos DOC-SIGTI e QR**: novos documentos formais usam numeração `DOC-SIGTI-####/AAAA` (documentos `NOT-SIGTI` antigos continuam válidos), com código verificador e código de validação no documento, QR Code e bloco de validação apontando para `/validar-documento`.
+- **Arquivos do contrato** (ticket 105): nova aba «Arquivos» na ficha do contrato para anexar documentos originais (contrato, TR, edital, aditivos etc.), com listagem paginada, filtros, download, envio (quem edita contratos) e cancelamento/inativação com justificativa.
+- **Memória de saldo na medição** (ticket 98): cada medição passa a registrar data de referência (corte) e memória de saldo por item (contratado, já medido/aprovado, saldo, consumo aprovado ainda não medido e quantidade da medição atual), além de snapshot das funcionalidades na data de corte. A glosa automática passa a respeitar «Não se aplica» e o percentual parcial vigente.
+- **Aditivos com renovação/acréscimo** (ticket 99): no registro de aditivo, além de alterar/suprimir/incluir, há ações «Acrescentar quantidade», «Renovar quantidade/período» e «Encerrar item».
+- **Validação pública de documento** (ticket 101): link «Validar documento» na tela de login e página pública `/validar-documento` para conferir código do documento e código verificador das assinaturas.
+- **Central de Documentos** (tickets 103/104): a tela Documentos (área externa/interna conforme menu) lista notificações formalizadas com filtros rápidos (pendentes de assinatura, assinados por mim, todos).
+- **Solicitar acesso em tela própria** (ticket 89): o login fica só com e-mail, senha, «Esqueci minha senha» e o link «Solicitar acesso». A solicitação pede nome, CPF, e-mail e tipo (Interno com órgão / Externo com empresa e vínculo). Fica «Aguardando aprovação»; na Administração as pendências são destacadas; a recusa exige justificativa e fica na auditoria (sem exclusão silenciosa). Perfis e permissões não são escolhidos pelo solicitante.
+- **Indicador de carregamento**: navegações usam barra leve no topo (sem bloquear a interface). Overlay em tela cheia permanece para operações longas explícitas, como troca de contexto de acesso.
+- **Consumo operacional separado do financeiro** (tickets 91–93): itens com «Controlar consumo» passam a ter unidade e quantidade próprias de consumo (ex.: 12 meses financeiros e 150 horas de saldo). A aba Consumos mostra disponível, utilizado, em validação, estimado em aberto, saldo efetivo e saldo projetado; o percentual usa só o efetivamente utilizado/validado. Lançamentos admitem quantidade estimada (não reduz saldo) e efetivamente consumida, com situações de atividade (levantamento, desenvolvimento, concluído etc.), tanto na aba Consumos quanto a partir de chamados GLPI.
+
 ### Alterado
 
+- **PDF de notificações**: o «Baixar PDF» tenta renderizar o mesmo HTML imprimível via Chromium; se o Chromium não estiver disponível no ambiente, usa fallback em texto (pdfkit).
 - **Logo da barra lateral**: o cabeçalho do menu passa a usar o logo resumido «F» da Prefeitura de Franca (mesmo das outras aplicações). Com o menu aberto: logo + SIGTI + nome completo; recolhido: só o logo. Login e demais telas mantêm a marca anterior.
 - **Regenerar código interno**: a ação sai do cabeçalho do contrato e fica só no modal Editar, junto ao campo «Código interno SIGTI» (somente leitura), com confirmação e justificativa.
 - **Funcionalidades mais rápidas**: ao alterar criticidade, estado de entrega ou demais campos do item, o servidor deixa de recarregar o contrato inteiro (cronogramas, aditivos, GLPI etc.); a tela de Funcionalidades também evita invalidar a lista global de contratos a cada salvamento.
@@ -17,17 +31,6 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - **Projetos e formulários sob demanda**: o quadro de tarefas do projeto e os formulários de medição/fornecedor/fiscal/contrato só entram na página quando necessários. Manual e notas de versão deixam de forçar renderização dinâmica a cada visita.
 - **Backend mais leve em listagens**: índices novos em auditoria, medições, módulos, governança e ações de meta; listas de contratos/glosas sem carregar anexos/grupos GLPI desnecessários; sincronização de prazos em lotes; métricas de projetos e monitoramento de governança sem varrer todas as linhas em memória.
 - **Fechamento de performance**: listagem de contratos só com campos da tabela; resumo de prazos e tarefas atrasadas via agregação; Administração sem carregar todos os usuários no primeiro paint; índice de data limite em tarefas de projeto.
-
-### Adicionado
-
-- **Arquivos do contrato** (ticket 105): nova aba «Arquivos» na ficha do contrato para anexar documentos originais (contrato, TR, edital, aditivos etc.), com listagem paginada, filtros, download, envio (quem edita contratos) e cancelamento/inativação com justificativa.
-- **Memória de saldo na medição** (ticket 98): cada medição passa a registrar data de referência (corte) e memória de saldo por item (contratado, já medido/aprovado, saldo, consumo aprovado ainda não medido e quantidade da medição atual), além de snapshot das funcionalidades na data de corte. A glosa automática passa a respeitar «Não se aplica» e o percentual parcial vigente.
-- **Aditivos com renovação/acréscimo** (ticket 99): no registro de aditivo, além de alterar/suprimir/incluir, há ações «Acrescentar quantidade», «Renovar quantidade/período» e «Encerrar item».
-- **Validação pública de documento** (ticket 101): link «Validar documento» na tela de login e página pública `/validar-documento` para conferir código do documento e código verificador das assinaturas.
-- **Central de Documentos** (tickets 103/104): a tela Documentos (área externa/interna conforme menu) lista notificações formalizadas com filtros rápidos (pendentes de assinatura, assinados por mim, todos).
-- **Solicitar acesso em tela própria** (ticket 89): o login fica só com e-mail, senha, «Esqueci minha senha» e o link «Solicitar acesso». A solicitação pede nome, CPF, e-mail e tipo (Interno com órgão / Externo com empresa e vínculo). Fica «Aguardando aprovação»; na Administração as pendências são destacadas; a recusa exige justificativa e fica na auditoria (sem exclusão silenciosa). Perfis e permissões não são escolhidos pelo solicitante.
-- **Indicador de carregamento**: navegações usam barra leve no topo (sem bloquear a interface). Overlay em tela cheia permanece para operações longas explícitas, como troca de contexto de acesso.
-- **Consumo operacional separado do financeiro** (tickets 91–93): itens com «Controlar consumo» passam a ter unidade e quantidade próprias de consumo (ex.: 12 meses financeiros e 150 horas de saldo). A aba Consumos mostra disponível, utilizado, em validação, estimado em aberto, saldo efetivo e saldo projetado; o percentual usa só o efetivamente utilizado/validado. Lançamentos admitem quantidade estimada (não reduz saldo) e efetivamente consumida, com situações de atividade (levantamento, desenvolvimento, concluído etc.), tanto na aba Consumos quanto a partir de chamados GLPI.
 
 ### Corrigido
 

@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-08-21"; // aba Arquivos do contrato (ticket 105)
+export const MANUAL_LAST_UPDATED = "2026-08-21"; // memória de saldo na medição + DOC-SIGTI/QR/PDF HTML
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -107,7 +107,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       },
       {
         kind: "tip",
-        text: "O documento assinado pode ser impresso em HTML ou baixado como PDF simples. Nenhum dos dois substitui assinatura com certificado digital ICP-Brasil."
+        text: "O documento assinado pode ser impresso em HTML ou baixado como PDF gerado a partir do mesmo HTML (quando o ambiente tiver Chromium; senão, há fallback em texto). Novos documentos usam numeração DOC-SIGTI-####/AAAA (números NOT-SIGTI antigos continuam válidos), com código verificador, código de validação e QR Code apontando para /validar-documento. Nenhum destes substitui assinatura com certificado digital ICP-Brasil."
       }
     ]
   },
@@ -298,6 +298,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Ao criar, o sistema monta automaticamente as linhas a partir dos itens contratuais vigentes (total ou parcialmente) na competência. Se um aditivo mudar o item no meio do mês, surgem linhas separadas com o período de cada versão. Contratos sem itens vigentes e sem valor mensal legado não permitem criar a medição.",
           "Itens recorrentes entram com valor proporcional aos dias de vigência no mês; sob demanda e pagamento único pedem quantidade (ou percentual) informada antes ou depois do primeiro cálculo. Use «Calcular medição» para preencher valores e gerar glosas automáticas por funcionalidades não validadas, quando aplicável. A glosa automática é rateada proporcionalmente ao valor bruto de cada linha da medição.",
           "Na seção «Glosas e descontos» da medição, registre glosas manuais com justificativa obrigatória. Glosas automáticas não têm valor editável. O resumo mostra bruto, glosas automáticas, manuais e líquido (≥ 0). Após aprovar, a medição fica congelada.",
+          "Após «Calcular medição», a seção «Memória de saldo e entrega» mostra a data de corte, o saldo por item (contratado → já medido → saldo → consumo não medido → medição atual) e o snapshot das funcionalidades nessa data. Com a medição aprovada, essa memória permanece como registro histórico.",
           "Em contratos de datacenter ou infraestrutura, ainda é possível acrescentar linhas de consumo por serviço enquanto a medição estiver aberta. Para itens sob demanda, o sistema não permite medir ou aprovar quantidade acima do saldo disponível.",
           "Os anexos da medição permitem pré-visualizar PDF e imagens; administradores e editores podem eliminar um anexo (com confirmação)."
         ]

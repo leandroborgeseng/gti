@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MeasurementAddServiceLines } from "@/components/measurements/measurement-add-service-lines";
+import { MeasurementBalanceMemoryPanel } from "@/components/measurements/measurement-balance-memory-panel";
 import { MeasurementItemsStateful } from "@/components/measurements/measurement-items-stateful";
 import { MeasurementAttachments } from "@/components/measurements/measurement-attachments";
 import { MeasurementGlosasPanel } from "@/components/measurements/measurement-glosas-panel";
@@ -169,6 +170,12 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
             {String(measurement.referenceMonth).padStart(2, "0")}/{measurement.referenceYear}
           </p>
           <p>
+            <strong className="text-slate-900">Data de corte:</strong>{" "}
+            {measurement.referenceDate
+              ? formatDateUtc(measurement.referenceDate)
+              : "Último dia da competência (após calcular)"}
+          </p>
+          <p>
             <strong className="text-slate-900">Vigência do contrato:</strong>{" "}
             {formatDateUtc(measurement.contract?.startDate)} a {formatDateUtc(measurement.contract?.endDate)}
           </p>
@@ -211,6 +218,8 @@ export default async function MeasurementDetailPage({ params }: { params: { id: 
           items={measurement.items ?? []}
         />
       </Card>
+
+      <MeasurementBalanceMemoryPanel measurement={measurement} />
 
       <Card className="p-5">
         <h4 className="mb-2 font-medium text-slate-900">Glosas e descontos</h4>

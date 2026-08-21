@@ -563,7 +563,8 @@ export class DeadlinesService {
       BAIXA: 1,
       MEDIA: 2,
       ALTA: 3,
-      CRITICA: 4
+      CRITICA: 4,
+      NAO_SE_APLICA: -1
     };
 
     for (const f of features) {

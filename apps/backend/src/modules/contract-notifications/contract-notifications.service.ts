@@ -14,6 +14,7 @@ import { randomBytes } from "node:crypto";
 import { getAuditActorId, getAuditActorLabel, requestActorStore } from "../../common/audit-actor";
 import { resolveAuditGate } from "../../common/audit-event-gate";
 import { assertExternalCanAccessContract, isExternalActor } from "../../common/external-access";
+import { htmlToPdfBuffer } from "../../common/html-to-pdf";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   AnalyzeResponseDto,
@@ -27,6 +28,11 @@ import {
   TransitionNotificationDto,
   UpdateNotificationDraftDto
 } from "./contract-notifications.dto";
+import {
+  deriveDocumentValidationCode,
+  formatDocumentNumber,
+  generateDocumentVerifierCode
+} from "./document-codes";
 
 const EDITABLE: ContractNotificationStatus[] = [
   "RASCUNHO",
@@ -36,26 +42,13 @@ const EDITABLE: ContractNotificationStatus[] = [
   "APROVADA_ASSINATURA"
 ];
 
-function stripHtmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<\/div>/gi, "\n")
-    .replace(/<\/li>/gi, "\n")
-    .replace(/<\/h[1-6]>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\r/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+function publicAppBase(): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    ""
+  ).replace(/\/$/, "");
 }
 
 const LOCKED_CONTENT: ContractNotificationStatus[] = [
@@ -205,6 +198,8 @@ export class ContractNotificationsService {
     if (!contract) throw new NotFoundException("Contrato não encontrado.");
 
     const number = await this.nextNumber();
+    const documentVerifierCode = await this.allocateVerifierCode();
+    const documentValidationCode = deriveDocumentValidationCode(number, documentVerifierCode);
     const responseDeadline =
       template.defaultResponseDays > 0
         ? new Date(Date.now() + template.defaultResponseDays * 24 * 60 * 60 * 1000)
@@ -239,6 +234,8 @@ export class ContractNotificationsService {
         templateId: template.id,
         templateVersion: template.version,
         number,
+        documentVerifierCode,
+        documentValidationCode,
         status: "RASCUNHO",
         subject: dto.subject?.trim() || template.documentTitle,
         bodyHtml: applyMailMerge(template.bodyHtml, vars),
@@ -425,9 +422,19 @@ export class ContractNotificationsService {
         where: { notificationId: id },
         orderBy: { order: "asc" }
       });
-      const html = this.buildSignedDocumentHtml(
+      let docVerifier = prev.documentVerifierCode;
+      let docValidation = prev.documentValidationCode;
+      if (!docVerifier) {
+        docVerifier = generateDocumentVerifierCode();
+        docValidation = deriveDocumentValidationCode(prev.number, docVerifier);
+      } else if (!docValidation) {
+        docValidation = deriveDocumentValidationCode(prev.number, docVerifier);
+      }
+      const html = await this.buildSignedDocumentHtml(
         {
           ...prev,
+          documentVerifierCode: docVerifier,
+          documentValidationCode: docValidation,
           signers: allSignersBeforeHtml.map((s) =>
             s.id === signer.id
               ? {
@@ -457,6 +464,8 @@ export class ContractNotificationsService {
         data: {
           contentLocked: true,
           signedDocumentHtml: html,
+          documentVerifierCode: docVerifier,
+          documentValidationCode: docValidation,
           status: requiredDone ? "ASSINADA" : "AGUARDANDO_ASSINATURA"
         }
       });
@@ -720,6 +729,8 @@ export class ContractNotificationsService {
     if (!actor?.userId) throw new ForbiddenException("Não autenticado.");
 
     const number = await this.nextNumber();
+    const documentVerifierCode = await this.allocateVerifierCode();
+    const documentValidationCode = deriveDocumentValidationCode(number, documentVerifierCode);
     const created = await this.prisma.$transaction(async (tx) => {
       await tx.contractNotification.update({
         where: { id },
@@ -731,6 +742,8 @@ export class ContractNotificationsService {
           templateId: prev.templateId,
           templateVersion: prev.templateVersion,
           number,
+          documentVerifierCode,
+          documentValidationCode,
           status: "RASCUNHO",
           subject: `[Retificação] ${prev.subject}`,
           bodyHtml: prev.bodyHtml,
@@ -772,38 +785,10 @@ export class ContractNotificationsService {
     return { number: row.number, html };
   }
 
-  /** PDF a partir do mesmo HTML imprimível (texto derivado). Não é assinatura ICP-Brasil. */
+  /** PDF a partir do mesmo HTML imprimível (Chromium; fallback pdfkit). Não é assinatura ICP-Brasil. */
   async printablePdf(id: string): Promise<{ buffer: Buffer; filename: string; number: string }> {
-    const PDFDocument = (await import("pdfkit")).default;
     const { number, html } = await this.printableHtml(id);
-    const row = await this.findOne(id);
-    const text = stripHtmlToText(html);
-
-    const doc = new PDFDocument({ margin: 50, size: "A4", info: { Title: number, Author: "SIGTI" } });
-    const chunks: Buffer[] = [];
-    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-
-    const done = new Promise<Buffer>((resolve, reject) => {
-      doc.on("end", () => resolve(Buffer.concat(chunks)));
-      doc.on("error", reject);
-    });
-
-    doc.fontSize(10).fillColor("#666").text(
-      "Documento PDF gerado pelo SIGTI a partir da mesma versão HTML imprimível. Não é um PDF assinado digitalmente por certificado ICP-Brasil.",
-      { align: "left" }
-    );
-    doc.moveDown();
-    doc.fillColor("#111").fontSize(14).text(number, { continued: false });
-    doc.fontSize(12).text(row.subject);
-    doc.fontSize(9).fillColor("#555").text(`Status: ${row.status}`);
-    doc.moveDown();
-    doc.fillColor("#111").fontSize(11).text(text || "(Sem conteúdo textual)", {
-      align: "left",
-      lineGap: 2
-    });
-    doc.end();
-
-    const buffer = await done;
+    const buffer = await htmlToPdfBuffer(html, number);
     const safeNumber = String(number).replace(/[^\w.-]+/g, "_");
     return { buffer, filename: `${safeNumber}.pdf`, number };
   }
@@ -838,16 +823,31 @@ export class ContractNotificationsService {
       });
       return row.lastNumber;
     });
-    return `NOT-SIGTI-${String(seq).padStart(4, "0")}/${year}`;
+    /** Novos documentos: DOC-SIGTI. Números NOT-SIGTI já emitidos permanecem válidos. */
+    return formatDocumentNumber(seq, year);
   }
 
-  private buildSignedDocumentHtml(
+  private async allocateVerifierCode(): Promise<string> {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const code = generateDocumentVerifierCode();
+      const clash = await this.prisma.contractNotification.findFirst({
+        where: { documentVerifierCode: code },
+        select: { id: true }
+      });
+      if (!clash) return code;
+    }
+    return generateDocumentVerifierCode(12);
+  }
+
+  private async buildSignedDocumentHtml(
     n: {
       number: string;
       subject: string;
       headerHtml: string | null;
       bodyHtml: string;
       footerHtml: string | null;
+      documentVerifierCode?: string | null;
+      documentValidationCode?: string | null;
       signers: Array<{
         signedAt: Date | null;
         signerName: string | null;
@@ -866,7 +866,7 @@ export class ContractNotificationsService {
       signedAt: Date;
       verificationCode: string;
     } | null
-  ): string {
+  ): Promise<string> {
     const signed = n.signers.filter((s) => s.signedAt);
     const pending = n.signers.filter((s) => !s.signedAt);
     const signatureBlocks = signed.map((s) => {
@@ -875,7 +875,7 @@ export class ContractNotificationsService {
         s.signerJobTitle ? ` — ${s.signerJobTitle}` : ""
       }${s.signerOrgLabel ? ` · ${s.signerOrgLabel}` : ""}<br/>CPF: ${cpf} · ${new Date(
         s.signedAt!
-      ).toLocaleString("pt-BR")} · Código verificador: ${s.verificationCode ?? "—"}</p>`;
+      ).toLocaleString("pt-BR")} · Código verificador da assinatura: ${s.verificationCode ?? "—"}</p>`;
     });
     const pendingBlock =
       pending.length > 0
@@ -883,6 +883,38 @@ export class ContractNotificationsService {
             .map((s) => s.signerName ?? "signatário")
             .join(", ")}</p>`
         : "";
+
+    const verifier = n.documentVerifierCode ?? "";
+    const validation = n.documentValidationCode ?? "";
+    const qs = new URLSearchParams();
+    qs.set("doc", n.number);
+    if (verifier) qs.set("codigo", verifier);
+    if (validation) qs.set("validacao", validation);
+    const base = publicAppBase();
+    const validatePath = `/validar-documento?${qs.toString()}`;
+    const validateUrl = base ? `${base}${validatePath}` : validatePath;
+
+    let qrImg = "";
+    try {
+      const QRCode = await import("qrcode");
+      const dataUrl = await QRCode.toDataURL(validateUrl, { margin: 1, width: 148, errorCorrectionLevel: "M" });
+      qrImg = `<img src="${dataUrl}" alt="QR Code de validação" width="148" height="148" style="display:block;margin:0 auto 8px" />`;
+    } catch {
+      qrImg = "";
+    }
+
+    const validationBlock = `<hr/><h3>Validação do documento</h3>
+      <div style="display:flex;gap:1.25rem;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px;font-size:12px;line-height:1.5">
+          <p>Código do documento: <strong>${n.number}</strong></p>
+          <p>Código verificador: <strong>${verifier || "—"}</strong></p>
+          <p>Código de validação: <strong>${validation || "—"}</strong></p>
+          <p>Consulte em <strong>/validar-documento</strong> (ou escaneie o QR Code) para confirmar autenticidade.</p>
+          <p style="color:#666;word-break:break-all">${validateUrl}</p>
+        </div>
+        <div style="text-align:center;font-size:11px;color:#555">${qrImg}QR Code</div>
+      </div>`;
+
     const blocks = [
       n.headerHtml ?? "",
       n.bodyHtml,
@@ -891,10 +923,13 @@ export class ContractNotificationsService {
       ...signatureBlocks,
       pendingBlock,
       `<p style="font-size:12px;color:#666">Assinatura eletrônica por senha (SIGTI). Não equivale a certificado digital ICP-Brasil.</p>`,
-      `<hr/><h3>Validação do documento</h3>`,
-      `<p style="font-size:12px">Código do documento: <strong>${n.number}</strong><br/>Consulte em /validar-documento informando o código verificador de uma das assinaturas.</p>`
+      validationBlock
     ];
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${n.number}</title></head><body>
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${n.number}</title>
+      <style>body{font-family:Georgia,serif;max-width:800px;margin:2rem auto;padding:1rem;color:#111;line-height:1.45}
+      h1{font-size:1.35rem;margin:0 0 .35rem}h2{font-size:1.1rem;font-weight:600;margin:0 0 1rem;color:#333}
+      h3{font-size:1rem;margin:1rem 0 .5rem}hr{border:none;border-top:1px solid #ccc;margin:1.25rem 0}</style>
+      </head><body>
       <h1>${n.number}</h1><h2>${n.subject}</h2>${blocks.join("\n")}</body></html>`;
   }
 

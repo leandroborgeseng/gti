@@ -2206,6 +2206,10 @@ model ContractNotification {
   templateId         String?                    @map("template_id")
   templateVersion    Int                        @default(1) @map("template_version")
   number             String                     @unique
+  /// Código verificador do documento (nível documento, ticket 101).
+  documentVerifierCode String?                  @unique @map("document_verifier_code")
+  /// Código de validação complementar (derivável, conferência de digitação).
+  documentValidationCode String?                @map("document_validation_code")
   status             ContractNotificationStatus @default(RASCUNHO)
   subject            String
   bodyHtml           String                     @map("body_html") @db.Text

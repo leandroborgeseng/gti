@@ -67,7 +67,7 @@ function ValidarDocumentoForm(): JSX.Element {
           <Label htmlFor="doc-number">Código do documento</Label>
           <Input
             id="doc-number"
-            placeholder="Ex.: NOT-SIGTI-0002/2026"
+            placeholder="Ex.: DOC-SIGTI-0002/2026"
             value={documentNumber}
             onChange={(e) => setDocumentNumber(e.target.value)}
           />

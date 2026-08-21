@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/glpi/config/prisma";
+import {
+  deriveDocumentValidationCode
+} from "@/lib/document-codes";
 
 function maskCpfBr(cpf: string | null | undefined): string | null {
   if (!cpf) return null;
@@ -8,11 +11,52 @@ function maskCpfBr(cpf: string | null | undefined): string | null {
   return `···.···.${digits.slice(-5, -2)}-${digits.slice(-2)}`;
 }
 
+function buildPayload(n: {
+  number: string;
+  subject: string;
+  status: string;
+  contract: { organization: { acronym: string | null; name: string } | null };
+  signers: Array<{
+    signedAt: Date | null;
+    signerName: string | null;
+    signerJobTitle: string | null;
+    signerOrgLabel: string | null;
+    signerCpf: string | null;
+    verificationCode: string | null;
+  }>;
+}, signedAt: Date | null) {
+  const org = n.contract.organization;
+  return {
+    ok: true as const,
+    document: {
+      number: n.number,
+      subject: n.subject,
+      status: n.status,
+      signedAt,
+      organizationLabel: org
+        ? org.acronym
+          ? `${org.acronym} · ${org.name}`
+          : org.name
+        : null,
+      signers: n.signers
+        .filter((s) => s.signedAt)
+        .map((s) => ({
+          name: s.signerName,
+          jobTitle: s.signerJobTitle,
+          orgLabel: s.signerOrgLabel,
+          signedAt: s.signedAt,
+          cpfMasked: maskCpfBr(s.signerCpf),
+          verificationCode: s.verificationCode
+        }))
+    }
+  };
+}
+
 /** Validação pública de documento (ticket 101) — sem autenticação. */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const url = new URL(req.url);
   const documentNumber = (url.searchParams.get("documentNumber") ?? "").trim();
-  const verifierCode = (url.searchParams.get("verifierCode") ?? "").trim().toLowerCase();
+  const verifierCode = (url.searchParams.get("verifierCode") ?? "").trim();
   const validationCode = (url.searchParams.get("validationCode") ?? "").trim();
 
   if (!verifierCode) {
@@ -22,6 +66,41 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // 1) Preferência: código verificador do documento (nível DOC-SIGTI / NOT-SIGTI).
+  const byDocument = await prisma.contractNotification.findFirst({
+    where: {
+      documentVerifierCode: { equals: verifierCode, mode: "insensitive" },
+      ...(documentNumber
+        ? { number: { equals: documentNumber, mode: "insensitive" } }
+        : {})
+    },
+    include: {
+      signers: { orderBy: { order: "asc" } },
+      contract: { include: { organization: true } }
+    }
+  });
+
+  if (byDocument) {
+    if (validationCode) {
+      const expected =
+        byDocument.documentValidationCode ||
+        deriveDocumentValidationCode(byDocument.number, byDocument.documentVerifierCode ?? verifierCode);
+      if (validationCode.replace(/\s/g, "").toUpperCase() !== expected.toUpperCase()) {
+        return NextResponse.json(
+          { ok: false, message: "Código de validação não confere." },
+          { status: 400 }
+        );
+      }
+    }
+    const lastSigned =
+      byDocument.signers
+        .filter((s) => s.signedAt)
+        .map((s) => s.signedAt!)
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+    return NextResponse.json(buildPayload(byDocument, lastSigned));
+  }
+
+  // 2) Compatibilidade: código verificador de uma assinatura (documentos antigos).
   const signer = await prisma.contractNotificationSigner.findFirst({
     where: {
       verificationCode: { equals: verifierCode, mode: "insensitive" },
@@ -47,10 +126,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Código de validação complementar: hash simples document+verificador (não é o único fator).
   if (validationCode) {
-    const expected = simpleValidationCode(signer.notification.number, signer.verificationCode ?? "");
-    if (validationCode.replace(/\s/g, "").toUpperCase() !== expected) {
+    const n = signer.notification;
+    const expected =
+      n.documentValidationCode ||
+      deriveDocumentValidationCode(n.number, n.documentVerifierCode || signer.verificationCode || "");
+    if (validationCode.replace(/\s/g, "").toUpperCase() !== expected.toUpperCase()) {
       return NextResponse.json(
         { ok: false, message: "Código de validação não confere." },
         { status: 400 }
@@ -58,37 +139,5 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  const n = signer.notification;
-  const org = n.contract.organization;
-  return NextResponse.json({
-    ok: true,
-    document: {
-      number: n.number,
-      subject: n.subject,
-      status: n.status,
-      signedAt: signer.signedAt,
-      organizationLabel: org
-        ? org.acronym
-          ? `${org.acronym} · ${org.name}`
-          : org.name
-        : null,
-      signers: n.signers
-        .filter((s) => s.signedAt)
-        .map((s) => ({
-          name: s.signerName,
-          jobTitle: s.signerJobTitle,
-          orgLabel: s.signerOrgLabel,
-          signedAt: s.signedAt,
-          cpfMasked: maskCpfBr(s.signerCpf),
-          verificationCode: s.verificationCode
-        }))
-    }
-  });
-}
-
-function simpleValidationCode(documentNumber: string, verifier: string): string {
-  const raw = `${documentNumber}|${verifier}`.toUpperCase();
-  let h = 0;
-  for (let i = 0; i < raw.length; i++) h = (h * 31 + raw.charCodeAt(i)) >>> 0;
-  return h.toString(36).toUpperCase().padStart(8, "0").slice(0, 8);
+  return NextResponse.json(buildPayload(signer.notification, signer.signedAt));
 }
