@@ -594,8 +594,27 @@ export class ContractsController {
   }
 
   @Get(":id/item-change-logs")
-  itemChangeLogs(@Param("id") id: string): Promise<unknown> {
-    return this.service.findItemChangeLogs(id);
+  itemChangeLogs(
+    @Param("id") id: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("actor") actor?: string,
+    @Query("itemType") itemType?: string,
+    @Query("action") action?: string,
+    @Query("q") q?: string
+  ): Promise<unknown> {
+    return this.service.findItemChangeLogs(id, {
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      from,
+      to,
+      actor,
+      itemType,
+      action,
+      q
+    });
   }
 
   @Get(":id")

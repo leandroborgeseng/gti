@@ -2217,15 +2217,85 @@ export class ContractsService {
     };
   }
 
-  async findItemChangeLogs(contractId: string): Promise<unknown> {
+  async findItemChangeLogs(
+    contractId: string,
+    query: {
+      page?: number;
+      pageSize?: number;
+      from?: string;
+      to?: string;
+      actor?: string;
+      itemType?: string;
+      action?: string;
+      q?: string;
+    } = {}
+  ): Promise<unknown> {
     const accessible = await this.accessibleContractWhere(contractId);
     const exists = await this.prisma.contract.findFirst({ where: accessible, select: { id: true } });
     if (!exists) throw new NotFoundException("Contrato não encontrado");
-    return this.prisma.contractItemChangeLog.findMany({
-      where: { contractId },
-      orderBy: { changedAt: "desc" },
-      take: 200
-    });
+
+    const allowedPageSizes = new Set([10, 25, 50, 100]);
+    const pageSizeRaw = Number(query.pageSize ?? 25);
+    const pageSize = allowedPageSizes.has(pageSizeRaw) ? pageSizeRaw : 25;
+    const page = Math.max(1, Number(query.page ?? 1) || 1);
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.ContractItemChangeLogWhereInput = { contractId };
+
+    if (query.from || query.to) {
+      where.changedAt = {};
+      if (query.from) {
+        const from = new Date(query.from);
+        if (!Number.isNaN(from.getTime())) where.changedAt.gte = from;
+      }
+      if (query.to) {
+        const to = new Date(query.to);
+        if (!Number.isNaN(to.getTime())) {
+          // Inclui o dia final quando só vem a data.
+          if (/^\d{4}-\d{2}-\d{2}$/.test(query.to.trim())) {
+            to.setHours(23, 59, 59, 999);
+          }
+          where.changedAt.lte = to;
+        }
+      }
+    }
+
+    const actor = query.actor?.trim();
+    if (actor) {
+      where.actorLabel = { contains: actor, mode: "insensitive" };
+    }
+
+    const itemType = query.itemType?.trim().toUpperCase();
+    if (itemType && Object.values(ContractItemChangeType).includes(itemType as ContractItemChangeType)) {
+      where.itemType = itemType as ContractItemChangeType;
+    }
+
+    const action = query.action?.trim().toUpperCase();
+    if (action && Object.values(ContractItemChangeAction).includes(action as ContractItemChangeAction)) {
+      where.action = action as ContractItemChangeAction;
+    }
+
+    const q = query.q?.trim();
+    if (q) {
+      where.OR = [
+        { itemName: { contains: q, mode: "insensitive" } },
+        { actorLabel: { contains: q, mode: "insensitive" } },
+        { itemId: { contains: q, mode: "insensitive" } }
+      ];
+    }
+
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.contractItemChangeLog.count({ where }),
+      this.prisma.contractItemChangeLog.findMany({
+        where,
+        orderBy: { changedAt: "desc" },
+        skip,
+        take: pageSize
+      })
+    ]);
+
+    const pageCount = total === 0 ? 0 : Math.ceil(total / pageSize);
+    return { items, total, page, pageSize, pageCount };
   }
 
   /**

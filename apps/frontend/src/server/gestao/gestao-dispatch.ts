@@ -974,7 +974,19 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       );
     }
     if (seg.length === 3 && seg[2] === "item-change-logs" && method === "GET") {
-      return jsonOk(await gestaoContracts.findItemChangeLogs(seg[1]));
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoContracts.findItemChangeLogs(seg[1], {
+          page: url.searchParams.get("page") ? Number(url.searchParams.get("page")) : undefined,
+          pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined,
+          from: url.searchParams.get("from") ?? undefined,
+          to: url.searchParams.get("to") ?? undefined,
+          actor: url.searchParams.get("actor") ?? undefined,
+          itemType: url.searchParams.get("itemType") ?? undefined,
+          action: url.searchParams.get("action") ?? undefined,
+          q: url.searchParams.get("q") ?? undefined
+        })
+      );
     }
     if (seg.length === 5 && seg[2] === "modules" && seg[4] === "features-delivery" && method === "GET") {
       const url = new URL(req.url);

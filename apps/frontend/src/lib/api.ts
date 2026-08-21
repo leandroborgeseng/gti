@@ -1622,9 +1622,39 @@ export async function reverseContractConsumptionMovement(
   });
 }
 
-export async function getContractItemChangeLogs(contractId: string): Promise<ContractItemChangeLog[]> {
-  return request(`/contracts/${contractId}/item-change-logs`);
+export async function getContractItemChangeLogs(
+  contractId: string,
+  params?: {
+    page?: number;
+    pageSize?: number;
+    from?: string;
+    to?: string;
+    actor?: string;
+    itemType?: string;
+    action?: string;
+    q?: string;
+  }
+): Promise<ContractItemChangeLogPage> {
+  const qs = new URLSearchParams();
+  if (params?.page != null) qs.set("page", String(params.page));
+  if (params?.pageSize != null) qs.set("pageSize", String(params.pageSize));
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+  if (params?.actor) qs.set("actor", params.actor);
+  if (params?.itemType) qs.set("itemType", params.itemType);
+  if (params?.action) qs.set("action", params.action);
+  if (params?.q) qs.set("q", params.q);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/contracts/${contractId}/item-change-logs${suffix}`);
 }
+
+export type ContractItemChangeLogPage = {
+  items: ContractItemChangeLog[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
 
 /** Carga leve do contrato para o formulário de edição (sem cronogramas/ocorrências). */
 export async function getContractFormData(id: string): Promise<Contract> {
