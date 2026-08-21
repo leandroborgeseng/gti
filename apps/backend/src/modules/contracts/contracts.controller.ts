@@ -648,6 +648,11 @@ export class ContractsController {
     return this.service.findOneStructure(id);
   }
 
+  @Get(":id/feature-link-options")
+  listFeatureLinkOptions(@Param("id") id: string): Promise<unknown> {
+    return this.service.listFeatureLinkOptions(id);
+  }
+
   @Get(":id/amendments")
   listAmendments(@Param("id") contractId: string): Promise<unknown> {
     return this.service.listAmendments(contractId);

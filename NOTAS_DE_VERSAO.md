@@ -19,6 +19,10 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Alterado
 
+- **Listagens paginadas no servidor**: Medições, Glosas e a Central de Documentos passam a carregar página a página (10, 25, 50 ou 100 por página), com pesquisa/filtro no servidor. Ao mudar o filtro ou o tamanho da página, a lista volta à primeira página.
+- **Aba Módulos do contrato**: as funcionalidades deixam de vir todas de uma vez; ao expandir o módulo carrega a primeira página e há «Carregar mais», no mesmo padrão da tela Funcionalidades.
+- **Cálculo da medição mais rápido**: o recálculo agrupa as atualizações das linhas e reutiliza os dados já carregados para a memória de saldo; após calcular ou aprovar, a ficha da medição atualiza sem recarregar a página inteira.
+- **Edição de entrega e criticidade em Funcionalidades**: a linha atualiza na hora, sem recarregar toda a lista; os totais do resumo só são atualizados quando as contagens mudam.
 - **Ficha do contrato mais rápida**: a abertura da ficha carrega só o cabeçalho e os dados gerais; cronogramas, módulos, ocorrências, aditivos, grupos de validação e demais painéis pesados entram quando a aba (ou seção) correspondente é aberta.
 - **PDF de notificações**: geração padrão estável via pdfkit a partir do mesmo HTML; Chromium opcional (`PDF_ENGINE=auto|chromium`). Mensagens de erro do «Baixar PDF» passam a exibir o motivo técnico quando disponível.
 - **Central de Documentos**: disponível também para usuários internos (`/documentos`); filtros «pendentes de minha assinatura», «assinados por mim» e «elaborados por mim» passam a considerar o usuário autenticado. Com órgão específico no contexto, a lista fica no escopo desse órgão (mais documentos em que você é autor ou signatário).
@@ -49,6 +53,10 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Percentuais de cumprimento das funcionalidades passam a exibir sempre duas casas decimais no padrão brasileiro (ex.: `0,00%`, `37,48%`), sem alterar o cálculo interno (ticket 75).
 - Cabeçalho fixo do detalhe do contrato deixa de sobrepor o cabeçalho principal do SIGTI; botões de ação permanecem acessíveis na faixa fixa (ticket 76).
 - «Imprimir / HTML» e «Baixar PDF» das notificações passam a usar a sessão autenticada do SIGTI, com mensagens amigáveis em caso de falta de permissão ou sessão expirada (ticket 85).
+
+### Técnico
+
+- **Sync GLPI em produção**: o cron não deve competir com o processo web. Use `npm run start:worker` (ou `dev:worker` em desenvolvimento) num serviço dedicado; nas réplicas HTTP, `GLPI_CRON_DISABLED=1` (só o agendamento) ou `GLPI_SKIP_BOOTSTRAP=1` (bootstrap inteiro, já usado no `next build`). Ver `AGENTS.md` e `docs/glpi-sync-arquitetura.md`.
 
 ### Adicionado
 

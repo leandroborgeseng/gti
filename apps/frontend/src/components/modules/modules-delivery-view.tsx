@@ -15,6 +15,7 @@ import type {
   FeatureAssignmentReason,
   ModulesDeliveryAssignmentFilter,
   ModulesDeliveryFeature,
+  ModulesDeliveryFeaturesPage,
   ModulesDeliveryTotals
 } from "@/lib/api";
 import {
@@ -513,31 +514,18 @@ function ModuleFeaturesBrowsePanel({
   enabled: boolean;
   ctx: FeatureMutationContext;
 }): JSX.Element | null {
-  const [extraFeatures, setExtraFeatures] = useState<ModulesDeliveryFeature[]>([]);
+  const qc = useQueryClient();
   const [nextPage, setNextPage] = useState(2);
-  const [extraHasMore, setExtraHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const { data, isLoading, isError, error, dataUpdatedAt } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: queryKeys.moduleFeaturesDelivery(contractId, moduleId),
     queryFn: () => getModuleFeaturesDelivery(contractId, moduleId, { page: 1, pageSize: FEATURES_PAGE_SIZE }),
     enabled
   });
 
-  useEffect(() => {
-    setExtraFeatures([]);
-    setNextPage(2);
-    setExtraHasMore(false);
-  }, [dataUpdatedAt, contractId, moduleId]);
-
-  const features = useMemo(() => {
-    const first = data?.features ?? [];
-    if (extraFeatures.length === 0) return first;
-    const seen = new Set(first.map((f) => f.id));
-    return [...first, ...extraFeatures.filter((f) => !seen.has(f.id))];
-  }, [data?.features, extraFeatures]);
-
-  const hasMore = extraFeatures.length === 0 ? Boolean(data?.hasMore) : extraHasMore;
+  const features = data?.features ?? [];
+  const hasMore = Boolean(data?.hasMore);
 
   async function loadMore(): Promise<void> {
     setLoadingMore(true);
@@ -546,12 +534,20 @@ function ModuleFeaturesBrowsePanel({
         page: nextPage,
         pageSize: FEATURES_PAGE_SIZE
       });
-      setExtraFeatures((prev) => {
-        const seen = new Set(prev.map((f) => f.id));
-        return [...prev, ...page.features.filter((f) => !seen.has(f.id))];
-      });
+      qc.setQueryData(
+        queryKeys.moduleFeaturesDelivery(contractId, moduleId),
+        (old: ModulesDeliveryFeaturesPage | undefined) => {
+          if (!old) return page;
+          const seen = new Set(old.features.map((f) => f.id));
+          return {
+            ...old,
+            features: [...old.features, ...page.features.filter((f) => !seen.has(f.id))],
+            hasMore: page.hasMore,
+            page: page.page
+          };
+        }
+      );
       setNextPage((p) => p + 1);
-      setExtraHasMore(page.hasMore);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Não foi possível carregar mais itens.");
     } finally {
@@ -1013,11 +1009,49 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     enabled: hasFilters
   });
 
-  function invalidateFor(contractId: string, moduleId: string): void {
+  function patchFeatureInCaches(
+    contractId: string,
+    moduleId: string,
+    featureId: string,
+    patch: Partial<ModulesDeliveryFeature>
+  ): void {
+    qc.setQueriesData(
+      { queryKey: queryKeys.moduleFeaturesDelivery(contractId, moduleId) },
+      (old: ModulesDeliveryFeaturesPage | undefined) => {
+        if (!old?.features) return old;
+        return {
+          ...old,
+          features: old.features.map((f) => (f.id === featureId ? { ...f, ...patch } : f))
+        };
+      }
+    );
+    qc.setQueriesData(
+      { queryKey: queryKeys.modulesDeliverySearchRoot },
+      (old: { contracts?: ContractModulesDeliveryOverview[]; totalFeatures?: number } | undefined) => {
+        if (!old?.contracts) return old;
+        return {
+          ...old,
+          contracts: old.contracts.map((c) => ({
+            ...c,
+            modules: (c.modules ?? []).map((m) => {
+              if (m.id !== moduleId || c.id !== contractId || !m.featuresPage) return m;
+              return {
+                ...m,
+                featuresPage: {
+                  ...m.featuresPage,
+                  features: m.featuresPage.features.map((f) => (f.id === featureId ? { ...f, ...patch } : f))
+                }
+              };
+            })
+          }))
+        };
+      }
+    );
+  }
+
+  function invalidateTotals(contractId: string): void {
     void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliveryOverview });
     void qc.invalidateQueries({ queryKey: queryKeys.contractModulesDelivery(contractId) });
-    void qc.invalidateQueries({ queryKey: queryKeys.moduleFeaturesDelivery(contractId, moduleId) });
-    void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliverySearchRoot });
   }
 
   const updateDeliveryMut = useMutation({
@@ -1039,7 +1073,12 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     },
     onSuccess: (vars) => {
       setDeliveryPrompt(null);
-      invalidateFor(vars.contractId, vars.moduleId);
+      patchFeatureInCaches(vars.contractId, vars.moduleId, vars.featureId, {
+        deliveryStatus: vars.deliveryStatus,
+        deliveryEffectiveDate: vars.deliveryEffectiveDate,
+        partialDeliveryPercent: vars.partialDeliveryPercent
+      });
+      invalidateTotals(vars.contractId);
     }
   });
 
@@ -1056,7 +1095,10 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       });
       return vars;
     },
-    onSuccess: (vars) => invalidateFor(vars.contractId, vars.moduleId)
+    onSuccess: (vars) => {
+      patchFeatureInCaches(vars.contractId, vars.moduleId, vars.featureId, { criticality: vars.criticality });
+      invalidateTotals(vars.contractId);
+    }
   });
 
   const deleteFeatureMut = useMutation({
@@ -1064,7 +1106,21 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       await deleteContractFeature(vars.contractId, vars.moduleId, vars.featureId);
       return vars;
     },
-    onSuccess: (vars) => invalidateFor(vars.contractId, vars.moduleId)
+    onSuccess: (vars) => {
+      qc.setQueriesData(
+        { queryKey: queryKeys.moduleFeaturesDelivery(vars.contractId, vars.moduleId) },
+        (old: ModulesDeliveryFeaturesPage | undefined) => {
+          if (!old?.features) return old;
+          return {
+            ...old,
+            features: old.features.filter((f) => f.id !== vars.featureId),
+            total: Math.max(0, (old.total ?? old.features.length) - 1)
+          };
+        }
+      );
+      invalidateTotals(vars.contractId);
+      void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliverySearchRoot });
+    }
   });
 
   const saveFeatureMut = useMutation({
@@ -1097,7 +1153,22 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       return vars;
     },
     onSuccess: (vars) => {
-      invalidateFor(vars.contractId, vars.moduleId);
+      patchFeatureInCaches(vars.contractId, vars.moduleId, vars.featureId, {
+        itemCode: vars.itemCode,
+        name: vars.name,
+        status: vars.status,
+        ...(vars.criticality ? { criticality: vars.criticality } : {}),
+        ...(vars.deliveryStatus
+          ? {
+              deliveryStatus: vars.deliveryStatus,
+              deliveryEffectiveDate: vars.deliveryEffectiveDate,
+              partialDeliveryPercent: vars.partialDeliveryPercent
+            }
+          : {})
+      });
+      if (vars.deliveryStatus || vars.criticality) {
+        invalidateTotals(vars.contractId);
+      }
       setEditHint(null);
       setEditDraft(null);
     }

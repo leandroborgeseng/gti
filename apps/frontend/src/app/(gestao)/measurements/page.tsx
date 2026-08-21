@@ -19,8 +19,16 @@ export default async function MeasurementsPage({
 }): Promise<JSX.Element> {
   const contractId = pickContractId(searchParams?.contractId);
   const [meRes, filterRes, coRes] = await Promise.all([
-    safeLoad(() => getMeasurements(), []),
-    contractId ? safeLoad(() => getContract(contractId), null as Awaited<ReturnType<typeof getContract>> | null) : Promise.resolve({ data: null, error: null as string | null }),
+    safeLoad(() => getMeasurements({ page: 1, pageSize: 25, contractId }), {
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      pageCount: 0
+    }),
+    contractId
+      ? safeLoad(() => getContract(contractId), null as Awaited<ReturnType<typeof getContract>> | null)
+      : Promise.resolve({ data: null, error: null as string | null }),
     safeLoad(() => getContracts(), [])
   ]);
 
@@ -31,7 +39,7 @@ export default async function MeasurementsPage({
 
   return (
     <MeasurementsView
-      measurements={meRes.data}
+      initialPage={meRes.data}
       contractOptions={contractOptions}
       filterContractId={contractId}
       filterContractTitle={filterTitle}

@@ -9,7 +9,7 @@ import {
   createContractSchedule,
   deleteContractSchedule,
   getContractSchedules,
-  getContractStructure,
+  getContractFeatureLinkOptions,
   updateContractSchedule,
   uploadScheduleAttachment,
   type Contract,
@@ -757,8 +757,8 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
     queryFn: () => getContractSchedules(contract.id)
   });
   const structureQuery = useQuery({
-    queryKey: queryKeys.contractStructure(contract.id),
-    queryFn: () => getContractStructure(contract.id)
+    queryKey: queryKeys.contractFeatureLinkOptions(contract.id),
+    queryFn: () => getContractFeatureLinkOptions(contract.id)
   });
   const schedules = schedulesQuery.data ?? [];
   const [createDraft, setCreateDraft] = useState<ScheduleDraft>(emptyDraft);
@@ -785,17 +785,15 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
 
   const featureOptions = useMemo(() => {
     const out: Array<{ id: string; label: string }> = [];
-    for (const mod of structureQuery.data?.modules ?? []) {
-      for (const feat of mod.features ?? []) {
-        const code = feat.itemCode?.trim();
-        out.push({
-          id: feat.id,
-          label: `${mod.name} · ${code ? `${code} · ` : ""}${feat.name}`.slice(0, 140)
-        });
-      }
+    for (const feat of structureQuery.data ?? []) {
+      const code = feat.itemCode?.trim();
+      out.push({
+        id: feat.id,
+        label: `${feat.moduleName} · ${code ? `${code} · ` : ""}${feat.name}`.slice(0, 140)
+      });
     }
     return out;
-  }, [structureQuery.data?.modules]);
+  }, [structureQuery.data]);
 
   const createMut = useMutation({
     mutationFn: () => createContractSchedule(contract.id, toPayload(createDraft)),

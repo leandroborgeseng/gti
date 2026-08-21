@@ -895,6 +895,15 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     if (seg.length === 2 && method === "DELETE") {
       return jsonOk(await gestaoContracts.delete(seg[1], (await readJsonBody(req)) as never));
     }
+    if (seg.length === 3 && seg[2] === "summary" && method === "GET") {
+      return jsonOk(await gestaoContracts.findOneSummary(seg[1]));
+    }
+    if (seg.length === 3 && seg[2] === "structure" && method === "GET") {
+      return jsonOk(await gestaoContracts.findOneStructure(seg[1]));
+    }
+    if (seg.length === 3 && seg[2] === "feature-link-options" && method === "GET") {
+      return jsonOk(await gestaoContracts.listFeatureLinkOptions(seg[1]));
+    }
     if (seg.length === 3 && seg[2] === "modules-delivery" && method === "GET") {
       return jsonOk(await gestaoContracts.findContractModulesDelivery(seg[1]));
     }
@@ -1314,7 +1323,18 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
   }
 
   if (root === "measurements") {
-    if (seg.length === 1 && method === "GET") return jsonOk(await gestaoMeasurements.findAll());
+    if (seg.length === 1 && method === "GET") {
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoMeasurements.findAll({
+          page: url.searchParams.get("page") ? Number(url.searchParams.get("page")) : undefined,
+          pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined,
+          q: url.searchParams.get("q") ?? undefined,
+          contractId: url.searchParams.get("contractId") ?? undefined,
+          status: url.searchParams.get("status") ?? undefined
+        })
+      );
+    }
     if (seg.length === 1 && method === "POST") {
       return jsonOk(await gestaoMeasurements.create((await readJsonBody(req)) as never));
     }
@@ -1353,7 +1373,18 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
   }
 
   if (root === "glosas") {
-    if (seg.length === 1 && method === "GET") return jsonOk(await gestaoGlosas.findAll());
+    if (seg.length === 1 && method === "GET") {
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoGlosas.findAll({
+          page: url.searchParams.get("page") ? Number(url.searchParams.get("page")) : undefined,
+          pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined,
+          q: url.searchParams.get("q") ?? undefined,
+          type: url.searchParams.get("type") ?? undefined,
+          origin: url.searchParams.get("origin") ?? undefined
+        })
+      );
+    }
     if (seg.length === 1 && method === "POST") {
       return jsonOk(await gestaoGlosas.create((await readJsonBody(req)) as never));
     }
@@ -1775,7 +1806,15 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
 
   if (root === "contract-notifications") {
     if (seg.length === 1 && method === "GET") {
-      return jsonOk(await gestaoContractNotifications.listMine());
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoContractNotifications.listMine({
+          page: url.searchParams.get("page") ? Number(url.searchParams.get("page")) : undefined,
+          pageSize: url.searchParams.get("pageSize") ? Number(url.searchParams.get("pageSize")) : undefined,
+          q: url.searchParams.get("q") ?? undefined,
+          filter: url.searchParams.get("filter") ?? undefined
+        })
+      );
     }
     if (seg.length === 3 && seg[1] === "by-contract" && method === "GET") {
       return jsonOk(await gestaoContractNotifications.listByContract(seg[2]));

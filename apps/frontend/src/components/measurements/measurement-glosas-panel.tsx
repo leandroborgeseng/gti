@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { MeasurementGlosaRow } from "@/lib/api";
+import type { Measurement, MeasurementGlosaRow } from "@/lib/api";
 import { addMeasurementGlosa } from "@/lib/api";
 import { formatBrl } from "@/lib/format-brl";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ type Props = {
   measurementStatus: string;
   glosas: MeasurementGlosaRow[];
   itemOptions?: Array<{ id: string; label: string }>;
+  onUpdated?: (measurement: Measurement) => void;
 };
 
 export function MeasurementGlosasPanel(props: Props): JSX.Element {
@@ -55,7 +56,7 @@ export function MeasurementGlosasPanel(props: Props): JSX.Element {
     }
     setBusy(true);
     try {
-      await addMeasurementGlosa(props.measurementId, {
+      const updated = await addMeasurementGlosa(props.measurementId, {
         type,
         value: n,
         justification: justification.trim(),
@@ -65,7 +66,8 @@ export function MeasurementGlosasPanel(props: Props): JSX.Element {
       setValue("");
       setJustification("");
       setMeasurementItemId("");
-      router.refresh();
+      if (props.onUpdated) props.onUpdated(updated);
+      else router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao registrar glosa.");
     } finally {

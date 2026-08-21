@@ -31,6 +31,15 @@ export type DataTableProps<TData> = {
   emptyLabel?: string;
   /** Tamanhos de página sugeridos (primeiro é o inicial). */
   pageSizeOptions?: number[];
+  /** Paginação no servidor: a `data` já é a página atual. */
+  manualPagination?: boolean;
+  pageCount?: number;
+  rowCount?: number;
+  pagination?: { pageIndex: number; pageSize: number };
+  onPaginationChange?: (next: { pageIndex: number; pageSize: number }) => void;
+  onSearchChange?: (value: string) => void;
+  searchValue?: string;
+  isFetching?: boolean;
 };
 
 function defaultGlobalFilter<TData>(row: { original: TData }, _columnId: string, filterValue: unknown): boolean {
@@ -51,19 +60,33 @@ export function DataTable<TData>({
   searchPlaceholder = "Pesquisar…",
   className,
   emptyLabel = "Nenhum registro encontrado.",
-  pageSizeOptions = [10, 25, 50]
+  pageSizeOptions = [10, 25, 50, 100],
+  manualPagination = false,
+  pageCount: pageCountProp,
+  rowCount,
+  pagination: paginationProp,
+  onPaginationChange,
+  onSearchChange,
+  searchValue,
+  isFetching = false
 }: DataTableProps<TData>): JSX.Element {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [globalFilter, setGlobalFilter] = useState("");
+  const [internalSearch, setInternalSearch] = useState("");
+  const globalFilter = searchValue ?? internalSearch;
   const debouncedGlobal = useDebouncedValue(globalFilter, 200);
-  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: pageSizeOptions[0] ?? 10 });
+  const [internalPagination, setInternalPagination] = useState({
+    pageIndex: 0,
+    pageSize: pageSizeOptions[0] ?? 10
+  });
+  const pagination = paginationProp ?? internalPagination;
 
   const filteredData = useMemo(() => {
+    if (manualPagination) return data;
     const q = debouncedGlobal.trim().toLowerCase();
     if (!q) return data;
     return data.filter((row) => defaultGlobalFilter({ original: row }, "", q));
-  }, [data, debouncedGlobal]);
+  }, [data, debouncedGlobal, manualPagination]);
 
   const table = useReactTable({
     data: filteredData,
@@ -71,11 +94,18 @@ export function DataTable<TData>({
     state: { sorting, columnFilters, pagination },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    onPaginationChange: setPagination,
+    onPaginationChange: (updater) => {
+      const next = typeof updater === "function" ? updater(pagination) : updater;
+      if (onPaginationChange) onPaginationChange(next);
+      else setInternalPagination(next);
+    },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel()
+    getPaginationRowModel: manualPagination ? undefined : getPaginationRowModel(),
+    manualPagination,
+    pageCount: manualPagination ? pageCountProp ?? 0 : undefined,
+    rowCount: manualPagination ? rowCount : undefined
   });
 
   return (
@@ -86,8 +116,10 @@ export function DataTable<TData>({
           <Input
             value={globalFilter}
             onChange={(e) => {
-              setGlobalFilter(e.target.value);
-              table.setPageIndex(0);
+              const v = e.target.value;
+              if (searchValue === undefined) setInternalSearch(v);
+              else onSearchChange?.(v);
+              if (!manualPagination) table.setPageIndex(0);
             }}
             placeholder={searchPlaceholder}
             className="pl-9"
@@ -96,7 +128,10 @@ export function DataTable<TData>({
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="tabular-nums">
-            {table.getFilteredRowModel().rows.length} {table.getFilteredRowModel().rows.length === 1 ? "linha" : "linhas"}
+            {manualPagination
+              ? `${rowCount ?? 0} ${(rowCount ?? 0) === 1 ? "linha" : "linhas"}`
+              : `${table.getFilteredRowModel().rows.length} ${table.getFilteredRowModel().rows.length === 1 ? "linha" : "linhas"}`}
+            {isFetching ? "…" : ""}
           </span>
           <select
             className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm"

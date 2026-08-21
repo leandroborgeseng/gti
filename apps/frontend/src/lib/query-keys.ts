@@ -9,6 +9,7 @@ export const queryKeys = {
   contractFormData: (id: string) => ["gestao", "contracts", "form-data", id] as const,
   contractSummary: (id: string) => ["gestao", "contracts", "summary", id] as const,
   contractStructure: (id: string) => ["gestao", "contracts", "structure", id] as const,
+  contractFeatureLinkOptions: (id: string) => ["gestao", "contracts", "feature-link-options", id] as const,
   contractAmendments: (id: string) => ["gestao", "contracts", "amendments", id] as const,
   contractSchedules: (id: string) => ["gestao", "contracts", "schedules", id] as const,
   contractOccurrences: (id: string) => ["gestao", "contracts", "occurrences", id] as const,
@@ -42,7 +43,10 @@ export const queryKeys = {
   /** Conferência administrativa da migração de identificação dos contratos. */
   identificationMigrationReview: ["gestao", "admin", "identification-migration-review"] as const,
   measurements: ["gestao", "measurements"] as const,
+  measurementsList: (filterKey: string) => ["gestao", "measurements", "list", filterKey] as const,
+  measurement: (id: string) => ["gestao", "measurement", id] as const,
   glosas: ["gestao", "glosas"] as const,
+  glosasList: (filterKey: string) => ["gestao", "glosas", "list", filterKey] as const,
   goals: ["gestao", "goals"] as const,
   governanceTickets: ["gestao", "governance-tickets"] as const,
   projects: ["gestao", "projects"] as const,

@@ -15,6 +15,7 @@ import { getAuditActorId, getAuditActorLabel, requestActorStore } from "../../co
 import { resolveAuditGate } from "../../common/audit-event-gate";
 import { assertExternalCanAccessContract, isExternalActor } from "../../common/external-access";
 import { htmlToPdfBuffer } from "../../common/html-to-pdf";
+import { listPageResult, parseListPagination } from "../../common/list-pagination";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   AnalyzeResponseDto,
@@ -94,8 +95,10 @@ export class ContractNotificationsService {
     });
   }
 
-  async listMine() {
+  async listMine(query: { page?: number; pageSize?: number; q?: string; filter?: string } = {}) {
+    const { page, pageSize, skip } = parseListPagination(query);
     const actor = requestActorStore.getStore();
+    const userId = actor?.userId ?? null;
     const select = {
       id: true,
       contractId: true,
@@ -114,56 +117,83 @@ export class ContractNotificationsService {
         select: { id: true, userId: true, signedAt: true, order: true, required: true }
       }
     };
+    const q = query.q?.trim();
+    const textFilter: Prisma.ContractNotificationWhereInput | undefined = q
+      ? {
+          OR: [
+            { number: { contains: q, mode: "insensitive" } },
+            { subject: { contains: q, mode: "insensitive" } },
+            { contract: { is: { name: { contains: q, mode: "insensitive" } } } },
+            { contract: { is: { number: { contains: q, mode: "insensitive" } } } },
+            { contract: { is: { internalCode: { contains: q, mode: "insensitive" } } } }
+          ]
+        }
+      : undefined;
+    const quick = (query.filter ?? "ALL").trim().toUpperCase();
+    let roleFilter: Prisma.ContractNotificationWhereInput = {};
+    if (quick === "PENDING_MY_SIGNATURE" && userId) {
+      roleFilter = { signers: { some: { userId, signedAt: null } } };
+    } else if (quick === "SIGNED_BY_ME" && userId) {
+      roleFilter = { signers: { some: { userId, signedAt: { not: null } } } };
+    } else if (quick === "CREATED_BY_ME" && userId) {
+      roleFilter = { createdById: userId };
+    }
+
+    let baseWhere: Prisma.ContractNotificationWhereInput;
     if (isExternalActor(actor)) {
       const ids = actor?.authorizedContractIds ?? [];
-      return this.prisma.contractNotification.findMany({
-        where: {
-          contractId: { in: ids },
-          status: {
-            in: [
-              "ENVIADA",
-              "RECEBIDA",
-              "AGUARDANDO_RESPOSTA",
-              "RESPONDIDA",
-              "EM_ANALISE",
-              "ATENDIDA",
-              "NAO_ATENDIDA",
-              "ENCERRADA",
-              "ASSINADA",
-              "AGUARDANDO_ASSINATURA"
-            ]
-          }
-        },
-        orderBy: { sentAt: "desc" },
-        take: 200,
-        select
-      });
-    }
-    const orgScope: Prisma.ContractNotificationWhereInput =
-      actor?.allOrganizationsActive || !actor?.organizationId
-        ? {}
-        : {
-            OR: [
-              { contract: { is: { organizationId: actor.organizationId } } },
-              ...(actor.userId
-                ? [
-                    { createdById: actor.userId },
-                    { signers: { some: { userId: actor.userId } } }
-                  ]
-                : [])
-            ]
-          };
-    return this.prisma.contractNotification.findMany({
-      where: {
+      baseWhere = {
+        contractId: { in: ids },
         status: {
-          notIn: ["RASCUNHO", "CANCELADA"]
-        },
+          in: [
+            "ENVIADA",
+            "RECEBIDA",
+            "AGUARDANDO_RESPOSTA",
+            "RESPONDIDA",
+            "EM_ANALISE",
+            "ATENDIDA",
+            "NAO_ATENDIDA",
+            "ENCERRADA",
+            "ASSINADA",
+            "AGUARDANDO_ASSINATURA"
+          ]
+        }
+      };
+    } else {
+      const orgScope: Prisma.ContractNotificationWhereInput =
+        actor?.allOrganizationsActive || !actor?.organizationId
+          ? {}
+          : {
+              OR: [
+                { contract: { is: { organizationId: actor.organizationId } } },
+                ...(actor.userId
+                  ? [{ createdById: actor.userId }, { signers: { some: { userId: actor.userId } } }]
+                  : [])
+              ]
+            };
+      baseWhere = {
+        status: { notIn: ["RASCUNHO", "CANCELADA"] },
         ...orgScope
-      },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      select
-    });
+      };
+    }
+
+    const where: Prisma.ContractNotificationWhereInput = {
+      AND: [baseWhere, roleFilter, textFilter ?? {}]
+    };
+    const orderBy = isExternalActor(actor)
+      ? ({ sentAt: "desc" } as const)
+      : ({ createdAt: "desc" } as const);
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.contractNotification.count({ where }),
+      this.prisma.contractNotification.findMany({
+        where,
+        orderBy,
+        skip,
+        take: pageSize,
+        select
+      })
+    ]);
+    return listPageResult(items, total, page, pageSize);
   }
 
   async findOne(id: string, opts?: { forExternal?: boolean }) {

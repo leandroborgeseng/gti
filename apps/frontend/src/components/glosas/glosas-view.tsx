@@ -3,9 +3,10 @@
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo } from "react";
-import type { Glosa } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import type { Glosa, PagedList } from "@/lib/api";
 import { getGlosas } from "@/lib/api";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { queryKeys } from "@/lib/query-keys";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Button } from "@/components/ui/button";
@@ -21,16 +22,37 @@ const typeLabel: Record<string, string> = {
 const columnHelper = createColumnHelper<Glosa>();
 
 type Props = {
-  glosas: Glosa[];
+  initialPage?: PagedList<Glosa>;
   dataLoadErrors?: string[];
 };
 
-export function GlosasView({ glosas: initialGlosas, dataLoadErrors = [] }: Props): JSX.Element {
-  const { data: glosas = initialGlosas } = useQuery({
-    queryKey: queryKeys.glosas,
-    queryFn: getGlosas,
-    initialData: initialGlosas
+export function GlosasView({ initialPage, dataLoadErrors = [] }: Props): JSX.Element {
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 200);
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [debouncedSearch, pageSize]);
+
+  const filterKey = JSON.stringify({ page: pageIndex + 1, pageSize, q: debouncedSearch.trim() });
+
+  const qPage = useQuery({
+    queryKey: queryKeys.glosasList(filterKey),
+    queryFn: () =>
+      getGlosas({
+        page: pageIndex + 1,
+        pageSize,
+        q: debouncedSearch.trim() || undefined
+      }),
+    placeholderData: (prev) => prev,
+    initialData: pageIndex === 0 && !debouncedSearch.trim() ? initialPage : undefined
   });
+
+  const rows = qPage.data?.items ?? [];
+  const total = qPage.data?.total ?? 0;
+  const pageCount = qPage.data?.pageCount ?? 0;
 
   const columns = useMemo<ColumnDef<Glosa, any>[]>(
     () => [
@@ -62,9 +84,7 @@ export function GlosasView({ glosas: initialGlosas, dataLoadErrors = [] }: Props
         id: "origin",
         header: "Origem",
         cell: (info) => (
-          <span className="text-muted-foreground">
-            {info.getValue() === "AUTOMATIC" ? "Automática" : "Manual"}
-          </span>
+          <span className="text-muted-foreground">{info.getValue() === "AUTOMATIC" ? "Automática" : "Manual"}</span>
         )
       }),
       columnHelper.accessor("value", {
@@ -78,7 +98,9 @@ export function GlosasView({ glosas: initialGlosas, dataLoadErrors = [] }: Props
       columnHelper.accessor("createdAt", {
         header: "Data",
         cell: (info) => (
-          <span className="whitespace-nowrap text-muted-foreground">{new Date(info.getValue()).toLocaleDateString("pt-BR")}</span>
+          <span className="whitespace-nowrap text-muted-foreground">
+            {new Date(info.getValue()).toLocaleDateString("pt-BR")}
+          </span>
         )
       }),
       columnHelper.display({
@@ -116,9 +138,21 @@ export function GlosasView({ glosas: initialGlosas, dataLoadErrors = [] }: Props
       <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <DataTable
           columns={columns}
-          data={glosas}
+          data={rows}
           searchPlaceholder="Pesquisar medição, contrato, tipo…"
           emptyLabel="Nenhuma glosa registrada nas medições."
+          pageSizeOptions={[10, 25, 50, 100]}
+          manualPagination
+          pageCount={pageCount}
+          rowCount={total}
+          pagination={{ pageIndex, pageSize }}
+          onPaginationChange={(next) => {
+            setPageIndex(next.pageIndex);
+            setPageSize(next.pageSize);
+          }}
+          searchValue={search}
+          onSearchChange={setSearch}
+          isFetching={qPage.isFetching}
         />
       </section>
     </div>

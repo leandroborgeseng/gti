@@ -5,6 +5,7 @@
 - **Kanban GLPI, APIs de tickets, cron de sync:** `apps/frontend/src/glpi/` e `apps/frontend/src/app/api/`.
 - **Arranque do cron no servidor:** `apps/frontend/instrumentation.ts` (runtime Node.js).
 - **Next em dev:** `npm run dev` (porta 3001). **Worker só sync:** `npm run dev:worker` ou `npm run start:worker`.
+- Em **produção**, o cron GLPI não deve competir com o processo web: rode a sync num worker (`npm run start:worker`) e nas réplicas HTTP use `GLPI_CRON_DISABLED=1` (só desliga o agendamento; a primeira sync no arranque ainda pode ocorrer) ou `GLPI_SKIP_BOOTSTRAP=1` (não inicia sync nem backup S3 — esperado no `next build`). Detalhes em `docs/glpi-sync-arquitetura.md`.
 - **Schema e migrações Prisma:** `apps/backend/prisma/`.
 - **API Nest (contratos, medições, glosas, …):** `apps/backend/src/`.
 

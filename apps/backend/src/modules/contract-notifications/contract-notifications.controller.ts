@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Param, Patch, Post, StreamableFile } from "@nestjs/common";
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, StreamableFile } from "@nestjs/common";
 import {
   AnalyzeResponseDto,
   CancelOrRectifyDto,
@@ -18,8 +18,18 @@ export class ContractNotificationsController {
   constructor(private readonly service: ContractNotificationsService) {}
 
   @Get()
-  listMine() {
-    return this.service.listMine();
+  listMine(
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("q") q?: string,
+    @Query("filter") filter?: string
+  ) {
+    return this.service.listMine({
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      q,
+      filter
+    });
   }
 
   @Get("by-contract/:contractId")

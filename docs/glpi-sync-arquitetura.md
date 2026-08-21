@@ -41,8 +41,8 @@ O arquivo `apps/frontend/scripts/glpi-worker-cli.ts` carrega primeiro `.env` na 
 | `GLPI_DOC_URL` | OpenAPI para descobrir caminhos |
 | `GLPI_TICKETS_PAGE_SIZE`, `GLPI_TICKETS_FETCH_CONCURRENCY` | Volume e paralelismo da sync |
 | `CRON_EXPRESSION` | Agenda do `node-cron` |
-| `GLPI_SKIP_BOOTSTRAP` | `1` durante `next build` para não contactar GLPI/banco de dados |
-| `GLPI_CRON_DISABLED` | `1` desliga só o agendamento periódico (`node-cron`) |
+| `GLPI_SKIP_BOOTSTRAP` | `1` no `next build` (não contacta GLPI/BD). Em **réplicas web de produção**, use se o worker for o único a sincronizar (desliga bootstrap inteiro, inclusive a sync inicial). |
+| `GLPI_CRON_DISABLED` | `1` desliga só o agendamento periódico (`node-cron`). Preferível nas réplicas HTTP quando o worker (`npm run start:worker`) assume o cron: a primeira sync no arranque da app ainda pode ocorrer. |
 
 ## Referências externas (manter atualizadas)
 

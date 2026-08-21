@@ -2,15 +2,23 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addMeasurementServiceLines, type ContractPricingItem } from "@/lib/api";
+import { addMeasurementServiceLines, type Measurement } from "@/lib/api";
 
 type ServiceRow = { id: string; name: string; unit: string; unitValue: string };
+type PricingItemOption = {
+  id: string;
+  sequence: number;
+  description: string;
+  unitValue: string;
+  unit?: { label: string } | null;
+};
 
 type Props = {
   measurementId: string;
   services: ServiceRow[];
   usedServiceIds: string[];
-  pricingItems: ContractPricingItem[];
+  pricingItems: PricingItemOption[];
+  onUpdated?: (measurement: Measurement) => void;
 };
 
 export function MeasurementAddServiceLines(props: Props): JSX.Element {
@@ -37,12 +45,13 @@ export function MeasurementAddServiceLines(props: Props): JSX.Element {
     try {
       setBusy(true);
       setStatus("");
-      await addMeasurementServiceLines(props.measurementId, [
+      const updated = await addMeasurementServiceLines(props.measurementId, [
         { type: "SERVICE", referenceId, quantity, ...(pricingItemId ? { pricingItemId } : {}) }
       ]);
       setStatus("Linha adicionada.");
       event.currentTarget.reset();
-      router.refresh();
+      if (props.onUpdated) props.onUpdated(updated);
+      else router.refresh();
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Falha ao adicionar");
     } finally {

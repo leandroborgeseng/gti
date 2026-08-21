@@ -8,6 +8,7 @@ import {
   ParseFilePipe,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -36,8 +37,20 @@ export class MeasurementsController {
   }
 
   @Get()
-  findAll(): Promise<unknown> {
-    return this.service.findAll();
+  findAll(
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("q") q?: string,
+    @Query("contractId") contractId?: string,
+    @Query("status") status?: string
+  ): Promise<unknown> {
+    return this.service.findAll({
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      q,
+      contractId,
+      status
+    });
   }
 
   @Post(":id/items")

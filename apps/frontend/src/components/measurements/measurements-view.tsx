@@ -5,9 +5,10 @@ import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardPlus } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import type { Measurement } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import type { Measurement, PagedList } from "@/lib/api";
 import { getMeasurements } from "@/lib/api";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { queryKeys } from "@/lib/query-keys";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
 import { Modal } from "@/components/ui/modal";
@@ -33,7 +34,7 @@ const columnHelper = createColumnHelper<Measurement>();
 type ContractOption = { id: string; number: string; name: string };
 
 type Props = {
-  measurements: Measurement[];
+  initialPage?: PagedList<Measurement>;
   contractOptions?: ContractOption[];
   filterContractId?: string;
   filterContractTitle?: string;
@@ -41,7 +42,7 @@ type Props = {
 };
 
 export function MeasurementsView({
-  measurements: initialMeasurements,
+  initialPage,
   contractOptions,
   filterContractId,
   filterContractTitle,
@@ -49,17 +50,44 @@ export function MeasurementsView({
 }: Props): JSX.Element {
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 200);
 
-  const { data: measurements = initialMeasurements } = useQuery({
-    queryKey: queryKeys.measurements,
-    queryFn: getMeasurements,
-    initialData: initialMeasurements
+  useEffect(() => {
+    setPageIndex(0);
+  }, [debouncedSearch, filterContractId, pageSize]);
+
+  const filterKey = JSON.stringify({
+    page: pageIndex + 1,
+    pageSize,
+    q: debouncedSearch.trim(),
+    contractId: filterContractId ?? ""
   });
 
-  const rows = useMemo(
-    () => (filterContractId ? measurements.filter((m) => m.contractId === filterContractId) : measurements),
-    [measurements, filterContractId]
-  );
+  const qPage = useQuery({
+    queryKey: queryKeys.measurementsList(filterKey),
+    queryFn: () =>
+      getMeasurements({
+        page: pageIndex + 1,
+        pageSize,
+        q: debouncedSearch.trim() || undefined,
+        contractId: filterContractId
+      }),
+    placeholderData: (prev) => prev,
+    initialData:
+      pageIndex === 0 && !debouncedSearch.trim() && initialPage && !filterContractId
+        ? initialPage
+        : filterContractId && pageIndex === 0 && !debouncedSearch.trim() && initialPage
+          ? initialPage
+          : undefined
+  });
+
+  const pageData = qPage.data;
+  const rows = pageData?.items ?? [];
+  const total = pageData?.total ?? 0;
+  const pageCount = pageData?.pageCount ?? 0;
 
   const columns = useMemo<ColumnDef<Measurement, any>[]>(
     () => [
@@ -117,8 +145,9 @@ export function MeasurementsView({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Medições</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Lista das medições por contrato e competência (uma por mês). O <strong className="font-medium text-foreground">estado</strong>{" "}
-            (Aberta → Em revisão / Glosada → Aprovada) fica registrado após calcular e aprovar. Use{" "}
+            Lista das medições por contrato e competência (uma por mês). O{" "}
+            <strong className="font-medium text-foreground">estado</strong> (Aberta → Em revisão / Glosada → Aprovada)
+            fica registrado após calcular e aprovar. Use{" "}
             <strong className="font-medium text-foreground">Nova medição</strong> para cada fechamento mensal.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -129,13 +158,15 @@ export function MeasurementsView({
               Relatório de fechamento mensal
             </Link>
             {" · "}
-            Pagamentos por medição aprovada, valor de referência do mês anterior e OS GLPI (abertas, fechadas e represadas) por contrato.
+            Pagamentos por medição aprovada, valor de referência do mês anterior e OS GLPI (abertas, fechadas e represadas)
+            por contrato.
           </p>
           {filterContractId ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
               <span>
-                Filtrando por contrato: <strong className="font-medium text-foreground">{filterContractTitle ?? filterContractId}</strong>{" "}
-                ({rows.length} {rows.length === 1 ? "registro" : "registros"}).
+                Filtrando por contrato:{" "}
+                <strong className="font-medium text-foreground">{filterContractTitle ?? filterContractId}</strong> ({total}{" "}
+                {total === 1 ? "registro" : "registros"}).
               </span>
               <Link
                 href={"/measurements" as Route}
@@ -153,7 +184,24 @@ export function MeasurementsView({
       </div>
 
       <section className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm sm:p-6">
-        <DataTable columns={columns} data={rows} searchPlaceholder="Pesquisar contrato, referência…" emptyLabel={emptyLabel} />
+        <DataTable
+          columns={columns}
+          data={rows}
+          searchPlaceholder="Pesquisar contrato…"
+          emptyLabel={emptyLabel}
+          pageSizeOptions={[10, 25, 50, 100]}
+          manualPagination
+          pageCount={pageCount}
+          rowCount={total}
+          pagination={{ pageIndex, pageSize }}
+          onPaginationChange={(next) => {
+            setPageIndex(next.pageIndex);
+            setPageSize(next.pageSize);
+          }}
+          searchValue={search}
+          onSearchChange={setSearch}
+          isFetching={qPage.isFetching}
+        />
       </section>
 
       <Modal

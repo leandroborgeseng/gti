@@ -689,7 +689,17 @@ export type Contract = {
     glosaPricingItemId?: string | null;
     glosaPricingItem?: Pick<ContractPricingItem, "id" | "description" | "sequence"> | null;
     weight: string;
-    features: Array<{
+    featuresCount?: number;
+    featureWeightSum?: number;
+    totals?: {
+      totalFeatures: number;
+      consideredInCalculation?: number;
+      notApplicableCount?: number;
+      deliveredCount: number;
+      partialCount: number;
+      notDeliveredCount: number;
+    };
+    features?: Array<{
       id: string;
       itemCode?: string | null;
       name: string;
@@ -1533,6 +1543,12 @@ export async function getContractSummary(id: string): Promise<Contract> {
 /** Módulos, funcionalidades e grupos de validação (aba Módulos). */
 export async function getContractStructure(id: string): Promise<Contract> {
   return request(`/contracts/${id}/structure`);
+}
+
+export async function getContractFeatureLinkOptions(
+  contractId: string
+): Promise<Array<{ id: string; itemCode?: string | null; name: string; moduleName: string }>> {
+  return request(`/contracts/${contractId}/feature-link-options`);
 }
 
 export async function getContractAmendments(id: string): Promise<ContractAmendment[]> {
@@ -2489,8 +2505,29 @@ export async function deleteScheduleAttachment(
   );
 }
 
-export async function getMeasurements(): Promise<Measurement[]> {
-  return request("/measurements");
+export type PagedList<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+export async function getMeasurements(params?: {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  contractId?: string;
+  status?: string;
+}): Promise<PagedList<Measurement>> {
+  const qs = new URLSearchParams();
+  if (params?.page != null) qs.set("page", String(params.page));
+  if (params?.pageSize != null) qs.set("pageSize", String(params.pageSize));
+  if (params?.q) qs.set("q", params.q);
+  if (params?.contractId) qs.set("contractId", params.contractId);
+  if (params?.status) qs.set("status", params.status);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/measurements${suffix}`);
 }
 
 export async function createMeasurement(payload: {
@@ -2535,8 +2572,21 @@ export async function approveMeasurement(id: string): Promise<Measurement> {
   return request(`/measurements/${id}/approve`, { method: "POST", body: "{}" });
 }
 
-export async function getGlosas(): Promise<Glosa[]> {
-  return request("/glosas");
+export async function getGlosas(params?: {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  type?: string;
+  origin?: string;
+}): Promise<PagedList<Glosa>> {
+  const qs = new URLSearchParams();
+  if (params?.page != null) qs.set("page", String(params.page));
+  if (params?.pageSize != null) qs.set("pageSize", String(params.pageSize));
+  if (params?.q) qs.set("q", params.q);
+  if (params?.type) qs.set("type", params.type);
+  if (params?.origin) qs.set("origin", params.origin);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/glosas${suffix}`);
 }
 
 export async function getGlosa(id: string): Promise<Glosa> {
@@ -4544,8 +4594,19 @@ export async function getContractNotifications(contractId: string): Promise<Cont
   return request(`/contract-notifications/by-contract/${contractId}`);
 }
 
-export async function getMyContractNotifications(): Promise<ContractNotificationRecord[]> {
-  return request("/contract-notifications");
+export async function getMyContractNotifications(params?: {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  filter?: string;
+}): Promise<PagedList<ContractNotificationRecord>> {
+  const qs = new URLSearchParams();
+  if (params?.page != null) qs.set("page", String(params.page));
+  if (params?.pageSize != null) qs.set("pageSize", String(params.pageSize));
+  if (params?.q) qs.set("q", params.q);
+  if (params?.filter) qs.set("filter", params.filter);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/contract-notifications${suffix}`);
 }
 
 export async function getContractNotification(id: string): Promise<ContractNotificationRecord> {

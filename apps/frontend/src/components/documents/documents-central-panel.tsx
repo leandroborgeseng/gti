@@ -2,16 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import {
-  getMyContractNotifications,
-  type ContractNotificationRecord
-} from "@/lib/api";
-import { useAuthMe } from "@/hooks/use-auth-me";
+import { useEffect, useState } from "react";
+import { getMyContractNotifications, type ContractNotificationRecord } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { Card } from "@/components/ui/card";
 import { InlineLoading } from "@/components/ui/inline-loading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 type QuickFilter = "PENDING_MY_SIGNATURE" | "SIGNED_BY_ME" | "CREATED_BY_ME" | "ALL";
 
@@ -20,39 +18,28 @@ type Props = {
   mode: "internal" | "external";
 };
 
+const PAGE_SIZES = [10, 25, 50, 100] as const;
+
 /**
  * Central de Documentos (tickets 103/104) — notificações formalizadas.
  */
 export function DocumentsCentralPanel({ mode }: Props): JSX.Element {
   const [filter, setFilter] = useState<QuickFilter>("ALL");
-  const me = useAuthMe();
-  const userId = me.data?.id ?? null;
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, pageSize]);
 
   const q = useQuery({
-    queryKey: queryKeys.contractNotifications(`docs-central-${mode}`),
-    queryFn: () => getMyContractNotifications()
+    queryKey: queryKeys.contractNotifications(`docs-central-${mode}-${filter}-${page}-${pageSize}`),
+    queryFn: () => getMyContractNotifications({ page, pageSize, filter })
   });
 
-  const items = (q.data ?? []) as ContractNotificationRecord[];
-  const filtered = useMemo(() => {
-    return items.filter((n) => {
-      if (filter === "ALL") return true;
-      const signers = n.signers ?? [];
-      if (filter === "PENDING_MY_SIGNATURE") {
-        if (!userId) return false;
-        return signers.some((s) => s.userId === userId && !s.signedAt);
-      }
-      if (filter === "SIGNED_BY_ME") {
-        if (!userId) return false;
-        return signers.some((s) => s.userId === userId && Boolean(s.signedAt));
-      }
-      if (filter === "CREATED_BY_ME") {
-        if (!userId) return false;
-        return n.createdById === userId;
-      }
-      return true;
-    });
-  }, [items, filter, userId]);
+  const items = (q.data?.items ?? []) as ContractNotificationRecord[];
+  const total = q.data?.total ?? 0;
+  const pageCount = q.data?.pageCount ?? 0;
 
   function openHref(n: ContractNotificationRecord): string {
     if (mode === "external") return `/externo/notificacoes/${n.id}`;
@@ -64,13 +51,18 @@ export function DocumentsCentralPanel({ mode }: Props): JSX.Element {
       <div>
         <h1 className="text-2xl font-semibold">Documentos</h1>
         <p className="text-sm text-muted-foreground">
-          Visão central dos documentos formais. A aba Notificações do contrato continua como visão contextual do
-          mesmo registro.
+          Visão central dos documentos formais. A aba Notificações do contrato continua como visão contextual do mesmo
+          registro.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={filter} onValueChange={(v) => setFilter(v as QuickFilter)}>
+        <Select
+          value={filter}
+          onValueChange={(v) => {
+            setFilter(v as QuickFilter);
+          }}
+        >
           <SelectTrigger className="w-[260px]">
             <SelectValue />
           </SelectTrigger>
@@ -81,6 +73,18 @@ export function DocumentsCentralPanel({ mode }: Props): JSX.Element {
             <SelectItem value="CREATED_BY_ME">Elaborados por mim</SelectItem>
           </SelectContent>
         </Select>
+        <select
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm"
+          value={pageSize}
+          onChange={(e) => setPageSize(Number(e.target.value))}
+          aria-label="Itens por página"
+        >
+          {PAGE_SIZES.map((n) => (
+            <option key={n} value={n}>
+              {n} / página
+            </option>
+          ))}
+        </select>
         {mode === "external" ? (
           <Link href="/externo/notificacoes" className="text-sm underline">
             Abrir listagem clássica de notificações
@@ -92,11 +96,11 @@ export function DocumentsCentralPanel({ mode }: Props): JSX.Element {
         <p className="text-sm text-muted-foreground">
           <InlineLoading label="Carregando documentos…" />
         </p>
-      ) : filtered.length === 0 ? (
+      ) : items.length === 0 ? (
         <Card className="p-4 text-sm text-muted-foreground">Nenhum documento encontrado neste filtro.</Card>
       ) : (
         <ul className="space-y-2">
-          {filtered.map((n) => (
+          {items.map((n) => (
             <li key={n.id}>
               <Card className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -117,6 +121,48 @@ export function DocumentsCentralPanel({ mode }: Props): JSX.Element {
           ))}
         </ul>
       )}
+
+      {pageCount > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+          <p>
+            Página {page} de {pageCount || 1} · {total} {total === 1 ? "documento" : "documentos"}
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={page <= 1 || q.isFetching} onClick={() => setPage(1)}>
+              Primeira
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page <= 1 || q.isFetching}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Anterior
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pageCount === 0 || page >= pageCount || q.isFetching}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Seguinte
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pageCount === 0 || page >= pageCount || q.isFetching}
+              onClick={() => setPage(pageCount)}
+            >
+              Última
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

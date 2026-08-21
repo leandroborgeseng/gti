@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { getAuditActorId, getAuditActorLabel, requestActorStore } from "../../common/audit-actor";
-import { GlosaOrigin, MeasurementStatus, Prisma } from "@prisma/client";
+import { listPageResult, parseListPagination } from "../../common/list-pagination";
+import { GlosaOrigin, GlosaType, MeasurementStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { StorageService } from "../../storage/storage.service";
 import { CreateGlosaDto } from "./glosas.dto";
@@ -78,41 +79,68 @@ export class GlosasService {
     return glosa;
   }
 
-  async findAll(): Promise<unknown> {
-    return this.prisma.glosa.findMany({
-      where: this.organizationScope(),
-      select: {
-        id: true,
-        measurementId: true,
-        measurementItemId: true,
-        type: true,
-        origin: true,
-        value: true,
-        createdBy: true,
-        createdAt: true,
-        measurement: {
-          select: {
-            id: true,
-            referenceMonth: true,
-            referenceYear: true,
-            contract: {
-              select: {
-                id: true,
-                number: true,
-                name: true,
-                internalCode: true,
-                formalNumber: true
-              }
+  async findAll(query: { page?: number; pageSize?: number; q?: string; type?: string; origin?: string } = {}): Promise<unknown> {
+    const { page, pageSize, skip } = parseListPagination(query);
+    const where: Prisma.GlosaWhereInput = { ...this.organizationScope() };
+    const type = query.type?.trim().toUpperCase();
+    if (type && Object.values(GlosaType).includes(type as GlosaType)) {
+      where.type = type as GlosaType;
+    }
+    const origin = query.origin?.trim().toUpperCase();
+    if (origin === "AUTOMATIC" || origin === "MANUAL") {
+      where.origin = origin as GlosaOrigin;
+    }
+    const q = query.q?.trim();
+    if (q) {
+      where.OR = [
+        { justification: { contains: q, mode: "insensitive" } },
+        { createdBy: { contains: q, mode: "insensitive" } },
+        { measurement: { is: { contract: { is: { name: { contains: q, mode: "insensitive" } } } } } },
+        { measurement: { is: { contract: { is: { number: { contains: q, mode: "insensitive" } } } } } },
+        { measurement: { is: { contract: { is: { internalCode: { contains: q, mode: "insensitive" } } } } } }
+      ];
+    }
+    const select = {
+      id: true,
+      measurementId: true,
+      measurementItemId: true,
+      type: true,
+      origin: true,
+      value: true,
+      createdBy: true,
+      createdAt: true,
+      measurement: {
+        select: {
+          id: true,
+          referenceMonth: true,
+          referenceYear: true,
+          contract: {
+            select: {
+              id: true,
+              number: true,
+              name: true,
+              internalCode: true,
+              formalNumber: true
             }
           }
-        },
-        measurementItem: {
-          select: { id: true, descriptionSnapshot: true, isLegacyMonthly: true }
-        },
-        _count: { select: { attachments: true } }
+        }
       },
-      orderBy: { createdAt: "desc" }
-    });
+      measurementItem: {
+        select: { id: true, descriptionSnapshot: true, isLegacyMonthly: true }
+      },
+      _count: { select: { attachments: true } }
+    } as const;
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.glosa.count({ where }),
+      this.prisma.glosa.findMany({
+        where,
+        select,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize
+      })
+    ]);
+    return listPageResult(items, total, page, pageSize);
   }
 
   async findOne(id: string): Promise<unknown> {

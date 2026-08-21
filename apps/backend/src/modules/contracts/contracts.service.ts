@@ -2114,6 +2114,27 @@ export class ContractsService {
     return this.findOneForStructure(id);
   }
 
+  /** Lista leve de funcionalidades para vínculos (cronogramas), sem responsáveis nem grupos. */
+  async listFeatureLinkOptions(contractId: string): Promise<unknown> {
+    await this.ensureContract(contractId);
+    const rows = await this.prisma.contractFeature.findMany({
+      where: { module: { contractId } },
+      select: {
+        id: true,
+        itemCode: true,
+        name: true,
+        module: { select: { name: true } }
+      },
+      orderBy: [{ itemCode: "asc" }, { name: "asc" }]
+    });
+    return rows.map((f) => ({
+      id: f.id,
+      itemCode: f.itemCode,
+      name: f.name,
+      moduleName: f.module.name
+    }));
+  }
+
   async listAmendments(contractId: string): Promise<unknown> {
     await this.ensureContract(contractId);
     return this.prisma.contractAmendment.findMany({
@@ -2309,27 +2330,13 @@ export class ContractsService {
         hiringType: { select: { id: true, name: true, active: true } },
         modules: {
           include: {
-            features: {
-              include: {
-                validationGroup: {
-                  select: {
-                    id: true,
-                    name: true,
-                    active: true
-                  }
-                },
-                responsibles: {
-                  include: { user: { select: LINKED_USER_SELECT } },
-                  orderBy: { createdAt: "asc" }
-                }
-              }
-            },
             fiscals: {
               include: { user: { select: LINKED_USER_SELECT } },
               orderBy: { createdAt: "asc" }
             },
             validator: { select: LINKED_USER_SELECT },
-            glosaPricingItem: { include: { type: true } }
+            glosaPricingItem: { include: { type: true } },
+            _count: { select: { features: true } }
           }
         },
         validationGroups: {
@@ -2353,7 +2360,93 @@ export class ContractsService {
       }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");
-    const modules = sortModuleListFeatures(this.enrichModulesWithPeople(contract.modules));
+    const modulesWithEmptyFeatures = contract.modules.map((mod) => ({ ...mod, features: [] as never[] }));
+    const modulesBase = this.enrichModulesWithPeople(modulesWithEmptyFeatures);
+    const moduleIds = modulesBase.map((m) => m.id);
+    const grouped =
+      moduleIds.length === 0
+        ? []
+        : await this.prisma.contractFeature.groupBy({
+            by: ["moduleId", "deliveryStatus", "criticality"],
+            where: { moduleId: { in: moduleIds } },
+            _count: { _all: true },
+            _sum: { weight: true }
+          });
+    const byModule = new Map<
+      string,
+      {
+        totalFeatures: number;
+        deliveredCount: number;
+        partialCount: number;
+        notDeliveredCount: number;
+        consideredInCalculation: number;
+        notApplicableCount: number;
+        featureWeightSum: number;
+      }
+    >();
+    for (const id of moduleIds) {
+      byModule.set(id, {
+        totalFeatures: 0,
+        deliveredCount: 0,
+        partialCount: 0,
+        notDeliveredCount: 0,
+        consideredInCalculation: 0,
+        notApplicableCount: 0,
+        featureWeightSum: 0
+      });
+    }
+    for (const g of grouped) {
+      const bucket = byModule.get(g.moduleId);
+      if (!bucket) continue;
+      const n = g._count._all;
+      bucket.totalFeatures += n;
+      bucket.featureWeightSum += Number(g._sum.weight ?? 0);
+      if (!isMeasurableCriticality(g.criticality)) {
+        bucket.notApplicableCount += n;
+        continue;
+      }
+      bucket.consideredInCalculation += n;
+      if (g.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) bucket.deliveredCount += n;
+      else if (g.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) bucket.partialCount += n;
+      else bucket.notDeliveredCount += n;
+    }
+    const modules = modulesBase.map((m) => {
+      const t = byModule.get(m.id)!;
+      const rest = m as typeof m & { _count?: { features: number } };
+      const { _count, ...modRest } = rest;
+      return {
+        ...modRest,
+        features: [],
+        featuresCount: _count?.features ?? t.totalFeatures,
+        featureWeightSum: t.featureWeightSum,
+        totals: {
+          totalFeatures: t.totalFeatures,
+          consideredInCalculation: t.consideredInCalculation,
+          notApplicableCount: t.notApplicableCount,
+          deliveredCount: t.deliveredCount,
+          partialCount: t.partialCount,
+          notDeliveredCount: t.notDeliveredCount
+        }
+      };
+    });
+    const contractTotals = [...byModule.values()].reduce(
+      (acc, t) => ({
+        totalFeatures: acc.totalFeatures + t.totalFeatures,
+        consideredInCalculation: acc.consideredInCalculation + t.consideredInCalculation,
+        notApplicableCount: acc.notApplicableCount + t.notApplicableCount,
+        implantedCount: acc.implantedCount + t.deliveredCount,
+        partialCount: acc.partialCount + t.partialCount,
+        notDeliveredCount: acc.notDeliveredCount + t.notDeliveredCount
+      }),
+      {
+        totalFeatures: 0,
+        consideredInCalculation: 0,
+        notApplicableCount: 0,
+        implantedCount: 0,
+        partialCount: 0,
+        notDeliveredCount: 0
+      }
+    );
     const validationGroups = contract.validationGroups.map((g) => {
       const members = g.members.map((m) => serializeLinkedUser(m.user));
       return {
@@ -2374,12 +2467,12 @@ export class ContractsService {
       modules,
       validationGroups,
       itemChangeLogs: [],
-      featureImplantationProportion: buildFeatureImplantationProportion({
+      featureImplantationProportion: buildFeatureImplantationProportionFromCounts({
         monthlyValue: contract.monthlyValue,
         installationValue: contract.installationValue,
         implementationPeriodStart: contract.implementationPeriodStart,
         implementationPeriodEnd: contract.implementationPeriodEnd,
-        modules,
+        ...contractTotals,
         at: new Date()
       })
     };

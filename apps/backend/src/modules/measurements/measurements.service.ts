@@ -25,6 +25,7 @@ import {
   deliverySnapshotAsOf,
   type DeliveryEventLike
 } from "../../common/feature-delivery-as-of";
+import { listPageResult, parseListPagination } from "../../common/list-pagination";
 
 type FeatureForGlosa = {
   criticality?: string | null;
@@ -272,9 +273,56 @@ export class MeasurementsService {
     }
   }
 
-  async findAll(): Promise<unknown> {
-    return this.prisma.measurement.findMany({
-      where: { deletedAt: null, ...this.organizationScope() },
+  async findAll(query: { page?: number; pageSize?: number; q?: string; contractId?: string; status?: string } = {}): Promise<unknown> {
+    const { page, pageSize, skip } = parseListPagination(query);
+    const where: Prisma.MeasurementWhereInput = { deletedAt: null, ...this.organizationScope() };
+    const contractId = query.contractId?.trim();
+    if (contractId) where.contractId = contractId;
+    const status = query.status?.trim().toUpperCase();
+    if (status && Object.values(MeasurementStatus).includes(status as MeasurementStatus)) {
+      where.status = status as MeasurementStatus;
+    }
+    const q = query.q?.trim();
+    if (q) {
+      where.OR = [
+        { contract: { is: { name: { contains: q, mode: "insensitive" } } } },
+        { contract: { is: { number: { contains: q, mode: "insensitive" } } } },
+        { contract: { is: { internalCode: { contains: q, mode: "insensitive" } } } },
+        { contract: { is: { formalNumber: { contains: q, mode: "insensitive" } } } },
+        { contract: { is: { companyName: { contains: q, mode: "insensitive" } } } }
+      ];
+    }
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.measurement.count({ where }),
+      this.prisma.measurement.findMany({
+        where,
+        include: {
+          contract: {
+            select: {
+              id: true,
+              number: true,
+              name: true,
+              internalCode: true,
+              formalNumber: true,
+              contractYear: true,
+              companyName: true,
+              contractType: true,
+              organization: { select: { id: true, name: true, acronym: true } },
+              supplier: { select: { id: true, name: true, cnpj: true } }
+            }
+          }
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize
+      })
+    ]);
+    return listPageResult(items, total, page, pageSize);
+  }
+
+  async findOne(id: string): Promise<unknown> {
+    const m = await this.prisma.measurement.findFirst({
+      where: { id, deletedAt: null, ...this.organizationScope() },
       include: {
         contract: {
           select: {
@@ -286,34 +334,39 @@ export class MeasurementsService {
             contractYear: true,
             companyName: true,
             contractType: true,
-            organization: { select: { id: true, name: true, acronym: true } },
-            supplier: { select: { id: true, name: true, cnpj: true } }
-          }
-        }
-      },
-      orderBy: { createdAt: "desc" }
-    });
-  }
-
-  async findOne(id: string): Promise<unknown> {
-    const m = await this.prisma.measurement.findFirst({
-      where: { id, deletedAt: null, ...this.organizationScope() },
-      include: {
-        contract: {
-          include: {
+            startDate: true,
+            endDate: true,
             organization: { select: { id: true, name: true, acronym: true } },
             supplier: { select: { id: true, name: true, cnpj: true } },
-            services: true,
+            services: { select: { id: true, name: true, unit: true, unitValue: true } },
             pricingItems: {
               where: { status: ContractPricingItemStatus.ACTIVE },
-              include: { type: true, unit: true },
+              select: {
+                id: true,
+                description: true,
+                sequence: true,
+                billingKind: true,
+                unitValue: true,
+                type: { select: { id: true, code: true, label: true } },
+                unit: { select: { id: true, code: true, label: true } }
+              },
               orderBy: { sequence: "asc" }
             }
           }
         },
         items: {
           include: {
-            pricingItem: { include: { type: true, unit: true } },
+            pricingItem: {
+              select: {
+                id: true,
+                description: true,
+                sequence: true,
+                billingKind: true,
+                unitValue: true,
+                type: { select: { id: true, code: true, label: true } },
+                unit: { select: { id: true, code: true, label: true } }
+              }
+            },
             glosas: true
           },
           orderBy: { coverageStart: "asc" }
@@ -477,7 +530,7 @@ export class MeasurementsService {
                 glosaPricingItem: { include: { type: true } }
               }
             },
-            services: true,
+            services: { select: { id: true, unitValue: true } },
             pricingItems: { where: { status: ContractPricingItemStatus.ACTIVE }, include: { type: true } }
           }
         },
@@ -499,23 +552,34 @@ export class MeasurementsService {
     );
 
     let measured = new Prisma.Decimal(0);
+    const itemPatches: Array<{ id: string; data: Prisma.MeasurementItemUpdateInput; calculatedValue: Prisma.Decimal }> =
+      [];
 
     if (hasComposedPricingLines || measurement.items.some((i) => i.billingKindSnapshot || i.isLegacyMonthly)) {
+      const onDemandRows = measurement.items
+        .filter((item) => {
+          const billingKind =
+            item.billingKindSnapshot ??
+            item.pricingItem?.billingKind ??
+            (item.isLegacyMonthly ? ContractPricingBillingKind.RECURRING : null);
+          return billingKind === ContractPricingBillingKind.ON_DEMAND && item.pricingItemId;
+        })
+        .map((item) => ({ quantity: Number(item.quantity), pricingItemId: item.pricingItemId! }));
+      if (onDemandRows.length > 0) {
+        await this.resolvePricingItems(this.prisma, measurement.contractId, onDemandRows);
+      }
+
       for (const item of measurement.items) {
         const billingKind =
           item.billingKindSnapshot ??
           item.pricingItem?.billingKind ??
           (item.isLegacyMonthly ? ContractPricingBillingKind.RECURRING : null);
         if (!billingKind) {
-          // Linhas SERVICE legadas sem snapshot: fallback qty × unit
           const unit = item.unitValueSnapshot ?? item.pricingItem?.unitValue;
           if (unit) {
             const calc = item.quantity.mul(unit);
             measured = measured.add(calc);
-            await this.prisma.measurementItem.update({
-              where: { id: item.id },
-              data: { calculatedValue: calc }
-            });
+            itemPatches.push({ id: item.id, calculatedValue: calc, data: { calculatedValue: calc } });
           }
           continue;
         }
@@ -523,14 +587,7 @@ export class MeasurementsService {
         const unitValue = item.unitValueSnapshot ?? item.pricingItem?.unitValue ?? new Prisma.Decimal(0);
         const periodicity =
           item.periodicitySnapshot ?? item.pricingItem?.periodicity ?? ContractPricingPeriodicity.MONTHLY;
-        const description =
-          item.descriptionSnapshot ?? item.pricingItem?.description ?? "Item da medição";
-
-        if (billingKind === ContractPricingBillingKind.ON_DEMAND && item.pricingItemId) {
-          await this.resolvePricingItems(this.prisma, measurement.contractId, [
-            { quantity: Number(item.quantity), pricingItemId: item.pricingItemId }
-          ]);
-        }
+        const description = item.descriptionSnapshot ?? item.pricingItem?.description ?? "Item da medição";
 
         const result = calculateLineValue({
           billingKind,
@@ -543,8 +600,9 @@ export class MeasurementsService {
           description
         });
         measured = measured.add(result.calculatedValue);
-        await this.prisma.measurementItem.update({
-          where: { id: item.id },
+        itemPatches.push({
+          id: item.id,
+          calculatedValue: result.calculatedValue,
           data: {
             calculatedValue: result.calculatedValue,
             calculationMemory: result.calculationMemory,
@@ -556,54 +614,44 @@ export class MeasurementsService {
         });
       }
     } else {
-      // Fallback legado (medições antigas sem composição por itens).
-      measured = await this.calculateLegacyPath(measurement);
+      const legacy = await this.calculateLegacyPath(measurement);
+      measured = legacy.measured;
+      itemPatches.push(...legacy.itemPatches);
     }
+
+    const calculatedById = new Map(itemPatches.map((p) => [p.id, p.calculatedValue]));
+    const itemsAfterCalc = measurement.items.map((item) => ({
+      ...item,
+      calculatedValue: calculatedById.get(item.id) ?? item.calculatedValue
+    }));
 
     const autoGlosaValue = this.computeAutomaticFeatureGlosa(measurement, measured);
+    const previousAuto = measurement.glosas.filter((g) => g.origin === GlosaOrigin.AUTOMATIC);
+    const glosaCreates: Prisma.GlosaCreateManyInput[] = [];
+    const glosedDelta = new Map<string, Prisma.Decimal>();
 
-    // Remove glosas automáticas anteriores e zera o rateio nas linhas (mantém manuais).
-    const previousAuto = await this.prisma.glosa.findMany({
-      where: { measurementId: id, origin: GlosaOrigin.AUTOMATIC },
-      select: { id: true, measurementItemId: true, value: true }
-    });
+    const addGlosedDelta = (itemId: string, delta: Prisma.Decimal) => {
+      glosedDelta.set(itemId, (glosedDelta.get(itemId) ?? new Prisma.Decimal(0)).add(delta));
+    };
     for (const g of previousAuto) {
-      if (g.measurementItemId) {
-        await this.prisma.measurementItem.update({
-          where: { id: g.measurementItemId },
-          data: { glosedValue: { decrement: g.value } }
-        });
-      }
+      if (g.measurementItemId) addGlosedDelta(g.measurementItemId, g.value.neg());
     }
-    await this.prisma.glosa.deleteMany({
-      where: { measurementId: id, origin: GlosaOrigin.AUTOMATIC }
-    });
 
     if (autoGlosaValue.gt(0)) {
-      const items = await this.prisma.measurementItem.findMany({
-        where: { measurementId: id },
-        select: { id: true, calculatedValue: true }
-      });
-      const positive = items.filter((i) => i.calculatedValue.gt(0));
-      const totalGross = positive.reduce(
-        (sum, i) => sum.add(i.calculatedValue),
-        new Prisma.Decimal(0)
-      );
+      const positive = itemsAfterCalc.filter((i) => i.calculatedValue.gt(0));
+      const totalGross = positive.reduce((sum, i) => sum.add(i.calculatedValue), new Prisma.Decimal(0));
 
       if (positive.length === 0 || totalGross.lte(0)) {
-        await this.prisma.glosa.create({
-          data: {
-            measurementId: id,
-            type: GlosaType.NAO_ENTREGA,
-            origin: GlosaOrigin.AUTOMATIC,
-            value: autoGlosaValue,
-            justification:
-              "Glosa automática pela proporção de funcionalidades não validadas sobre a base de glosa da competência (sem linhas de medição para rateio).",
-            createdBy: "sistema"
-          }
+        glosaCreates.push({
+          measurementId: id,
+          type: GlosaType.NAO_ENTREGA,
+          origin: GlosaOrigin.AUTOMATIC,
+          value: autoGlosaValue,
+          justification:
+            "Glosa automática pela proporção de funcionalidades não validadas sobre a base de glosa da competência (sem linhas de medição para rateio).",
+          createdBy: "sistema"
         });
       } else {
-        // Rateio proporcional ao bruto (calculatedValue); resto na última linha.
         let allocated = new Prisma.Decimal(0);
         for (let idx = 0; idx < positive.length; idx++) {
           const item = positive[idx]!;
@@ -613,49 +661,92 @@ export class MeasurementsService {
             : autoGlosaValue.mul(item.calculatedValue).div(totalGross);
           const rounded = new Prisma.Decimal(share.toFixed(2));
           if (rounded.lte(0) && !isLast) continue;
-          const value = isLast
-            ? new Prisma.Decimal(autoGlosaValue.sub(allocated).toFixed(2))
-            : rounded;
+          const value = isLast ? new Prisma.Decimal(autoGlosaValue.sub(allocated).toFixed(2)) : rounded;
           if (value.lte(0)) continue;
           allocated = allocated.add(value);
-          await this.prisma.glosa.create({
-            data: {
-              measurementId: id,
-              measurementItemId: item.id,
-              type: GlosaType.NAO_ENTREGA,
-              origin: GlosaOrigin.AUTOMATIC,
-              value,
-              justification:
-                "Glosa automática rateada proporcionalmente ao valor bruto da linha (funcionalidades não validadas).",
-              createdBy: "sistema"
-            }
+          glosaCreates.push({
+            measurementId: id,
+            measurementItemId: item.id,
+            type: GlosaType.NAO_ENTREGA,
+            origin: GlosaOrigin.AUTOMATIC,
+            value,
+            justification:
+              "Glosa automática rateada proporcionalmente ao valor bruto da linha (funcionalidades não validadas).",
+            createdBy: "sistema"
           });
-          await this.prisma.measurementItem.update({
-            where: { id: item.id },
-            data: { glosedValue: { increment: value } }
-          });
+          addGlosedDelta(item.id, value);
         }
       }
     }
 
-    const glosasAgg = await this.prisma.glosa.aggregate({
-      where: { measurementId: id },
-      _sum: { value: true }
-    });
-    const glosas = glosasAgg._sum.value ?? new Prisma.Decimal(0);
+    const manualGlosas = measurement.glosas
+      .filter((g) => g.origin !== GlosaOrigin.AUTOMATIC)
+      .reduce((sum, g) => sum.add(g.value), new Prisma.Decimal(0));
+    const autoCreated = glosaCreates.reduce((sum, g) => sum.add(g.value as Prisma.Decimal), new Prisma.Decimal(0));
+    const glosas = manualGlosas.add(autoCreated);
     const approvedRaw = measured.sub(glosas);
     const approved = approvedRaw.lt(0) ? new Prisma.Decimal(0) : approvedRaw;
     const nextStatus = glosas.gt(0) ? MeasurementStatus.GLOSSED : MeasurementStatus.UNDER_REVIEW;
-    const updated = await this.prisma.measurement.update({
-      where: { id },
-      data: {
-        status: nextStatus,
-        totalMeasuredValue: measured,
-        totalGlosedValue: glosas,
-        totalApprovedValue: approved
+
+    for (const [itemId, delta] of glosedDelta) {
+      if (delta.eq(0)) continue;
+      const existing = itemPatches.find((p) => p.id === itemId);
+      if (existing) {
+        existing.data.glosedValue = { increment: delta };
+      } else {
+        itemPatches.push({
+          id: itemId,
+          calculatedValue: calculatedById.get(itemId) ?? new Prisma.Decimal(0),
+          data: { glosedValue: { increment: delta } }
+        });
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (itemPatches.length > 0) {
+        await Promise.all(
+          itemPatches.map((p) => tx.measurementItem.update({ where: { id: p.id }, data: p.data }))
+        );
+      }
+      await tx.glosa.deleteMany({ where: { measurementId: id, origin: GlosaOrigin.AUTOMATIC } });
+      if (glosaCreates.length > 0) {
+        await tx.glosa.createMany({ data: glosaCreates });
+      }
+      await tx.measurement.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          totalMeasuredValue: measured,
+          totalGlosedValue: glosas,
+          totalApprovedValue: approved
+        }
+      });
+    });
+
+    await this.refreshBalanceAndDeliveryMemory(id, {
+      status: nextStatus,
+      contractId: measurement.contractId,
+      referenceDate: measurement.referenceDate,
+      referenceYear: measurement.referenceYear,
+      referenceMonth: measurement.referenceMonth,
+      items: itemsAfterCalc.map((item) => ({
+        id: item.id,
+        pricingItemId: item.pricingItemId,
+        quantity: item.quantity,
+        calculatedValue: item.calculatedValue
+      })),
+      contract: {
+        pricingItems: measurement.contract.pricingItems,
+        modules: measurement.contract.modules
       }
     });
-    await this.refreshBalanceAndDeliveryMemory(id);
+    const updated = {
+      id,
+      status: nextStatus,
+      totalMeasuredValue: measured,
+      totalGlosedValue: glosas,
+      totalApprovedValue: approved
+    };
     await this.audit("Measurement", id, "CALCULATE", measurement, updated);
     return this.findOne(id);
   }
@@ -977,9 +1068,14 @@ export class MeasurementsService {
       calculatedValue: Prisma.Decimal;
       pricingItem: { unitValue: Prisma.Decimal } | null;
     }>;
-  }): Promise<Prisma.Decimal> {
+  }): Promise<{
+    measured: Prisma.Decimal;
+    itemPatches: Array<{ id: string; data: Prisma.MeasurementItemUpdateInput; calculatedValue: Prisma.Decimal }>;
+  }> {
     const contractType = measurement.contract.contractType;
     let measured = new Prisma.Decimal(0);
+    const itemPatches: Array<{ id: string; data: Prisma.MeasurementItemUpdateInput; calculatedValue: Prisma.Decimal }> =
+      [];
 
     if (contractType === "SOFTWARE" || contractType === "SERVICO") {
       const monthlyEquivalent = (item: (typeof measurement.contract.pricingItems)[number]) => {
@@ -1021,15 +1117,12 @@ export class MeasurementsService {
         if (!unitValue) continue;
         const calc = item.quantity.mul(unitValue);
         measured = measured.add(calc);
-        await this.prisma.measurementItem.update({
-          where: { id: item.id },
-          data: { calculatedValue: calc }
-        });
+        itemPatches.push({ id: item.id, calculatedValue: calc, data: { calculatedValue: calc } });
       }
     } else {
       measured = measurement.items.reduce((acc, item) => acc.add(item.calculatedValue), new Prisma.Decimal(0));
     }
-    return measured;
+    return { measured, itemPatches };
   }
 
   private async audit(entity: string, entityId: string, action: string, oldData: unknown, newData: unknown): Promise<void> {
@@ -1148,37 +1241,80 @@ export class MeasurementsService {
   }
 
   /** Monta memória de saldo + snapshot de entrega e grava na medição (exceto se já aprovada). */
-  private async refreshBalanceAndDeliveryMemory(measurementId: string): Promise<void> {
-    const measurement = await this.prisma.measurement.findFirst({
-      where: { id: measurementId, deletedAt: null },
-      include: {
-        items: true,
-        contract: {
-          include: {
-            pricingItems: { where: { status: ContractPricingItemStatus.ACTIVE } },
-            modules: {
-              include: {
-                features: {
-                  select: {
-                    id: true,
-                    itemCode: true,
-                    name: true,
-                    criticality: true,
-                    deliveryStatus: true,
-                    partialDeliveryPercent: true,
-                    deliveryEffectiveDate: true,
-                    status: true,
-                    weight: true,
-                    deliveryEvents: {
-                      where: { status: "ACTIVE" },
-                      select: {
-                        effectiveDate: true,
-                        deliveryStatus: true,
-                        percent: true,
-                        status: true,
-                        recordedAt: true
-                      },
-                      orderBy: [{ effectiveDate: "desc" }, { recordedAt: "desc" }]
+  private async refreshBalanceAndDeliveryMemory(
+    measurementId: string,
+    preloaded?: {
+      status: MeasurementStatus;
+      contractId: string;
+      referenceDate?: Date | null;
+      referenceYear: number;
+      referenceMonth: number;
+      items: Array<{
+        id: string;
+        pricingItemId: string | null;
+        quantity: Prisma.Decimal;
+        calculatedValue: Prisma.Decimal;
+      }>;
+      contract: {
+        pricingItems: Array<{
+          id: string;
+          description: string;
+          billingKind: ContractPricingBillingKind;
+          quantity: Prisma.Decimal;
+          consumedQuantity: Prisma.Decimal;
+          unitValue: Prisma.Decimal;
+        }>;
+        modules: Array<{
+          id: string;
+          features: Array<{
+            id: string;
+            itemCode: string | null;
+            name: string;
+            criticality: string | null;
+            deliveryStatus: string | null;
+            partialDeliveryPercent: number | null;
+            deliveryEffectiveDate: Date | null;
+            status: string | null;
+            weight: Prisma.Decimal;
+            deliveryEvents: DeliveryEventLike[];
+          }>;
+        }>;
+      };
+    }
+  ): Promise<void> {
+    const measurement =
+      preloaded ??
+      (await this.prisma.measurement.findFirst({
+        where: { id: measurementId, deletedAt: null },
+        include: {
+          items: true,
+          contract: {
+            include: {
+              pricingItems: { where: { status: ContractPricingItemStatus.ACTIVE } },
+              modules: {
+                include: {
+                  features: {
+                    select: {
+                      id: true,
+                      itemCode: true,
+                      name: true,
+                      criticality: true,
+                      deliveryStatus: true,
+                      partialDeliveryPercent: true,
+                      deliveryEffectiveDate: true,
+                      status: true,
+                      weight: true,
+                      deliveryEvents: {
+                        where: { status: "ACTIVE" },
+                        select: {
+                          effectiveDate: true,
+                          deliveryStatus: true,
+                          percent: true,
+                          status: true,
+                          recordedAt: true
+                        },
+                        orderBy: [{ effectiveDate: "desc" }, { recordedAt: "desc" }]
+                      }
                     }
                   }
                 }
@@ -1186,39 +1322,40 @@ export class MeasurementsService {
             }
           }
         }
-      }
-    });
+      }));
     if (!measurement || measurement.status === MeasurementStatus.APPROVED) return;
 
     const asOf =
       measurement.referenceDate ??
       this.resolveReferenceDate(measurement.referenceYear, measurement.referenceMonth, null);
 
-    const approvedMeasuredByPricing = await this.prisma.measurementItem.groupBy({
-      by: ["pricingItemId"],
-      where: {
-        pricingItemId: { not: null },
-        measurement: {
+    const [approvedMeasuredByPricing, unmeasuredConsumptions] = await Promise.all([
+      this.prisma.measurementItem.groupBy({
+        by: ["pricingItemId"],
+        where: {
+          pricingItemId: { not: null },
+          measurement: {
+            contractId: measurement.contractId,
+            status: MeasurementStatus.APPROVED,
+            deletedAt: null,
+            id: { not: measurementId }
+          }
+        },
+        _sum: { quantity: true }
+      }),
+      this.prisma.contractConsumptionMovement.findMany({
+        where: {
           contractId: measurement.contractId,
-          status: MeasurementStatus.APPROVED,
-          deletedAt: null,
-          id: { not: measurementId }
-        }
-      },
-      _sum: { quantity: true }
-    });
+          measurementId: null,
+          status: "APPROVED"
+        },
+        select: { pricingItemId: true, quantity: true }
+      })
+    ]);
     const approvedQty = new Map(
       approvedMeasuredByPricing.map((r) => [r.pricingItemId!, Number(r._sum.quantity ?? 0)])
     );
 
-    const unmeasuredConsumptions = await this.prisma.contractConsumptionMovement.findMany({
-      where: {
-        contractId: measurement.contractId,
-        measurementId: null,
-        status: "APPROVED"
-      },
-      select: { pricingItemId: true, quantity: true }
-    });
     const unmeasuredByPricing = new Map<string, number>();
     for (const row of unmeasuredConsumptions) {
       const qty = Number(row.quantity);

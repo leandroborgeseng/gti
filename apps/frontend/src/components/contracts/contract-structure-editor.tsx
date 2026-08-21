@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { InlineLoading } from "@/components/ui/inline-loading";
 import { Modal } from "@/components/ui/modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Contract, ContractItemCriticality, ContractItemDeliveryStatus } from "@/lib/api";
+import type { Contract, ContractItemCriticality, ContractItemDeliveryStatus, ModulesDeliveryFeature } from "@/lib/api";
 import {
   createContractFeature,
   createContractModule,
@@ -20,6 +20,7 @@ import {
   deleteContractService,
   fetchContractStructureTemplateBlob,
   getContractStructure,
+  getModuleFeaturesDelivery,
   importContractStructureFromXlsx,
   updateContractFeature,
   updateContractModule,
@@ -113,7 +114,8 @@ function showsServices(contractType: string): boolean {
 }
 
 type ModuleRow = NonNullable<Contract["modules"]>[number];
-type FeatureRowData = ModuleRow["features"][number];
+type FeatureRowData = NonNullable<ModuleRow["features"]>[number] | ModulesDeliveryFeature;
+const STRUCTURE_FEATURES_PAGE_SIZE = 40;
 type FeatureFilters = {
   deliveryStatus: "" | ContractItemDeliveryStatus;
   criticality: "" | ContractItemCriticality;
@@ -261,14 +263,10 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
       (item.includeInGlosaBase || item.type?.participatesInGlosa || item.type?.code === "MENSALIDADE")
   );
   const hasFeatureFilters = Boolean(featureFilters.deliveryStatus || featureFilters.criticality || featureFilters.query.trim());
-  const visibleModules = hasFeatureFilters
-    ? modules.filter((mod) => mod.features.some((feature) => featureMatchesFilters(feature, featureFilters)))
-    : modules;
-  const visibleFeaturesCount = visibleModules.reduce(
-    (total, mod) => total + mod.features.filter((feature) => featureMatchesFilters(feature, featureFilters)).length,
+  const totalFeaturesCount = modules.reduce(
+    (total, mod) => total + (mod.featuresCount ?? mod.features?.length ?? 0),
     0
   );
-  const totalFeaturesCount = modules.reduce((total, mod) => total + mod.features.length, 0);
 
   function openStructureModal(): void {
     setModalModName("");
@@ -483,8 +481,8 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                 </div>
                 <p className="mt-2 text-xs text-slate-500">
                   {hasFeatureFilters
-                    ? `Exibindo ${visibleFeaturesCount} de ${totalFeaturesCount} funcionalidade(s).`
-                    : "Use os filtros para priorizar itens por entrega, criticidade ou localizar rapidamente pelo código e descrição."}
+                    ? `Filtros ativos — ao expandir cada módulo, a lista carrega só os itens correspondentes (de ${totalFeaturesCount} no contrato).`
+                    : "Use os filtros para priorizar itens por entrega, criticidade ou localizar pelo código e descrição. As funcionalidades carregam ao expandir o módulo."}
                 </p>
               </div>
               <div className="space-y-6">
@@ -494,18 +492,14 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
                     Importação.
                   </p>
                 ) : null}
-                {modules.length > 0 && visibleModules.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
-                    Nenhuma funcionalidade encontrada para os filtros aplicados.
-                  </p>
-                ) : null}
-                {visibleModules.map((mod) => (
+                {modules.map((mod) => (
                   <ModuleBlock
                     key={mod.id}
                     contractId={cid}
                     module={mod}
                     validationGroups={contract.validationGroups ?? []}
                     featureFilters={featureFilters}
+                    autoOpen={hasFeatureFilters}
                     busy={busy}
                     onError={setError}
                     onBusy={setBusy}
@@ -864,6 +858,7 @@ function ModuleBlock(props: {
   module: ModuleRow;
   validationGroups: NonNullable<Contract["validationGroups"]>;
   featureFilters: FeatureFilters;
+  autoOpen?: boolean;
   busy: boolean;
   onError: (m: string | null) => void;
   onBusy: (b: boolean) => void;
@@ -877,6 +872,7 @@ function ModuleBlock(props: {
     module: mod,
     validationGroups,
     featureFilters,
+    autoOpen = false,
     busy,
     onError,
     onBusy,
@@ -885,6 +881,7 @@ function ModuleBlock(props: {
     canEditDelivery,
     canEditCriticality
   } = props;
+  const qc = useQueryClient();
   const fiscalUsers = moduleFiscalUsers(mod);
   const [name, setName] = useState(mod.name);
   const [criticality, setCriticality] = useState<ContractItemCriticality>(mod.criticality ?? "MEDIA");
@@ -893,7 +890,11 @@ function ModuleBlock(props: {
   const [fCode, setFCode] = useState("");
   const [fCodeError, setFCodeError] = useState(false);
   const [fName, setFName] = useState("");
-  const [featuresOpen, setFeaturesOpen] = useState(false);
+  const [featuresOpen, setFeaturesOpen] = useState(autoOpen);
+
+  useEffect(() => {
+    if (autoOpen) setFeaturesOpen(true);
+  }, [autoOpen]);
 
   useEffect(() => {
     setName(mod.name);
@@ -912,6 +913,8 @@ function ModuleBlock(props: {
     onBusy(true);
     try {
       onUpdated(await op());
+      void qc.invalidateQueries({ queryKey: queryKeys.moduleFeaturesDelivery(contractId, mod.id) });
+      void qc.invalidateQueries({ queryKey: queryKeys.contractStructure(contractId) });
     } catch (e) {
       onError(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -919,20 +922,79 @@ function ModuleBlock(props: {
     }
   }
 
-  const featureSumSaved = projectModuleFeaturesSum(mod.features);
-  const deliveredCount = mod.features.filter((f) => f.deliveryStatus === "DELIVERED").length;
-  const partialCount = mod.features.filter((f) => f.deliveryStatus === "PARTIALLY_DELIVERED").length;
-  const notDeliveredCount = mod.features.filter((f) => (f.deliveryStatus ?? "NOT_DELIVERED") === "NOT_DELIVERED").length;
+  const filterKey = JSON.stringify(featureFilters);
+  const featuresQuery = useQuery({
+    queryKey: [...queryKeys.moduleFeaturesDelivery(contractId, mod.id), filterKey],
+    queryFn: () =>
+      getModuleFeaturesDelivery(contractId, mod.id, {
+        page: 1,
+        pageSize: STRUCTURE_FEATURES_PAGE_SIZE,
+        q: featureFilters.query.trim() || undefined,
+        deliveryStatus: featureFilters.deliveryStatus || undefined,
+        criticality: featureFilters.criticality || undefined
+      }),
+    enabled: featuresOpen
+  });
+  const [extraFeatures, setExtraFeatures] = useState<ModulesDeliveryFeature[]>([]);
+  const [nextPage, setNextPage] = useState(2);
+  const [extraHasMore, setExtraHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => {
+    setExtraFeatures([]);
+    setNextPage(2);
+    setExtraHasMore(false);
+  }, [featuresQuery.dataUpdatedAt, filterKey, contractId, mod.id]);
+
+  const loadedFeatures = useMemo(() => {
+    const first = featuresQuery.data?.features ?? [];
+    if (extraFeatures.length === 0) return first;
+    const seen = new Set(first.map((f) => f.id));
+    return [...first, ...extraFeatures.filter((f) => !seen.has(f.id))];
+  }, [featuresQuery.data?.features, extraFeatures]);
+  const hasMore = extraFeatures.length === 0 ? Boolean(featuresQuery.data?.hasMore) : extraHasMore;
+
+  async function loadMoreFeatures(): Promise<void> {
+    setLoadingMore(true);
+    try {
+      const page = await getModuleFeaturesDelivery(contractId, mod.id, {
+        page: nextPage,
+        pageSize: STRUCTURE_FEATURES_PAGE_SIZE,
+        q: featureFilters.query.trim() || undefined,
+        deliveryStatus: featureFilters.deliveryStatus || undefined,
+        criticality: featureFilters.criticality || undefined
+      });
+      setExtraFeatures((prev) => {
+        const seen = new Set(prev.map((f) => f.id));
+        return [...prev, ...page.features.filter((f) => !seen.has(f.id))];
+      });
+      setNextPage((p) => p + 1);
+      setExtraHasMore(page.hasMore);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Não foi possível carregar mais itens.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const featureSumSaved =
+    mod.featureWeightSum != null ? Number(mod.featureWeightSum) : projectModuleFeaturesSum(mod.features ?? []);
+  const deliveredCount = mod.totals?.deliveredCount ?? (mod.features ?? []).filter((f) => f.deliveryStatus === "DELIVERED").length;
+  const partialCount =
+    mod.totals?.partialCount ?? (mod.features ?? []).filter((f) => f.deliveryStatus === "PARTIALLY_DELIVERED").length;
+  const notDeliveredCount =
+    mod.totals?.notDeliveredCount ??
+    (mod.features ?? []).filter((f) => (f.deliveryStatus ?? "NOT_DELIVERED") === "NOT_DELIVERED").length;
+  const featuresCount = mod.featuresCount ?? mod.totals?.totalFeatures ?? (mod.features ?? []).length;
   const fiscalsLabel = formatUsersSummary(fiscalUsers, "Sem fiscal definido");
   const hasFeatureFilters = Boolean(featureFilters.deliveryStatus || featureFilters.criticality || featureFilters.query.trim());
-  const filteredFeatures = mod.features.filter((feature) => featureMatchesFilters(feature, featureFilters));
-  const orderedFeatures = orderFeaturesByItemCode(filteredFeatures, { flatDepth: hasFeatureFilters });
+  const orderedFeatures = orderFeaturesByItemCode(loadedFeatures, { flatDepth: hasFeatureFilters });
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="font-semibold text-slate-900">{mod.features.length} itens</span>
+          <span className="font-semibold text-slate-900">{featuresCount} itens</span>
           <span className="text-emerald-700">{deliveredCount} entregues</span>
           <span className="text-amber-700">{partialCount} parciais</span>
           <span className="text-red-700">{notDeliveredCount} não entregues</span>
@@ -1042,16 +1104,21 @@ function ModuleBlock(props: {
           onClick={() => setFeaturesOpen((open) => !open)}
         >
           <span>
-            Funcionalidades ({hasFeatureFilters ? `${filteredFeatures.length}/${mod.features.length}` : mod.features.length}) · soma dos pesos{" "}
+            Funcionalidades ({featuresCount}) · soma dos pesos{" "}
             <span className="tabular-nums">{formatWeightPt(featureSumSaved)}</span>
           </span>
           <span>{featuresOpen ? "Ocultar" : "Mostrar"}</span>
         </button>
 
         <div className={featuresOpen ? "mt-3 block" : "hidden"}>
-          {mod.features.length === 0 ? (
+          {featuresQuery.isLoading ? (
+            <p className="mb-2 text-xs text-slate-500">Carregando funcionalidades…</p>
+          ) : null}
+          {!featuresQuery.isLoading && loadedFeatures.length === 0 ? (
             <p className="mb-2 text-xs text-slate-500">
-              Sem funcionalidades neste módulo. Ao incluir, os pesos serão calculados automaticamente pela criticidade.
+              {hasFeatureFilters
+                ? "Nenhum item neste módulo para os filtros aplicados."
+                : "Sem funcionalidades neste módulo. Ao incluir, os pesos serão calculados automaticamente pela criticidade."}
             </p>
           ) : null}
           <ul className="space-y-2">
@@ -1060,7 +1127,7 @@ function ModuleBlock(props: {
                 key={f.id}
                 contractId={contractId}
                 moduleId={mod.id}
-                feature={f}
+                feature={f as FeatureRowData}
                 validationGroups={validationGroups}
                 depth={depth}
                 busy={busy}
@@ -1072,6 +1139,18 @@ function ModuleBlock(props: {
               />
             ))}
           </ul>
+          {hasMore ? (
+            <div className="mt-2">
+              <button
+                type="button"
+                className={buttonSmallClass}
+                disabled={loadingMore || busy}
+                onClick={() => void loadMoreFeatures()}
+              >
+                {loadingMore ? "Carregando…" : "Carregar mais"}
+              </button>
+            </div>
+          ) : null}
           <div className="mt-2 flex flex-wrap gap-2">
             <input
               className={cn("w-32", formControlClass, fCodeError && "border-destructive focus-visible:ring-destructive")}
@@ -1190,7 +1269,7 @@ function ModuleBlock(props: {
 function FeatureRow(props: {
   contractId: string;
   moduleId: string;
-  feature: ModuleRow["features"][number];
+  feature: FeatureRowData;
   validationGroups: NonNullable<Contract["validationGroups"]>;
   depth?: number;
   busy: boolean;
@@ -1213,6 +1292,7 @@ function FeatureRow(props: {
     canEditDelivery,
     canEditCriticality
   } = props;
+  const qc = useQueryClient();
   const [itemCode, setItemCode] = useState(f.itemCode ?? "");
   const [itemCodeError, setItemCodeError] = useState(false);
   const [name, setName] = useState(f.name);
@@ -1240,6 +1320,8 @@ function FeatureRow(props: {
     onBusy(true);
     try {
       onUpdated(await op());
+      void qc.invalidateQueries({ queryKey: queryKeys.moduleFeaturesDelivery(contractId, moduleId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.contractStructure(contractId) });
     } catch (e) {
       onError(e instanceof Error ? e.message : "Erro");
     } finally {
