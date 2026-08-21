@@ -6,6 +6,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- **Histórico de entrega da funcionalidade** (ticket 96): na tela Funcionalidades e na aba Módulos da ficha, o ícone «Histórico de entrega» abre o detalhe dos eventos (data efetiva, percentual, quem registrou, observação e situação). Quem pode editar entrega consegue anular um evento ativo com justificativa (mínimo 10 caracteres); o registro permanece visível como anulado e o estado vigente é reconstruído. Depois, dá para registrar a data efetiva correta. Sem essa permissão, o histórico é só consulta. A anulação também aparece na aba Auditoria do contrato.
 - **Memória de saldo na tela da medição**: no detalhe da medição, após calcular, a seção «Memória de saldo e entrega» exibe data de corte, tabela de saldo por item e snapshot das funcionalidades (itens «Não se aplica» ficam fora do percentual).
 - **Códigos DOC-SIGTI e QR**: novos documentos formais usam numeração `DOC-SIGTI-####/AAAA` (documentos `NOT-SIGTI` antigos continuam válidos), com código verificador e código de validação no documento, QR Code e bloco de validação apontando para `/validar-documento`.
 - **Arquivos do contrato** (ticket 105): nova aba «Arquivos» na ficha do contrato para anexar documentos originais (contrato, TR, edital, aditivos etc.), com listagem paginada, filtros, download, envio (quem edita contratos) e cancelamento/inativação com justificativa.
@@ -19,6 +20,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Alterado
 
+- **Registro de entrega na aba Módulos**: ao gravar uma funcionalidade como Entregue ou Parcialmente entregue, o sistema pede a data efetiva (e o percentual de 5% a 95% no parcial), no mesmo padrão da tela Funcionalidades e do modal do lápis.
 - **Listagens paginadas no servidor**: Medições, Glosas e a Central de Documentos passam a carregar página a página (10, 25, 50 ou 100 por página), com pesquisa/filtro no servidor. Ao mudar o filtro ou o tamanho da página, a lista volta à primeira página.
 - **Aba Módulos do contrato**: as funcionalidades deixam de vir todas de uma vez; ao expandir o módulo carrega a primeira página e há «Carregar mais», no mesmo padrão da tela Funcionalidades.
 - **Cálculo da medição mais rápido**: o recálculo agrupa as atualizações das linhas e reutiliza os dados já carregados para a memória de saldo; após calcular ou aprovar, a ficha da medição atualiza sem recarregar a página inteira.
@@ -56,6 +58,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Técnico
 
+- **Build Docker / Railway**: o `next build` voltou a concluir. Os módulos opcionais de PDF (`@sparticuz/chromium`, `puppeteer-core`, `pdfkit`) passam a ser resolvidos a partir do `node_modules` do frontend — na imagem não há `apps/backend/node_modules`, e o typecheck falhava ao importar o gerador de PDF do backend.
 - **Sync GLPI em produção**: o cron não deve competir com o processo web. Use `npm run start:worker` (ou `dev:worker` em desenvolvimento) num serviço dedicado; nas réplicas HTTP, `GLPI_CRON_DISABLED=1` (só o agendamento) ou `GLPI_SKIP_BOOTSTRAP=1` (bootstrap inteiro, já usado no `next build`). Ver `AGENTS.md` e `docs/glpi-sync-arquitetura.md`.
 
 ### Adicionado

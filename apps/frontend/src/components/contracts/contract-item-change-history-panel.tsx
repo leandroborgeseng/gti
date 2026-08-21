@@ -91,7 +91,12 @@ function stringField(record: Record<string, unknown> | null | undefined, key: st
   return fieldText(record[key]);
 }
 
+function isDeliveryAnnulment(log: ContractItemChangeLog): boolean {
+  return log.newData?.annulled === true;
+}
+
 function ChangeDetails({ log }: { log: ContractItemChangeLog }): JSX.Element | null {
+  const annulled = isDeliveryAnnulment(log);
   const statusChanged = log.statusBefore !== log.statusAfter && (log.statusBefore || log.statusAfter);
   const deliveryChanged =
     log.deliveryStatusBefore !== log.deliveryStatusAfter && (log.deliveryStatusBefore || log.deliveryStatusAfter);
@@ -104,10 +109,24 @@ function ChangeDetails({ log }: { log: ContractItemChangeLog }): JSX.Element | n
   const newName = stringField(log.newData, "name");
   const nameChanged = oldName !== newName && (oldName !== null || newName !== null);
 
-  if (!statusChanged && !deliveryChanged && !criticalityChanged && !codeChanged && !nameChanged) return null;
+  if (!annulled && !statusChanged && !deliveryChanged && !criticalityChanged && !codeChanged && !nameChanged) {
+    return null;
+  }
+
+  const annulReason = stringField(log.newData, "annulReason");
+  const eventDate = stringField(log.newData, "eventEffectiveDate") ?? stringField(log.oldData, "effectiveDate");
+  const eventPercent = log.newData?.eventPercent ?? log.oldData?.percent;
 
   return (
     <div className="mt-2 space-y-1 text-xs text-slate-600">
+      {annulled ? (
+        <p>
+          Evento de entrega <strong>anulado</strong>
+          {eventDate ? ` (data efetiva ${String(eventDate).slice(0, 10)})` : ""}
+          {eventPercent != null ? ` · ${String(eventPercent)}%` : ""}.
+          {annulReason ? ` Justificativa: ${annulReason}` : ""}
+        </p>
+      ) : null}
       {codeChanged ? (
         <p>
           Código do Item: <strong>{oldCode ?? "NULL"}</strong> → <strong>{newCode ?? "NULL"}</strong>

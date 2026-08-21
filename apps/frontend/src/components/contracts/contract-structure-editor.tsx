@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { History, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -40,6 +40,7 @@ import { buttonSmallClass, buttonSmallPrimaryClass, formControlClass } from "@/c
 import { UserMultiSelect } from "@/components/ui/user-multi-select";
 import { cn } from "@/lib/utils";
 import { orderFeaturesByItemCode } from "@/lib/item-code-order";
+import { FeatureDeliveryHistoryModal } from "@/components/features/feature-delivery-history-modal";
 
 function moduleFiscalUsers(mod: ModuleRow): ContractLinkedUser[] {
   if (mod.fiscalUsers && mod.fiscalUsers.length > 0) return mod.fiscalUsers;
@@ -104,6 +105,7 @@ const criticalityOptions: ContractItemCriticality[] = [
   "NAO_SE_APLICA"
 ];
 const REQUIRED_ITEM_CODE_MESSAGE = "O campo obrigatório Código do Item deve ser preenchido antes de gravar a informação.";
+const PARTIAL_PERCENT_OPTIONS = Array.from({ length: 19 }, (_, i) => (i + 1) * 5);
 
 function showsModules(contractType: string): boolean {
   return ["SOFTWARE", "INFRA", "SERVICO"].includes(contractType);
@@ -1303,6 +1305,12 @@ function FeatureRow(props: {
   );
   const [responsibleUserIds, setResponsibleUserIds] = useState<string[]>(() => f.responsibleUserIds ?? []);
   const [validationGroupId, setValidationGroupId] = useState(f.validationGroupId ?? "");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [deliveryPrompt, setDeliveryPrompt] = useState<{
+    deliveryStatus: ContractItemDeliveryStatus;
+    deliveryEffectiveDate: string;
+    partialDeliveryPercent: string;
+  } | null>(null);
 
   useEffect(() => {
     setItemCode(f.itemCode ?? "");
@@ -1390,6 +1398,23 @@ function FeatureRow(props: {
             ))}
           </select>
         ) : null}
+        {f.deliveryEffectiveDate ? (
+          <span className="text-xs text-slate-500">
+            Entrega em {String(f.deliveryEffectiveDate).slice(0, 10)}
+            {f.partialDeliveryPercent != null ? ` · ${f.partialDeliveryPercent}%` : ""}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          className={`${buttonSmallClass} inline-flex items-center gap-1 py-0.5 text-xs`}
+          disabled={busy}
+          title="Histórico de entrega"
+          aria-label={`Histórico de entrega de ${f.name}`}
+          onClick={() => setHistoryOpen(true)}
+        >
+          <History className="h-3.5 w-3.5" />
+          Histórico
+        </button>
         <button
           type="button"
           className={`${buttonSmallClass} py-0.5 text-xs`}
@@ -1400,6 +1425,23 @@ function FeatureRow(props: {
               toast.error(REQUIRED_ITEM_CODE_MESSAGE);
               return;
             }
+            const originalDelivery =
+              (f.deliveryStatus as ContractItemDeliveryStatus | undefined) ?? "NOT_DELIVERED";
+            if (
+              canEditDelivery &&
+              deliveryStatus !== originalDelivery &&
+              (deliveryStatus === "DELIVERED" || deliveryStatus === "PARTIALLY_DELIVERED")
+            ) {
+              setDeliveryPrompt({
+                deliveryStatus,
+                deliveryEffectiveDate: f.deliveryEffectiveDate
+                  ? String(f.deliveryEffectiveDate).slice(0, 10)
+                  : "",
+                partialDeliveryPercent:
+                  f.partialDeliveryPercent != null ? String(f.partialDeliveryPercent) : "50"
+              });
+              return;
+            }
             void exec(async () =>
               updateContractFeature(contractId, moduleId, f.id, {
                 itemCode: itemCode.trim() || null,
@@ -1408,7 +1450,14 @@ function FeatureRow(props: {
                 validationGroupId: validationGroupId || null,
                 responsibleUserIds,
                 ...(canEditCriticality ? { criticality } : {}),
-                ...(canEditDelivery ? { deliveryStatus } : {})
+                ...(canEditDelivery
+                  ? {
+                      deliveryStatus,
+                      ...(deliveryStatus === "NOT_DELIVERED" && deliveryStatus !== originalDelivery
+                        ? { deliveryEffectiveDate: null, partialDeliveryPercent: null }
+                        : {})
+                    }
+                  : {})
               })
             );
           }}
@@ -1476,6 +1525,132 @@ function FeatureRow(props: {
           hint="Os selecionados complementam os membros do grupo de validação; não substituem o grupo."
         />
       </div>
+      <FeatureDeliveryHistoryModal
+        target={
+          historyOpen
+            ? {
+                contractId,
+                moduleId,
+                featureId: f.id,
+                featureName: f.itemCode ? `${f.itemCode} · ${f.name}` : f.name
+              }
+            : null
+        }
+        onClose={() => setHistoryOpen(false)}
+        canAnnul={canEditDelivery}
+        onAnnulled={onUpdated}
+      />
+      <Modal
+        open={deliveryPrompt !== null}
+        onClose={() => {
+          if (!busy) setDeliveryPrompt(null);
+        }}
+        title="Registrar entrega"
+        description={
+          deliveryPrompt
+            ? `Confirme a data${deliveryPrompt.deliveryStatus === "PARTIALLY_DELIVERED" ? " e o percentual" : ""} para «${f.name}».`
+            : undefined
+        }
+        contentClassName="max-w-md"
+      >
+        {deliveryPrompt ? (
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-slate-600">
+              Novo estado: <strong>{itemDeliveryLabels[deliveryPrompt.deliveryStatus]}</strong>
+            </p>
+            <label className="block space-y-1 text-xs font-medium text-slate-700">
+              <span>
+                {deliveryPrompt.deliveryStatus === "PARTIALLY_DELIVERED"
+                  ? "Data da entrega parcial"
+                  : "Data da entrega"}{" "}
+                <span className="text-red-600">*</span>
+              </span>
+              <input
+                type="date"
+                className={formControlClass}
+                value={deliveryPrompt.deliveryEffectiveDate}
+                disabled={busy}
+                onChange={(e) =>
+                  setDeliveryPrompt((d) => (d ? { ...d, deliveryEffectiveDate: e.target.value } : d))
+                }
+              />
+            </label>
+            {deliveryPrompt.deliveryStatus === "PARTIALLY_DELIVERED" ? (
+              <label className="block space-y-1 text-xs font-medium text-slate-700">
+                <span>
+                  Percentual acumulado <span className="text-red-600">*</span>
+                </span>
+                <select
+                  className={formControlClass}
+                  value={deliveryPrompt.partialDeliveryPercent}
+                  disabled={busy}
+                  onChange={(e) =>
+                    setDeliveryPrompt((d) => (d ? { ...d, partialDeliveryPercent: e.target.value } : d))
+                  }
+                >
+                  {PARTIAL_PERCENT_OPTIONS.map((p) => (
+                    <option key={p} value={String(p)}>
+                      {p}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                className={buttonSmallClass}
+                disabled={busy}
+                onClick={() => setDeliveryPrompt(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className={buttonSmallPrimaryClass}
+                disabled={busy}
+                onClick={() => {
+                  if (!deliveryPrompt.deliveryEffectiveDate) {
+                    toast.error(
+                      deliveryPrompt.deliveryStatus === "DELIVERED"
+                        ? "Informe a Data da entrega."
+                        : "Informe a Data da entrega parcial."
+                    );
+                    return;
+                  }
+                  let partialDeliveryPercent: number | null = null;
+                  if (deliveryPrompt.deliveryStatus === "PARTIALLY_DELIVERED") {
+                    const pct = Number(deliveryPrompt.partialDeliveryPercent);
+                    if (!PARTIAL_PERCENT_OPTIONS.includes(pct)) {
+                      toast.error("Informe o percentual parcial (5% a 95%).");
+                      return;
+                    }
+                    partialDeliveryPercent = pct;
+                  }
+                  const payload = {
+                    itemCode: itemCode.trim() || null,
+                    name: name.trim(),
+                    status,
+                    validationGroupId: validationGroupId || null,
+                    responsibleUserIds,
+                    ...(canEditCriticality ? { criticality } : {}),
+                    deliveryStatus: deliveryPrompt.deliveryStatus,
+                    deliveryEffectiveDate: deliveryPrompt.deliveryEffectiveDate,
+                    partialDeliveryPercent
+                  };
+                  void exec(async () => {
+                    const next = await updateContractFeature(contractId, moduleId, f.id, payload);
+                    setDeliveryPrompt(null);
+                    return next;
+                  });
+                }}
+              >
+                {busy ? "Salvando…" : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </li>
   );
 }

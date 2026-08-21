@@ -707,6 +707,8 @@ export type Contract = {
       status: string;
       weight: string;
       deliveryStatus?: ContractItemDeliveryStatus;
+      deliveryEffectiveDate?: string | null;
+      partialDeliveryPercent?: number | null;
       validationGroupId?: string | null;
       validationGroup?: { id: string; name: string; active: boolean } | null;
       groupUndefined?: boolean;

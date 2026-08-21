@@ -21,6 +21,9 @@ export const queryKeys = {
   contractModulesDelivery: (contractId: string) => ["gestao", "contract-modules-delivery", contractId] as const,
   moduleFeaturesDelivery: (contractId: string, moduleId: string) =>
     ["gestao", "module-features-delivery", contractId, moduleId] as const,
+  /** Histórico temporal de entrega de uma funcionalidade. */
+  featureDeliveryEvents: (contractId: string, moduleId: string, featureId: string) =>
+    ["gestao", "feature-delivery-events", contractId, moduleId, featureId] as const,
   modulesDeliverySearch: (key: string) => ["gestao", "modules-delivery-search", key] as const,
   contractModuleValidators: ["gestao", "contract-module-validators"] as const,
   userOptions: ["gestao", "user-options"] as const,

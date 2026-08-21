@@ -4205,7 +4205,21 @@ export class ContractsService {
       deliveryStatusBefore: event.deliveryStatus,
       deliveryStatusAfter: feature?.deliveryStatus ?? null,
       oldData: event as unknown as Record<string, unknown>,
-      newData: { annulled: true, annulReason: trimmed, mirror: feature }
+      newData: {
+        annulled: true,
+        annulReason: trimmed,
+        deliveryEventId: eventId,
+        eventEffectiveDate: event.effectiveDate,
+        eventDeliveryStatus: event.deliveryStatus,
+        eventPercent: event.percent,
+        mirror: feature
+          ? {
+              deliveryStatus: feature.deliveryStatus,
+              deliveryEffectiveDate: feature.deliveryEffectiveDate,
+              partialDeliveryPercent: feature.partialDeliveryPercent
+            }
+          : null
+      }
     });
     return this.findOneForStructure(contractId);
   }

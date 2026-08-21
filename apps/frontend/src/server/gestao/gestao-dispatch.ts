@@ -420,6 +420,8 @@ function requiredPermissionForRoute(method: string, seg: string[]): string | nul
       return isRead ? null : "admin.item_types.manage";
     }
     if (seg.includes("features-delivery") || seg.includes("modules-delivery")) return "contracts.features.view";
+    if (seg.includes("delivery-events") && method === "GET") return "contracts.features.view";
+    if (seg.includes("delivery-events") && method === "POST") return "contracts.features.edit_delivery";
     if (seg.includes("features") && (method === "PUT" || method === "PATCH")) return null;
     // Controladoria: checagem específica (controladoria.manage ou ADMIN + contracts.edit).
     if (seg.includes("forward-controladoria") && method === "POST") return null;
@@ -1252,7 +1254,7 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       seg[8] === "annul" &&
       method === "POST"
     ) {
-      assertPermission(user, "contracts.edit");
+      assertPermission(user, "contracts.features.edit_delivery");
       const body = (await readJsonBody(req)) as { reason?: string };
       return jsonOk(
         await gestaoContracts.annulFeatureDeliveryEvent(seg[1], seg[3], seg[5], seg[7], body.reason ?? "")

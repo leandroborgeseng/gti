@@ -2,7 +2,7 @@
 
 import type { Route } from "next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, History, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -41,6 +41,10 @@ import { Modal } from "@/components/ui/modal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { FeatureDescriptionText } from "@/components/features/feature-description-text";
+import {
+  FeatureDeliveryHistoryModal,
+  type FeatureDeliveryHistoryTarget
+} from "@/components/features/feature-delivery-history-modal";
 import { Textarea } from "@/components/ui/textarea";
 
 const deliveryLabels: Record<ContractItemDeliveryStatus, string> = {
@@ -273,6 +277,7 @@ type FeatureMutationContext = {
   canEditCriticality: boolean;
   searchQuery: string;
   openEdit: (contractId: string, moduleId: string, item: ModulesDeliveryFeature) => void;
+  openHistory: (contractId: string, moduleId: string, item: ModulesDeliveryFeature) => void;
   tryDeleteFeature: (contractId: string, moduleId: string, item: ModulesDeliveryFeature) => void;
   updateDelivery: (vars: {
     contractId: string;
@@ -416,40 +421,57 @@ function FeatureRow({
             </Select>
           </div>
         ) : null}
-        {ctx.canEditFeature ? (
-          <div className="flex shrink-0 items-center justify-end gap-1.5 sm:justify-start">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              disabled={rowBusy}
-              title="Editar"
-              aria-label={`Editar funcionalidade ${item.name}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                ctx.openEdit(contractId, moduleId, item);
-              }}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              disabled={rowBusy}
-              title="Excluir"
-              aria-label={`Excluir funcionalidade ${item.name}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                ctx.tryDeleteFeature(contractId, moduleId, item);
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : null}
+        <div className="flex shrink-0 items-center justify-end gap-1.5 sm:justify-start">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 shrink-0"
+            disabled={rowBusy}
+            title="Histórico de entrega"
+            aria-label={`Histórico de entrega de ${item.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              ctx.openHistory(contractId, moduleId, item);
+            }}
+          >
+            <History className="h-4 w-4" />
+          </Button>
+          {ctx.canEditFeature ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                disabled={rowBusy}
+                title="Editar"
+                aria-label={`Editar funcionalidade ${item.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  ctx.openEdit(contractId, moduleId, item);
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={rowBusy}
+                title="Excluir"
+                aria-label={`Excluir funcionalidade ${item.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  ctx.tryDeleteFeature(contractId, moduleId, item);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          ) : null}
+        </div>
       </div>
     </li>
   );
@@ -957,6 +979,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
 
   const [openContractIds, setOpenContractIds] = useState<Set<string>>(() => new Set());
   const [editDraft, setEditDraft] = useState<EditFeatureDraft | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<FeatureDeliveryHistoryTarget | null>(null);
   const [deliveryPrompt, setDeliveryPrompt] = useState<DeliveryPrompt | null>(null);
   const [editHint, setEditHint] = useState<string | null>(null);
   const [filters, setFilters] = useState<DeliveryFilters>({
@@ -1207,6 +1230,14 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     canEditDelivery,
     canEditCriticality,
     searchQuery: filters.query,
+    openHistory: (contractId, moduleId, item) => {
+      setHistoryTarget({
+        contractId,
+        moduleId,
+        featureId: item.id,
+        featureName: item.itemCode ? `${item.itemCode} · ${item.name}` : item.name
+      });
+    },
     openEdit: (contractId, moduleId, item) => {
       setEditHint(null);
       setEditDraft({
@@ -1739,6 +1770,12 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
           </div>
         ) : null}
       </Modal>
+
+      <FeatureDeliveryHistoryModal
+        target={historyTarget}
+        onClose={() => setHistoryTarget(null)}
+        canAnnul={canEditDelivery}
+      />
 
       <Modal
         open={deliveryPrompt !== null}
