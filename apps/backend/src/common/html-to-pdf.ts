@@ -27,14 +27,14 @@ export async function htmlToPdfBuffer(html: string, title: string): Promise<Buff
 }
 
 async function renderWithChromium(html: string): Promise<Buffer> {
-  const chromiumMod = await import("@sparticuz/chromium");
+  const chromiumMod = await import(/* webpackIgnore: true */ "@sparticuz/chromium");
   const chromium = chromiumMod.default;
   try {
     chromium.setGraphicsMode = false;
   } catch {
     /* ignore */
   }
-  const puppeteer = await import("puppeteer-core");
+  const puppeteer = await import(/* webpackIgnore: true */ "puppeteer-core");
   const executablePath = await chromium.executablePath();
   const browser = await puppeteer.launch({
     args: [...chromium.args, "--font-render-hinting=none", "--disable-dev-shm-usage"],

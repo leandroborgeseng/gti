@@ -58,7 +58,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Técnico
 
-- **Build Docker / Railway**: o `next build` voltou a concluir. Os módulos opcionais de PDF (`@sparticuz/chromium`, `puppeteer-core`, `pdfkit`) passam a ser resolvidos a partir do `node_modules` do frontend — na imagem não há `apps/backend/node_modules`, e o typecheck falhava ao importar o gerador de PDF do backend.
+- **Build Docker / Railway**: o `next build` deixava de concluir com `Can't resolve '@sparticuz/chromium'` ao empacotar o gerador de PDF do backend. Esse pacote só declara `exports` (sem `main`); o alias webpack para a pasta do módulo falhava. Chromium e Puppeteer passam a ser carregados só em tempo de execução; pdfkit continua resolvido pelo `node_modules` do frontend (na imagem não há `apps/backend/node_modules`).
 - **Sync GLPI em produção**: o cron não deve competir com o processo web. Use `npm run start:worker` (ou `dev:worker` em desenvolvimento) num serviço dedicado; nas réplicas HTTP, `GLPI_CRON_DISABLED=1` (só o agendamento) ou `GLPI_SKIP_BOOTSTRAP=1` (bootstrap inteiro, já usado no `next build`). Ver `AGENTS.md` e `docs/glpi-sync-arquitetura.md`.
 
 ### Adicionado
