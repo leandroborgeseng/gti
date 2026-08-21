@@ -20,12 +20,19 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Adicionado
 
+- **Arquivos do contrato** (ticket 105): nova aba «Arquivos» na ficha do contrato para anexar documentos originais (contrato, TR, edital, aditivos etc.), com listagem paginada, filtros, download, envio (quem edita contratos) e cancelamento/inativação com justificativa.
+- **Memória de saldo na medição** (ticket 98): cada medição passa a registrar data de referência (corte) e memória de saldo por item (contratado, já medido/aprovado, saldo, consumo aprovado ainda não medido e quantidade da medição atual), além de snapshot das funcionalidades na data de corte. A glosa automática passa a respeitar «Não se aplica» e o percentual parcial vigente.
+- **Aditivos com renovação/acréscimo** (ticket 99): no registro de aditivo, além de alterar/suprimir/incluir, há ações «Acrescentar quantidade», «Renovar quantidade/período» e «Encerrar item».
+- **Validação pública de documento** (ticket 101): link «Validar documento» na tela de login e página pública `/validar-documento` para conferir código do documento e código verificador das assinaturas.
+- **Central de Documentos** (tickets 103/104): a tela Documentos (área externa/interna conforme menu) lista notificações formalizadas com filtros rápidos (pendentes de assinatura, assinados por mim, todos).
 - **Solicitar acesso em tela própria** (ticket 89): o login fica só com e-mail, senha, «Esqueci minha senha» e o link «Solicitar acesso». A solicitação pede nome, CPF, e-mail e tipo (Interno com órgão / Externo com empresa e vínculo). Fica «Aguardando aprovação»; na Administração as pendências são destacadas; a recusa exige justificativa e fica na auditoria (sem exclusão silenciosa). Perfis e permissões não são escolhidos pelo solicitante.
 - **Indicador de carregamento**: navegações usam barra leve no topo (sem bloquear a interface). Overlay em tela cheia permanece para operações longas explícitas, como troca de contexto de acesso.
 - **Consumo operacional separado do financeiro** (tickets 91–93): itens com «Controlar consumo» passam a ter unidade e quantidade próprias de consumo (ex.: 12 meses financeiros e 150 horas de saldo). A aba Consumos mostra disponível, utilizado, em validação, estimado em aberto, saldo efetivo e saldo projetado; o percentual usa só o efetivamente utilizado/validado. Lançamentos admitem quantidade estimada (não reduz saldo) e efetivamente consumida, com situações de atividade (levantamento, desenvolvimento, concluído etc.), tanto na aba Consumos quanto a partir de chamados GLPI.
 
 ### Corrigido
 
+- **Assinaturas múltiplas**: o HTML/PDF assinado passa a listar todas as assinaturas já realizadas (e as pendentes), em vez de substituir pela última.
+- **PDF de notificações**: o «Baixar PDF» usa a mesma fonte do HTML imprimível (versão congelada/assinada).
 - **Banco / Prisma**: alinhamento de drift (índice de consumo por contrato, nomes de índices/FK truncados pelo Postgres e defaults de configuração) para o `migrate deploy` e o schema ficarem consistentes.
 - Troca obrigatória de senha no primeiro acesso: após login com senha provisória a sessão fica autenticada e restrita só à definição da nova senha (e sair). A tela pede apenas «Nova senha» e «Confirmar nova senha» (com ícone de olho e regras claras), sem pedir de novo a senha provisória. Ao concluir, a sessão é renovada e o usuário entra no SIGTI sem novo login. Corrigido o erro «Não autenticado» na primeira tentativa.
 - Percentuais de cumprimento das funcionalidades passam a exibir sempre duas casas decimais no padrão brasileiro (ex.: `0,00%`, `37,48%`), sem alterar o cálculo interno (ticket 75).

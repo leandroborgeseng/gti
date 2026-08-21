@@ -158,6 +158,14 @@ function LoginForm(): JSX.Element {
                     Solicitar acesso
                   </Link>
                 </p>
+                <p className="text-center text-sm text-muted-foreground">
+                  <Link
+                    href={"/validar-documento" as Route}
+                    className="underline decoration-muted-foreground underline-offset-2 hover:decoration-foreground"
+                  >
+                    Validar documento
+                  </Link>
+                </p>
               </form>
             </Form>
           </CardContent>

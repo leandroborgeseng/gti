@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-08-21"; // histórico temporal de entrega (ticket 96)
+export const MANUAL_LAST_UPDATED = "2026-08-21"; // aba Arquivos do contrato (ticket 105)
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -242,6 +242,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Excluir contrato: disponível apenas para administradores, no topo do detalhe. Exige digitar EXCLUIR ou o número do contrato e uma justificativa. Só funciona para cadastros sem medições, aditivos, chamados de governança ou funcionalidades já avaliadas; nos demais casos, altere o status para Suspenso ou Encerrado.",
           "Itens contratuais: na criação e na edição, registre quantos itens forem necessários (mensalidade, implantação, horas de desenvolvimento ou suporte, treinamentos, UST, equipamentos, licenças, locações, infraestrutura, materiais e outros). Cada item tem sequência, tipo padronizado (lista da Administração), descrição contratual livre (texto do edital/TR/proposta), unidade de medida, quantidade, valor unitário e valor total (calculado automaticamente; valor manual exige justificativa se divergir). Itens recorrentes pedem periodicidade e período de incidência; marque «Base de glosa» nas mensalidades que devem compor a referência das medições de funcionalidades. Sob demanda registram o teto contratado (consumo controlado depois); valores únicos não exigem periodicidade. Ao final da seção aparecem os totais recorrente, único, sob demanda e global estimado. Com medições ou aditivos, o item não é excluído - apenas cancelado.",
           "Valor global: a seção própria mostra a estimativa calculada pelos itens. Em caso excepcional, marque «Ajuste manual excepcional», informe o valor global e justifique a divergência. O detalhe do contrato identifica esse ajuste e preserva o valor global original para conferência.",
+          "Arquivos: na aba «Arquivos», anexe documentos originais do contrato (contrato, termo de referência, edital, aditivos etc.), com tipo documental, título, data e arquivo. A lista é paginada e filtrável; quem tem permissão de edição envia, cancela ou inativa (com justificativa); qualquer usuário com visualização de contratos pode descarregar.",
           "Proporção de implantação por funcionalidade: repartição do valor de implantação alinhada às funcionalidades do contrato.",
           "Grupos GLPI: associação de grupos do GLPI ao contrato, para cruzar chamados e métricas.",
           "Chamados GLPI: no detalhe do contrato, lista os chamados em cache vinculados aos grupos associados. Filtre por situação, prioridade, período de abertura e, quando o dado existir no cache, por SLA atrasado. A faixa indica a última sincronização com o GLPI; o botão «Abrir» leva ao chamado no GLPI quando a URL pública estiver configurada. A coluna «Classificação» grava no SIGTI (corretivo, evolutivo, suporte etc.) e não altera o GLPI.",

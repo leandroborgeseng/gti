@@ -420,18 +420,38 @@ export class ContractNotificationsService {
         }
       });
 
-      // Após 1ª assinatura, bloquear conteúdo
-      const html = this.buildSignedDocumentHtml(prev, {
-        name,
-        cpf: user.cpf,
-        jobTitle: user.jobTitle,
-        org: user.organization?.name ?? null,
-        signedAt,
-        verificationCode
+      // Após cada assinatura, bloquear conteúdo e regenerar HTML com TODAS as assinaturas já realizadas
+      const allSignersBeforeHtml = await tx.contractNotificationSigner.findMany({
+        where: { notificationId: id },
+        orderBy: { order: "asc" }
       });
+      const html = this.buildSignedDocumentHtml(
+        {
+          ...prev,
+          signers: allSignersBeforeHtml.map((s) =>
+            s.id === signer.id
+              ? {
+                  ...s,
+                  signedAt,
+                  signerName: name,
+                  signerCpf: user.cpf,
+                  signerJobTitle: user.jobTitle,
+                  signerOrgLabel: user.organization
+                    ? user.organization.acronym
+                      ? `${user.organization.acronym} · ${user.organization.name}`
+                      : user.organization.name
+                    : null,
+                  verificationCode
+                }
+              : s
+          )
+        },
+        null
+      );
 
-      const allSigners = await tx.contractNotificationSigner.findMany({ where: { notificationId: id } });
-      const requiredDone = allSigners.filter((s) => s.required).every((s) => s.signedAt || s.id === signer.id);
+      const requiredDone = allSignersBeforeHtml
+        .filter((s) => s.required)
+        .every((s) => s.signedAt || s.id === signer.id);
       await tx.contractNotification.update({
         where: { id },
         data: {
@@ -752,16 +772,14 @@ export class ContractNotificationsService {
     return { number: row.number, html };
   }
 
-  /** PDF simples (texto a partir do HTML). Não é assinatura ICP-Brasil. */
+  /** PDF a partir do mesmo HTML imprimível (texto derivado). Não é assinatura ICP-Brasil. */
   async printablePdf(id: string): Promise<{ buffer: Buffer; filename: string; number: string }> {
     const PDFDocument = (await import("pdfkit")).default;
+    const { number, html } = await this.printableHtml(id);
     const row = await this.findOne(id);
-    const htmlSource =
-      row.signedDocumentHtml ||
-      [row.headerHtml, row.bodyHtml, row.footerHtml].filter(Boolean).join("\n");
-    const text = stripHtmlToText(htmlSource);
+    const text = stripHtmlToText(html);
 
-    const doc = new PDFDocument({ margin: 50, size: "A4", info: { Title: row.number, Author: "SIGTI" } });
+    const doc = new PDFDocument({ margin: 50, size: "A4", info: { Title: number, Author: "SIGTI" } });
     const chunks: Buffer[] = [];
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
@@ -771,11 +789,11 @@ export class ContractNotificationsService {
     });
 
     doc.fontSize(10).fillColor("#666").text(
-      "Documento PDF gerado pelo SIGTI a partir do texto da notificação. Não é um PDF assinado digitalmente por certificado ICP-Brasil.",
+      "Documento PDF gerado pelo SIGTI a partir da mesma versão HTML imprimível. Não é um PDF assinado digitalmente por certificado ICP-Brasil.",
       { align: "left" }
     );
     doc.moveDown();
-    doc.fillColor("#111").fontSize(14).text(row.number, { continued: false });
+    doc.fillColor("#111").fontSize(14).text(number, { continued: false });
     doc.fontSize(12).text(row.subject);
     doc.fontSize(9).fillColor("#555").text(`Status: ${row.status}`);
     doc.moveDown();
@@ -786,8 +804,8 @@ export class ContractNotificationsService {
     doc.end();
 
     const buffer = await done;
-    const safeNumber = String(row.number).replace(/[^\w.-]+/g, "_");
-    return { buffer, filename: `${safeNumber}.pdf`, number: row.number };
+    const safeNumber = String(number).replace(/[^\w.-]+/g, "_");
+    return { buffer, filename: `${safeNumber}.pdf`, number };
   }
 
   // —— helpers ——
@@ -830,31 +848,62 @@ export class ContractNotificationsService {
       headerHtml: string | null;
       bodyHtml: string;
       footerHtml: string | null;
-      signers: Array<{ signedAt: Date | null; signerName: string | null; verificationCode: string | null }>;
+      signers: Array<{
+        signedAt: Date | null;
+        signerName: string | null;
+        signerCpf?: string | null;
+        signerJobTitle?: string | null;
+        signerOrgLabel?: string | null;
+        verificationCode: string | null;
+        required?: boolean;
+      }>;
     },
-    current: {
+    _current: {
       name: string;
       cpf: string | null;
       jobTitle: string | null;
       org: string | null;
       signedAt: Date;
       verificationCode: string;
-    }
+    } | null
   ): string {
+    const signed = n.signers.filter((s) => s.signedAt);
+    const pending = n.signers.filter((s) => !s.signedAt);
+    const signatureBlocks = signed.map((s) => {
+      const cpf = s.signerCpf ? this.maskCpfBr(s.signerCpf) : "—";
+      return `<p><strong>${s.signerName ?? "Signatário"}</strong>${
+        s.signerJobTitle ? ` — ${s.signerJobTitle}` : ""
+      }${s.signerOrgLabel ? ` · ${s.signerOrgLabel}` : ""}<br/>CPF: ${cpf} · ${new Date(
+        s.signedAt!
+      ).toLocaleString("pt-BR")} · Código verificador: ${s.verificationCode ?? "—"}</p>`;
+    });
+    const pendingBlock =
+      pending.length > 0
+        ? `<p style="font-size:12px;color:#555"><strong>Assinaturas pendentes:</strong> ${pending
+            .map((s) => s.signerName ?? "signatário")
+            .join(", ")}</p>`
+        : "";
     const blocks = [
       n.headerHtml ?? "",
       n.bodyHtml,
       n.footerHtml ?? "",
-      `<hr/><h3>Assinaturas</h3>`,
-      `<p><strong>${current.name}</strong>${current.jobTitle ? ` — ${current.jobTitle}` : ""}${
-        current.org ? ` · ${current.org}` : ""
-      }<br/>CPF: ${current.cpf ? `***${current.cpf.slice(-4)}` : "—"} · ${current.signedAt.toLocaleString(
-        "pt-BR"
-      )} · Código: ${current.verificationCode}</p>`,
-      `<p style="font-size:12px;color:#666">Assinatura eletrônica por senha (SIGTI). Não equivale a certificado digital ICP-Brasil.</p>`
+      `<hr/><h3>Assinaturas realizadas</h3>`,
+      ...signatureBlocks,
+      pendingBlock,
+      `<p style="font-size:12px;color:#666">Assinatura eletrônica por senha (SIGTI). Não equivale a certificado digital ICP-Brasil.</p>`,
+      `<hr/><h3>Validação do documento</h3>`,
+      `<p style="font-size:12px">Código do documento: <strong>${n.number}</strong><br/>Consulte em /validar-documento informando o código verificador de uma das assinaturas.</p>`
     ];
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${n.number}</title></head><body>
       <h1>${n.number}</h1><h2>${n.subject}</h2>${blocks.join("\n")}</body></html>`;
+  }
+
+  private maskCpfBr(cpf: string): string {
+    const digits = cpf.replace(/\D/g, "");
+    if (digits.length < 4) return "···.···.***-**";
+    const last = digits.slice(-5, -2);
+    const check = digits.slice(-2);
+    return `···.···.${last}-${check}`;
   }
 
   private async getOrThrow(id: string) {

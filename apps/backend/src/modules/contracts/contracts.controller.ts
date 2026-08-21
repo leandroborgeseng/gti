@@ -4,23 +4,27 @@ import {
   Delete,
   Get,
   MaxFileSizeValidator,
+  NotFoundException,
   Param,
   ParseFilePipe,
   Patch,
   Post,
   Put,
   Query,
+  StreamableFile,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { UserRole } from "@prisma/client";
+import { createReadStream, existsSync } from "node:fs";
 import { memoryStorage } from "multer";
 import { Roles } from "../../auth/roles-required.decorator";
 import { ContractsService } from "./contracts.service";
 import { ContractConsumptionService } from "./contract-consumption.service";
 import {
   CancelContractAmendmentDto,
+  CancelOrInactivateContractFileDto,
   ChangeContractOccurrenceStatusDto,
   CreateContractAmendmentDto,
   CreateContractDto,
@@ -301,6 +305,89 @@ export class ContractsController {
     @Param("attachmentId") attachmentId: string
   ): Promise<{ ok: true }> {
     return this.service.removeScheduleAttachment(contractId, scheduleId, attachmentId);
+  }
+
+  @Get(":id/files")
+  listContractFiles(
+    @Param("id") contractId: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("q") q?: string,
+    @Query("documentType") documentType?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string
+  ): Promise<unknown> {
+    return this.service.listContractFiles(contractId, {
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      q,
+      documentType,
+      from,
+      to
+    });
+  }
+
+  @Post(":id/files")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: uploadMaxBytes() + 1024 }
+    })
+  )
+  uploadContractFile(
+    @Param("id") contractId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [new MaxFileSizeValidator({ maxSize: uploadMaxBytes() })]
+      })
+    )
+    file: Express.Multer.File,
+    @Body() body: Record<string, string>
+  ): Promise<unknown> {
+    return this.service.uploadContractFile(contractId, file, {
+      documentType: body.documentType ?? "",
+      title: body.title ?? "",
+      documentDate: body.documentDate ?? "",
+      notes: body.notes ?? null,
+      referenceCode: body.referenceCode ?? null,
+      visibility: body.visibility ?? null
+    });
+  }
+
+  @Get(":id/files/:fileId/download")
+  async downloadContractFile(
+    @Param("id") contractId: string,
+    @Param("fileId") fileId: string
+  ): Promise<StreamableFile> {
+    const meta = await this.service.resolveContractFileDownload(contractId, fileId);
+    if (!existsSync(meta.absolutePath)) {
+      throw new NotFoundException("Arquivo não existe no armazenamento");
+    }
+    const stream = createReadStream(meta.absolutePath);
+    const safeName = meta.fileName.replace(/"/g, "'");
+    return new StreamableFile(stream, {
+      type: meta.mimeType,
+      disposition: `attachment; filename="${safeName}"`
+    });
+  }
+
+  @Post(":id/files/:fileId/cancel")
+  cancelContractFile(
+    @Param("id") contractId: string,
+    @Param("fileId") fileId: string,
+    @Body() dto: CancelOrInactivateContractFileDto
+  ): Promise<unknown> {
+    return this.service.cancelContractFile(contractId, fileId, dto);
+  }
+
+  @Post(":id/files/:fileId/inactivate")
+  inactivateContractFile(
+    @Param("id") contractId: string,
+    @Param("fileId") fileId: string,
+    @Body() dto: CancelOrInactivateContractFileDto
+  ): Promise<unknown> {
+    return this.service.inactivateContractFile(contractId, fileId, dto);
   }
 
   @Put(":id/glpi-tickets/:glpiTicketId/classification")

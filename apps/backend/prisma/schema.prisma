@@ -326,6 +326,12 @@ enum ContractAmendmentItemAction {
   CREATE
   UPDATE
   SUPPRESS
+  /// Acrescenta quantidade ao item existente (ticket 99).
+  INCREASE_QUANTITY
+  /// Renova disponibilidade/quantidade para novo período (prorrogação).
+  RENEW_QUANTITY
+  /// Encerra o item (equivalente operacional a SUPPRESS).
+  CLOSE_ITEM
 }
 
 /// Tipo operacional do cronograma do contrato.
@@ -772,6 +778,8 @@ model Contract {
   glpiTicketClasses ContractGlpiTicketClass[]
   /** Movimentações de consumo (horas, UST, etc.). */
   consumptionMovements ContractConsumptionMovement[]
+  /** Arquivos/documentos anexados ao contrato (ticket 105). */
+  files ContractFile[]
 
   @@index([status, endDate])
   @@index([deletedAt])
@@ -1016,10 +1024,16 @@ model Measurement {
   contractId         String
   referenceMonth     Int
   referenceYear      Int
+  /// Data de corte/referência da competência (último dia do mês por padrão).
+  referenceDate      DateTime?          @map("reference_date") @db.Date
   status             MeasurementStatus  @default(OPEN)
   totalMeasuredValue Decimal            @default(0) @db.Decimal(18, 2)
   totalApprovedValue Decimal            @default(0) @db.Decimal(18, 2)
   totalGlosedValue   Decimal            @default(0) @db.Decimal(18, 2)
+  /// Memória de saldo por item (contratado, já medido, saldo, consumos) — congelada na aprovação.
+  balanceMemory      Json?              @map("balance_memory")
+  /// Snapshot das funcionalidades/percentuais usados no cálculo (data de referência).
+  featureDeliverySnapshot Json?         @map("feature_delivery_snapshot")
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   deletedAt          DateTime?
@@ -1232,6 +1246,64 @@ model Attachment {
   @@index([scheduleId])
   @@index([notificationId])
   @@index([notificationResponseId])
+}
+
+/// Tipo documental de arquivo anexado ao contrato (ticket 105).
+enum ContractFileDocumentType {
+  CONTRATO
+  TERMO_REFERENCIA
+  ETP
+  EDITAL
+  PROPOSTA
+  ATA
+  PARECER
+  ADITIVO
+  APOSTILAMENTO
+  NOTIFICACAO
+  OFICIO
+  RELATORIO
+  COMPROVANTE
+  FISCALIZACAO
+  OUTROS
+}
+
+enum ContractFileVisibility {
+  INTERNAL_ONLY
+  AVAILABLE_TO_SUPPLIER
+}
+
+enum ContractFileStatus {
+  ACTIVE
+  INACTIVE
+  REPLACED
+  CANCELLED
+}
+
+/// Arquivo/documento original vinculado ao contrato (aba Arquivos).
+model ContractFile {
+  id              String                   @id @default(uuid())
+  contractId      String
+  documentType    ContractFileDocumentType @default(OUTROS)
+  title           String
+  documentDate    DateTime                 @db.Date
+  fileName        String
+  mimeType        String
+  filePath        String
+  fileSize        Int?
+  referenceCode   String?
+  notes           String?                  @db.Text
+  visibility      ContractFileVisibility   @default(INTERNAL_ONLY)
+  status          ContractFileStatus       @default(ACTIVE)
+  uploadedById    String?
+  uploadedByLabel String?
+  createdAt       DateTime                 @default(now())
+  replacedById    String?
+  replaceReason   String?                  @db.Text
+  contract        Contract                 @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, status, documentDate])
+  @@index([contractId, documentType])
+  @@map("contract_file")
 }
 
 // ---------------------------------------------------------------------------

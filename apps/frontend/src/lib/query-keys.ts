@@ -25,6 +25,8 @@ export const queryKeys = {
     ["gestao", "contract-consumption-movements", contractId, filterKey] as const,
   contractItemChangeLogs: (contractId: string, filterKey = "default") =>
     ["gestao", "contract-item-change-logs", contractId, filterKey] as const,
+  contractFiles: (contractId: string, filterKey = "default") =>
+    ["gestao", "contract-files", contractId, filterKey] as const,
   /** Catálogo de tipos padronizados e unidades de medida dos itens de precificação. */
   contractPricingCatalog: ["gestao", "contract-pricing-catalog"] as const,
   /** Conferência administrativa do backfill dos itens de precificação. */

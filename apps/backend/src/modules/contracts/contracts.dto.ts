@@ -981,6 +981,14 @@ export class CancelContractAmendmentDto {
   justification!: string;
 }
 
+/** Justificativa para cancelar ou inativar arquivo do contrato (ticket 105). */
+export class CancelOrInactivateContractFileDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(3)
+  justification!: string;
+}
+
 /** Etapa/marco de cronograma do contrato. */
 export class ContractScheduleMilestoneDto {
   @IsOptional()

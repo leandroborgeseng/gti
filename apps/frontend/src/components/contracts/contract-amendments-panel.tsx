@@ -40,8 +40,11 @@ const AMENDMENT_TYPE_LABELS: Record<ContractAmendmentType, string> = {
 
 const ACTION_LABELS: Record<ContractAmendmentItemAction, string> = {
   CREATE: "Inclusão",
-  UPDATE: "Alteração",
-  SUPPRESS: "Supressão"
+  UPDATE: "Alteração / reajuste",
+  SUPPRESS: "Supressão",
+  INCREASE_QUANTITY: "Acrescentar quantidade",
+  RENEW_QUANTITY: "Renovar quantidade/período",
+  CLOSE_ITEM: "Encerrar item"
 };
 
 const PERIODICITY_LABELS: Record<ContractPricingPeriodicity, string> = {
@@ -189,7 +192,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
     for (const d of selectedDrafts) {
       const before = d.beforeTotal;
       let after = before;
-      if (d.action === "SUPPRESS") after = 0;
+      if (d.action === "SUPPRESS" || d.action === "CLOSE_ITEM") after = 0;
       else {
         const qty = parseNum(d.quantity);
         const uv = parseNum(d.unitValue);
@@ -198,7 +201,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
       }
       if (d.action === "CREATE") {
         afterGlobal += after;
-      } else if (d.action === "SUPPRESS") {
+      } else if (d.action === "SUPPRESS" || d.action === "CLOSE_ITEM") {
         afterGlobal -= before;
       } else {
         afterGlobal += after - before;
@@ -507,8 +510,11 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
                                   updateDraft(d.key, { action: e.target.value as ContractAmendmentItemAction })
                                 }
                               >
-                                <option value="UPDATE">Alterar</option>
+                                <option value="UPDATE">Alterar / reajustar</option>
+                                <option value="INCREASE_QUANTITY">Acrescentar quantidade</option>
+                                <option value="RENEW_QUANTITY">Renovar quantidade/período</option>
                                 <option value="SUPPRESS">Suprimir (encerrar)</option>
+                                <option value="CLOSE_ITEM">Encerrar item</option>
                               </select>
                             </FormField>
                           ) : null}

@@ -7,6 +7,12 @@ export const CONTRACT_DETAIL_TABS = [
     anyOf: [] as string[]
   },
   {
+    id: "arquivos",
+    label: "Arquivos",
+    shortLabel: "Arquivos",
+    anyOf: ["contracts.view"]
+  },
+  {
     id: "consumos",
     label: "Consumos",
     shortLabel: "Consumos",

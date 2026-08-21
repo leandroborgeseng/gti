@@ -14,6 +14,8 @@ import { GTI_TOKEN_COOKIE } from "@/lib/auth-cookie-name";
 import { issueAuthToken } from "@/lib/auth-issue-token";
 import { jwtSecretBytes } from "@/lib/jwt-config";
 import { sendWelcomePasswordEmail } from "@/lib/password-reset";
+import { existsSync, safeAttachmentFilename } from "@/lib/attachment-storage";
+import { readFile } from "node:fs/promises";
 import {
   ensureGoalsBootstrapped,
   gestaoContracts,
@@ -1056,6 +1058,75 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
     ) {
       assertPermission(user, "contracts.edit");
       return jsonOk(await gestaoContracts.removeScheduleAttachment(seg[1], seg[3], seg[5]));
+    }
+    if (seg.length === 3 && seg[2] === "files" && method === "GET") {
+      const url = new URL(req.url);
+      return jsonOk(
+        await gestaoContracts.listContractFiles(seg[1], {
+          page: url.searchParams.get("page") ? Number(url.searchParams.get("page")) : undefined,
+          pageSize: url.searchParams.get("pageSize")
+            ? Number(url.searchParams.get("pageSize"))
+            : undefined,
+          q: url.searchParams.get("q") ?? undefined,
+          documentType: url.searchParams.get("documentType") ?? undefined,
+          from: url.searchParams.get("from") ?? undefined,
+          to: url.searchParams.get("to") ?? undefined
+        })
+      );
+    }
+    if (seg.length === 3 && seg[2] === "files" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      const form = await req.formData();
+      const file = form.get("file");
+      if (!(file instanceof File)) return jsonErr(400, "Arquivo obrigatório (campo file).");
+      const buf = Buffer.from(await file.arrayBuffer());
+      if (buf.length > uploadMaxBytes()) {
+        return jsonErr(400, `Arquivo excede o limite de ${Math.round(uploadMaxBytes() / 1024 / 1024)} MB.`);
+      }
+      const multerLike = {
+        buffer: buf,
+        originalname: file.name || "anexo",
+        mimetype: file.type || "application/octet-stream",
+        size: buf.length
+      } as Express.Multer.File;
+      return jsonOk(
+        await gestaoContracts.uploadContractFile(seg[1], multerLike, {
+          documentType: String(form.get("documentType") ?? ""),
+          title: String(form.get("title") ?? ""),
+          documentDate: String(form.get("documentDate") ?? ""),
+          notes: form.get("notes") != null ? String(form.get("notes")) : null,
+          referenceCode: form.get("referenceCode") != null ? String(form.get("referenceCode")) : null,
+          visibility: form.get("visibility") != null ? String(form.get("visibility")) : null
+        })
+      );
+    }
+    if (seg.length === 5 && seg[2] === "files" && seg[4] === "download" && method === "GET") {
+      const meta = await gestaoContracts.resolveContractFileDownload(seg[1], seg[3]);
+      if (!existsSync(meta.absolutePath)) {
+        return jsonErr(404, "Arquivo não existe no armazenamento");
+      }
+      const buf = await readFile(meta.absolutePath);
+      const safeFn = safeAttachmentFilename(meta.fileName);
+      return new NextResponse(new Uint8Array(buf), {
+        status: 200,
+        headers: {
+          "Content-Type": meta.mimeType,
+          "Content-Disposition": `attachment; filename="${safeFn}"`,
+          "Cache-Control": "private, no-store"
+        }
+      });
+    }
+    if (seg.length === 5 && seg[2] === "files" && seg[4] === "cancel" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(
+        await gestaoContracts.cancelContractFile(seg[1], seg[3], (await readJsonBody(req)) as never)
+      );
+    }
+    if (seg.length === 5 && seg[2] === "files" && seg[4] === "inactivate" && method === "POST") {
+      assertPermission(user, "contracts.edit");
+      return jsonOk(
+        await gestaoContracts.inactivateContractFile(seg[1], seg[3], (await readJsonBody(req)) as never)
+      );
     }
     if (
       seg.length === 5 &&

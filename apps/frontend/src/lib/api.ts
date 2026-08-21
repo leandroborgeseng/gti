@@ -149,7 +149,13 @@ export type ContractAmendmentType =
   | "OUTRO";
 
 export type ContractAmendmentStatus = "ACTIVE" | "CANCELLED";
-export type ContractAmendmentItemAction = "CREATE" | "UPDATE" | "SUPPRESS";
+export type ContractAmendmentItemAction =
+  | "CREATE"
+  | "UPDATE"
+  | "SUPPRESS"
+  | "INCREASE_QUANTITY"
+  | "RENEW_QUANTITY"
+  | "CLOSE_ITEM";
 
 export type ContractAmendmentItemSnapshot = {
   id?: string | null;
@@ -1657,6 +1663,138 @@ export type ContractItemChangeLogPage = {
   pageSize: number;
   pageCount: number;
 };
+
+export type ContractFileDocumentType =
+  | "CONTRATO"
+  | "TERMO_REFERENCIA"
+  | "ETP"
+  | "EDITAL"
+  | "PROPOSTA"
+  | "ATA"
+  | "PARECER"
+  | "ADITIVO"
+  | "APOSTILAMENTO"
+  | "NOTIFICACAO"
+  | "OFICIO"
+  | "RELATORIO"
+  | "COMPROVANTE"
+  | "FISCALIZACAO"
+  | "OUTROS";
+
+export type ContractFileVisibility = "INTERNAL_ONLY" | "AVAILABLE_TO_SUPPLIER";
+
+export type ContractFileStatus = "ACTIVE" | "INACTIVE" | "REPLACED" | "CANCELLED";
+
+export type ContractFileRecord = {
+  id: string;
+  contractId: string;
+  documentType: ContractFileDocumentType;
+  title: string;
+  documentDate: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number | null;
+  referenceCode: string | null;
+  notes: string | null;
+  visibility: ContractFileVisibility;
+  status: ContractFileStatus;
+  uploadedById: string | null;
+  uploadedByLabel: string | null;
+  createdAt: string;
+  replacedById: string | null;
+  replaceReason: string | null;
+};
+
+export type ContractFilePage = {
+  items: ContractFileRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+export async function getContractFiles(
+  contractId: string,
+  params?: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    documentType?: string;
+    from?: string;
+    to?: string;
+  }
+): Promise<ContractFilePage> {
+  const qs = new URLSearchParams();
+  if (params?.page != null) qs.set("page", String(params.page));
+  if (params?.pageSize != null) qs.set("pageSize", String(params.pageSize));
+  if (params?.q) qs.set("q", params.q);
+  if (params?.documentType) qs.set("documentType", params.documentType);
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/contracts/${contractId}/files${suffix}`);
+}
+
+export function contractFileDownloadUrl(contractId: string, fileId: string): string {
+  return `/api/contracts/${contractId}/files/${fileId}/download`;
+}
+
+export async function uploadContractFile(
+  contractId: string,
+  payload: {
+    file: File;
+    documentType: ContractFileDocumentType;
+    title: string;
+    documentDate: string;
+    notes?: string;
+    referenceCode?: string;
+    visibility?: ContractFileVisibility;
+  }
+): Promise<ContractFileRecord> {
+  const form = new FormData();
+  form.append("file", payload.file);
+  form.append("documentType", payload.documentType);
+  form.append("title", payload.title);
+  form.append("documentDate", payload.documentDate);
+  if (payload.notes) form.append("notes", payload.notes);
+  if (payload.referenceCode) form.append("referenceCode", payload.referenceCode);
+  if (payload.visibility) form.append("visibility", payload.visibility);
+  const t = readBrowserAuthToken();
+  const headers: HeadersInit = t ? { Authorization: `Bearer ${t}` } : {};
+  const apiBase = await resolveRequestApiBase();
+  const response = await fetch(`${apiBase}/contracts/${contractId}/files`, {
+    method: "POST",
+    headers,
+    body: form,
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(await parseUploadError(response));
+  }
+  return (await response.json()) as ContractFileRecord;
+}
+
+export async function cancelContractFile(
+  contractId: string,
+  fileId: string,
+  justification: string
+): Promise<ContractFileRecord> {
+  return request(`/contracts/${contractId}/files/${fileId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ justification })
+  });
+}
+
+export async function inactivateContractFile(
+  contractId: string,
+  fileId: string,
+  justification: string
+): Promise<ContractFileRecord> {
+  return request(`/contracts/${contractId}/files/${fileId}/inactivate`, {
+    method: "POST",
+    body: JSON.stringify({ justification })
+  });
+}
 
 /** Carga leve do contrato para o formulário de edição (sem cronogramas/ocorrências). */
 export async function getContractFormData(id: string): Promise<Contract> {

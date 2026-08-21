@@ -35,6 +35,11 @@ export class CreateMeasurementDto {
   @Max(2100)
   referenceYear!: number;
 
+  /** Data de corte (AAAA-MM-DD). Se omitida, usa o último dia da competência. */
+  @IsOptional()
+  @IsString()
+  referenceDate?: string;
+
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

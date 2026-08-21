@@ -113,6 +113,7 @@ export class MeasurementsService {
           contractId: dto.contractId,
           referenceMonth: dto.referenceMonth,
           referenceYear: dto.referenceYear,
+          referenceDate: this.resolveReferenceDate(dto.referenceYear, dto.referenceMonth, dto.referenceDate),
           items: {
             create: composed.lines.map((line) => ({
               type: line.type,
@@ -135,6 +136,7 @@ export class MeasurementsService {
       });
     });
     await this.attachApprovedConsumptions(measurement.id, dto.contractId, dto.referenceMonth, dto.referenceYear);
+    await this.refreshBalanceAndDeliveryMemory(measurement.id);
     await this.audit("Measurement", measurement.id, "CREATE", null, measurement);
     return this.findOne(measurement.id);
   }
@@ -627,6 +629,7 @@ export class MeasurementsService {
         totalApprovedValue: approved
       }
     });
+    await this.refreshBalanceAndDeliveryMemory(id);
     await this.audit("Measurement", id, "CALCULATE", measurement, updated);
     return this.findOne(id);
   }
@@ -813,12 +816,21 @@ export class MeasurementsService {
    */
   private computeAutomaticFeatureGlosa(
     measurement: {
+      referenceDate?: Date | null;
+      referenceYear: number;
+      referenceMonth: number;
       contract: {
         contractType: string;
         monthlyValue: Prisma.Decimal;
         modules: Array<{
           glosaPricingItemId: string | null;
-          features: Array<{ status: string }>;
+          features: Array<{
+            status: string;
+            criticality?: string | null;
+            deliveryStatus?: string | null;
+            partialDeliveryPercent?: number | null;
+            deliveryEffectiveDate?: Date | null;
+          }>;
           glosaPricingItem: {
             id: string;
             unitValue: Prisma.Decimal;
@@ -840,6 +852,9 @@ export class MeasurementsService {
     },
     _measuredGross: Prisma.Decimal
   ): Prisma.Decimal {
+    const asOf =
+      measurement.referenceDate ??
+      this.resolveReferenceDate(measurement.referenceYear, measurement.referenceMonth, null);
     const contractType = measurement.contract.contractType;
     if (contractType !== "SOFTWARE" && contractType !== "SERVICO") {
       return new Prisma.Decimal(0);
@@ -859,19 +874,27 @@ export class MeasurementsService {
 
     if (modulesWithLink.length > 0) {
       for (const module of modulesWithLink) {
-        const total = module.features.length;
-        if (total === 0) continue;
-        const validated = module.features.filter((feature) => feature.status === "VALIDATED").length;
-        const missingRatio = new Prisma.Decimal(total - validated).div(total);
+        const measurable = module.features.filter((f) => (f as { criticality?: string }).criticality !== "NAO_SE_APLICA");
+        const totalWeight = measurable.reduce((s, f) => s + this.featureCriticalityWeight(f), 0);
+        if (totalWeight <= 0) continue;
+        const deliveredWeight = measurable.reduce(
+          (s, f) => s + this.featureCriticalityWeight(f) * this.featureDeliveryFractionAsOf(f, asOf),
+          0
+        );
+        const missingRatio = new Prisma.Decimal(1).sub(new Prisma.Decimal(deliveredWeight).div(totalWeight));
         const baseItem = measurement.contract.pricingItems.find((item) => item.id === module.glosaPricingItemId);
         if (baseItem) undelivered = undelivered.add(monthlyEq(baseItem).mul(missingRatio));
       }
     } else {
       const features = measurement.contract.modules.flatMap((module) => module.features);
-      const total = features.length;
-      if (total === 0) return new Prisma.Decimal(0);
-      const validated = features.filter((feature) => feature.status === "VALIDATED").length;
-      const missingRatio = new Prisma.Decimal(total - validated).div(total);
+      const measurable = features.filter((f) => (f as { criticality?: string }).criticality !== "NAO_SE_APLICA");
+      const totalWeight = measurable.reduce((s, f) => s + this.featureCriticalityWeight(f), 0);
+      if (totalWeight <= 0) return new Prisma.Decimal(0);
+      const deliveredWeight = measurable.reduce(
+        (s, f) => s + this.featureCriticalityWeight(f) * this.featureDeliveryFractionAsOf(f, asOf),
+        0
+      );
+      const missingRatio = new Prisma.Decimal(1).sub(new Prisma.Decimal(deliveredWeight).div(totalWeight));
       const explicitGlosaBases = measurement.contract.pricingItems.filter((item) => item.includeInGlosaBase);
       const explicitBaseValue = explicitGlosaBases.reduce(
         (sum, item) => sum.add(monthlyEq(item)),
@@ -1058,5 +1081,178 @@ export class MeasurementsService {
       }
     }
     return byId;
+  }
+
+  private resolveReferenceDate(year: number, month: number, raw?: string | null): Date {
+    if (raw?.trim()) {
+      const m = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) {
+        return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+      }
+    }
+    // Último dia civil da competência.
+    return new Date(Date.UTC(year, month, 0));
+  }
+
+  private featureCriticalityWeight(feature: { criticality?: string | null }): number {
+    switch (feature.criticality) {
+      case "CRITICA":
+        return 5;
+      case "ALTA":
+        return 4;
+      case "MEDIA":
+        return 3;
+      case "BAIXA":
+        return 2;
+      case "APOIO":
+        return 1;
+      case "NAO_SE_APLICA":
+        return 0;
+      default:
+        return 3;
+    }
+  }
+
+  /** Fração de entrega vigente na data de corte (espelho atual; eventos ACTIVE entram no snapshot). */
+  private featureDeliveryFractionAsOf(
+    feature: {
+      status?: string;
+      deliveryStatus?: string | null;
+      partialDeliveryPercent?: number | null;
+      deliveryEffectiveDate?: Date | null;
+    },
+    asOf: Date
+  ): number {
+    // Se há data efetiva futura à competência, ainda não conta.
+    if (feature.deliveryEffectiveDate && feature.deliveryEffectiveDate.getTime() > asOf.getTime()) {
+      return 0;
+    }
+    if (feature.deliveryStatus === "DELIVERED" || feature.status === "VALIDATED") return 1;
+    if (feature.deliveryStatus === "PARTIALLY_DELIVERED") {
+      const p = feature.partialDeliveryPercent;
+      if (p != null && p >= 0 && p <= 100) return p / 100;
+      return 0.5;
+    }
+    return 0;
+  }
+
+  /** Monta memória de saldo + snapshot de entrega e grava na medição (exceto se já aprovada). */
+  private async refreshBalanceAndDeliveryMemory(measurementId: string): Promise<void> {
+    const measurement = await this.prisma.measurement.findFirst({
+      where: { id: measurementId, deletedAt: null },
+      include: {
+        items: true,
+        contract: {
+          include: {
+            pricingItems: { where: { status: ContractPricingItemStatus.ACTIVE } },
+            modules: {
+              include: {
+                features: {
+                  select: {
+                    id: true,
+                    itemCode: true,
+                    name: true,
+                    criticality: true,
+                    deliveryStatus: true,
+                    partialDeliveryPercent: true,
+                    deliveryEffectiveDate: true,
+                    status: true,
+                    weight: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+    if (!measurement || measurement.status === MeasurementStatus.APPROVED) return;
+
+    const asOf =
+      measurement.referenceDate ??
+      this.resolveReferenceDate(measurement.referenceYear, measurement.referenceMonth, null);
+
+    const approvedMeasuredByPricing = await this.prisma.measurementItem.groupBy({
+      by: ["pricingItemId"],
+      where: {
+        pricingItemId: { not: null },
+        measurement: {
+          contractId: measurement.contractId,
+          status: MeasurementStatus.APPROVED,
+          deletedAt: null,
+          id: { not: measurementId }
+        }
+      },
+      _sum: { quantity: true }
+    });
+    const approvedQty = new Map(
+      approvedMeasuredByPricing.map((r) => [r.pricingItemId!, Number(r._sum.quantity ?? 0)])
+    );
+
+    const unmeasuredConsumptions = await this.prisma.contractConsumptionMovement.findMany({
+      where: {
+        contractId: measurement.contractId,
+        measurementId: null,
+        status: "APPROVED"
+      },
+      select: { pricingItemId: true, quantity: true }
+    });
+    const unmeasuredByPricing = new Map<string, number>();
+    for (const row of unmeasuredConsumptions) {
+      const qty = Number(row.quantity);
+      unmeasuredByPricing.set(row.pricingItemId, (unmeasuredByPricing.get(row.pricingItemId) ?? 0) + qty);
+    }
+
+    const balanceLines = measurement.contract.pricingItems.map((item) => {
+      const contracted = Number(item.quantity);
+      const alreadyMeasured = approvedQty.get(item.id) ?? Number(item.consumedQuantity ?? 0);
+      const available = Math.max(0, contracted - alreadyMeasured);
+      const currentLine = measurement.items.find((i) => i.pricingItemId === item.id);
+      const currentQty = currentLine ? Number(currentLine.quantity) : 0;
+      const approvedNotMeasured = unmeasuredByPricing.get(item.id) ?? 0;
+      return {
+        pricingItemId: item.id,
+        description: item.description,
+        billingKind: item.billingKind,
+        contractedQuantity: contracted,
+        alreadyMeasuredApproved: alreadyMeasured,
+        availableBalance: available,
+        approvedConsumptionNotMeasured: approvedNotMeasured,
+        currentMeasurementQuantity: currentQty,
+        unitValue: Number(item.unitValue),
+        grossValue: currentLine ? Number(currentLine.calculatedValue) : 0
+      };
+    });
+
+    const featureSnapshot = measurement.contract.modules.flatMap((mod) =>
+      mod.features.map((f) => ({
+        featureId: f.id,
+        moduleId: mod.id,
+        itemCode: f.itemCode,
+        name: f.name,
+        criticality: f.criticality,
+        deliveryStatus: f.deliveryStatus,
+        partialDeliveryPercent: f.partialDeliveryPercent,
+        deliveryEffectiveDate: f.deliveryEffectiveDate,
+        fractionAsOf: this.featureDeliveryFractionAsOf(f, asOf),
+        excludedFromCalculation: f.criticality === "NAO_SE_APLICA"
+      }))
+    );
+
+    await this.prisma.measurement.update({
+      where: { id: measurementId },
+      data: {
+        referenceDate: asOf,
+        balanceMemory: {
+          asOf: asOf.toISOString().slice(0, 10),
+          generatedAt: new Date().toISOString(),
+          lines: balanceLines
+        },
+        featureDeliverySnapshot: {
+          asOf: asOf.toISOString().slice(0, 10),
+          features: featureSnapshot
+        }
+      }
+    });
   }
 }

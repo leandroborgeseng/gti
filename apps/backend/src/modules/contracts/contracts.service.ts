@@ -6,6 +6,9 @@ import {
   ContractAmendmentStatus,
   ContractAmendmentType,
   ContractFeatureStatus,
+  ContractFileDocumentType,
+  ContractFileStatus,
+  ContractFileVisibility,
   ContractGlpiTicketCategory,
   ContractItemChangeAction,
   ContractItemChangeType,
@@ -34,6 +37,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import {
   BulkUpdateFeatureValidationGroupDto,
   CancelContractAmendmentDto,
+  CancelOrInactivateContractFileDto,
   CreateContractAmendmentDto,
   CreateContractDto,
   CreateContractFeatureDto,
@@ -2574,14 +2578,21 @@ export class ContractsService {
 
       const beforeSnap = serializePricingItemSnapshot(source);
 
-      if (row.action === ContractAmendmentItemAction.SUPPRESS) {
+      if (
+        row.action === ContractAmendmentItemAction.SUPPRESS ||
+        row.action === ContractAmendmentItemAction.CLOSE_ITEM
+      ) {
+        const actionStored =
+          row.action === ContractAmendmentItemAction.CLOSE_ITEM
+            ? ContractAmendmentItemAction.CLOSE_ITEM
+            : ContractAmendmentItemAction.SUPPRESS;
         const afterSnap = {
           ...beforeSnap,
           periodEnd: dayBeforeEffects.toISOString().slice(0, 10),
           status: ContractPricingItemStatus.CANCELLED
         };
         amendmentItemCreates.push({
-          action: ContractAmendmentItemAction.SUPPRESS,
+          action: actionStored,
           pricingItemId: source.id,
           resultPricingItemId: source.id,
           adjustmentPercent:
@@ -2611,9 +2622,21 @@ export class ContractsService {
         continue;
       }
 
-      // UPDATE: fecha versão anterior e cria nova ACTIVE
+      // UPDATE / INCREASE_QUANTITY / RENEW_QUANTITY: fecha versão anterior e cria nova ACTIVE
       const after = row.after ?? {};
-      const qty = after.quantity != null ? Number(after.quantity) : Number(source.quantity);
+      let qty = after.quantity != null ? Number(after.quantity) : Number(source.quantity);
+      if (
+        row.action === ContractAmendmentItemAction.INCREASE_QUANTITY &&
+        after.quantity != null &&
+        Number(after.quantity) > 0 &&
+        Number(after.quantity) < Number(source.quantity)
+      ) {
+        // Interpreta after.quantity como acréscimo quando menor que o saldo atual.
+        qty = Number(source.quantity) + Number(after.quantity);
+      }
+      if (row.action === ContractAmendmentItemAction.RENEW_QUANTITY && after.quantity != null) {
+        qty = Number(after.quantity);
+      }
       const unitVal = after.unitValue != null ? Number(after.unitValue) : Number(source.unitValue);
       const billingKind = after.billingKind ?? source.billingKind;
       const periodicity =
@@ -2656,8 +2679,12 @@ export class ContractsService {
         includeInGlosaBase:
           after.includeInGlosaBase != null ? Boolean(after.includeInGlosaBase) : source.includeInGlosaBase
       });
-      amendmentItemCreates.push({
-        action: ContractAmendmentItemAction.UPDATE,
+        amendmentItemCreates.push({
+          action:
+            row.action === ContractAmendmentItemAction.INCREASE_QUANTITY ||
+            row.action === ContractAmendmentItemAction.RENEW_QUANTITY
+              ? row.action
+              : ContractAmendmentItemAction.UPDATE,
         pricingItemId: source.id,
         resultPricingItemId: newId,
         adjustmentPercent:
@@ -4939,6 +4966,280 @@ export class ContractsService {
     await this.prisma.attachment.delete({ where: { id: attachmentId } });
     await this.createAudit("Attachment", attachmentId, "DELETE", att, null);
     return { ok: true };
+  }
+
+  private serializeContractFile(row: {
+    id: string;
+    contractId: string;
+    documentType: ContractFileDocumentType;
+    title: string;
+    documentDate: Date;
+    fileName: string;
+    mimeType: string;
+    filePath: string;
+    fileSize: number | null;
+    referenceCode: string | null;
+    notes: string | null;
+    visibility: ContractFileVisibility;
+    status: ContractFileStatus;
+    uploadedById: string | null;
+    uploadedByLabel: string | null;
+    createdAt: Date;
+    replacedById: string | null;
+    replaceReason: string | null;
+  }) {
+    return {
+      id: row.id,
+      contractId: row.contractId,
+      documentType: row.documentType,
+      title: row.title,
+      documentDate: row.documentDate.toISOString().slice(0, 10),
+      fileName: row.fileName,
+      mimeType: row.mimeType,
+      fileSize: row.fileSize,
+      referenceCode: row.referenceCode,
+      notes: row.notes,
+      visibility: row.visibility,
+      status: row.status,
+      uploadedById: row.uploadedById,
+      uploadedByLabel: row.uploadedByLabel,
+      createdAt: row.createdAt.toISOString(),
+      replacedById: row.replacedById,
+      replaceReason: row.replaceReason
+    };
+  }
+
+  async listContractFiles(
+    contractId: string,
+    query: {
+      page?: number;
+      pageSize?: number;
+      q?: string;
+      documentType?: string;
+      from?: string;
+      to?: string;
+    } = {}
+  ): Promise<unknown> {
+    const accessible = await this.accessibleContractWhere(contractId);
+    const exists = await this.prisma.contract.findFirst({ where: accessible, select: { id: true } });
+    if (!exists) throw new NotFoundException("Contrato não encontrado");
+
+    const allowedPageSizes = new Set([10, 25, 50]);
+    const pageSizeRaw = Number(query.pageSize ?? 25);
+    const pageSize = allowedPageSizes.has(pageSizeRaw) ? pageSizeRaw : 25;
+    const page = Math.max(1, Number(query.page ?? 1) || 1);
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.ContractFileWhereInput = { contractId };
+
+    const docType = query.documentType?.trim().toUpperCase();
+    if (
+      docType &&
+      Object.values(ContractFileDocumentType).includes(docType as ContractFileDocumentType)
+    ) {
+      where.documentType = docType as ContractFileDocumentType;
+    }
+
+    if (query.from || query.to) {
+      where.documentDate = {};
+      if (query.from) {
+        const from = new Date(query.from);
+        if (!Number.isNaN(from.getTime())) where.documentDate.gte = from;
+      }
+      if (query.to) {
+        const to = new Date(query.to);
+        if (!Number.isNaN(to.getTime())) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(query.to.trim())) {
+            to.setHours(23, 59, 59, 999);
+          }
+          where.documentDate.lte = to;
+        }
+      }
+    }
+
+    const q = query.q?.trim();
+    if (q) {
+      where.OR = [
+        { title: { contains: q, mode: "insensitive" } },
+        { fileName: { contains: q, mode: "insensitive" } },
+        { referenceCode: { contains: q, mode: "insensitive" } },
+        { notes: { contains: q, mode: "insensitive" } }
+      ];
+    }
+
+    const [total, rows] = await Promise.all([
+      this.prisma.contractFile.count({ where }),
+      this.prisma.contractFile.findMany({
+        where,
+        orderBy: [{ documentDate: "desc" }, { createdAt: "desc" }],
+        skip,
+        take: pageSize
+      })
+    ]);
+
+    const pageCount = total === 0 ? 0 : Math.ceil(total / pageSize);
+    return {
+      items: rows.map((r) => this.serializeContractFile(r)),
+      total,
+      page,
+      pageSize,
+      pageCount
+    };
+  }
+
+  async uploadContractFile(
+    contractId: string,
+    file: Express.Multer.File,
+    fields: {
+      documentType: string;
+      title: string;
+      documentDate: string;
+      notes?: string | null;
+      referenceCode?: string | null;
+      visibility?: string | null;
+    }
+  ): Promise<unknown> {
+    const accessible = await this.accessibleContractWhere(contractId);
+    const exists = await this.prisma.contract.findFirst({ where: accessible, select: { id: true } });
+    if (!exists) throw new NotFoundException("Contrato não encontrado");
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("Arquivo vazio");
+    }
+
+    const title = fields.title?.trim();
+    if (!title) throw new BadRequestException("Informe o título do documento.");
+
+    const docTypeRaw = (fields.documentType ?? "").trim().toUpperCase();
+    if (!Object.values(ContractFileDocumentType).includes(docTypeRaw as ContractFileDocumentType)) {
+      throw new BadRequestException("Tipo documental inválido.");
+    }
+    const documentType = docTypeRaw as ContractFileDocumentType;
+
+    const dateRaw = (fields.documentDate ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      throw new BadRequestException("Informe a data do documento (AAAA-MM-DD).");
+    }
+    const documentDate = new Date(`${dateRaw}T12:00:00.000Z`);
+    if (Number.isNaN(documentDate.getTime())) {
+      throw new BadRequestException("Data do documento inválida.");
+    }
+
+    let visibility: ContractFileVisibility = ContractFileVisibility.INTERNAL_ONLY;
+    const visRaw = (fields.visibility ?? "").trim().toUpperCase();
+    if (visRaw) {
+      if (!Object.values(ContractFileVisibility).includes(visRaw as ContractFileVisibility)) {
+        throw new BadRequestException("Visibilidade inválida.");
+      }
+      visibility = visRaw as ContractFileVisibility;
+    }
+
+    const { filePath } = await this.storage.saveContractFile(
+      contractId,
+      file.buffer,
+      file.originalname,
+      file.mimetype
+    );
+
+    const created = await this.prisma.contractFile.create({
+      data: {
+        contractId,
+        documentType,
+        title,
+        documentDate,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        filePath,
+        fileSize: file.buffer.length,
+        referenceCode: fields.referenceCode?.trim() || null,
+        notes: fields.notes?.trim() || null,
+        visibility,
+        status: ContractFileStatus.ACTIVE,
+        uploadedById: getAuditActorId() || null,
+        uploadedByLabel: getAuditActorLabel() || null
+      }
+    });
+
+    await this.createAudit("ContractFile", created.id, "CREATE", null, this.serializeContractFile(created));
+    return this.serializeContractFile(created);
+  }
+
+  async resolveContractFileDownload(
+    contractId: string,
+    fileId: string
+  ): Promise<{ fileName: string; mimeType: string; absolutePath: string }> {
+    const accessible = await this.accessibleContractWhere(contractId);
+    const exists = await this.prisma.contract.findFirst({ where: accessible, select: { id: true } });
+    if (!exists) throw new NotFoundException("Contrato não encontrado");
+
+    const row = await this.prisma.contractFile.findFirst({
+      where: { id: fileId, contractId }
+    });
+    if (!row) throw new NotFoundException("Arquivo não encontrado neste contrato.");
+
+    const absolutePath = this.storage.resolveAbsoluteSafe(row.filePath);
+    return { fileName: row.fileName, mimeType: row.mimeType, absolutePath };
+  }
+
+  async cancelContractFile(
+    contractId: string,
+    fileId: string,
+    dto: CancelOrInactivateContractFileDto
+  ): Promise<unknown> {
+    return this.setContractFileStatus(contractId, fileId, ContractFileStatus.CANCELLED, dto.justification, "CANCEL");
+  }
+
+  async inactivateContractFile(
+    contractId: string,
+    fileId: string,
+    dto: CancelOrInactivateContractFileDto
+  ): Promise<unknown> {
+    return this.setContractFileStatus(contractId, fileId, ContractFileStatus.INACTIVE, dto.justification, "INACTIVATE");
+  }
+
+  private async setContractFileStatus(
+    contractId: string,
+    fileId: string,
+    status: ContractFileStatus,
+    justification: string,
+    auditAction: string
+  ): Promise<unknown> {
+    const reason = justification?.trim() ?? "";
+    if (reason.length < 3) {
+      throw new BadRequestException("Informe a justificativa (mínimo 3 caracteres).");
+    }
+
+    const accessible = await this.accessibleContractWhere(contractId);
+    const exists = await this.prisma.contract.findFirst({ where: accessible, select: { id: true } });
+    if (!exists) throw new NotFoundException("Contrato não encontrado");
+
+    const prev = await this.prisma.contractFile.findFirst({
+      where: { id: fileId, contractId }
+    });
+    if (!prev) throw new NotFoundException("Arquivo não encontrado neste contrato.");
+    if (prev.status === status) {
+      throw new BadRequestException(
+        status === ContractFileStatus.CANCELLED
+          ? "Este arquivo já está cancelado."
+          : "Este arquivo já está inativo."
+      );
+    }
+    if (prev.status === ContractFileStatus.CANCELLED) {
+      throw new BadRequestException("Arquivo cancelado não pode ser alterado.");
+    }
+
+    const updated = await this.prisma.contractFile.update({
+      where: { id: fileId },
+      data: { status, replaceReason: reason }
+    });
+    await this.createAudit(
+      "ContractFile",
+      fileId,
+      auditAction,
+      this.serializeContractFile(prev),
+      this.serializeContractFile(updated)
+    );
+    return this.serializeContractFile(updated);
   }
 
   private async ensureValidationGroup(

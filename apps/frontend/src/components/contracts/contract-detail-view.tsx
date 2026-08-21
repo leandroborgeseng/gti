@@ -68,6 +68,13 @@ const ContractConsumptionsPanel = dynamic(
     })),
   { loading: () => panelFallback }
 );
+const ContractFilesPanel = dynamic(
+  () =>
+    import("@/components/contracts/contract-files-panel").then((m) => ({
+      default: m.ContractFilesPanel
+    })),
+  { loading: () => panelFallback }
+);
 const ContractGlpiTicketsPanel = dynamic(
   () =>
     import("@/components/contracts/contract-glpi-tickets-panel").then((m) => ({
@@ -530,6 +537,16 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
                 <ContractOccurrencesPanel contract={contract} />
               </>
             ) : null}
+          </TabsContent>
+        ) : null}
+
+        {visibleTabs.some((t) => t.id === "arquivos") ? (
+          <TabsContent
+            value="arquivos"
+            forceMount={mountedTabs.has("arquivos") ? true : undefined}
+            className="mt-0 space-y-4 focus-visible:ring-0 data-[state=inactive]:hidden"
+          >
+            {mountedTabs.has("arquivos") ? <ContractFilesPanel contractId={contract.id} /> : null}
           </TabsContent>
         ) : null}
 
