@@ -198,6 +198,8 @@ type Props = {
   userRole?: UserRole;
 };
 
+const PARTIAL_PERCENT_OPTIONS = Array.from({ length: 19 }, (_, i) => (i + 1) * 5);
+
 type EditFeatureDraft = {
   contractId: string;
   moduleId: string;
@@ -208,6 +210,18 @@ type EditFeatureDraft = {
   criticality: ContractItemCriticality;
   status: ContractFeatureStatus;
   deliveryStatus: ContractItemDeliveryStatus;
+  deliveryEffectiveDate: string;
+  partialDeliveryPercent: string;
+};
+
+type DeliveryPrompt = {
+  contractId: string;
+  moduleId: string;
+  featureId: string;
+  featureName: string;
+  deliveryStatus: ContractItemDeliveryStatus;
+  deliveryEffectiveDate: string;
+  partialDeliveryPercent: string;
 };
 
 type DeliveryFilters = {
@@ -263,6 +277,8 @@ type FeatureMutationContext = {
     contractId: string;
     moduleId: string;
     featureId: string;
+    featureName: string;
+    current: ModulesDeliveryFeature;
     deliveryStatus: ContractItemDeliveryStatus;
   }) => void;
   updateCriticality: (vars: {
@@ -319,6 +335,12 @@ function FeatureRow({
         <FeatureDescriptionText text={item.name} searchQuery={ctx.searchQuery} />
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-[11px] text-muted-foreground">Peso {serializeWeight(item.weight)}</p>
+          {item.deliveryEffectiveDate ? (
+            <span className="text-[11px] text-muted-foreground">
+              Entrega em {String(item.deliveryEffectiveDate).slice(0, 10)}
+              {item.partialDeliveryPercent != null ? ` · ${item.partialDeliveryPercent}%` : ""}
+            </span>
+          ) : null}
           {criticality === "NAO_SE_APLICA" ? (
             <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] font-medium text-violet-900 dark:bg-violet-950/50 dark:text-violet-200">
               Fora do cálculo
@@ -371,6 +393,8 @@ function FeatureRow({
                   contractId,
                   moduleId,
                   featureId: item.id,
+                  featureName: item.name,
+                  current: item,
                   deliveryStatus: v as ContractItemDeliveryStatus
                 });
               }}
@@ -937,6 +961,7 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
 
   const [openContractIds, setOpenContractIds] = useState<Set<string>>(() => new Set());
   const [editDraft, setEditDraft] = useState<EditFeatureDraft | null>(null);
+  const [deliveryPrompt, setDeliveryPrompt] = useState<DeliveryPrompt | null>(null);
   const [editHint, setEditHint] = useState<string | null>(null);
   const [filters, setFilters] = useState<DeliveryFilters>({
     deliveryStatus: "",
@@ -1001,14 +1026,21 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       moduleId: string;
       featureId: string;
       deliveryStatus: ContractItemDeliveryStatus;
+      deliveryEffectiveDate?: string | null;
+      partialDeliveryPercent?: number | null;
     }) => {
       await updateContractFeature(vars.contractId, vars.moduleId, vars.featureId, {
         deliveryStatus: vars.deliveryStatus,
+        deliveryEffectiveDate: vars.deliveryEffectiveDate,
+        partialDeliveryPercent: vars.partialDeliveryPercent,
         changeSource: CHANGE_SOURCE
       });
       return vars;
     },
-    onSuccess: (vars) => invalidateFor(vars.contractId, vars.moduleId)
+    onSuccess: (vars) => {
+      setDeliveryPrompt(null);
+      invalidateFor(vars.contractId, vars.moduleId);
+    }
   });
 
   const updateCriticalityMut = useMutation({
@@ -1045,13 +1077,21 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       criticality?: ContractItemCriticality;
       status: ContractFeatureStatus;
       deliveryStatus?: ContractItemDeliveryStatus;
+      deliveryEffectiveDate?: string | null;
+      partialDeliveryPercent?: number | null;
     }) => {
       await updateContractFeature(vars.contractId, vars.moduleId, vars.featureId, {
         itemCode: vars.itemCode,
         name: vars.name,
         status: vars.status,
         ...(vars.criticality ? { criticality: vars.criticality } : {}),
-        ...(vars.deliveryStatus ? { deliveryStatus: vars.deliveryStatus } : {}),
+        ...(vars.deliveryStatus
+          ? {
+              deliveryStatus: vars.deliveryStatus,
+              deliveryEffectiveDate: vars.deliveryEffectiveDate,
+              partialDeliveryPercent: vars.partialDeliveryPercent
+            }
+          : {}),
         changeSource: CHANGE_SOURCE
       });
       return vars;
@@ -1107,14 +1147,45 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
         weightStr: serializeWeight(item.weight),
         criticality: item.criticality ?? "MEDIA",
         status: (item.status as ContractFeatureStatus) ?? "NOT_STARTED",
-        deliveryStatus: (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus
+        deliveryStatus: (item.deliveryStatus ?? "NOT_DELIVERED") as ContractItemDeliveryStatus,
+        deliveryEffectiveDate: item.deliveryEffectiveDate
+          ? String(item.deliveryEffectiveDate).slice(0, 10)
+          : "",
+        partialDeliveryPercent:
+          item.partialDeliveryPercent != null ? String(item.partialDeliveryPercent) : "50"
       });
     },
     tryDeleteFeature: (contractId, moduleId, item) => {
       if (!window.confirm(`Remover a funcionalidade «${item.name}»?`)) return;
       deleteFeatureMut.mutate({ contractId, moduleId, featureId: item.id });
     },
-    updateDelivery: (vars) => updateDeliveryMut.mutate(vars),
+    updateDelivery: (vars) => {
+      if (vars.deliveryStatus === "NOT_DELIVERED") {
+        updateDeliveryMut.mutate({
+          contractId: vars.contractId,
+          moduleId: vars.moduleId,
+          featureId: vars.featureId,
+          deliveryStatus: "NOT_DELIVERED",
+          deliveryEffectiveDate: null,
+          partialDeliveryPercent: null
+        });
+        return;
+      }
+      setDeliveryPrompt({
+        contractId: vars.contractId,
+        moduleId: vars.moduleId,
+        featureId: vars.featureId,
+        featureName: vars.featureName,
+        deliveryStatus: vars.deliveryStatus,
+        deliveryEffectiveDate: vars.current.deliveryEffectiveDate
+          ? String(vars.current.deliveryEffectiveDate).slice(0, 10)
+          : "",
+        partialDeliveryPercent:
+          vars.current.partialDeliveryPercent != null
+            ? String(vars.current.partialDeliveryPercent)
+            : "50"
+      });
+    },
     updateCriticality: (vars) => updateCriticalityMut.mutate(vars)
   };
 
@@ -1152,6 +1223,36 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       setEditHint("Indique um nome.");
       return;
     }
+    let deliveryEffectiveDate: string | null | undefined;
+    let partialDeliveryPercent: number | null | undefined;
+    if (canEditDelivery) {
+      if (editDraft.deliveryStatus === "DELIVERED") {
+        if (!editDraft.deliveryEffectiveDate) {
+          setEditHint("Informe a Data da entrega.");
+          toast.error("Informe a Data da entrega.");
+          return;
+        }
+        deliveryEffectiveDate = editDraft.deliveryEffectiveDate;
+        partialDeliveryPercent = null;
+      } else if (editDraft.deliveryStatus === "PARTIALLY_DELIVERED") {
+        if (!editDraft.deliveryEffectiveDate) {
+          setEditHint("Informe a Data da entrega parcial.");
+          toast.error("Informe a Data da entrega parcial.");
+          return;
+        }
+        const pct = Number(editDraft.partialDeliveryPercent);
+        if (!PARTIAL_PERCENT_OPTIONS.includes(pct)) {
+          setEditHint("Informe o percentual parcial (5% a 95%).");
+          toast.error("Informe o percentual parcial (5% a 95%).");
+          return;
+        }
+        deliveryEffectiveDate = editDraft.deliveryEffectiveDate;
+        partialDeliveryPercent = pct;
+      } else {
+        deliveryEffectiveDate = null;
+        partialDeliveryPercent = null;
+      }
+    }
     saveFeatureMut.mutate({
       contractId: editDraft.contractId,
       moduleId: editDraft.moduleId,
@@ -1160,7 +1261,50 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
       name,
       status: editDraft.status,
       ...(canEditCriticality ? { criticality: editDraft.criticality } : {}),
-      ...(canEditDelivery ? { deliveryStatus: editDraft.deliveryStatus } : {})
+      ...(canEditDelivery
+        ? {
+            deliveryStatus: editDraft.deliveryStatus,
+            deliveryEffectiveDate,
+            partialDeliveryPercent
+          }
+        : {})
+    });
+  }
+
+  function submitDeliveryPrompt(): void {
+    if (!deliveryPrompt) return;
+    if (
+      deliveryPrompt.deliveryStatus === "DELIVERED" ||
+      deliveryPrompt.deliveryStatus === "PARTIALLY_DELIVERED"
+    ) {
+      if (!deliveryPrompt.deliveryEffectiveDate) {
+        toast.error(
+          deliveryPrompt.deliveryStatus === "DELIVERED"
+            ? "Informe a Data da entrega."
+            : "Informe a Data da entrega parcial."
+        );
+        return;
+      }
+    }
+    let partialDeliveryPercent: number | null = null;
+    if (deliveryPrompt.deliveryStatus === "PARTIALLY_DELIVERED") {
+      const pct = Number(deliveryPrompt.partialDeliveryPercent);
+      if (!PARTIAL_PERCENT_OPTIONS.includes(pct)) {
+        toast.error("Informe o percentual parcial (5% a 95%).");
+        return;
+      }
+      partialDeliveryPercent = pct;
+    }
+    updateDeliveryMut.mutate({
+      contractId: deliveryPrompt.contractId,
+      moduleId: deliveryPrompt.moduleId,
+      featureId: deliveryPrompt.featureId,
+      deliveryStatus: deliveryPrompt.deliveryStatus,
+      deliveryEffectiveDate:
+        deliveryPrompt.deliveryStatus === "NOT_DELIVERED"
+          ? null
+          : deliveryPrompt.deliveryEffectiveDate,
+      partialDeliveryPercent
     });
   }
 
@@ -1457,6 +1601,47 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="space-y-2 pt-1">
+                  <Label htmlFor="modulos-edit-delivery-date">
+                    {editDraft.deliveryStatus === "PARTIALLY_DELIVERED"
+                      ? "Data da entrega parcial"
+                      : "Data da entrega"}
+                  </Label>
+                  <Input
+                    id="modulos-edit-delivery-date"
+                    type="date"
+                    value={editDraft.deliveryEffectiveDate}
+                    disabled={
+                      saveFeatureMut.isPending || editDraft.deliveryStatus === "NOT_DELIVERED"
+                    }
+                    onChange={(e) =>
+                      setEditDraft((d) => (d ? { ...d, deliveryEffectiveDate: e.target.value } : d))
+                    }
+                  />
+                </div>
+                {editDraft.deliveryStatus === "PARTIALLY_DELIVERED" ? (
+                  <div className="space-y-2">
+                    <Label>Percentual de entrega parcial</Label>
+                    <Select
+                      value={editDraft.partialDeliveryPercent}
+                      disabled={saveFeatureMut.isPending}
+                      onValueChange={(v) =>
+                        setEditDraft((d) => (d ? { ...d, partialDeliveryPercent: v } : d))
+                      }
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PARTIAL_PERCENT_OPTIONS.map((p) => (
+                          <SelectItem key={p} value={String(p)}>
+                            {p}%
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {editHint ? (
@@ -1478,6 +1663,81 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
               </Button>
               <Button type="button" disabled={saveFeatureMut.isPending} onClick={() => void submitEdit()}>
                 {saveFeatureMut.isPending ? "Salvando…" : "Salvar"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={deliveryPrompt !== null}
+        onClose={() => {
+          if (!updateDeliveryMut.isPending) setDeliveryPrompt(null);
+        }}
+        title="Registrar entrega"
+        description={
+          deliveryPrompt
+            ? `Confirme a data${deliveryPrompt.deliveryStatus === "PARTIALLY_DELIVERED" ? " e o percentual" : ""} para «${deliveryPrompt.featureName}».`
+            : undefined
+        }
+        contentClassName="max-w-md"
+      >
+        {deliveryPrompt ? (
+          <div className="space-y-4 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Novo estado: <strong>{deliveryLabels[deliveryPrompt.deliveryStatus]}</strong>
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="delivery-prompt-date">
+                {deliveryPrompt.deliveryStatus === "PARTIALLY_DELIVERED"
+                  ? "Data da entrega parcial"
+                  : "Data da entrega"}{" "}
+                <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="delivery-prompt-date"
+                type="date"
+                value={deliveryPrompt.deliveryEffectiveDate}
+                disabled={updateDeliveryMut.isPending}
+                onChange={(e) =>
+                  setDeliveryPrompt((d) => (d ? { ...d, deliveryEffectiveDate: e.target.value } : d))
+                }
+              />
+            </div>
+            {deliveryPrompt.deliveryStatus === "PARTIALLY_DELIVERED" ? (
+              <div className="space-y-2">
+                <Label>Percentual acumulado <span className="text-destructive">*</span></Label>
+                <Select
+                  value={deliveryPrompt.partialDeliveryPercent}
+                  disabled={updateDeliveryMut.isPending}
+                  onValueChange={(v) =>
+                    setDeliveryPrompt((d) => (d ? { ...d, partialDeliveryPercent: v } : d))
+                  }
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PARTIAL_PERCENT_OPTIONS.map((p) => (
+                      <SelectItem key={p} value={String(p)}>
+                        {p}%
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={updateDeliveryMut.isPending}
+                onClick={() => setDeliveryPrompt(null)}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" disabled={updateDeliveryMut.isPending} onClick={() => submitDeliveryPrompt()}>
+                {updateDeliveryMut.isPending ? "Salvando…" : "Confirmar"}
               </Button>
             </div>
           </div>

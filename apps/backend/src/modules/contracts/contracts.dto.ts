@@ -48,6 +48,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
   MinLength,
   ValidateIf,
@@ -295,6 +296,29 @@ export class UpdateContractFeatureDto {
   @IsOptional()
   @IsEnum(ContractItemDeliveryStatus)
   deliveryStatus?: ContractItemDeliveryStatus;
+
+  /**
+   * Data efetiva da entrega / entrega parcial (AAAA-MM-DD).
+   * Obrigatória ao mudar para ENTREGUE ou PARCIALMENTE ENTREGUE.
+   */
+  @IsOptional()
+  @IsString()
+  deliveryEffectiveDate?: string | null;
+
+  /**
+   * Percentual acumulado (5–95, passo 5) quando parcialmente entregue.
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(5)
+  @Max(95)
+  partialDeliveryPercent?: number | null;
+
+  /** Observação opcional do evento de entrega. */
+  @IsOptional()
+  @IsString()
+  deliveryNote?: string | null;
 
   /** Grupo de validação do item. Null remove o vínculo (legado). */
   @IsOptional()

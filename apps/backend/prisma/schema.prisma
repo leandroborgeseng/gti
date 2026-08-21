@@ -937,22 +937,57 @@ model ContractValidationGroupMember {
 }
 
 model ContractFeature {
-  id                String                     @id @default(uuid())
-  moduleId          String
-  itemCode          String?                    @map("funcionalidade_codigo")
-  name              String
-  criticality       ContractItemCriticality    @default(MEDIA) @map("funcionalidade_criticidade")
-  weight            Decimal                    @db.Decimal(18, 8)
-  status            ContractFeatureStatus      @default(NOT_STARTED)
-  deliveryStatus    ContractItemDeliveryStatus @default(NOT_DELIVERED)
+  id                     String                     @id @default(uuid())
+  moduleId               String
+  itemCode               String?                    @map("funcionalidade_codigo")
+  name                   String
+  criticality            ContractItemCriticality    @default(MEDIA) @map("funcionalidade_criticidade")
+  weight                 Decimal                    @db.Decimal(18, 8)
+  status                 ContractFeatureStatus      @default(NOT_STARTED)
+  deliveryStatus         ContractItemDeliveryStatus @default(NOT_DELIVERED)
+  /// Data efetiva vigente da entrega (espelho do último evento ACTIVE).
+  deliveryEffectiveDate  DateTime?                  @map("delivery_effective_date") @db.Date
+  /// Percentual acumulado vigente (5–95) quando parcial; null nos demais estados.
+  partialDeliveryPercent Int?                       @map("partial_delivery_percent")
   /// Grupo de validação (obrigatório em novos itens; nullable para legado).
-  validationGroupId String?                    @map("validation_group_id")
-  module            ContractModule             @relation(fields: [moduleId], references: [id], onDelete: Restrict)
-  validationGroup   ContractValidationGroup?   @relation(fields: [validationGroupId], references: [id], onDelete: Restrict)
-  responsibles      ContractFeatureResponsible[]
-  scheduleMilestones ContractScheduleMilestone[]
+  validationGroupId      String?                    @map("validation_group_id")
+  module                 ContractModule             @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+  validationGroup        ContractValidationGroup?   @relation(fields: [validationGroupId], references: [id], onDelete: Restrict)
+  responsibles           ContractFeatureResponsible[]
+  scheduleMilestones     ContractScheduleMilestone[]
+  deliveryEvents         ContractFeatureDeliveryEvent[]
 
   @@index([validationGroupId])
+  @@index([deliveryStatus, deliveryEffectiveDate])
+}
+
+/// Evento imutável do histórico temporal de entrega (ticket 96).
+enum ContractFeatureDeliveryEventStatus {
+  ACTIVE
+  ANNULLED
+}
+
+model ContractFeatureDeliveryEvent {
+  id               String                             @id @default(uuid())
+  featureId        String
+  /// Data em que o percentual/estado passou a valer (não a data do registro no SIGTI).
+  effectiveDate    DateTime                           @db.Date
+  deliveryStatus   ContractItemDeliveryStatus
+  /// 0 (não entregue), 5–95 (parcial), 100 (entregue).
+  percent          Int
+  note             String?
+  status           ContractFeatureDeliveryEventStatus @default(ACTIVE)
+  recordedAt       DateTime                           @default(now())
+  actorId          String?
+  actorLabel       String?
+  annulledAt       DateTime?
+  annulledById     String?
+  annulledByLabel  String?
+  annulReason      String?
+  feature          ContractFeature                    @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@index([featureId, effectiveDate])
+  @@index([featureId, status, effectiveDate])
 }
 
 /// Responsáveis específicos do item/funcionalidade. Complementam (não substituem) os membros do grupo de validação.

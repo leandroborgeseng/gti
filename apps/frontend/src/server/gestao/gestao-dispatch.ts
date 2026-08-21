@@ -1155,6 +1155,29 @@ async function routeWithUser(req: Request, method: string, seg: string[], user: 
       assertFeatureEditPermissions(user, body);
       return jsonOk(await gestaoContracts.updateFeature(seg[1], seg[3], seg[5], body as never));
     }
+    if (
+      seg.length === 7 &&
+      seg[2] === "modules" &&
+      seg[4] === "features" &&
+      seg[6] === "delivery-events" &&
+      method === "GET"
+    ) {
+      return jsonOk(await gestaoContracts.findFeatureDeliveryEvents(seg[1], seg[3], seg[5]));
+    }
+    if (
+      seg.length === 9 &&
+      seg[2] === "modules" &&
+      seg[4] === "features" &&
+      seg[6] === "delivery-events" &&
+      seg[8] === "annul" &&
+      method === "POST"
+    ) {
+      assertPermission(user, "contracts.edit");
+      const body = (await readJsonBody(req)) as { reason?: string };
+      return jsonOk(
+        await gestaoContracts.annulFeatureDeliveryEvent(seg[1], seg[3], seg[5], seg[7], body.reason ?? "")
+      );
+    }
     if (seg.length === 6 && seg[2] === "modules" && seg[4] === "features" && method === "DELETE") {
       return jsonOk(await gestaoContracts.deleteFeature(seg[1], seg[3], seg[5]));
     }

@@ -11,6 +11,7 @@ import {
   ContractItemChangeType,
   ContractItemCriticality,
   ContractItemDeliveryStatus,
+  ContractFeatureDeliveryEventStatus,
   ContractPricingBillingKind,
   ContractPricingItemStatus,
   ContractPricingPeriodicity,
@@ -268,6 +269,32 @@ function isMeasurableCriticality(value: ContractItemCriticality | null | undefin
   return criticalityScore(value) > 0;
 }
 
+/** Fração 0–1 do peso de entrega a partir do estado vigente (ticket 96). */
+function deliveryFraction(feature: {
+  deliveryStatus: ContractItemDeliveryStatus;
+  partialDeliveryPercent?: number | null;
+}): number {
+  if (feature.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) return 1;
+  if (feature.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) {
+    const p = feature.partialDeliveryPercent;
+    if (p != null && Number.isFinite(p) && p >= 0 && p <= 100) return p / 100;
+    return 0.5; // legado sem percentual registrado
+  }
+  return 0;
+}
+
+function parseIsoDateOnly(value: string | null | undefined): Date | null {
+  if (!value?.trim()) return null;
+  const m = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+const PARTIAL_PERCENT_ALLOWED = new Set(
+  Array.from({ length: 19 }, (_, i) => (i + 1) * 5) // 5..95
+);
+
 export type BillingPhase = "UNDEFINED" | "PRE_IMPLEMENTATION" | "IMPLEMENTATION" | "MONTHLY";
 
 export type FeatureImplantationProportionDto = {
@@ -337,6 +364,7 @@ type ImplantationModulesInput = Array<{
   features: Array<{
     deliveryStatus: ContractItemDeliveryStatus;
     criticality?: ContractItemCriticality | null;
+    partialDeliveryPercent?: number | null;
   }>;
 }>;
 
@@ -355,9 +383,17 @@ function buildFeatureImplantationProportionFromCounts(ctx: {
   implantedCount: number;
   partialCount: number;
   notDeliveredCount: number;
+  /** Soma das frações de entrega (0–1) dos itens mensuráveis; se omitido, usa parcial=0,5. */
+  deliveredWeightSum?: number;
   at: Date;
 }): FeatureImplantationProportionDto {
-  return finishFeatureImplantationProportion(ctx);
+  const deliveredWeightSum =
+    ctx.deliveredWeightSum ??
+    ctx.implantedCount + ctx.partialCount * 0.5;
+  return finishFeatureImplantationProportion({
+    ...ctx,
+    deliveredWeightSum
+  });
 }
 
 function buildFeatureImplantationProportion(ctx: {
@@ -374,6 +410,8 @@ function buildFeatureImplantationProportion(ctx: {
   let implantedCount = 0;
   let partialCount = 0;
   let notDeliveredCount = 0;
+  let criticalityWeightTotal = 0;
+  let criticalityWeightDone = 0;
   for (const m of ctx.modules) {
     for (const f of m.features) {
       totalFeatures++;
@@ -382,6 +420,10 @@ function buildFeatureImplantationProportion(ctx: {
         continue;
       }
       consideredInCalculation++;
+      const w = criticalityScore(f.criticality);
+      criticalityWeightTotal += w;
+      const frac = deliveryFraction(f);
+      criticalityWeightDone += w * frac;
       if (f.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) {
         implantedCount++;
       } else if (f.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) {
@@ -391,6 +433,10 @@ function buildFeatureImplantationProportion(ctx: {
       }
     }
   }
+  const deliveredWeightSum =
+    criticalityWeightTotal > 0
+      ? (criticalityWeightDone / criticalityWeightTotal) * consideredInCalculation
+      : 0;
   return finishFeatureImplantationProportion({
     monthlyValue: ctx.monthlyValue,
     installationValue: ctx.installationValue,
@@ -402,6 +448,7 @@ function buildFeatureImplantationProportion(ctx: {
     implantedCount,
     partialCount,
     notDeliveredCount,
+    deliveredWeightSum,
     at: ctx.at
   });
 }
@@ -417,6 +464,7 @@ function finishFeatureImplantationProportion(ctx: {
   implantedCount: number;
   partialCount: number;
   notDeliveredCount: number;
+  deliveredWeightSum: number;
   at: Date;
 }): FeatureImplantationProportionDto {
   const {
@@ -425,7 +473,8 @@ function finishFeatureImplantationProportion(ctx: {
     notApplicableCount,
     implantedCount,
     partialCount,
-    notDeliveredCount
+    notDeliveredCount,
+    deliveredWeightSum
   } = ctx;
   const monthly = new Prisma.Decimal(ctx.monthlyValue);
   const contractMonthlyValue = monthly.toFixed(2);
@@ -484,9 +533,7 @@ function finishFeatureImplantationProportion(ctx: {
           : "Não há itens mensuráveis para calcular o percentual de cumprimento."
     };
   }
-  const half = new Prisma.Decimal("0.5");
-  const weightedDelivered = new Prisma.Decimal(implantedCount).plus(new Prisma.Decimal(partialCount).mul(half));
-  const ratioDec = weightedDelivered.div(new Prisma.Decimal(consideredInCalculation));
+  const ratioDec = new Prisma.Decimal(deliveredWeightSum).div(new Prisma.Decimal(consideredInCalculation));
   const proportionalMonthly = monthly.mul(ratioDec).toDecimalPlaces(2);
   const proportionalInstallation =
     instDec != null ? instDec.mul(ratioDec).toDecimalPlaces(2) : null;
@@ -3602,6 +3649,102 @@ export class ContractsService {
     });
     const prevResponsibleIds = prevResponsibles.map((r) => r.userId);
     const prev = await this.prisma.contractFeature.findUnique({ where: { id: featureId } });
+    if (!prev) throw new NotFoundException("Funcionalidade não encontrada");
+
+    const nextDeliveryStatus = dto.deliveryStatus ?? prev.deliveryStatus;
+    const deliveryStatusChanging =
+      dto.deliveryStatus !== undefined && dto.deliveryStatus !== prev.deliveryStatus;
+    const deliveryMetaChanging =
+      dto.deliveryEffectiveDate !== undefined || dto.partialDeliveryPercent !== undefined;
+
+    let nextEffectiveDate: Date | null = prev.deliveryEffectiveDate;
+    let nextPartialPercent: number | null = prev.partialDeliveryPercent;
+    let appendDeliveryEvent = false;
+    let eventPercent = 0;
+    let eventNote: string | null = null;
+
+    if (deliveryStatusChanging || (deliveryMetaChanging && dto.deliveryStatus !== undefined)) {
+      if (nextDeliveryStatus === ContractItemDeliveryStatus.NOT_DELIVERED) {
+        nextEffectiveDate = null;
+        nextPartialPercent = null;
+        eventPercent = 0;
+        appendDeliveryEvent = deliveryStatusChanging;
+      } else if (nextDeliveryStatus === ContractItemDeliveryStatus.DELIVERED) {
+        const date =
+          parseIsoDateOnly(dto.deliveryEffectiveDate ?? undefined) ??
+          (deliveryStatusChanging ? null : prev.deliveryEffectiveDate);
+        if (!date) {
+          throw new BadRequestException(
+            "Informe a Data da entrega (obrigatória para o estado «Entregue»)."
+          );
+        }
+        nextEffectiveDate = date;
+        nextPartialPercent = null;
+        eventPercent = 100;
+        appendDeliveryEvent = true;
+      } else if (nextDeliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) {
+        const date =
+          parseIsoDateOnly(dto.deliveryEffectiveDate ?? undefined) ??
+          (deliveryStatusChanging ? null : prev.deliveryEffectiveDate);
+        const percent =
+          dto.partialDeliveryPercent != null
+            ? Number(dto.partialDeliveryPercent)
+            : deliveryStatusChanging
+              ? null
+              : prev.partialDeliveryPercent;
+        if (!date) {
+          throw new BadRequestException(
+            "Informe a Data da entrega parcial (obrigatória para o estado «Parcialmente entregue»)."
+          );
+        }
+        if (percent == null || !PARTIAL_PERCENT_ALLOWED.has(percent)) {
+          throw new BadRequestException(
+            "Informe o Percentual de entrega parcial (5% a 95%, em intervalos de 5%)."
+          );
+        }
+        nextEffectiveDate = date;
+        nextPartialPercent = percent;
+        eventPercent = percent;
+        appendDeliveryEvent = true;
+      }
+      eventNote = dto.deliveryNote?.trim() || null;
+    } else if (deliveryMetaChanging) {
+      // Ajuste de data/% sem mudar o estado atual.
+      if (prev.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) {
+        const date = parseIsoDateOnly(dto.deliveryEffectiveDate ?? undefined);
+        if (dto.deliveryEffectiveDate !== undefined) {
+          if (!date) {
+            throw new BadRequestException("Data da entrega inválida.");
+          }
+          nextEffectiveDate = date;
+          appendDeliveryEvent = true;
+          eventPercent = 100;
+        }
+      } else if (prev.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) {
+        const date =
+          dto.deliveryEffectiveDate !== undefined
+            ? parseIsoDateOnly(dto.deliveryEffectiveDate)
+            : prev.deliveryEffectiveDate;
+        const percent =
+          dto.partialDeliveryPercent !== undefined
+            ? Number(dto.partialDeliveryPercent)
+            : prev.partialDeliveryPercent;
+        if (dto.deliveryEffectiveDate !== undefined && !date) {
+          throw new BadRequestException("Data da entrega parcial inválida.");
+        }
+        if (dto.partialDeliveryPercent !== undefined && (percent == null || !PARTIAL_PERCENT_ALLOWED.has(percent))) {
+          throw new BadRequestException(
+            "Percentual de entrega parcial inválido (use 5% a 95%, em intervalos de 5%)."
+          );
+        }
+        nextEffectiveDate = date;
+        nextPartialPercent = percent;
+        eventPercent = percent ?? 0;
+        appendDeliveryEvent = true;
+      }
+      eventNote = dto.deliveryNote?.trim() || null;
+    }
+
     const nextResponsibleIds =
       dto.responsibleUserIds !== undefined ? normalizeUserIds(dto.responsibleUserIds) : null;
     if (nextResponsibleIds) {
@@ -3624,9 +3767,34 @@ export class ContractsService {
         criticality: dto.criticality ?? undefined,
         status: dto.status ?? undefined,
         deliveryStatus: dto.deliveryStatus ?? undefined,
+        deliveryEffectiveDate: appendDeliveryEvent || deliveryStatusChanging ? nextEffectiveDate : undefined,
+        partialDeliveryPercent:
+          appendDeliveryEvent || deliveryStatusChanging ? nextPartialPercent : undefined,
         validationGroupId: nextValidationGroupId
       }
     });
+
+    if (appendDeliveryEvent) {
+      const eventDate =
+        nextEffectiveDate ??
+        (() => {
+          const now = new Date();
+          return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+        })();
+      await this.prisma.contractFeatureDeliveryEvent.create({
+        data: {
+          featureId,
+          effectiveDate: eventDate,
+          deliveryStatus: nextDeliveryStatus,
+          percent: eventPercent,
+          note: eventNote,
+          status: ContractFeatureDeliveryEventStatus.ACTIVE,
+          actorId: getAuditActorId(),
+          actorLabel: getAuditActorLabel()
+        }
+      });
+    }
+
     let responsibleDiff: { added: string[]; removed: string[]; responsibleUserIds: string[] } | null = null;
     if (nextResponsibleIds !== null) {
       responsibleDiff = await this.syncFeatureResponsibles(featureId, nextResponsibleIds, prevResponsibleIds);
@@ -3682,6 +3850,97 @@ export class ContractsService {
       deliveryStatusAfter: next.deliveryStatus,
       oldData: auditOld,
       newData: auditNew
+    });
+    return this.findOneForStructure(contractId);
+  }
+
+  /** Histórico temporal de entrega de uma funcionalidade. */
+  async findFeatureDeliveryEvents(
+    contractId: string,
+    moduleId: string,
+    featureId: string
+  ): Promise<unknown> {
+    await this.ensureFeature(contractId, moduleId, featureId);
+    return this.prisma.contractFeatureDeliveryEvent.findMany({
+      where: { featureId },
+      orderBy: [{ effectiveDate: "desc" }, { recordedAt: "desc" }]
+    });
+  }
+
+  /** Anula (soft) um evento de entrega; exige justificativa. */
+  async annulFeatureDeliveryEvent(
+    contractId: string,
+    moduleId: string,
+    featureId: string,
+    eventId: string,
+    reason: string
+  ): Promise<unknown> {
+    await this.ensureFeature(contractId, moduleId, featureId);
+    const trimmed = reason?.trim() ?? "";
+    if (trimmed.length < 10) {
+      throw new BadRequestException("Informe uma justificativa com pelo menos 10 caracteres para anular o evento.");
+    }
+    const event = await this.prisma.contractFeatureDeliveryEvent.findFirst({
+      where: { id: eventId, featureId }
+    });
+    if (!event) throw new NotFoundException("Evento de entrega não encontrado");
+    if (event.status === ContractFeatureDeliveryEventStatus.ANNULLED) {
+      throw new BadRequestException("Este evento já está anulado.");
+    }
+    await this.prisma.contractFeatureDeliveryEvent.update({
+      where: { id: eventId },
+      data: {
+        status: ContractFeatureDeliveryEventStatus.ANNULLED,
+        annulledAt: new Date(),
+        annulledById: getAuditActorId(),
+        annulledByLabel: getAuditActorLabel(),
+        annulReason: trimmed
+      }
+    });
+
+    // Reconstrói o espelho vigente a partir dos eventos ACTIVE restantes.
+    const latest = await this.prisma.contractFeatureDeliveryEvent.findFirst({
+      where: { featureId, status: ContractFeatureDeliveryEventStatus.ACTIVE },
+      orderBy: [{ effectiveDate: "desc" }, { recordedAt: "desc" }]
+    });
+    if (latest) {
+      await this.prisma.contractFeature.update({
+        where: { id: featureId },
+        data: {
+          deliveryStatus: latest.deliveryStatus,
+          deliveryEffectiveDate: latest.effectiveDate,
+          partialDeliveryPercent:
+            latest.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED
+              ? latest.percent
+              : null
+        }
+      });
+    } else {
+      await this.prisma.contractFeature.update({
+        where: { id: featureId },
+        data: {
+          deliveryStatus: ContractItemDeliveryStatus.NOT_DELIVERED,
+          deliveryEffectiveDate: null,
+          partialDeliveryPercent: null
+        }
+      });
+    }
+
+    const feature = await this.prisma.contractFeature.findUnique({ where: { id: featureId } });
+    await this.createAudit("ContractFeatureDeliveryEvent", eventId, "UPDATE", event, {
+      status: "ANNULLED",
+      annulReason: trimmed
+    });
+    await this.createContractItemChangeLog({
+      contractId,
+      itemType: ContractItemChangeType.FEATURE,
+      itemId: featureId,
+      itemName: feature ? featureDisplayName(feature.itemCode, feature.name) : featureId,
+      action: ContractItemChangeAction.UPDATED,
+      deliveryStatusBefore: event.deliveryStatus,
+      deliveryStatusAfter: feature?.deliveryStatus ?? null,
+      oldData: event as unknown as Record<string, unknown>,
+      newData: { annulled: true, annulReason: trimmed, mirror: feature }
     });
     return this.findOneForStructure(contractId);
   }

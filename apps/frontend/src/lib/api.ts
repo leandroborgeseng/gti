@@ -994,6 +994,8 @@ export type ModulesDeliveryFeature = {
   status: string;
   criticality: ContractItemCriticality;
   deliveryStatus: ContractItemDeliveryStatus;
+  deliveryEffectiveDate?: string | null;
+  partialDeliveryPercent?: number | null;
   validationGroupId?: string | null;
   validationGroup?: { id: string; name: string; active: boolean } | null;
   groupUndefined?: boolean;
@@ -1963,6 +1965,9 @@ export async function updateContractFeature(
     criticality?: ContractItemCriticality;
     status?: ContractFeatureStatus;
     deliveryStatus?: ContractItemDeliveryStatus;
+    deliveryEffectiveDate?: string | null;
+    partialDeliveryPercent?: number | null;
+    deliveryNote?: string | null;
     validationGroupId?: string | null;
     responsibleUserIds?: string[];
     /** Origem para auditoria (ex.: MODULES_SIMPLIFIED). */
@@ -1973,6 +1978,43 @@ export async function updateContractFeature(
     method: "PUT",
     body: JSON.stringify(payload)
   });
+}
+
+export type ContractFeatureDeliveryEvent = {
+  id: string;
+  featureId: string;
+  effectiveDate: string;
+  deliveryStatus: ContractItemDeliveryStatus;
+  percent: number;
+  note?: string | null;
+  status: "ACTIVE" | "ANNULLED";
+  recordedAt: string;
+  actorId?: string | null;
+  actorLabel?: string | null;
+  annulledAt?: string | null;
+  annulledByLabel?: string | null;
+  annulReason?: string | null;
+};
+
+export async function getFeatureDeliveryEvents(
+  contractId: string,
+  moduleId: string,
+  featureId: string
+): Promise<ContractFeatureDeliveryEvent[]> {
+  return request(`/contracts/${contractId}/modules/${moduleId}/features/${featureId}/delivery-events`);
+}
+
+export async function annulFeatureDeliveryEvent(
+  contractId: string,
+  moduleId: string,
+  featureId: string,
+  eventId: string,
+  reason: string
+): Promise<Contract> {
+  return request(
+    `/contracts/${contractId}/modules/${moduleId}/features/${featureId}/delivery-events/${eventId}/annul`,
+    { method: "POST", body: JSON.stringify({ reason }) }
+  );
 }
 
 export async function createContractValidationGroup(

@@ -446,6 +446,32 @@ export class ContractsController {
     return this.service.updateFeature(contractId, moduleId, featureId, dto);
   }
 
+  @Get(":id/modules/:moduleId/features/:featureId/delivery-events")
+  featureDeliveryEvents(
+    @Param("id") contractId: string,
+    @Param("moduleId") moduleId: string,
+    @Param("featureId") featureId: string
+  ): Promise<unknown> {
+    return this.service.findFeatureDeliveryEvents(contractId, moduleId, featureId);
+  }
+
+  @Post(":id/modules/:moduleId/features/:featureId/delivery-events/:eventId/annul")
+  annulFeatureDeliveryEvent(
+    @Param("id") contractId: string,
+    @Param("moduleId") moduleId: string,
+    @Param("featureId") featureId: string,
+    @Param("eventId") eventId: string,
+    @Body() body: { reason?: string }
+  ): Promise<unknown> {
+    return this.service.annulFeatureDeliveryEvent(
+      contractId,
+      moduleId,
+      featureId,
+      eventId,
+      body.reason ?? ""
+    );
+  }
+
   @Delete(":id/modules/:moduleId/features/:featureId")
   deleteFeature(
     @Param("id") contractId: string,
