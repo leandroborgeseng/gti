@@ -102,8 +102,11 @@ export function MeasurementBalanceMemoryPanel({ measurement }: Props): JSX.Eleme
                   {f.name}
                 </span>
                 <span className="tabular-nums text-slate-600">
-                  {deliveryStatusLabel(f.deliveryStatus)}
-                  {f.partialDeliveryPercent != null ? ` · ${f.partialDeliveryPercent}%` : ""}
+                  {deliveryStatusLabel(f.deliveryStatusAsOf ?? f.deliveryStatus)}
+                  {(f.deliveryStatusAsOf ?? f.deliveryStatus) === "PARTIALLY_DELIVERED" &&
+                  (f.percentAsOf ?? f.partialDeliveryPercent) != null
+                    ? ` · ${f.percentAsOf ?? f.partialDeliveryPercent}%`
+                    : ""}
                   {typeof f.fractionAsOf === "number"
                     ? ` · ${(f.fractionAsOf * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% no corte`
                     : ""}

@@ -2625,14 +2625,12 @@ export class ContractsService {
       // UPDATE / INCREASE_QUANTITY / RENEW_QUANTITY: fecha versão anterior e cria nova ACTIVE
       const after = row.after ?? {};
       let qty = after.quantity != null ? Number(after.quantity) : Number(source.quantity);
-      if (
-        row.action === ContractAmendmentItemAction.INCREASE_QUANTITY &&
-        after.quantity != null &&
-        Number(after.quantity) > 0 &&
-        Number(after.quantity) < Number(source.quantity)
-      ) {
-        // Interpreta after.quantity como acréscimo quando menor que o saldo atual.
-        qty = Number(source.quantity) + Number(after.quantity);
+      if (row.action === ContractAmendmentItemAction.INCREASE_QUANTITY) {
+        const increment = after.quantity != null ? Number(after.quantity) : 0;
+        if (!Number.isFinite(increment) || increment < 0) {
+          throw new BadRequestException("Informe uma quantidade a acrescentar válida.");
+        }
+        qty = Number(source.quantity) + increment;
       }
       if (row.action === ContractAmendmentItemAction.RENEW_QUANTITY && after.quantity != null) {
         const policy = String((after as { renewalBalancePolicy?: string }).renewalBalancePolicy ?? "EXPIRE");
@@ -2652,12 +2650,17 @@ export class ContractsService {
           : source.periodicity;
       const totalManual = after.totalManual != null ? Boolean(after.totalManual) : source.totalManual;
       const expected = Math.round(qty * unitVal * 100) / 100;
+      const useComputedTotal =
+        row.action === ContractAmendmentItemAction.INCREASE_QUANTITY ||
+        row.action === ContractAmendmentItemAction.RENEW_QUANTITY;
       const totalVal =
-        totalManual && after.totalValue != null
-          ? Number(after.totalValue)
-          : after.totalValue != null
+        useComputedTotal
+          ? expected
+          : totalManual && after.totalValue != null
             ? Number(after.totalValue)
-            : expected;
+            : after.totalValue != null
+              ? Number(after.totalValue)
+              : expected;
       const newId = crypto.randomUUID();
       const seq = nextSequence();
       const periodEnd =

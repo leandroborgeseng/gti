@@ -65,6 +65,8 @@ type DraftItem = {
   typeId: string;
   unitId: string;
   quantity: string;
+  /** Quantidade vigente antes do aditivo (para acréscimo e conferência). */
+  originalQuantity: string;
   unitValue: string;
   totalValue: string;
   billingKind: ContractPricingBillingKind;
@@ -133,6 +135,7 @@ function draftFromItem(item: ContractPricingItem): DraftItem {
     typeId: item.typeId,
     unitId: item.unitId,
     quantity: String(item.quantity),
+    originalQuantity: String(item.quantity),
     unitValue: String(item.unitValue),
     totalValue: String(item.totalValue),
     billingKind: item.billingKind,
@@ -196,7 +199,15 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
       const before = d.beforeTotal;
       let after = before;
       if (d.action === "SUPPRESS" || d.action === "CLOSE_ITEM") after = 0;
-      else {
+      else if (d.action === "INCREASE_QUANTITY") {
+        const origQty = parseNum(d.originalQuantity);
+        const increment = parseNum(d.quantity);
+        const uv = parseNum(d.unitValue);
+        after =
+          Number.isFinite(origQty) && Number.isFinite(increment) && Number.isFinite(uv)
+            ? Math.round((origQty + increment) * uv * 100) / 100
+            : before;
+      } else {
         const qty = parseNum(d.quantity);
         const uv = parseNum(d.unitValue);
         const tv = parseNum(d.totalValue);
@@ -226,10 +237,18 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
         if (d.key !== key) return d;
         const next = { ...d, ...patch };
         if (patch.quantity != null || patch.unitValue != null) {
-          const qty = parseNum(patch.quantity ?? next.quantity);
           const uv = parseNum(patch.unitValue ?? next.unitValue);
-          if (Number.isFinite(qty) && Number.isFinite(uv)) {
-            next.totalValue = String(Math.round(qty * uv * 100) / 100);
+          if (next.action === "INCREASE_QUANTITY") {
+            const origQty = parseNum(next.originalQuantity);
+            const increment = parseNum(patch.quantity ?? next.quantity);
+            if (Number.isFinite(origQty) && Number.isFinite(increment) && Number.isFinite(uv)) {
+              next.totalValue = String(Math.round((origQty + increment) * uv * 100) / 100);
+            }
+          } else {
+            const qty = parseNum(patch.quantity ?? next.quantity);
+            if (Number.isFinite(qty) && Number.isFinite(uv)) {
+              next.totalValue = String(Math.round(qty * uv * 100) / 100);
+            }
           }
         }
         if (patch.adjustmentPercent != null && d.action !== "CREATE" && d.beforeTotal > 0) {
@@ -262,6 +281,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
         typeId,
         unitId,
         quantity: "1",
+        originalQuantity: "0",
         unitValue: "0",
         totalValue: "0",
         billingKind: "RECURRING",
@@ -308,6 +328,11 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
         setErr(`Preencha os dados do item «${d.description || "novo"}».`);
         return;
       }
+      if (d.action === "INCREASE_QUANTITY" && qty <= 0) {
+        setErr(`Informe a quantidade a acrescentar em «${d.description}».`);
+        return;
+      }
+      const omitComputedTotal = d.action === "INCREASE_QUANTITY" || d.action === "RENEW_QUANTITY";
       items.push({
         action: d.action,
         pricingItemId: d.pricingItemId,
@@ -318,7 +343,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
           unitId: d.unitId,
           quantity: qty,
           unitValue: uv,
-          totalValue: Number.isFinite(tv) ? tv : undefined,
+          totalValue: omitComputedTotal ? undefined : Number.isFinite(tv) ? tv : undefined,
           billingKind: d.billingKind,
           periodicity: d.billingKind === "RECURRING" ? d.periodicity || "MONTHLY" : null,
           includeInGlosaBase: false,
@@ -511,9 +536,16 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
                                 id={`act-${d.key}`}
                                 className={formControlClass}
                                 value={d.action}
-                                onChange={(e) =>
-                                  updateDraft(d.key, { action: e.target.value as ContractAmendmentItemAction })
-                                }
+                                onChange={(e) => {
+                                  const action = e.target.value as ContractAmendmentItemAction;
+                                  const patch: Partial<DraftItem> = { action };
+                                  if (action === "INCREASE_QUANTITY") {
+                                    patch.quantity = "";
+                                  } else if (action === "UPDATE" || action === "RENEW_QUANTITY") {
+                                    patch.quantity = d.originalQuantity;
+                                  }
+                                  updateDraft(d.key, patch);
+                                }}
                               >
                                 <option value="UPDATE">Alterar / reajustar</option>
                                 <option value="INCREASE_QUANTITY">Acrescentar quantidade</option>
@@ -523,7 +555,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
                               </select>
                             </FormField>
                           ) : null}
-                          {d.action !== "SUPPRESS" ? (
+                          {d.action !== "SUPPRESS" && d.action !== "CLOSE_ITEM" ? (
                             <>
                               {d.action === "CREATE" ? (
                                 <>
@@ -579,12 +611,27 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
                                   </FormField>
                                 </>
                               ) : null}
-                              <FormField label="Quantidade" htmlFor={`qty-${d.key}`}>
+                              <FormField
+                                label={
+                                  d.action === "INCREASE_QUANTITY"
+                                    ? "Quantidade a acrescentar"
+                                    : d.action === "RENEW_QUANTITY"
+                                      ? "Nova quantidade do período"
+                                      : "Quantidade"
+                                }
+                                htmlFor={`qty-${d.key}`}
+                                hint={
+                                  d.action === "INCREASE_QUANTITY"
+                                    ? `Soma-se à quantidade vigente (${d.originalQuantity || "0"}).`
+                                    : undefined
+                                }
+                              >
                                 <input
                                   id={`qty-${d.key}`}
                                   className={`${formControlClass} tabular-nums`}
                                   value={d.quantity}
                                   onChange={(e) => updateDraft(d.key, { quantity: e.target.value })}
+                                  placeholder={d.action === "INCREASE_QUANTITY" ? "Ex.: 10" : undefined}
                                 />
                               </FormField>
                               {d.action === "RENEW_QUANTITY" ? (

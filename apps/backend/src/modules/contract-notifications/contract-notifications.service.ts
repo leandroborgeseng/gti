@@ -96,9 +96,23 @@ export class ContractNotificationsService {
 
   async listMine() {
     const actor = requestActorStore.getStore();
-    const include = {
+    const select = {
+      id: true,
+      contractId: true,
+      number: true,
+      subject: true,
+      status: true,
+      createdById: true,
+      sentAt: true,
+      createdAt: true,
+      updatedAt: true,
+      documentVerifierCode: true,
+      documentValidationCode: true,
       contract: { select: { id: true, number: true, name: true, internalCode: true, companyName: true } },
-      signers: { orderBy: { order: "asc" as const }, select: { id: true, userId: true, signedAt: true, order: true, required: true } }
+      signers: {
+        orderBy: { order: "asc" as const },
+        select: { id: true, userId: true, signedAt: true, order: true, required: true }
+      }
     };
     if (isExternalActor(actor)) {
       const ids = actor?.authorizedContractIds ?? [];
@@ -122,18 +136,33 @@ export class ContractNotificationsService {
         },
         orderBy: { sentAt: "desc" },
         take: 200,
-        include
+        select
       });
     }
+    const orgScope: Prisma.ContractNotificationWhereInput =
+      actor?.allOrganizationsActive || !actor?.organizationId
+        ? {}
+        : {
+            OR: [
+              { contract: { is: { organizationId: actor.organizationId } } },
+              ...(actor.userId
+                ? [
+                    { createdById: actor.userId },
+                    { signers: { some: { userId: actor.userId } } }
+                  ]
+                : [])
+            ]
+          };
     return this.prisma.contractNotification.findMany({
       where: {
         status: {
           notIn: ["RASCUNHO", "CANCELADA"]
-        }
+        },
+        ...orgScope
       },
       orderBy: { createdAt: "desc" },
       take: 200,
-      include
+      select
     });
   }
 

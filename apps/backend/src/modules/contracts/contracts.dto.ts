@@ -43,6 +43,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -891,6 +892,11 @@ export class ContractAmendmentItemAfterDto {
   @IsOptional()
   @IsBoolean()
   includeInGlosaBase?: boolean;
+
+  /** Renovação: o que fazer com o saldo remanescente do período anterior. */
+  @IsOptional()
+  @IsIn(["EXPIRE", "ACCUMULATE", "CONTINUE"])
+  renewalBalancePolicy?: "EXPIRE" | "ACCUMULATE" | "CONTINUE";
 }
 
 /** Item afetado pelo aditivo. */

@@ -1181,7 +1181,9 @@ export type Measurement = {
       name: string;
       criticality?: string;
       deliveryStatus?: string;
+      deliveryStatusAsOf?: string | null;
       partialDeliveryPercent?: number | null;
+      percentAsOf?: number | null;
       fractionAsOf?: number;
       excludedFromCalculation?: boolean;
     }>;

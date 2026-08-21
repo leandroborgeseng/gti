@@ -276,10 +276,10 @@ export class ContractConsumptionService {
               description: true,
               sequence: true,
               unit: { select: { code: true, label: true } },
+              consumptionUnit: { select: { code: true, label: true } },
               type: { select: { code: true, label: true } }
             }
-          },
-          measurement: { select: { id: true, status: true, referenceMonth: true, referenceYear: true } }
+          }
         },
         orderBy: [{ executionDate: "desc" }, { createdAt: "desc" }],
         skip: (page - 1) * pageSize,
@@ -287,13 +287,44 @@ export class ContractConsumptionService {
       })
     ]);
 
+    const withMeasurement = await this.attachMeasurements(rows);
+
     return {
-      items: rows.map((r) => this.serializeMovement(r)),
+      items: withMeasurement.map((r) => this.serializeMovement(r)),
       total,
       page,
       pageSize,
       pageCount: Math.max(1, Math.ceil(total / pageSize))
     };
+  }
+
+  private async attachMeasurements<T extends { measurementId: string | null }>(
+    rows: T[]
+  ): Promise<
+    Array<
+      T & {
+        measurement: {
+          id: string;
+          status: string;
+          referenceMonth: number;
+          referenceYear: number;
+        } | null;
+      }
+    >
+  > {
+    const ids = [...new Set(rows.map((r) => r.measurementId).filter((id): id is string => Boolean(id)))];
+    if (ids.length === 0) {
+      return rows.map((r) => ({ ...r, measurement: null }));
+    }
+    const measurements = await this.prisma.measurement.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, status: true, referenceMonth: true, referenceYear: true }
+    });
+    const byId = new Map(measurements.map((m) => [m.id, m]));
+    return rows.map((r) => ({
+      ...r,
+      measurement: r.measurementId ? byId.get(r.measurementId) ?? null : null
+    }));
   }
 
   async createMovement(contractId: string, dto: CreateConsumptionMovementInput): Promise<unknown> {

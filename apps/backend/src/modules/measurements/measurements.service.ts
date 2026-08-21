@@ -1255,10 +1255,13 @@ export class MeasurementsService {
           itemCode: f.itemCode,
           name: f.name,
           criticality: f.criticality,
-          deliveryStatus: f.deliveryStatus,
-          partialDeliveryPercent: f.partialDeliveryPercent,
-          deliveryEffectiveDate: f.deliveryEffectiveDate,
-          ...snap,
+          deliveryStatus: snap.deliveryStatusAsOf ?? f.deliveryStatus,
+          partialDeliveryPercent: snap.percentAsOf,
+          deliveryEffectiveDate: snap.effectiveDateAsOf,
+          deliveryStatusAsOf: snap.deliveryStatusAsOf,
+          percentAsOf: snap.percentAsOf,
+          effectiveDateAsOf: snap.effectiveDateAsOf,
+          fractionAsOf: snap.fractionAsOf,
           excludedFromCalculation: f.criticality === "NAO_SE_APLICA"
         };
       })

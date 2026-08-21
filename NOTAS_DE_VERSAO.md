@@ -20,7 +20,8 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 ### Alterado
 
 - **PDF de notificações**: geração padrão estável via pdfkit a partir do mesmo HTML; Chromium opcional (`PDF_ENGINE=auto|chromium`). Mensagens de erro do «Baixar PDF» passam a exibir o motivo técnico quando disponível.
-- **Central de Documentos**: disponível também para usuários internos (`/documentos`); filtros «pendentes de minha assinatura», «assinados por mim» e «elaborados por mim» passam a considerar o usuário autenticado.
+- **Central de Documentos**: disponível também para usuários internos (`/documentos`); filtros «pendentes de minha assinatura», «assinados por mim» e «elaborados por mim» passam a considerar o usuário autenticado. Com órgão específico no contexto, a lista fica no escopo desse órgão (mais documentos em que você é autor ou signatário).
+- **Aditivos — acréscimo**: na ação «Acrescentar quantidade», o campo é a quantidade a somar (não o novo total).
 - **Aditivos — renovação**: ao renovar quantidade/período, opção de saldo remanescente (expira, acumula ou continua).
 - **Consumos × medição**: cada movimentação exibe situação «Não medido», «Incluído em medição» ou «Medido e aprovado».
 - **Logo da barra lateral**: o cabeçalho do menu passa a usar o logo resumido «F» da Prefeitura de Franca (mesmo das outras aplicações). Com o menu aberto: logo + SIGTI + nome completo; recolhido: só o logo. Login e demais telas mantêm a marca anterior.
@@ -37,6 +38,9 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Corrigido
 
+- **Memória da medição**: o snapshot de funcionalidades na data de corte usa o estado vigente nessa data (histórico temporal), e não o estado atual do item.
+- **Aditivos — acréscimo**: «Acrescentar quantidade» passa a somar o valor informado à quantidade vigente (antes, deixar o campo com o total atual não acrescentava nada).
+- **Consumos**: a coluna de situação em relação à medição (não medido / incluído / medido e aprovado) deixa de falhar na listagem.
 - **Assinaturas múltiplas**: o HTML/PDF assinado passa a listar todas as assinaturas já realizadas (e as pendentes), em vez de substituir pela última.
 - **PDF de notificações**: o «Baixar PDF» usa a mesma fonte do HTML imprimível (versão congelada/assinada).
 - **Banco / Prisma**: alinhamento de drift (índice de consumo por contrato, nomes de índices/FK truncados pelo Postgres e defaults de configuração) para o `migrate deploy` e o schema ficarem consistentes.
