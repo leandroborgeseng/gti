@@ -2019,6 +2019,93 @@ export class ContractsService {
     };
   }
 
+  /**
+   * Contrato enxuto para mutações de módulos/funcionalidades (ticket 95).
+   * Evita recarregar cronogramas, ocorrências, aditivos, precificação e GLPI a cada PATCH.
+   */
+  private async findOneForStructure(id: string): Promise<unknown> {
+    const accessible = await this.accessibleContractWhere(id);
+    const contract = await this.prisma.contract.findFirst({
+      where: accessible,
+      include: {
+        organization: { select: { id: true, name: true, acronym: true, active: true } },
+        contractTypeCatalog: {
+          select: { id: true, name: true, acronym: true, legacyEnum: true, active: true }
+        },
+        hiringType: { select: { id: true, name: true, active: true } },
+        modules: {
+          include: {
+            features: {
+              include: {
+                validationGroup: {
+                  select: {
+                    id: true,
+                    name: true,
+                    active: true
+                  }
+                },
+                responsibles: {
+                  include: { user: { select: LINKED_USER_SELECT } },
+                  orderBy: { createdAt: "asc" }
+                }
+              }
+            },
+            fiscals: {
+              include: { user: { select: LINKED_USER_SELECT } },
+              orderBy: { createdAt: "asc" }
+            },
+            validator: { select: LINKED_USER_SELECT },
+            glosaPricingItem: { include: { type: true } }
+          }
+        },
+        validationGroups: {
+          include: {
+            members: {
+              include: { user: { select: LINKED_USER_SELECT } },
+              orderBy: { createdAt: "asc" }
+            },
+            _count: { select: { features: true } }
+          },
+          orderBy: [{ active: "desc" }, { name: "asc" }]
+        },
+        fiscal: true,
+        manager: true,
+        supplier: true
+      }
+    });
+    if (!contract) throw new NotFoundException("Contrato não encontrado");
+    const modules = sortModuleListFeatures(this.enrichModulesWithPeople(contract.modules));
+    const validationGroups = contract.validationGroups.map((g) => {
+      const members = g.members.map((m) => serializeLinkedUser(m.user));
+      return {
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        active: g.active,
+        createdAt: g.createdAt,
+        updatedAt: g.updatedAt,
+        memberUserIds: members.map((u) => u.id),
+        members,
+        featuresCount: g._count.features
+      };
+    });
+    const { validationGroups: _vg, ...rest } = contract;
+    return {
+      ...rest,
+      modules,
+      validationGroups,
+      itemChangeLogs: [],
+      featureImplantationProportion: buildFeatureImplantationProportion({
+        monthlyValue: contract.monthlyValue,
+        installationValue: contract.installationValue,
+        implementationPeriodStart: contract.implementationPeriodStart,
+        implementationPeriodEnd: contract.implementationPeriodEnd,
+        modules,
+        at: new Date()
+      })
+    };
+  }
+
   async findItemChangeLogs(contractId: string): Promise<unknown> {
     const accessible = await this.accessibleContractWhere(contractId);
     const exists = await this.prisma.contract.findFirst({ where: accessible, select: { id: true } });
@@ -3160,7 +3247,7 @@ export class ContractsService {
       criticalityAfter: recalculated?.criticality ?? created.criticality,
       newData: auditNew
     });
-    return this.findOne(contractId);
+    return this.findOneForStructure(contractId);
   }
 
   async updateModule(contractId: string, moduleId: string, dto: UpdateContractModuleDto): Promise<unknown> {
@@ -3228,7 +3315,7 @@ export class ContractsService {
       oldData: auditOld,
       newData: auditNew
     });
-    return this.findOne(contractId);
+    return this.findOneForStructure(contractId);
   }
 
   async deleteModule(contractId: string, moduleId: string): Promise<unknown> {
@@ -3259,7 +3346,7 @@ export class ContractsService {
       criticalityBefore: prev?.criticality ?? null,
       oldData: prev
     });
-    return this.findOne(contractId);
+    return this.findOneForStructure(contractId);
   }
 
   async createFeature(contractId: string, moduleId: string, dto: CreateContractFeatureDto): Promise<unknown> {
@@ -3314,7 +3401,7 @@ export class ContractsService {
       deliveryStatusAfter: recalculated?.deliveryStatus ?? created.deliveryStatus,
       newData: auditNew
     });
-    return this.findOne(contractId);
+    return this.findOneForStructure(contractId);
   }
 
   async updateFeature(
@@ -3415,7 +3502,7 @@ export class ContractsService {
       oldData: auditOld,
       newData: auditNew
     });
-    return this.findOne(contractId);
+    return this.findOneForStructure(contractId);
   }
 
   async deleteFeature(contractId: string, moduleId: string, featureId: string): Promise<unknown> {
@@ -3442,7 +3529,7 @@ export class ContractsService {
       deliveryStatusBefore: prev?.deliveryStatus ?? null,
       oldData: prev
     });
-    return this.findOne(contractId);
+    return this.findOneForStructure(contractId);
   }
 
   async createService(contractId: string, dto: CreateContractServiceDto): Promise<unknown> {

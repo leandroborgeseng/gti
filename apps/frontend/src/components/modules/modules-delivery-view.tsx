@@ -976,7 +976,6 @@ export function ModulesDeliveryView({ initialRows, dataLoadErrors = [] }: Props)
     void qc.invalidateQueries({ queryKey: queryKeys.contractModulesDelivery(contractId) });
     void qc.invalidateQueries({ queryKey: queryKeys.moduleFeaturesDelivery(contractId, moduleId) });
     void qc.invalidateQueries({ queryKey: queryKeys.modulesDeliverySearchRoot });
-    void qc.invalidateQueries({ queryKey: queryKeys.contracts });
   }
 
   const updateDeliveryMut = useMutation({

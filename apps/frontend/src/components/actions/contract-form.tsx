@@ -17,6 +17,7 @@ import {
 } from "@/lib/api";
 import { ContractFormSectionBoundary } from "@/components/contracts/contract-form-section-boundary";
 import { ContractGlpiGroupsField } from "@/components/contracts/contract-glpi-groups-field";
+import { ContractInternalCodeRegenerateButton } from "@/components/contracts/contract-internal-code-regenerate-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   ContractPricingItemsEditor,
@@ -834,16 +835,29 @@ export function ContractForm({ onSuccess, onDismiss, initialContract = null }: P
               </FormItem>
             )}
           />
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Código interno SIGTI</Label>
+            <div className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm font-medium text-foreground">
+              {editContract?.internalCode?.trim() || "Gerado automaticamente ao salvar o contrato"}
+            </div>
+            <p className="text-[0.8rem] text-muted-foreground">
+              Identificação única gerada pelo sistema (ex.: ST-2026-001). Não é editável manualmente.
+            </p>
+            {isEdit && editContract?.id ? (
+              <ContractInternalCodeRegenerateButton
+                contractId={editContract.id}
+                internalCode={editContract.internalCode}
+                onRegenerated={(updated) => {
+                  void qc.setQueryData(queryKeys.contractFormData(editContract.id), updated);
+                }}
+              />
+            ) : null}
+          </div>
           <div className="space-y-2">
             <Label>Número completo (pré-visualização)</Label>
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">{numberPreview}</div>
             <p className="text-[0.8rem] text-muted-foreground">
-              Formato número/ano: o ano vem do início da vigência.{" "}
-              {editContract?.internalCode ? (
-                <>Código interno atual: <strong>{editContract.internalCode}</strong>.</>
-              ) : (
-                <>O código interno (ex.: ST-2026-001) será gerado ao salvar.</>
-              )}
+              Formato número/ano: o ano vem do início da vigência.
             </p>
           </div>
           <FormField

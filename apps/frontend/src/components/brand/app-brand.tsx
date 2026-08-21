@@ -15,9 +15,23 @@ type Props = {
   onNavigate?: () => void;
 };
 
+const SIDEBAR_MARK_ASPECT = BRAND.sidebarMarkWidth / BRAND.sidebarMarkHeight;
+
+function sidebarMarkSize(variant: Variant): { width: number; height: number; className: string } {
+  // Altura fixa; largura proporcional ao asset original (não esticar/cortar).
+  const height = variant === "sidebar-collapsed" ? 36 : variant === "mobile" ? 40 : 44;
+  const width = Math.round(height * SIDEBAR_MARK_ASPECT);
+  return {
+    width,
+    height,
+    className: cn("shrink-0 object-contain object-center", variant === "sidebar-collapsed" && "mx-auto")
+  };
+}
+
 /**
  * Marca institucional reutilizável (logo + SIGTI + nome completo).
  * Fonte única: `@/lib/brand`.
+ * Barra lateral usa o logo resumido «F»; login mantém o asset completo.
  */
 export function AppBrand({
   variant = "sidebar",
@@ -28,6 +42,8 @@ export function AppBrand({
   const compact = variant === "sidebar-collapsed";
   const isLogin = variant === "login";
   const isSidebarExpanded = variant === "sidebar" || variant === "mobile";
+  const useSidebarMark = !isLogin;
+  const markSize = useSidebarMark ? sidebarMarkSize(variant) : null;
 
   const mark = (
     <div
@@ -39,20 +55,26 @@ export function AppBrand({
         className
       )}
     >
-      <Image
-        src={BRAND.logoSrc}
-        alt={BRAND.logoAlt}
-        width={BRAND.logoWidth}
-        height={BRAND.logoHeight}
-        priority={variant === "login" || variant === "sidebar"}
-        className={cn(
-          "shrink-0 object-contain",
-          compact && "h-9 w-9",
-          variant === "sidebar" && "h-11 w-11",
-          variant === "mobile" && "h-10 w-10",
-          isLogin && "h-20 w-20 object-left sm:h-24 sm:w-24"
-        )}
-      />
+      {useSidebarMark && markSize ? (
+        <Image
+          src={BRAND.sidebarMarkSrc}
+          alt={BRAND.sidebarMarkAlt}
+          width={markSize.width}
+          height={markSize.height}
+          priority={variant === "sidebar"}
+          className={markSize.className}
+          style={{ width: markSize.width, height: markSize.height }}
+        />
+      ) : (
+        <Image
+          src={BRAND.logoSrc}
+          alt={BRAND.logoAlt}
+          width={BRAND.logoWidth}
+          height={BRAND.logoHeight}
+          priority
+          className="h-20 w-20 shrink-0 object-contain object-left sm:h-24 sm:w-24"
+        />
+      )}
       {isSidebarExpanded ? (
         <div className="min-w-0 flex-1 space-y-0.5">
           <p className="text-base font-semibold tracking-tight text-slate-900">{BRAND.shortName}</p>

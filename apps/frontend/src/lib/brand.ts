@@ -33,12 +33,21 @@ export const BRAND = {
   },
   description:
     "Contratos, chamados, medições, metas e projetos em um ambiente único de acompanhamento operacional.",
-  /** Arquivo oficial da marca em `public/brand/`. */
+  /** Arquivo da marca em login e demais superfícies (exceto barra lateral). */
   logoSrc: "/brand/sigti-logo.png",
   logoAlt: "Prefeitura de Franca · marca institucional do SIGTI",
   /** Dimensões intrínsecas do ficheiro oficial (quadrado). */
   logoWidth: 900,
   logoHeight: 900,
+  /**
+   * Logo resumido «F» (mesmo asset das outras aplicações municipais).
+   * Usado apenas no cabeçalho da barra lateral (ticket 107).
+   */
+  sidebarMarkSrc: "/brand/franca-mark.png",
+  sidebarMarkAlt: "Prefeitura de Franca",
+  /** Dimensões intrínsecas do logo resumido (proporção original, sem recorte). */
+  sidebarMarkWidth: 558,
+  sidebarMarkHeight: 844,
   /** Remetente de e-mail quando RESEND_FROM não está definido. */
   emailFromName: "SIGTI",
   /** Assunto/corpo de e-mails transacionais. */

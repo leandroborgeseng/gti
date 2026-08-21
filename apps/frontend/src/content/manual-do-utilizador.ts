@@ -4,7 +4,7 @@
  * e incremente `MANUAL_LAST_UPDATED` (data ISO YYYY-MM-DD).
  */
 
-export const MANUAL_LAST_UPDATED = "2026-08-19"; // troca obrigatória de senha: fluxo sem revalidar provisória
+export const MANUAL_LAST_UPDATED = "2026-08-21"; // regenerar código interno só no modal Editar (ticket 106)
 
 /** Segmento de parágrafo: texto simples ou hiperligação interna. */
 export type ManualPart = string | { href: string; label: string };
@@ -238,7 +238,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           "Lista: a pesquisa também localiza o código interno SIGTI, a identificação formal, o processo administrativo, o nome e o fornecedor.",
           "Vigência: datas de início e fim; período de implantação opcional para o painel de proporcionalidade.",
           "Número formal: a identificação é formada pelo número e pelo ano da data de início (por exemplo, 0156/2026). O mesmo número formal não pode ser cadastrado mais de uma vez no mesmo ano.",
-          "Código interno: administradores com a permissão específica podem usar «Regenerar código interno» no topo do detalhe apenas em situações excepcionais. É obrigatório justificar a emissão; o código anterior permanece no histórico e o novo código recebe outro sequencial.",
+          "Código interno: administradores com a permissão específica podem usar «Regenerar código interno» no modal Editar (junto ao campo Código interno SIGTI), apenas em situações excepcionais. É obrigatório justificar a emissão; o código anterior permanece no histórico e o novo código recebe outro sequencial.",
           "Excluir contrato: disponível apenas para administradores, no topo do detalhe. Exige digitar EXCLUIR ou o número do contrato e uma justificativa. Só funciona para cadastros sem medições, aditivos, chamados de governança ou funcionalidades já avaliadas; nos demais casos, altere o status para Suspenso ou Encerrado.",
           "Itens contratuais: na criação e na edição, registre quantos itens forem necessários (mensalidade, implantação, horas de desenvolvimento ou suporte, treinamentos, UST, equipamentos, licenças, locações, infraestrutura, materiais e outros). Cada item tem sequência, tipo padronizado (lista da Administração), descrição contratual livre (texto do edital/TR/proposta), unidade de medida, quantidade, valor unitário e valor total (calculado automaticamente; valor manual exige justificativa se divergir). Itens recorrentes pedem periodicidade e período de incidência; marque «Base de glosa» nas mensalidades que devem compor a referência das medições de funcionalidades. Sob demanda registram o teto contratado (consumo controlado depois); valores únicos não exigem periodicidade. Ao final da seção aparecem os totais recorrente, único, sob demanda e global estimado. Com medições ou aditivos, o item não é excluído - apenas cancelado.",
           "Valor global: a seção própria mostra a estimativa calculada pelos itens. Em caso excepcional, marque «Ajuste manual excepcional», informe o valor global e justifique a divergência. O detalhe do contrato identifica esse ajuste e preserva o valor global original para conferência.",

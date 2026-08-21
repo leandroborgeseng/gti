@@ -10,7 +10,6 @@ import { Pencil } from "lucide-react";
 import { prefetchContractFormCatalogs } from "@/modules/contracts/prefetch-contract-form-catalogs";
 import { formatGlpiGroupsSummary } from "@/components/contracts/contract-glpi-groups-field";
 import { ContractDeleteButton } from "@/components/contracts/contract-delete-button";
-import { ContractInternalCodeRegenerateButton } from "@/components/contracts/contract-internal-code-regenerate-button";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -281,7 +280,6 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
                 Editar
               </Button>
             ) : null}
-            <ContractInternalCodeRegenerateButton contractId={contract.id} internalCode={contract.internalCode} />
             <ContractDeleteButton
               contractId={contract.id}
               contractNumber={contract.number}

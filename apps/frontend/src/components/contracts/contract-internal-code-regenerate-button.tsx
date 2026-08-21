@@ -1,10 +1,11 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { regenerateContractInternalCode } from "@/lib/api";
+import { regenerateContractInternalCode, type Contract } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { useMyPermissions } from "@/hooks/use-my-permissions";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -14,11 +15,21 @@ import { Textarea } from "@/components/ui/textarea";
 type Props = {
   contractId: string;
   internalCode: string | null | undefined;
+  /** Atualiza o código exibido no formulário após regeneração. */
+  onRegenerated?: (contract: Contract) => void;
 };
 
-/** Ação excepcional, restrita a ADMIN, que não reutiliza o sequencial do código anterior. */
-export function ContractInternalCodeRegenerateButton({ contractId, internalCode }: Props): JSX.Element | null {
+/**
+ * Regeneração excepcional do código interno (ticket 106).
+ * Fica apenas no modal de edição — não no cabeçalho de consulta do contrato.
+ */
+export function ContractInternalCodeRegenerateButton({
+  contractId,
+  internalCode,
+  onRegenerated
+}: Props): JSX.Element | null {
   const router = useRouter();
+  const qc = useQueryClient();
   const permissionsQuery = useMyPermissions();
   const canRegenerate = permissionsQuery.isError
     ? false
@@ -35,6 +46,9 @@ export function ContractInternalCodeRegenerateButton({ contractId, internalCode 
       toast.success(`Código interno regenerado: ${contract.internalCode ?? "novo código emitido"}.`);
       setOpen(false);
       setJustification("");
+      onRegenerated?.(contract);
+      void qc.invalidateQueries({ queryKey: queryKeys.contracts });
+      void qc.invalidateQueries({ queryKey: queryKeys.contractFormData(contractId) });
       router.refresh();
     },
     onError: (error: unknown) => {
@@ -62,11 +76,14 @@ export function ContractInternalCodeRegenerateButton({ contractId, internalCode 
         open={open}
         onClose={close}
         title="Regenerar código interno"
-        description="Esta é uma ação excepcional. O código atual será preservado na auditoria e o sequencial não será reutilizado."
+        description="O código interno é uma identificação única do contrato. Alterá-lo pode afetar pesquisas, relatórios e integrações que usem esse identificador."
       >
         <div className="space-y-4">
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
             Código interno atual: <strong className="font-mono">{internalCode ?? "não gerado"}</strong>
+            <br />
+            O valor anterior fica na auditoria. O sequencial não é reutilizado. Número formal, processo e demais
+            vínculos do contrato permanecem inalterados.
           </p>
           <div className="space-y-1.5">
             <Label htmlFor="contract-regenerate-code-justification">Justificativa (mínimo de 10 caracteres)</Label>
