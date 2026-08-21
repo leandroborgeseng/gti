@@ -86,10 +86,18 @@ const criticalityLabels: Record<ContractItemCriticality, string> = {
   ALTA: "Alta (4)",
   MEDIA: "Média (3)",
   BAIXA: "Baixa (2)",
-  APOIO: "Apoio (1)"
+  APOIO: "Apoio (1)",
+  NAO_SE_APLICA: "Não se aplica"
 };
 
-const criticalityOptions: ContractItemCriticality[] = ["CRITICA", "ALTA", "MEDIA", "BAIXA", "APOIO"];
+const criticalityOptions: ContractItemCriticality[] = [
+  "CRITICA",
+  "ALTA",
+  "MEDIA",
+  "BAIXA",
+  "APOIO",
+  "NAO_SE_APLICA"
+];
 const REQUIRED_ITEM_CODE_MESSAGE = "O campo obrigatório Código do Item deve ser preenchido antes de gravar a informação.";
 
 function showsModules(contractType: string): boolean {

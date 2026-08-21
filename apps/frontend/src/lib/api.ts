@@ -253,17 +253,19 @@ export type ContractGlpiGroup = {
 
 /** Estado de entrega do item (funcionalidade) para acompanhar a prestação do contrato. */
 export type ContractItemDeliveryStatus = "NOT_DELIVERED" | "PARTIALLY_DELIVERED" | "DELIVERED";
-export type ContractItemCriticality = "CRITICA" | "ALTA" | "MEDIA" | "BAIXA" | "APOIO";
+export type ContractItemCriticality = "CRITICA" | "ALTA" | "MEDIA" | "BAIXA" | "APOIO" | "NAO_SE_APLICA";
 
 /**
  * Proporção do valor mensal com base no progresso de entrega: «Entregue» = 1, «Parcialmente entregue» = 0,5,
- * «Não entregue» = 0; (soma dos pesos / total de itens em módulos) × valor mensal.
+ * «Não entregue» = 0; (soma dos pesos / itens considerados) × valor mensal. «Não se aplica» fica fora do cálculo.
  */
 export type BillingPhase = "UNDEFINED" | "PRE_IMPLEMENTATION" | "IMPLEMENTATION" | "MONTHLY";
 
 export type FeatureImplantationProportion = {
   applicable: boolean;
   totalFeatures: number;
+  consideredInCalculation?: number;
+  notApplicableCount?: number;
   implantedCount: number;
   partialCount: number;
   notDeliveredCount: number;
@@ -945,6 +947,8 @@ export async function upsertContractGlpiTicketClassification(
 /** Totais agregados de entrega (sem listar funcionalidades). */
 export type ModulesDeliveryTotals = {
   totalFeatures: number;
+  consideredInCalculation?: number;
+  notApplicableCount?: number;
   deliveredCount: number;
   partialCount: number;
   notDeliveredCount: number;

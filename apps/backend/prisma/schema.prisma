@@ -230,6 +230,8 @@ enum ContractItemCriticality {
   MEDIA
   BAIXA
   APOIO
+  /// Título/seção/texto organizacional — visível, mas fora do cálculo de cumprimento.
+  NAO_SE_APLICA
 }
 
 /// Forma de cobrança do item de precificação do contrato.

@@ -51,7 +51,11 @@ const CRITICALITY_ALIASES: Record<string, ContractItemCriticality> = {
   baixa: "BAIXA",
   low: "BAIXA",
   apoio: "APOIO",
-  support: "APOIO"
+  support: "APOIO",
+  nao_se_aplica: "NAO_SE_APLICA",
+  "nao se aplica": "NAO_SE_APLICA",
+  nsa: "NAO_SE_APLICA",
+  na: "NAO_SE_APLICA"
 };
 
 function parseStatus(raw: unknown): ContractFeatureStatus | undefined {

@@ -29,7 +29,7 @@ const nextConfig = {
     instrumentationHook: true,
     /** Importar serviços de gestão a partir de `apps/backend/src` (mesmo monorepo). */
     externalDir: true,
-    serverComponentsExternalPackages: ["bcrypt"],
+    serverComponentsExternalPackages: ["bcrypt", "pdfkit", "fontkit"],
     /** Reduz o tamanho dos chunks do cliente (ícones e Radix). */
     optimizePackageImports: ["lucide-react", "@radix-ui/react-icons", "@radix-ui/react-select", "@radix-ui/react-tabs", "@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-popover"]
   },

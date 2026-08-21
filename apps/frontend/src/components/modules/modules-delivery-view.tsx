@@ -65,10 +65,18 @@ const criticalityLabels: Record<ContractItemCriticality, string> = {
   ALTA: "Alta (4)",
   MEDIA: "Média (3)",
   BAIXA: "Baixa (2)",
-  APOIO: "Apoio (1)"
+  APOIO: "Apoio (1)",
+  NAO_SE_APLICA: "Não se aplica"
 };
 
-const criticalityOptions: ContractItemCriticality[] = ["CRITICA", "ALTA", "MEDIA", "BAIXA", "APOIO"];
+const criticalityOptions: ContractItemCriticality[] = [
+  "CRITICA",
+  "ALTA",
+  "MEDIA",
+  "BAIXA",
+  "APOIO",
+  "NAO_SE_APLICA"
+];
 
 const FEATURES_PAGE_SIZE = 40;
 const CHANGE_SOURCE = "MODULES_SIMPLIFIED";
@@ -86,6 +94,8 @@ function criticalitySelectTriggerClass(criticality: ContractItemCriticality): st
       return `${ring} border-orange-200 bg-orange-50/80 text-orange-800 dark:border-orange-800/90 dark:bg-orange-950/35 dark:text-orange-300 dark:focus:ring-orange-700 focus:ring-orange-300`;
     case "CRITICA":
       return `${ring} border-rose-200 bg-rose-50/80 text-rose-800 dark:border-rose-800/90 dark:bg-rose-950/40 dark:text-rose-300 dark:focus:ring-rose-700 focus:ring-rose-300`;
+    case "NAO_SE_APLICA":
+      return `${ring} border-violet-200 bg-violet-50/80 text-violet-900 dark:border-violet-800/90 dark:bg-violet-950/40 dark:text-violet-200 dark:focus:ring-violet-700 focus:ring-violet-300`;
     default:
       return `${ring} text-muted-foreground`;
   }
@@ -103,6 +113,8 @@ function criticalitySelectItemClass(criticality: ContractItemCriticality): strin
       return "text-orange-800 data-[highlighted]:bg-orange-100 data-[highlighted]:text-orange-950 focus:bg-orange-100 focus:text-orange-950 dark:text-orange-300 dark:data-[highlighted]:bg-orange-950/50 dark:data-[highlighted]:text-orange-50 dark:focus:bg-orange-950/50 dark:focus:text-orange-50";
     case "CRITICA":
       return "text-rose-800 data-[highlighted]:bg-rose-100 data-[highlighted]:text-rose-950 focus:bg-rose-100 focus:text-rose-950 dark:text-rose-300 dark:data-[highlighted]:bg-rose-950/50 dark:data-[highlighted]:text-rose-50 dark:focus:bg-rose-950/50 dark:focus:text-rose-50";
+    case "NAO_SE_APLICA":
+      return "text-violet-900 data-[highlighted]:bg-violet-100 data-[highlighted]:text-violet-950 focus:bg-violet-100 focus:text-violet-950 dark:text-violet-200 dark:data-[highlighted]:bg-violet-950/50 dark:data-[highlighted]:text-violet-50 dark:focus:bg-violet-950/50 dark:focus:text-violet-50";
     default:
       return "";
   }
@@ -307,6 +319,11 @@ function FeatureRow({
         <FeatureDescriptionText text={item.name} searchQuery={ctx.searchQuery} />
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-[11px] text-muted-foreground">Peso {serializeWeight(item.weight)}</p>
+          {criticality === "NAO_SE_APLICA" ? (
+            <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] font-medium text-violet-900 dark:bg-violet-950/50 dark:text-violet-200">
+              Fora do cálculo
+            </span>
+          ) : null}
           {assignmentReasonBadges(item.assignmentReasons, item.groupUndefined)}
           {item.validationGroup?.name ? (
             <span className="text-[11px] text-muted-foreground">Grupo: {item.validationGroup.name}</span>

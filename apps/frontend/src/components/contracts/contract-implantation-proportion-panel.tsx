@@ -41,11 +41,11 @@ export function ContractImplantationProportionPanel({ data }: Props): JSX.Elemen
     <Card className="border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900/60 dark:bg-sky-950/30">
       <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Implantação, fase e valores proporcionais</h2>
       <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-        Cada funcionalidade conta no <strong className="font-medium text-slate-800 dark:text-slate-200">numerador</strong> com peso{" "}
+        Cada funcionalidade mensurável conta no <strong className="font-medium text-slate-800 dark:text-slate-200">numerador</strong> com peso{" "}
         <strong className="font-medium text-slate-800 dark:text-slate-200">1</strong> (Entregue),{" "}
         <strong className="font-medium text-slate-800 dark:text-slate-200">0,5</strong> (Parcialmente entregue) ou{" "}
-        <strong className="font-medium text-slate-800 dark:text-slate-200">0</strong> (Não entregue). O mesmo factor multiplica o valor de
-        implantação e a mensalidade.
+        <strong className="font-medium text-slate-800 dark:text-slate-200">0</strong> (Não entregue). Itens com criticidade
+        «Não se aplica» (títulos, seções, textos organizacionais) permanecem visíveis, mas ficam fora do cálculo.
       </p>
 
       <div
@@ -79,14 +79,29 @@ export function ContractImplantationProportionPanel({ data }: Props): JSX.Elemen
         <div className="rounded-md border border-sky-100/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-slate-900/40">
           <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">Funcionalidades (módulos)</dt>
           <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-slate-100">
-            <span className="font-semibold text-emerald-700 dark:text-emerald-400">{data.implantedCount}</span> entregues /{" "}
-            <span className="font-semibold">{data.totalFeatures}</span> total
-            {data.partialCount > 0 || data.notDeliveredCount > 0 ? (
-              <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
-                ({data.partialCount} {data.partialCount === 1 ? "parcial" : "parciais"},{" "}
-                {data.notDeliveredCount} não entregue{data.notDeliveredCount !== 1 ? "s" : ""})
-              </span>
+            {data.totalFeatures} {data.totalFeatures === 1 ? "item" : "itens"}
+            {typeof data.consideredInCalculation === "number" ? (
+              <>
+                {" "}
+                · {data.consideredInCalculation} considerado{data.consideredInCalculation === 1 ? "" : "s"} no cálculo
+              </>
             ) : null}
+            {(data.notApplicableCount ?? 0) > 0 ? (
+              <>
+                {" "}
+                · {data.notApplicableCount} não se aplica{data.notApplicableCount === 1 ? "" : "m"}
+              </>
+            ) : null}
+            <span className="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400">
+              <span className="font-semibold text-emerald-700 dark:text-emerald-400">{data.implantedCount}</span> entregues
+              {data.partialCount > 0 || data.notDeliveredCount > 0 ? (
+                <>
+                  {" "}
+                  ({data.partialCount} {data.partialCount === 1 ? "parcial" : "parciais"}, {data.notDeliveredCount} não
+                  entregue{data.notDeliveredCount !== 1 ? "s" : ""})
+                </>
+              ) : null}
+            </span>
           </dd>
         </div>
         <div className="rounded-md border border-sky-100/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-slate-900/40">

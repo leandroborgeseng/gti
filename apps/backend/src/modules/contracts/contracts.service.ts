@@ -256,18 +256,28 @@ const CRITICALITY_SCORE: Record<ContractItemCriticality, number> = {
   ALTA: 4,
   MEDIA: 3,
   BAIXA: 2,
-  APOIO: 1
+  APOIO: 1,
+  NAO_SE_APLICA: 0
 };
 
 function criticalityScore(value: ContractItemCriticality | null | undefined): number {
   return CRITICALITY_SCORE[value ?? ContractItemCriticality.MEDIA] ?? CRITICALITY_SCORE.MEDIA;
 }
 
+function isMeasurableCriticality(value: ContractItemCriticality | null | undefined): boolean {
+  return criticalityScore(value) > 0;
+}
+
 export type BillingPhase = "UNDEFINED" | "PRE_IMPLEMENTATION" | "IMPLEMENTATION" | "MONTHLY";
 
 export type FeatureImplantationProportionDto = {
   applicable: boolean;
+  /** Total físico de funcionalidades (inclui «Não se aplica»). */
   totalFeatures: number;
+  /** Itens mensuráveis usados no percentual (exclui «Não se aplica»). */
+  consideredInCalculation: number;
+  /** Itens com criticidade «Não se aplica». */
+  notApplicableCount: number;
   implantedCount: number;
   partialCount: number;
   notDeliveredCount: number;
@@ -323,7 +333,12 @@ function toIsoDateOnly(d: Date | null | undefined): string | null {
   return d.toISOString().slice(0, 10);
 }
 
-type ImplantationModulesInput = Array<{ features: Array<{ deliveryStatus: ContractItemDeliveryStatus }> }>;
+type ImplantationModulesInput = Array<{
+  features: Array<{
+    deliveryStatus: ContractItemDeliveryStatus;
+    criticality?: ContractItemCriticality | null;
+  }>;
+}>;
 
 /**
  * Indicadores de progresso de entrega: ratio comum aplicado à mensalidade e ao valor de implantação;
@@ -335,19 +350,14 @@ function buildFeatureImplantationProportionFromCounts(ctx: {
   implementationPeriodStart?: Date | null;
   implementationPeriodEnd?: Date | null;
   totalFeatures: number;
+  consideredInCalculation: number;
+  notApplicableCount: number;
   implantedCount: number;
   partialCount: number;
   notDeliveredCount: number;
   at: Date;
 }): FeatureImplantationProportionDto {
-  const { totalFeatures, implantedCount, partialCount, notDeliveredCount } = ctx;
-  return finishFeatureImplantationProportion({
-    ...ctx,
-    totalFeatures,
-    implantedCount,
-    partialCount,
-    notDeliveredCount
-  });
+  return finishFeatureImplantationProportion(ctx);
 }
 
 function buildFeatureImplantationProportion(ctx: {
@@ -359,12 +369,19 @@ function buildFeatureImplantationProportion(ctx: {
   at: Date;
 }): FeatureImplantationProportionDto {
   let totalFeatures = 0;
+  let consideredInCalculation = 0;
+  let notApplicableCount = 0;
   let implantedCount = 0;
   let partialCount = 0;
   let notDeliveredCount = 0;
   for (const m of ctx.modules) {
     for (const f of m.features) {
       totalFeatures++;
+      if (!isMeasurableCriticality(f.criticality)) {
+        notApplicableCount++;
+        continue;
+      }
+      consideredInCalculation++;
       if (f.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) {
         implantedCount++;
       } else if (f.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) {
@@ -380,6 +397,8 @@ function buildFeatureImplantationProportion(ctx: {
     implementationPeriodStart: ctx.implementationPeriodStart,
     implementationPeriodEnd: ctx.implementationPeriodEnd,
     totalFeatures,
+    consideredInCalculation,
+    notApplicableCount,
     implantedCount,
     partialCount,
     notDeliveredCount,
@@ -393,12 +412,21 @@ function finishFeatureImplantationProportion(ctx: {
   implementationPeriodStart?: Date | null;
   implementationPeriodEnd?: Date | null;
   totalFeatures: number;
+  consideredInCalculation: number;
+  notApplicableCount: number;
   implantedCount: number;
   partialCount: number;
   notDeliveredCount: number;
   at: Date;
 }): FeatureImplantationProportionDto {
-  const { totalFeatures, implantedCount, partialCount, notDeliveredCount } = ctx;
+  const {
+    totalFeatures,
+    consideredInCalculation,
+    notApplicableCount,
+    implantedCount,
+    partialCount,
+    notDeliveredCount
+  } = ctx;
   const monthly = new Prisma.Decimal(ctx.monthlyValue);
   const contractMonthlyValue = monthly.toFixed(2);
   const instDec = ctx.installationValue != null ? new Prisma.Decimal(ctx.installationValue) : null;
@@ -412,6 +440,8 @@ function finishFeatureImplantationProportion(ctx: {
     return {
       applicable: false,
       totalFeatures: 0,
+      consideredInCalculation: 0,
+      notApplicableCount: 0,
       implantedCount: 0,
       partialCount: 0,
       notDeliveredCount: 0,
@@ -429,9 +459,34 @@ function finishFeatureImplantationProportion(ctx: {
         "Não existem funcionalidades em módulos; não é possível calcular valores proporcionais ao progresso de entrega."
     };
   }
+  if (consideredInCalculation === 0) {
+    return {
+      applicable: false,
+      totalFeatures,
+      consideredInCalculation: 0,
+      notApplicableCount,
+      implantedCount: 0,
+      partialCount: 0,
+      notDeliveredCount: 0,
+      ratioImplanted: null,
+      ratioImplantedPercent: null,
+      contractMonthlyValue,
+      proportionalMonthlyValue: null,
+      contractInstallationValue,
+      proportionalInstallationValue: null,
+      implementationPeriodStart,
+      implementationPeriodEnd,
+      billingPhase: phase,
+      billingEmphasis,
+      explanation:
+        notApplicableCount > 0
+          ? `${totalFeatures} ${totalFeatures === 1 ? "item" : "itens"} · 0 considerados no cálculo · ${notApplicableCount} não se aplicam. Sem itens mensuráveis, o percentual de cumprimento não se aplica.`
+          : "Não há itens mensuráveis para calcular o percentual de cumprimento."
+    };
+  }
   const half = new Prisma.Decimal("0.5");
   const weightedDelivered = new Prisma.Decimal(implantedCount).plus(new Prisma.Decimal(partialCount).mul(half));
-  const ratioDec = weightedDelivered.div(new Prisma.Decimal(totalFeatures));
+  const ratioDec = weightedDelivered.div(new Prisma.Decimal(consideredInCalculation));
   const proportionalMonthly = monthly.mul(ratioDec).toDecimalPlaces(2);
   const proportionalInstallation =
     instDec != null ? instDec.mul(ratioDec).toDecimalPlaces(2) : null;
@@ -439,6 +494,8 @@ function finishFeatureImplantationProportion(ctx: {
   return {
     applicable: true,
     totalFeatures,
+    consideredInCalculation,
+    notApplicableCount,
     implantedCount,
     partialCount,
     notDeliveredCount,
@@ -1014,17 +1071,31 @@ export class ContractsService {
       moduleIds.length === 0
         ? []
         : await this.prisma.contractFeature.groupBy({
-            by: ["moduleId", "deliveryStatus"],
+            by: ["moduleId", "deliveryStatus", "criticality"],
             where: { moduleId: { in: moduleIds }, ...featureWhereExtra },
             _count: { _all: true }
           });
 
     const countsByContract = new Map<
       string,
-      { total: number; delivered: number; partial: number; notDelivered: number }
+      {
+        total: number;
+        considered: number;
+        notApplicable: number;
+        delivered: number;
+        partial: number;
+        notDelivered: number;
+      }
     >();
     for (const id of contractIds) {
-      countsByContract.set(id, { total: 0, delivered: 0, partial: 0, notDelivered: 0 });
+      countsByContract.set(id, {
+        total: 0,
+        considered: 0,
+        notApplicable: 0,
+        delivered: 0,
+        partial: 0,
+        notDelivered: 0
+      });
     }
     for (const g of grouped) {
       const contractId = moduleToContract.get(g.moduleId);
@@ -1033,6 +1104,11 @@ export class ContractsService {
       if (!bucket) continue;
       const n = g._count._all;
       bucket.total += n;
+      if (!isMeasurableCriticality(g.criticality)) {
+        bucket.notApplicable += n;
+        continue;
+      }
+      bucket.considered += n;
       if (g.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) bucket.delivered += n;
       else if (g.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) bucket.partial += n;
       else bucket.notDelivered += n;
@@ -1040,7 +1116,14 @@ export class ContractsService {
 
     const filteredRows = rows.filter((r) => contractIds.includes(r.id));
     return filteredRows.map((row) => {
-      const c = countsByContract.get(row.id) ?? { total: 0, delivered: 0, partial: 0, notDelivered: 0 };
+      const c = countsByContract.get(row.id) ?? {
+        total: 0,
+        considered: 0,
+        notApplicable: 0,
+        delivered: 0,
+        partial: 0,
+        notDelivered: 0
+      };
       return {
         id: row.id,
         number: row.number,
@@ -1053,6 +1136,8 @@ export class ContractsService {
         modulesCount: row._count.modules,
         totals: {
           totalFeatures: c.total,
+          consideredInCalculation: c.considered,
+          notApplicableCount: c.notApplicable,
           deliveredCount: c.delivered,
           partialCount: c.partial,
           notDeliveredCount: c.notDelivered
@@ -1063,6 +1148,8 @@ export class ContractsService {
           implementationPeriodStart: row.implementationPeriodStart ?? null,
           implementationPeriodEnd: row.implementationPeriodEnd ?? null,
           totalFeatures: c.total,
+          consideredInCalculation: c.considered,
+          notApplicableCount: c.notApplicable,
           implantedCount: c.delivered,
           partialCount: c.partial,
           notDeliveredCount: c.notDelivered,
@@ -1109,19 +1196,41 @@ export class ContractsService {
 
     const moduleIds = modules.map((m) => m.id);
     const grouped = await this.prisma.contractFeature.groupBy({
-      by: ["moduleId", "deliveryStatus"],
+      by: ["moduleId", "deliveryStatus", "criticality"],
       where: { moduleId: { in: moduleIds } },
       _count: { _all: true }
     });
-    const byModule = new Map<string, { total: number; delivered: number; partial: number; notDelivered: number }>();
+    const byModule = new Map<
+      string,
+      {
+        total: number;
+        considered: number;
+        notApplicable: number;
+        delivered: number;
+        partial: number;
+        notDelivered: number;
+      }
+    >();
     for (const id of moduleIds) {
-      byModule.set(id, { total: 0, delivered: 0, partial: 0, notDelivered: 0 });
+      byModule.set(id, {
+        total: 0,
+        considered: 0,
+        notApplicable: 0,
+        delivered: 0,
+        partial: 0,
+        notDelivered: 0
+      });
     }
     for (const g of grouped) {
       const bucket = byModule.get(g.moduleId);
       if (!bucket) continue;
       const n = g._count._all;
       bucket.total += n;
+      if (!isMeasurableCriticality(g.criticality)) {
+        bucket.notApplicable += n;
+        continue;
+      }
+      bucket.considered += n;
       if (g.deliveryStatus === ContractItemDeliveryStatus.DELIVERED) bucket.delivered += n;
       else if (g.deliveryStatus === ContractItemDeliveryStatus.PARTIALLY_DELIVERED) bucket.partial += n;
       else bucket.notDelivered += n;
@@ -1135,6 +1244,8 @@ export class ContractsService {
           ...m,
           totals: {
             totalFeatures: t.total,
+            consideredInCalculation: t.considered,
+            notApplicableCount: t.notApplicable,
             deliveredCount: t.delivered,
             partialCount: t.partial,
             notDeliveredCount: t.notDelivered
@@ -4957,7 +5068,17 @@ export class ContractsService {
       select: { id: true, criticality: true }
     });
     const total = features.reduce((sum, feature) => sum + criticalityScore(feature.criticality), 0);
-    if (total <= 0) return;
+    if (total <= 0) {
+      await this.prisma.$transaction(
+        features.map((feature) =>
+          this.prisma.contractFeature.update({
+            where: { id: feature.id },
+            data: { weight: new Prisma.Decimal(0) }
+          })
+        )
+      );
+      return;
+    }
     await this.prisma.$transaction(
       features.map((feature) =>
         this.prisma.contractFeature.update({
