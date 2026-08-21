@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -8,6 +8,8 @@ import {
   approveContractSchedule,
   createContractSchedule,
   deleteContractSchedule,
+  getContractSchedules,
+  getContractStructure,
   updateContractSchedule,
   uploadScheduleAttachment,
   type Contract,
@@ -23,10 +25,12 @@ import {
 import { GestaoAttachmentsList } from "@/components/attachments/attachment-preview-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { InlineLoading } from "@/components/ui/inline-loading";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { UserMultiSelect } from "@/components/ui/user-multi-select";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -685,8 +689,14 @@ function ScheduleAttachmentsBlock(props: {
   canMutate: boolean;
 }): JSX.Element {
   const router = useRouter();
+  const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const attachments = props.schedule.attachments ?? [];
+
+  function refreshList(): void {
+    void qc.invalidateQueries({ queryKey: queryKeys.contractSchedules(props.contractId) });
+    router.refresh();
+  }
 
   async function onFileChange(event: React.ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
@@ -696,7 +706,7 @@ function ScheduleAttachmentsBlock(props: {
     try {
       await uploadScheduleAttachment(props.contractId, props.schedule.id, file);
       toast.success("Anexo enviado.");
-      router.refresh();
+      refreshList();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha no envio do anexo.");
     } finally {
@@ -732,7 +742,7 @@ function ScheduleAttachmentsBlock(props: {
             contractId: props.contractId,
             scheduleId: props.schedule.id
           }}
-          onDeleted={() => router.refresh()}
+          onDeleted={() => refreshList()}
         />
       ) : null}
     </div>
@@ -741,12 +751,26 @@ function ScheduleAttachmentsBlock(props: {
 
 export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
   const router = useRouter();
-  const schedules = contract.schedules ?? [];
+  const qc = useQueryClient();
+  const schedulesQuery = useQuery({
+    queryKey: queryKeys.contractSchedules(contract.id),
+    queryFn: () => getContractSchedules(contract.id)
+  });
+  const structureQuery = useQuery({
+    queryKey: queryKeys.contractStructure(contract.id),
+    queryFn: () => getContractStructure(contract.id)
+  });
+  const schedules = schedulesQuery.data ?? [];
   const [createDraft, setCreateDraft] = useState<ScheduleDraft>(emptyDraft);
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<ScheduleDraft | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const refreshSchedules = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.contractSchedules(contract.id) });
+    router.refresh();
+  };
 
   const pricingOptions = useMemo(
     () =>
@@ -761,7 +785,7 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
 
   const featureOptions = useMemo(() => {
     const out: Array<{ id: string; label: string }> = [];
-    for (const mod of contract.modules ?? []) {
+    for (const mod of structureQuery.data?.modules ?? []) {
       for (const feat of mod.features ?? []) {
         const code = feat.itemCode?.trim();
         out.push({
@@ -771,7 +795,7 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
       }
     }
     return out;
-  }, [contract.modules]);
+  }, [structureQuery.data?.modules]);
 
   const createMut = useMutation({
     mutationFn: () => createContractSchedule(contract.id, toPayload(createDraft)),
@@ -779,7 +803,7 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
       toast.success("Cronograma criado.");
       setCreateDraft(emptyDraft());
       setShowCreate(false);
-      router.refresh();
+      refreshSchedules();
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Não foi possível criar o cronograma.");
@@ -795,7 +819,7 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
       toast.success("Cronograma atualizado. Se estava aprovado e houve mudança sensível, uma nova versão foi gerada.");
       setEditingId(null);
       setEditDraft(null);
-      router.refresh();
+      refreshSchedules();
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Não foi possível atualizar o cronograma.");
@@ -806,7 +830,7 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
     mutationFn: (scheduleId: string) => approveContractSchedule(contract.id, scheduleId),
     onSuccess: () => {
       toast.success("Cronograma aprovado (operacional).");
-      router.refresh();
+      refreshSchedules();
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Não foi possível aprovar o cronograma.");
@@ -817,7 +841,7 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
     mutationFn: (scheduleId: string) => deleteContractSchedule(contract.id, scheduleId),
     onSuccess: () => {
       toast.success("Cronograma excluído.");
-      router.refresh();
+      refreshSchedules();
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Não foi possível excluir o cronograma.");
@@ -872,6 +896,16 @@ export function ContractSchedulesPanel({ contract }: Props): JSX.Element {
         Alterações de datas, etapas ou responsáveis em cronograma já aprovado geram nova versão (a anterior fica como
         «Substituído»).
       </div>
+
+      {schedulesQuery.isPending ? (
+        <p className="mt-4">
+          <InlineLoading label="Carregando cronogramas…" />
+        </p>
+      ) : schedulesQuery.isError ? (
+        <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+          Não foi possível carregar os cronogramas.
+        </p>
+      ) : null}
 
       {showCreate ? (
         <div className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">

@@ -1525,6 +1525,36 @@ export async function getContract(id: string): Promise<Contract> {
   return request(`/contracts/${id}`);
 }
 
+/** Cabeçalho e aba Dados da ficha (sem módulos, cronogramas, ocorrências nem aditivos). */
+export async function getContractSummary(id: string): Promise<Contract> {
+  return request(`/contracts/${id}/summary`);
+}
+
+/** Módulos, funcionalidades e grupos de validação (aba Módulos). */
+export async function getContractStructure(id: string): Promise<Contract> {
+  return request(`/contracts/${id}/structure`);
+}
+
+export async function getContractAmendments(id: string): Promise<ContractAmendment[]> {
+  return request(`/contracts/${id}/amendments`);
+}
+
+export async function getContractSchedules(id: string): Promise<ContractSchedule[]> {
+  return request(`/contracts/${id}/schedules`);
+}
+
+export async function getContractOccurrences(id: string): Promise<ContractOccurrence[]> {
+  return request(`/contracts/${id}/occurrences`);
+}
+
+export async function getContractControladoriaCases(id: string): Promise<ContractControladoriaCase[]> {
+  return request(`/contracts/${id}/controladoria-cases`);
+}
+
+export async function getContractValidationGroups(id: string): Promise<ContractValidationGroup[]> {
+  return request(`/contracts/${id}/validation-groups`);
+}
+
 export type ConsumptionMovementStatus =
   | "DRAFT"
   | "INFORMED"

@@ -2011,6 +2011,118 @@ export class ContractsService {
     return { ...contract, pricingLocked };
   }
 
+  /**
+   * Carga mínima da ficha (cabeçalho + aba Dados): identificação, vigência, valores,
+   * órgão, fornecedor, grupos GLPI e itens de precificação. Sem módulos/features,
+   * cronogramas, ocorrências, aditivos nem histórico.
+   */
+  async findOneSummary(id: string): Promise<unknown> {
+    const accessible = await this.accessibleContractWhere(id);
+    const contract = await this.prisma.contract.findFirst({
+      where: accessible,
+      select: {
+        id: true,
+        number: true,
+        formalNumber: true,
+        contractYear: true,
+        internalCode: true,
+        administrativeProcess: true,
+        organizationId: true,
+        contractTypeCatalogId: true,
+        hiringTypeId: true,
+        hiringProcedureNumber: true,
+        organizationPending: true,
+        globalValueOriginal: true,
+        globalValueCurrent: true,
+        globalValueManual: true,
+        globalValueJustification: true,
+        name: true,
+        description: true,
+        managingUnit: true,
+        companyName: true,
+        cnpj: true,
+        contractType: true,
+        lawType: true,
+        status: true,
+        totalValue: true,
+        monthlyValue: true,
+        installationValue: true,
+        implementationPeriodStart: true,
+        implementationPeriodEnd: true,
+        startDate: true,
+        endDate: true,
+        slaTarget: true,
+        updatedAt: true,
+        supplierId: true,
+        fiscalId: true,
+        managerId: true,
+        organization: { select: { id: true, name: true, acronym: true, active: true } },
+        contractTypeCatalog: {
+          select: { id: true, name: true, acronym: true, legacyEnum: true, active: true }
+        },
+        hiringType: { select: { id: true, name: true, active: true } },
+        fiscal: { select: { id: true, name: true, email: true } },
+        manager: { select: { id: true, name: true, email: true } },
+        supplier: { select: { id: true, name: true, cnpj: true } },
+        glpiGroups: { orderBy: { glpiGroupName: "asc" } },
+        pricingItems: {
+          include: { type: true, unit: true },
+          orderBy: { sequence: "asc" }
+        }
+      }
+    });
+    if (!contract) throw new NotFoundException("Contrato não encontrado");
+
+    const [featureRows, pricingLocked] = await Promise.all([
+      this.prisma.contractFeature.findMany({
+        where: { module: { contractId: id } },
+        select: {
+          deliveryStatus: true,
+          criticality: true,
+          partialDeliveryPercent: true
+        }
+      }),
+      this.pricing.contractHasMovements(id).catch(() => false)
+    ]);
+
+    const pricingTotals = summarizePricingItemsAsOf(contract.pricingItems, new Date());
+    return {
+      ...contract,
+      modules: [],
+      validationGroups: [],
+      schedules: [],
+      occurrences: [],
+      controladoriaCases: [],
+      services: [],
+      amendments: [],
+      itemChangeLogs: [],
+      pricingTotals,
+      pricingLocked,
+      featureImplantationProportion: buildFeatureImplantationProportion({
+        monthlyValue: contract.monthlyValue,
+        installationValue: contract.installationValue,
+        implementationPeriodStart: contract.implementationPeriodStart,
+        implementationPeriodEnd: contract.implementationPeriodEnd,
+        modules: [{ features: featureRows }],
+        at: new Date()
+      })
+    };
+  }
+
+  /** Estrutura (módulos/funcionalidades) para a aba correspondente — sem cronogramas/aditivos. */
+  async findOneStructure(id: string): Promise<unknown> {
+    return this.findOneForStructure(id);
+  }
+
+  async listAmendments(contractId: string): Promise<unknown> {
+    await this.ensureContract(contractId);
+    return this.prisma.contractAmendment.findMany({
+      where: { contractId },
+      orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
+      include: { items: { orderBy: { createdAt: "asc" } } }
+    });
+  }
+
   /** Registra falha de carregamento do formulário nos logs administrativos (sem dados sensíveis ao cliente). */
   async reportFormLoadFailure(input: {
     action?: string | null;
@@ -2232,7 +2344,12 @@ export class ContractsService {
         },
         fiscal: true,
         manager: true,
-        supplier: true
+        supplier: true,
+        services: true,
+        pricingItems: {
+          include: { type: true, unit: true },
+          orderBy: { sequence: "asc" }
+        }
       }
     });
     if (!contract) throw new NotFoundException("Contrato não encontrado");

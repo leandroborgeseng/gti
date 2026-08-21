@@ -625,10 +625,7 @@ export function ContractDetailView({ contract, labels, initialTab }: Props): JSX
             className="mt-0 focus-visible:ring-0 data-[state=inactive]:hidden"
           >
             {mountedTabs.has("grupos-validacao") ? (
-              <ContractValidationGroupsPanel
-                contractId={contract.id}
-                groups={contract.validationGroups ?? []}
-              />
+              <ContractValidationGroupsPanel contractId={contract.id} />
             ) : null}
           </TabsContent>
         ) : null}

@@ -16,12 +16,14 @@ import type {
 import {
   cancelContractAmendment,
   createContractAmendment,
+  getContractAmendments,
   getContractPricingCatalog
 } from "@/lib/api";
 import { useAuthMe } from "@/hooks/use-auth-me";
 import { queryKeys } from "@/lib/query-keys";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
+import { InlineLoading } from "@/components/ui/inline-loading";
 import { FormField, FormSection, PrimaryButton, formControlClass } from "@/components/ui/form-primitives";
 import { formatBrl } from "@/lib/format-brl";
 
@@ -148,6 +150,7 @@ function draftFromItem(item: ContractPricingItem): DraftItem {
 
 export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Element {
   const router = useRouter();
+  const qc = useQueryClient();
   const meQuery = useAuthMe();
   const role = meQuery.isError ? null : meQuery.data?.role;
   const [busy, setBusy] = useState(false);
@@ -156,6 +159,10 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [cancelFor, setCancelFor] = useState<string | null>(null);
   const [cancelJustification, setCancelJustification] = useState("");
+  const amendmentsQuery = useQuery({
+    queryKey: queryKeys.contractAmendments(props.contract.id),
+    queryFn: () => getContractAmendments(props.contract.id)
+  });
   const catalogQuery = useQuery({
     queryKey: queryKeys.contractPricingCatalog,
     queryFn: getContractPricingCatalog,
@@ -187,7 +194,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
 
   const canEdit = role === "ADMIN" || role === "EDITOR";
   const contractActive = props.contract.status === "ACTIVE";
-  const list = props.contract.amendments ?? [];
+  const list = amendmentsQuery.data ?? [];
   const previousGlobal = money(props.contract.globalValueCurrent ?? props.contract.totalValue);
 
   const selectedDrafts = draftItems.filter((d) => d.selected);
@@ -371,6 +378,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
       setShowForm(false);
       setDescription("");
       setDraftItems(activePricingItems(props.contract.pricingItems).map(draftFromItem));
+      await qc.invalidateQueries({ queryKey: queryKeys.contractAmendments(props.contract.id) });
       router.refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Não foi possível registrar o aditivo.");
@@ -391,6 +399,7 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
       setOk("Aditivo cancelado formalmente. Os itens não são revertidos automaticamente — registre um aditivo corretivo se necessário.");
       setCancelFor(null);
       setCancelJustification("");
+      await qc.invalidateQueries({ queryKey: queryKeys.contractAmendments(props.contract.id) });
       router.refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Não foi possível cancelar o aditivo.");
@@ -417,6 +426,16 @@ export function ContractAmendmentsPanel(props: { contract: Contract }): JSX.Elem
         <strong className="font-medium text-slate-800">valor global</strong>. O histórico abaixo é automático (original +
         cada aditivo) e não admite edição comum.
       </p>
+
+      {amendmentsQuery.isPending ? (
+        <p className="mt-4">
+          <InlineLoading label="Carregando aditivos…" />
+        </p>
+      ) : amendmentsQuery.isError ? (
+        <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+          Não foi possível carregar os aditivos.
+        </p>
+      ) : null}
 
       {role === undefined ? (
         <p className="mt-4 text-sm text-slate-500">Carregando permissões…</p>

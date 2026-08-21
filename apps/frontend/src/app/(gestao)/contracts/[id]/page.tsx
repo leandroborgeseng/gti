@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ContractDetailView } from "@/components/contracts/contract-detail-view";
 import { Card } from "@/components/ui/card";
 import { DataLoadAlert } from "@/components/ui/data-load-alert";
-import { getContract, getContractTypeCatalog, getHiringTypes, getOrganizations } from "@/lib/api";
+import { getContractSummary } from "@/lib/api";
 import { safeLoadNullable } from "@/lib/api-load";
 
 const contractTypeLabel: Record<string, string> = {
@@ -31,13 +31,7 @@ export default async function ContractDetailPage({
   params: { id: string };
   searchParams?: Record<string, string | string[] | undefined>;
 }): Promise<JSX.Element> {
-  const [contractRes, orgsRes, hiringRes, typesRes] = await Promise.all([
-    safeLoadNullable(() => getContract(params.id)),
-    safeLoadNullable(() => getOrganizations()),
-    safeLoadNullable(() => getHiringTypes()),
-    safeLoadNullable(() => getContractTypeCatalog())
-  ]);
-  const { data: contract, error } = contractRes;
+  const { data: contract, error } = await safeLoadNullable(() => getContractSummary(params.id));
   if (error) {
     return (
       <div className="space-y-4">
@@ -63,20 +57,19 @@ export default async function ContractDetailPage({
 
   const cnpj = contract.cnpj ?? contract.supplier?.cnpj ?? "-";
   const law = contract.lawType ? lawTypeLabel[contract.lawType] ?? contract.lawType : "-";
-  const catalogType =
-    contract.contractTypeCatalog ?? typesRes.data?.find((t) => t.id === contract.contractTypeCatalogId);
+  const catalogType = contract.contractTypeCatalog;
   const tipo = catalogType
     ? catalogType.acronym
       ? `${catalogType.acronym} · ${catalogType.name}`
       : catalogType.name
     : contractTypeLabel[contract.contractType] ?? contract.contractType;
-  const org = contract.organization ?? orgsRes.data?.find((o) => o.id === contract.organizationId);
+  const org = contract.organization;
   const orgLabel = org
     ? org.acronym
       ? `${org.acronym} · ${org.name}`
       : org.name
     : contract.managingUnit ?? "-";
-  const hiring = contract.hiringType ?? hiringRes.data?.find((h) => h.id === contract.hiringTypeId);
+  const hiring = contract.hiringType;
   const formalDisplay =
     contract.formalNumber && contract.contractYear
       ? `${contract.formalNumber}/${contract.contractYear}`

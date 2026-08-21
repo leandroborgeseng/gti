@@ -19,6 +19,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Alterado
 
+- **Ficha do contrato mais rápida**: a abertura da ficha carrega só o cabeçalho e os dados gerais; cronogramas, módulos, ocorrências, aditivos, grupos de validação e demais painéis pesados entram quando a aba (ou seção) correspondente é aberta.
 - **PDF de notificações**: geração padrão estável via pdfkit a partir do mesmo HTML; Chromium opcional (`PDF_ENGINE=auto|chromium`). Mensagens de erro do «Baixar PDF» passam a exibir o motivo técnico quando disponível.
 - **Central de Documentos**: disponível também para usuários internos (`/documentos`); filtros «pendentes de minha assinatura», «assinados por mim» e «elaborados por mim» passam a considerar o usuário autenticado. Com órgão específico no contexto, a lista fica no escopo desse órgão (mais documentos em que você é autor ou signatário).
 - **Aditivos — acréscimo**: na ação «Acrescentar quantidade», o campo é a quantidade a somar (não o novo total).

@@ -2,10 +2,12 @@
 
 import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { InlineLoading } from "@/components/ui/inline-loading";
 import { Modal } from "@/components/ui/modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Contract, ContractItemCriticality, ContractItemDeliveryStatus } from "@/lib/api";
@@ -17,6 +19,7 @@ import {
   deleteContractModule,
   deleteContractService,
   fetchContractStructureTemplateBlob,
+  getContractStructure,
   importContractStructureFromXlsx,
   updateContractFeature,
   updateContractModule,
@@ -31,6 +34,7 @@ import {
   projectModuleFeaturesSum,
   weightSumMatchesTarget
 } from "@/lib/contract-weights";
+import { queryKeys } from "@/lib/query-keys";
 import { buttonSmallClass, buttonSmallPrimaryClass, formControlClass } from "@/components/ui/form-primitives";
 import { UserMultiSelect } from "@/components/ui/user-multi-select";
 import { cn } from "@/lib/utils";
@@ -167,10 +171,15 @@ function ModuleWeightsSummary(props: { modules: ModuleRow[] }): JSX.Element {
 }
 
 export function ContractStructureEditor(props: { contract: Contract }): JSX.Element {
+  const qc = useQueryClient();
+  const structureQuery = useQuery({
+    queryKey: queryKeys.contractStructure(props.contract.id),
+    queryFn: () => getContractStructure(props.contract.id)
+  });
   const [contract, setContract] = useState(props.contract);
   useEffect(() => {
-    setContract(props.contract);
-  }, [props.contract]);
+    if (structureQuery.data) setContract(structureQuery.data);
+  }, [structureQuery.data]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { data: permissions } = useMyPermissions();
@@ -182,6 +191,7 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
     try {
       const next = await op();
       setContract(next);
+      qc.setQueryData(queryKeys.contractStructure(cid), next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro desconhecido");
     } finally {
@@ -223,6 +233,24 @@ export function ContractStructureEditor(props: { contract: Contract }): JSX.Elem
 
   if (!canEditStructure) {
     return <></>;
+  }
+
+  if (structureQuery.isPending) {
+    return (
+      <Card className="p-5">
+        <InlineLoading label="Carregando módulos e funcionalidades…" />
+      </Card>
+    );
+  }
+
+  if (structureQuery.isError) {
+    return (
+      <Card className="p-5">
+        <p className="text-sm text-red-800" role="alert">
+          Não foi possível carregar a estrutura do contrato.
+        </p>
+      </Card>
+    );
   }
 
   const modules = contract.modules ?? [];

@@ -1,26 +1,28 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
   createContractValidationGroup,
   deleteContractValidationGroup,
+  getContractValidationGroups,
   updateContractValidationGroup,
   type ContractValidationGroup
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { InlineLoading } from "@/components/ui/inline-loading";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { UserMultiSelect } from "@/components/ui/user-multi-select";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 type Props = {
   contractId: string;
-  groups: ContractValidationGroup[];
 };
 
 function formatMembers(group: ContractValidationGroup): string {
@@ -31,8 +33,14 @@ function formatMembers(group: ContractValidationGroup): string {
   return `${names.slice(0, 3).join(", ")} +${names.length - 3}`;
 }
 
-export function ContractValidationGroupsPanel({ contractId, groups }: Props): JSX.Element {
+export function ContractValidationGroupsPanel({ contractId }: Props): JSX.Element {
   const router = useRouter();
+  const qc = useQueryClient();
+  const groupsQuery = useQuery({
+    queryKey: queryKeys.contractValidationGroups(contractId),
+    queryFn: () => getContractValidationGroups(contractId)
+  });
+  const groups = groupsQuery.data ?? [];
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [memberUserIds, setMemberUserIds] = useState<string[]>([]);
@@ -41,6 +49,11 @@ export function ContractValidationGroupsPanel({ contractId, groups }: Props): JS
   const [editDescription, setEditDescription] = useState("");
   const [editMemberUserIds, setEditMemberUserIds] = useState<string[]>([]);
   const [editActive, setEditActive] = useState(true);
+
+  const refreshGroups = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.contractValidationGroups(contractId) });
+    router.refresh();
+  };
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -54,7 +67,7 @@ export function ContractValidationGroupsPanel({ contractId, groups }: Props): JS
       setName("");
       setDescription("");
       setMemberUserIds([]);
-      router.refresh();
+      refreshGroups();
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Não foi possível criar o grupo.");
@@ -74,7 +87,7 @@ export function ContractValidationGroupsPanel({ contractId, groups }: Props): JS
     onSuccess: () => {
       toast.success("Grupo de validação atualizado.");
       setEditingId(null);
-      router.refresh();
+      refreshGroups();
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Não foi possível atualizar o grupo.");
@@ -85,7 +98,7 @@ export function ContractValidationGroupsPanel({ contractId, groups }: Props): JS
     mutationFn: (groupId: string) => deleteContractValidationGroup(contractId, groupId),
     onSuccess: () => {
       toast.success("Grupo removido ou inativado.");
-      router.refresh();
+      refreshGroups();
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Não foi possível remover o grupo.");
@@ -148,7 +161,15 @@ export function ContractValidationGroupsPanel({ contractId, groups }: Props): JS
       </div>
 
       <ul className="mt-4 space-y-3">
-        {groups.length === 0 ? (
+        {groupsQuery.isPending ? (
+          <li>
+            <InlineLoading label="Carregando grupos…" />
+          </li>
+        ) : groupsQuery.isError ? (
+          <li className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+            Não foi possível carregar os grupos de validação.
+          </li>
+        ) : groups.length === 0 ? (
           <li className="text-sm text-slate-600">Nenhum grupo de validação cadastrado neste contrato.</li>
         ) : (
           groups.map((group) => {

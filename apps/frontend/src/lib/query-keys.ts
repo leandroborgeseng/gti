@@ -7,6 +7,14 @@ export const queryKeys = {
   contracts: ["gestao", "contracts"] as const,
   myPermissions: ["gestao", "permissions", "me"] as const,
   contractFormData: (id: string) => ["gestao", "contracts", "form-data", id] as const,
+  contractSummary: (id: string) => ["gestao", "contracts", "summary", id] as const,
+  contractStructure: (id: string) => ["gestao", "contracts", "structure", id] as const,
+  contractAmendments: (id: string) => ["gestao", "contracts", "amendments", id] as const,
+  contractSchedules: (id: string) => ["gestao", "contracts", "schedules", id] as const,
+  contractOccurrences: (id: string) => ["gestao", "contracts", "occurrences", id] as const,
+  contractControladoriaCases: (id: string) =>
+    ["gestao", "contracts", "controladoria-cases", id] as const,
+  contractValidationGroups: (id: string) => ["gestao", "contracts", "validation-groups", id] as const,
   /** Resumo dos contratos na tela Funcionalidades. */
   modulesDeliveryOverview: ["gestao", "modules-delivery-overview"] as const,
   contractModulesDelivery: (contractId: string) => ["gestao", "contract-modules-delivery", contractId] as const,

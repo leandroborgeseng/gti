@@ -636,6 +636,23 @@ export class ContractsController {
     return this.service.findOneForForm(id);
   }
 
+  /** Cabeçalho e aba Dados da ficha — sem relações pesadas. */
+  @Get(":id/summary")
+  findOneSummary(@Param("id") id: string): Promise<unknown> {
+    return this.service.findOneSummary(id);
+  }
+
+  /** Módulos, funcionalidades e grupos de validação (aba Módulos). */
+  @Get(":id/structure")
+  findOneStructure(@Param("id") id: string): Promise<unknown> {
+    return this.service.findOneStructure(id);
+  }
+
+  @Get(":id/amendments")
+  listAmendments(@Param("id") contractId: string): Promise<unknown> {
+    return this.service.listAmendments(contractId);
+  }
+
   @Get(":id/consumptions")
   consumptionSummary(@Param("id") id: string): Promise<unknown> {
     return this.consumption.summarize(id);

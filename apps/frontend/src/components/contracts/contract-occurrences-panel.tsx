@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -9,6 +9,8 @@ import {
   createContractOccurrence,
   deleteContractOccurrence,
   forwardOccurrenceToControladoria,
+  getContractControladoriaCases,
+  getContractOccurrences,
   getMyPermissions,
   updateContractControladoriaCase,
   updateContractOccurrence,
@@ -26,6 +28,7 @@ import {
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { InlineLoading } from "@/components/ui/inline-loading";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -361,8 +364,17 @@ function OccurrenceFormFields({
 
 export function ContractOccurrencesPanel({ contract }: Props): JSX.Element {
   const router = useRouter();
-  const occurrences = contract.occurrences ?? [];
-  const cases = contract.controladoriaCases ?? [];
+  const qc = useQueryClient();
+  const occurrencesQuery = useQuery({
+    queryKey: queryKeys.contractOccurrences(contract.id),
+    queryFn: () => getContractOccurrences(contract.id)
+  });
+  const casesQuery = useQuery({
+    queryKey: queryKeys.contractControladoriaCases(contract.id),
+    queryFn: () => getContractControladoriaCases(contract.id)
+  });
+  const occurrences = occurrencesQuery.data ?? [];
+  const cases = casesQuery.data ?? [];
   const [draft, setDraft] = useState<OccurrenceDraft>(emptyDraft);
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -391,7 +403,11 @@ export function ContractOccurrencesPanel({ contract }: Props): JSX.Element {
     permissionKeys.includes("controladoria.manage") ||
     (permissions?.role === "ADMIN" && permissionKeys.includes("contracts.edit"));
 
-  const refresh = () => router.refresh();
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.contractOccurrences(contract.id) });
+    void qc.invalidateQueries({ queryKey: queryKeys.contractControladoriaCases(contract.id) });
+    router.refresh();
+  };
 
   const createMut = useMutation({
     mutationFn: () => createContractOccurrence(contract.id, draftToPayload(draft)),
@@ -520,6 +536,14 @@ export function ContractOccurrencesPanel({ contract }: Props): JSX.Element {
           notificação automática nesta versão. Evidências ficam em texto; anexos entram em onda futura.
         </p>
       </div>
+
+      {occurrencesQuery.isPending || casesQuery.isPending ? (
+        <InlineLoading label="Carregando ocorrências…" />
+      ) : occurrencesQuery.isError || casesQuery.isError ? (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+          Não foi possível carregar as ocorrências.
+        </p>
+      ) : null}
 
       {canEdit ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
