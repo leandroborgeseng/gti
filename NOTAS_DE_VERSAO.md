@@ -26,7 +26,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - **Cálculo da medição mais rápido**: o recálculo agrupa as atualizações das linhas e reutiliza os dados já carregados para a memória de saldo; após calcular ou aprovar, a ficha da medição atualiza sem recarregar a página inteira.
 - **Edição de entrega e criticidade em Funcionalidades**: a linha atualiza na hora, sem recarregar toda a lista; os totais do resumo só são atualizados quando as contagens mudam.
 - **Ficha do contrato mais rápida**: a abertura da ficha carrega só o cabeçalho e os dados gerais; cronogramas, módulos, ocorrências, aditivos, grupos de validação e demais painéis pesados entram quando a aba (ou seção) correspondente é aberta.
-- **PDF de notificações**: geração padrão estável via pdfkit a partir do mesmo HTML; Chromium opcional (`PDF_ENGINE=auto|chromium`). Mensagens de erro do «Baixar PDF» passam a exibir o motivo técnico quando disponível.
+- **PDF de notificações**: o «Baixar PDF» gera o arquivo a partir do mesmo HTML oficial, via pdfkit (texto). Mensagens de erro passam a exibir o motivo técnico quando disponível.
 - **Central de Documentos**: disponível também para usuários internos (`/documentos`); filtros «pendentes de minha assinatura», «assinados por mim» e «elaborados por mim» passam a considerar o usuário autenticado. Com órgão específico no contexto, a lista fica no escopo desse órgão (mais documentos em que você é autor ou signatário).
 - **Aditivos — acréscimo**: na ação «Acrescentar quantidade», o campo é a quantidade a somar (não o novo total).
 - **Aditivos — renovação**: ao renovar quantidade/período, opção de saldo remanescente (expira, acumula ou continua).
@@ -58,7 +58,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Técnico
 
-- **Build Docker / Railway**: o `next build` deixava de concluir com `Can't resolve '@sparticuz/chromium'` ao empacotar o gerador de PDF do backend. Esse pacote só declara `exports` (sem `main`); o alias webpack para a pasta do módulo falhava. Chromium e Puppeteer passam a ser carregados só em tempo de execução; pdfkit continua resolvido pelo `node_modules` do frontend (na imagem não há `apps/backend/node_modules`).
+- **Build Docker / Railway**: o `next build` quebrava ao resolver `@sparticuz/chromium` (pacote só com `exports`). O gerador de PDF deixa de importar Chromium/Puppeteer e usa só pdfkit, para o deploy concluir.
 - **Sync GLPI em produção**: o cron não deve competir com o processo web. Use `npm run start:worker` (ou `dev:worker` em desenvolvimento) num serviço dedicado; nas réplicas HTTP, `GLPI_CRON_DISABLED=1` (só o agendamento) ou `GLPI_SKIP_BOOTSTRAP=1` (bootstrap inteiro, já usado no `next build`). Ver `AGENTS.md` e `docs/glpi-sync-arquitetura.md`.
 
 ### Adicionado

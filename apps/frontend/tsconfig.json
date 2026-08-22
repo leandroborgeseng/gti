@@ -27,8 +27,6 @@
       "rxjs": ["./node_modules/rxjs"],
       "rxjs/*": ["./node_modules/rxjs/*"],
       "@nestjs/common": ["./node_modules/@nestjs/common"],
-      "@sparticuz/chromium": ["./node_modules/@sparticuz/chromium"],
-      "puppeteer-core": ["./node_modules/puppeteer-core"],
       "pdfkit": ["./node_modules/pdfkit"],
       "bcrypt": ["./node_modules/bcrypt"]
     }

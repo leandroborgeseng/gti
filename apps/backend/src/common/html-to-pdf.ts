@@ -1,62 +1,9 @@
 /**
- * Converte HTML completo em PDF (A4).
- * Padrão: pdfkit (estável em container). Chromium opcional via PDF_ENGINE=chromium|auto.
+ * Converte HTML completo em PDF (A4) via pdfkit (texto derivado do mesmo HTML).
+ * Chromium/Puppeteer não entram neste módulo: o Next/webpack do Docker não
+ * consegue resolver `@sparticuz/chromium` (só `exports`, sem `main`).
  */
 export async function htmlToPdfBuffer(html: string, title: string): Promise<Buffer> {
-  const engine = (process.env.PDF_ENGINE ?? "pdfkit").toLowerCase().trim();
-
-  if (engine === "chromium") {
-    return renderWithChromium(html);
-  }
-
-  if (engine === "auto") {
-    try {
-      return await Promise.race([
-        renderWithChromium(html),
-        new Promise<Buffer>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout ao iniciar Chromium (15s)")), 15_000)
-        )
-      ]);
-    } catch (err) {
-      console.warn("[html-to-pdf] Chromium indisponível, usando fallback pdfkit:", err);
-      return renderWithPdfkit(html, title);
-    }
-  }
-
-  return renderWithPdfkit(html, title);
-}
-
-async function renderWithChromium(html: string): Promise<Buffer> {
-  const chromiumMod = await import(/* webpackIgnore: true */ "@sparticuz/chromium");
-  const chromium = chromiumMod.default;
-  try {
-    chromium.setGraphicsMode = false;
-  } catch {
-    /* ignore */
-  }
-  const puppeteer = await import(/* webpackIgnore: true */ "puppeteer-core");
-  const executablePath = await chromium.executablePath();
-  const browser = await puppeteer.launch({
-    args: [...chromium.args, "--font-render-hinting=none", "--disable-dev-shm-usage"],
-    executablePath,
-    headless: true,
-    defaultViewport: { width: 1280, height: 720 }
-  });
-  try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "16mm", right: "14mm", bottom: "16mm", left: "14mm" }
-    });
-    return Buffer.from(pdf);
-  } finally {
-    await browser.close().catch(() => undefined);
-  }
-}
-
-async function renderWithPdfkit(html: string, title: string): Promise<Buffer> {
   const PDFDocument = (await import("pdfkit")).default;
   const text = stripHtmlToText(html);
   const doc = new PDFDocument({

@@ -107,7 +107,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       },
       {
         kind: "tip",
-        text: "O documento assinado pode ser impresso em HTML ou baixado como PDF gerado a partir do mesmo HTML (padrão estável via pdfkit; Chromium opcional no ambiente). Novos documentos usam numeração DOC-SIGTI-####/AAAA (números NOT-SIGTI antigos continuam válidos), com código verificador, código de validação e QR Code apontando para /validar-documento. Nenhum destes substitui assinatura com certificado digital ICP-Brasil."
+        text: "O documento assinado pode ser impresso em HTML ou baixado como PDF gerado a partir do mesmo HTML oficial (via pdfkit). Novos documentos usam numeração DOC-SIGTI-####/AAAA (números NOT-SIGTI antigos continuam válidos), com código verificador, código de validação e QR Code apontando para /validar-documento. Nenhum destes substitui assinatura com certificado digital ICP-Brasil."
       }
     ]
   },
