@@ -58,7 +58,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Técnico
 
-- **Build Docker / Railway**: o `next build` quebrava ao resolver `@sparticuz/chromium` (pacote só com `exports`). O gerador de PDF deixa de importar Chromium/Puppeteer e usa só pdfkit, para o deploy concluir.
+- **Build Docker / Railway**: o `next build` quebrava ao resolver `@sparticuz/chromium` (o PDF passou a usar só pdfkit) e, em seguida, no typecheck de `qrcode` importado pelo backend. O `qrcode` é resolvido pelo `node_modules` do frontend (na imagem não há `apps/backend/node_modules`).
 - **Sync GLPI em produção**: o cron não deve competir com o processo web. Use `npm run start:worker` (ou `dev:worker` em desenvolvimento) num serviço dedicado; nas réplicas HTTP, `GLPI_CRON_DISABLED=1` (só o agendamento) ou `GLPI_SKIP_BOOTSTRAP=1` (bootstrap inteiro, já usado no `next build`). Ver `AGENTS.md` e `docs/glpi-sync-arquitetura.md`.
 
 ### Adicionado

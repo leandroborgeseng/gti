@@ -16,6 +16,7 @@ const nextConfig = {
         "@nestjs/common": path.join(nm, "@nestjs", "common"),
         /** pdfkit tem `main`; @sparticuz/chromium é só `exports` — alias para a pasta quebra o webpack. */
         pdfkit: path.join(nm, "pdfkit"),
+        qrcode: path.join(nm, "qrcode"),
       };
       config.resolve.modules = [nm, ...(config.resolve.modules ?? ["node_modules"])];
     }

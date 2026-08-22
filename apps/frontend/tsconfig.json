@@ -28,6 +28,7 @@
       "rxjs/*": ["./node_modules/rxjs/*"],
       "@nestjs/common": ["./node_modules/@nestjs/common"],
       "pdfkit": ["./node_modules/pdfkit"],
+      "qrcode": ["./node_modules/qrcode"],
       "bcrypt": ["./node_modules/bcrypt"]
     }
   },
