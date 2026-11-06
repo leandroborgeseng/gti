@@ -14,8 +14,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-gti}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-gti_contratos}
+      # postgres:18+ — mount parent dir; data lives under MAJOR/docker
+      PGDATA: /var/lib/postgresql/18/docker
     volumes:
-      - gti_postgres_data_pg18:/var/lib/postgresql/data
+      - gti_postgres_data_pg18:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gti} -d ${POSTGRES_DB:-gti_contratos}"]
       interval: 5s
