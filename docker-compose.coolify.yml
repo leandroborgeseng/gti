@@ -15,7 +15,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-gti_contratos}
     volumes:
-      - gti_postgres_data:/var/lib/postgresql/data
+      - gti_postgres_data_pg18:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gti} -d ${POSTGRES_DB:-gti_contratos}"]
       interval: 5s
@@ -52,7 +52,7 @@ services:
       - gti
 
 volumes:
-  gti_postgres_data:
+  gti_postgres_data_pg18:
   gti_uploads:
 
 networks:
