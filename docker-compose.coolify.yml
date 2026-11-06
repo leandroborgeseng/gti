@@ -36,8 +36,9 @@ services:
         condition: service_healthy
     # Equivalente ao RAILWAY_RUN_UID=0: entrypoint ajusta permissões em uploads antes de correr como node.
     user: "0:0"
-    ports:
-      - "${APP_PORT:-3000}:3000"
+    # Coolify proxy: sem ports host (docs). App escuta 3000; domain ...:3000
+    expose:
+      - "3000"
     environment:
       NODE_ENV: production
       PORT: "3000"
