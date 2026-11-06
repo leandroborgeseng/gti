@@ -17,7 +17,7 @@ services:
       # postgres:18+ — mount parent dir; data lives under MAJOR/docker
       PGDATA: /var/lib/postgresql/18/docker
     volumes:
-      - gti_postgres_data_pg18:/var/lib/postgresql
+      - gti_postgres_data_pg18b:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gti} -d ${POSTGRES_DB:-gti_contratos}"]
       interval: 5s
@@ -54,7 +54,7 @@ services:
       - gti
 
 volumes:
-  gti_postgres_data_pg18:
+  gti_postgres_data_pg18b:
   gti_uploads:
 
 networks:
