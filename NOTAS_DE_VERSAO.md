@@ -58,6 +58,7 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 
 ### Técnico
 
+- **Commit em produção (`/api/deploy-info`):** `gitSha` deixa de usar `NEXT_PUBLIC_GTI_BUILD` (texto fixo que podia mostrar um hash curto, como `a55af025`, sem dizer de onde veio). A ordem é `SOURCE_COMMIT` (Coolify), `RAILWAY_GIT_COMMIT_SHA` (Railway), `GIT_SHA`, `COMMIT_SHA` e, por último, o SHA gravado na imagem. Sem nenhuma fonte, a resposta é `unknown`. O campo `gitShaSource` indica a origem. Conferência: `curl -s https://<host>/api/deploy-info`. No Coolify, em Advanced → Build, deixe **Source commit availability** em **Available during build** (versões antigas: **Include Source Commit in Build**) e faça redeploy para o commit entrar na imagem. A Railway já injeta `RAILWAY_GIT_COMMIT_SHA`.
 - **Build Docker / Railway**: o `next build` quebrava ao resolver `@sparticuz/chromium` (o PDF passou a usar só pdfkit) e, em seguida, no typecheck de `qrcode` importado pelo backend. O `qrcode` é resolvido pelo `node_modules` do frontend (na imagem não há `apps/backend/node_modules`).
 - **Sync GLPI em produção**: o cron não deve competir com o processo web. Use `npm run start:worker` (ou `dev:worker` em desenvolvimento) num serviço dedicado; nas réplicas HTTP, `GLPI_CRON_DISABLED=1` (só o agendamento) ou `GLPI_SKIP_BOOTSTRAP=1` (bootstrap inteiro, já usado no `next build`). Ver `AGENTS.md` e `docs/glpi-sync-arquitetura.md`.
 

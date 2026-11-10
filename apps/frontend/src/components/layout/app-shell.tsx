@@ -114,7 +114,7 @@ export function AppShell({ children, initialRole }: AppShellProps): JSX.Element 
         if (!res.ok) return;
         const payload = (await res.json()) as { gitSha?: string | null };
         const version = payload.gitSha?.trim();
-        if (!version) return;
+        if (!version || version.toLowerCase() === "unknown") return;
         const previous = localStorage.getItem(DEPLOY_VERSION_STORAGE_KEY);
         if (!previous) {
           localStorage.setItem(DEPLOY_VERSION_STORAGE_KEY, version);
