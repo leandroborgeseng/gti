@@ -56,6 +56,10 @@ Este arquivo resume, em linguagem para usuários, as mudanças relevantes entre 
 - Cabeçalho fixo do detalhe do contrato deixa de sobrepor o cabeçalho principal do SIGTI; botões de ação permanecem acessíveis na faixa fixa (ticket 76).
 - «Imprimir / HTML» e «Baixar PDF» das notificações passam a usar a sessão autenticada do SIGTI, com mensagens amigáveis em caso de falta de permissão ou sessão expirada (ticket 85).
 
+### Segurança
+
+- **Commit em produção (`/api/deploy-info`):** `gitSha` só aceita hash hexadecimal de 7 a 40 caracteres. Texto que não seja SHA é ignorado e a consulta segue para a fonte seguinte; se nenhuma for válida, a resposta continua `unknown`. Falha inesperada da rota responde HTTP 500 sem cache.
+
 ### Técnico
 
 - **Commit em produção (`/api/deploy-info`):** `gitSha` deixa de usar `NEXT_PUBLIC_GTI_BUILD` (texto fixo que podia mostrar um hash curto, como `a55af025`, sem dizer de onde veio). A ordem é `SOURCE_COMMIT` (Coolify), `RAILWAY_GIT_COMMIT_SHA` (Railway), `GIT_SHA`, `COMMIT_SHA` e, por último, o SHA gravado na imagem. Sem nenhuma fonte, a resposta é `unknown`. O campo `gitShaSource` indica a origem. Conferência: `curl -s https://<host>/api/deploy-info`. No Coolify, em Advanced → Build, deixe **Source commit availability** em **Available during build** (versões antigas: **Include Source Commit in Build**) e faça redeploy para o commit entrar na imagem. A Railway já injeta `RAILWAY_GIT_COMMIT_SHA`.

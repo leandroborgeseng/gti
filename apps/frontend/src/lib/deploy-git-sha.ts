@@ -12,7 +12,9 @@
  * 5. SHA gravado no build (`GTI_BUILD_GIT_SHA` ou arquivo da imagem)
  * 6. `"unknown"`
  *
- * O literal `unknown` em qualquer fonte é ignorado, para não bloquear a seguinte.
+ * Só entra um hash hexadecimal de 7 a 40 caracteres (SHA curto ou completo).
+ * Texto fora desse formato — vazio, `unknown`, HTML ou outro conteúdo — é ignorado
+ * e a resolução segue para a fonte seguinte.
  */
 
 export const UNKNOWN_DEPLOY_GIT_SHA = "unknown";
@@ -33,11 +35,13 @@ export type DeployGitShaSource = DeployGitShaRuntimeSource | "build" | "unknown"
 
 export type DeployGitShaEnv = Record<string, string | undefined>;
 
+/** SHA curto (7) ou completo (até 40). Fora disso o valor conta como ausente. */
+const GIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/;
+
 export function normalizeGitSha(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.toLowerCase() === UNKNOWN_DEPLOY_GIT_SHA) return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!GIT_SHA_PATTERN.test(trimmed)) return null;
   return trimmed;
 }
 
