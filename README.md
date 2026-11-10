@@ -89,6 +89,7 @@ Guia completo: **`docs/migracao-railway-coolify.md`**.
 4. **Anexos:** volume persistente montado em **`/app/apps/frontend/uploads`**; copie ficheiros da Railway por `rsync`/`docker cp` (não vão para o GitHub).
 5. **Arranque:** contentor como **root** (`user: 0:0` no compose) para o entrypoint ajustar permissões do volume.
 6. **Teste:** `GET /health`, login, `/chamados`, anexo numa medição.
+7. **Commit no ar:** `curl -s https://<host>/api/deploy-info` deve devolver `gitSha` (SHA completo) e `gitShaSource`. No Coolify, Advanced → Build → **Source commit availability** = **Available during build** (UI antiga: **Include Source Commit in Build**). Não crie variável com hash fixo. Detalhe em `docs/migracao-railway-coolify.md`.
 
 ## Scripts úteis (`npm run`)
 

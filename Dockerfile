@@ -77,6 +77,30 @@ RUN chmod +x ./scripts/docker-entrypoint.sh
 # `/app/apps/frontend` se o diretório não existir com dono correto (EACCES em mkdir).
 RUN mkdir -p /app/apps/frontend/uploads && chown -R node:node /app/apps/frontend/uploads
 
+# Commit para /api/deploy-info. O Coolify passa --build-arg SOURCE_COMMIT quando
+# "Source commit availability" está em "Available during build" (UI antiga:
+# "Include Source Commit in Build"). A Railway pode passar RAILWAY_GIT_COMMIT_SHA
+# como build-arg; no runtime ela injeta a mesma variável e essa prevalece.
+# O valor fica em /app/.deploy-git-sha — não em ENV SOURCE_COMMIT — para um ARG
+# vazio não mascarar o SOURCE_COMMIT que o Coolify coloca no container.
+ARG SOURCE_COMMIT=
+ARG RAILWAY_GIT_COMMIT_SHA=
+ARG GIT_SHA=
+ARG COMMIT_SHA=
+RUN set -eu; \
+    pick=""; \
+    for candidate in "$SOURCE_COMMIT" "$RAILWAY_GIT_COMMIT_SHA" "$GIT_SHA" "$COMMIT_SHA"; do \
+      trimmed=$(printf '%s' "$candidate" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'); \
+      lowered=$(printf '%s' "$trimmed" | tr '[:upper:]' '[:lower:]'); \
+      if [ -n "$trimmed" ] && [ "$lowered" != "unknown" ]; then \
+        pick="$trimmed"; \
+        break; \
+      fi; \
+    done; \
+    printf '%s' "$pick" > /app/.deploy-git-sha; \
+    chmod a+r /app/.deploy-git-sha; \
+    if [ -n "$pick" ]; then echo "[gti] deploy-info SHA de build gravado"; else echo "[gti] deploy-info SHA de build vazio"; fi
+
 EXPOSE 3000
 # O entrypoint inicia como root só para garantir permissões ao montar disco em `uploads`; em seguida corre como `node`.
 CMD ["./scripts/docker-entrypoint.sh"]
