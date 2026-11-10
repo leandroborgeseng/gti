@@ -49,8 +49,9 @@ ENV PORT=3000
 # compatíveis com Postgres gerido recente (ex.: Railway 18.x); o pacote Debian `postgresql-client` é 15.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates util-linux curl gnupg \
-  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-    | gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg \
+  && curl -fsSL --http1.1 --retry 5 --retry-delay 3 --retry-all-errors https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc \
+  && gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg /tmp/pgdg.asc \
+  && rm -f /tmp/pgdg.asc \
   && echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
     > /etc/apt/sources.list.d/pgdg.list \
   && apt-get update \
