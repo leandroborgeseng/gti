@@ -273,6 +273,7 @@ Ordem sugerida:
 | `RAILWAY_VOLUME_MOUNT_PATH` | Auto | Use `UPLOAD_ROOT=/app/apps/frontend/uploads` |
 | SSL | Railway / domínio custom | Traefik + Let's Encrypt |
 | Worker GLPI | 2.º serviço opcional | 2.ª Application ou cron no mesmo container |
+| Commit no ar | `RAILWAY_GIT_COMMIT_SHA` (automático) | `SOURCE_COMMIT` (ver secção abaixo) |
 
 ---
 
@@ -293,6 +294,43 @@ Se o cutover falhar:
 - Remover referências Railway obsoletas na documentação quando a migração estiver estável.
 
 ---
+
+## Conferir o commit em produção
+
+`GET /api/deploy-info` devolve o commit que está no ar (`gitSha`) e a origem (`gitShaSource`). Não usa `NEXT_PUBLIC_GTI_BUILD`.
+
+Ordem: `SOURCE_COMMIT` → `RAILWAY_GIT_COMMIT_SHA` → `GIT_SHA` → `COMMIT_SHA` → SHA gravado na imagem no build → `unknown`.
+
+Não é preciso criar variável de ambiente com o hash. Um valor fixo (por exemplo o curto `a55af025` em `NEXT_PUBLIC_GTI_BUILD`) não prova o commit.
+
+### Coolify
+
+1. O Coolify recente já coloca `SOURCE_COMMIT` no **container em execução** (padrão *Runtime only*). Depois do deploy desta versão, o `curl` abaixo pode bastar (`gitShaSource`: `SOURCE_COMMIT`).
+2. Para o SHA ficar **gravado na imagem** (build-arg `SOURCE_COMMIT`, arquivo `/app/.deploy-git-sha`): no recurso da app, **Advanced → Build → Source commit availability → Available during build**. Em painéis antigos a opção chama-se **Include Source Commit in Build**.
+3. O `Dockerfile` já declara `ARG SOURCE_COMMIT` (e `RAILWAY_GIT_COMMIT_SHA`, `GIT_SHA`, `COMMIT_SHA`). Não altere envs de produção para isso. No Compose, `docker-compose.coolify.yml` só repassa esses build-args se a variável existir no build.
+4. **Redeploy** (build novo). Se o SHA não acompanhar o Git, force um build sem cache.
+5. Não há Nixpacks neste repositório: o build é o `Dockerfile`.
+
+### Railway
+
+Nenhuma opção extra. A plataforma injeta `RAILWAY_GIT_COMMIT_SHA` no runtime (`gitShaSource`: `RAILWAY_GIT_COMMIT_SHA`). O mesmo nome também é aceito como build-arg.
+
+### Verificação (somente GET)
+
+```bash
+curl -s https://<host>/api/deploy-info
+```
+
+Exemplo quando o Coolify entregou o commit:
+
+```json
+{
+  "gitSha": "<sha completo do Git>",
+  "gitShaSource": "SOURCE_COMMIT"
+}
+```
+
+`gitSha` `unknown` e `gitShaSource` `unknown` significam que nenhuma fonte chegou na imagem nem no container. Confira o passo 2 e faça redeploy.
 
 ## Comandos úteis
 

@@ -9,6 +9,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Repassa o commit só se existir no ambiente de build. Vazio não grava SHA.
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
+        RAILWAY_GIT_COMMIT_SHA: ${RAILWAY_GIT_COMMIT_SHA:-}
+        GIT_SHA: ${GIT_SHA:-}
+        COMMIT_SHA: ${COMMIT_SHA:-}
     ports:
       - "3000:3000"
     env_file:
